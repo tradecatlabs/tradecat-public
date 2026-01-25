@@ -7,15 +7,10 @@
 # 🐱 TradeCat
 
 Community-funded open-source project. Thanks for the support!  
-Donations (optional):
-<p>
-Solana(For CA tokens, please do not transfer directly; otherwise, your assets will be lost.)
-: Gysp4iZ6uNuAksAPR37fQwLDRFU9Rz255UjExhiwpump
-</p>
 
 <p>
-BSC (BEP20)(For CA tokens, please do not transfer directly; otherwise, your assets will be lost.)
-: 0x8a99b8d53eff6bc331af529af74ad267f3167777
+You can now trade official $tradecat token on pumpfun
+: Gysp4iZ6uNuAksAPR37fQwLDRFU9Rz255UjExhiwpump
 </p>
 
 **Disclaimer**
