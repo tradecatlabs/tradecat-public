@@ -28,7 +28,7 @@ BSC (BEP20)(For CA tokens, please do not transfer directly; otherwise, your asse
 
 3. **No token issuance / no endorsement**: This project does not issue any tokens. Any issuance, promotion, price manipulation, fundraising, or return guarantees made in this project’s name are unrelated to this project. Any on-chain assets (if any) are third-party actions; participation is at your own risk.
 
-4. **Donation statement (only channels)**: At present, this project accepts donations **only** from two communities: **SOL (Gysp4iZ6uNuAksAPR37fQwLDRFU9Rz255UjExhiwpump)** and **BSC (0x8a99b8d53eff6bc331af529af74ad267f3167777)**. Donations are voluntary and provide no returns or profit promises.
+4. **Donation statement (only channels)**: At present, 
 
 5. **Public addresses & risk notice**: My addresses are publicly disclosed. Please verify the correct chain, network, and address yourself. Transfers are generally irreversible once made. Any losses caused by sending to the wrong address, scams, account compromise, impersonation, etc. are borne solely by the sender.
 
