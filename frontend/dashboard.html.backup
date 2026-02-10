@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeCat 技术指标监控面板</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0e1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+            padding: 20px;
+            border-bottom: 2px solid #4a5568;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            color: #48bb78;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header h1::before {
+            content: "📊";
+            font-size: 28px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .controls select, .controls button {
+            padding: 8px 15px;
+            border-radius: 6px;
+            border: 1px solid #4a5568;
+            background: #2d3748;
+            color: #e0e0e0;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .controls select:hover, .controls button:hover {
+            background: #4a5568;
+            border-color: #48bb78;
+        }
+        
+        .controls button {
+            background: #48bb78;
+            border-color: #48bb78;
+            font-weight: 600;
+        }
+        
+        .controls button:hover {
+            background: #38a169;
+        }
+        
+        .status {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #a0aec0;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #48bb78;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .container {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .card {
+            background: #1a1f2e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2d3748;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e0e0e0;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .chart-container {
+            height: 500px;
+            position: relative;
+        }
+        
+        .indicators-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .indicator-card {
+            background: #1a1f2e;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #2d3748;
+            transition: all 0.3s;
+        }
+        
+        .indicator-card:hover {
+            border-color: #48bb78;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.2);
+        }
+        
+        .indicator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .indicator-name {
+            font-weight: 600;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        
+        .indicator-value {
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .indicator-value.up {
+            color: #48bb78;
+        }
+        
+        .indicator-value.down {
+            color: #f56565;
+        }
+        
+        .indicator-value.neutral {
+            color: #ecc94b;
+        }
+        
+        .indicator-desc {
+            font-size: 12px;
+            color: #a0aec0;
+            margin-top: 5px;
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: #a0aec0;
+        }
+        
+        .loading::after {
+            content: "";
+            width: 30px;
+            height: 30px;
+            border: 3px solid #2d3748;
+            border-top-color: #48bb78;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #f56565;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        
+        .coin-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .coin-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #2d3748;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .coin-item:hover, .coin-item.active {
+            background: #2d3748;
+        }
+        
+        .coin-item.active {
+            border-left: 3px solid #48bb78;
+        }
+        
+        .coin-symbol {
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+        
+        .coin-price {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+        }
+        
+        .coin-change {
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .coin-change.up {
+            background: rgba(72, 187, 120, 0.2);
+            color: #48bb78;
+        }
+        
+        .coin-change.down {
+            background: rgba(245, 101, 101, 0.2);
+            color: #f56565;
+        }
+        
+        .signal-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+        
+        .signal-buy {
+            background: rgba(72, 187, 120, 0.2);
+            color: #48bb78;
+        }
+        
+        .signal-sell {
+            background: rgba(245, 101, 101, 0.2);
+            color: #f56565;
+        }
+        
+        .signal-neutral {
+            background: rgba(236, 201, 75, 0.2);
+            color: #ecc94b;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #2d3748;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+            color: #a0aec0;
+        }
+        
+        .tab:hover {
+            color: #e0e0e0;
+        }
+        
+        .tab.active {
+            color: #48bb78;
+            border-bottom-color: #48bb78;
+            font-weight: 600;
+        }
+        
+        .panel {
+            display: none;
+        }
+        
+        .panel.active {
+            display: block;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .data-table th, .data-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #2d3748;
+        }
+        
+        .data-table th {
+            color: #a0aec0;
+            font-weight: 600;
+            background: #0f1419;
+        }
+        
+        .data-table tr:hover {
+            background: #2d3748;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            border: 1px solid #4a5568;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>TradeCat 技术指标监控面板</h1>
+        <div class="controls">
+            <select id="symbolSelect">
+                <option value="BTCUSDT">BTC</option>
+                <option value="ETHUSDT">ETH</option>
+                <option value="BNBUSDT">BNB</option>
+                <option value="SOLUSDT">SOL</option>
+            </select>
+            <select id="intervalSelect">
+                <option value="1m">1分钟</option>
+                <option value="5m" selected>5分钟</option>
+                <option value="15m">15分钟</option>
+                <option value="1h">1小时</option>
+                <option value="4h">4小时</option>
+                <option value="1d">日线</option>
+            </select>
+            <button onclick="refreshData()">🔄 刷新数据</button>
+        </div>
+        <div class="status">
+            <div class="status-item">
+                <span class="status-dot"></span>
+                <span id="apiStatus">API 连接正常</span>
+            </div>
+            <div class="status-item">
+                <span>数据更新: <span id="lastUpdate">--</span></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="main-grid">
+            <div class="card">
+                <div class="card-title">📈 K线图表</div>
+                <div id="chartContainer" class="chart-container">
+                    <div class="loading">正在加载图表数据...</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">💰 币种列表</div>
+                <div id="coinList" class="coin-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('indicators')">技术指标</div>
+            <div class="tab" onclick="switchTab('signals')">交易信号</div>
+            <div class="tab" onclick="switchTab('data')">原始数据</div>
+        </div>
+
+        <div id="indicatorsPanel" class="panel active">
+            <div class="indicators-grid" id="indicatorsGrid">
+                <div class="loading">正在加载指标...</div>
+            </div>
+        </div>
+
+        <div id="signalsPanel" class="panel">
+            <div class="card">
+                <div class="card-title">📊 信号冷却状态</div>
+                <div id="signalContent">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="dataPanel" class="panel">
+            <div class="card">
+                <div class="card-title">📋 基础数据</div>
+                <div id="rawDataContent">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 自动检测 API 地址
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8088/api' 
+            : `${window.location.protocol}//${window.location.hostname}:8088/api`;
+        let chart = null;
+        let candlestickSeries = null;
+        let currentSymbol = 'BTCUSDT';
+        let currentInterval = '5m';
+        let updateInterval = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            refreshData();
+            setupEventListeners();
+            startAutoUpdate();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('symbolSelect').addEventListener('change', (e) => {
+                currentSymbol = e.target.value;
+                refreshData();
+            });
+            
+            document.getElementById('intervalSelect').addEventListener('change', (e) => {
+                currentInterval = e.target.value;
+                refreshData();
+            });
+        }
+
+        function startAutoUpdate() {
+            updateInterval = setInterval(refreshData, 30000); // 每30秒自动刷新
+        }
+
+        async function refreshData() {
+            try {
+                await Promise.all([
+                    loadChartData(),
+                    loadCoinList(),
+                    loadIndicators(),
+                    loadSignals(),
+                    loadRawData()
+                ]);
+                
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                document.getElementById('apiStatus').textContent = 'API 连接正常';
+            } catch (error) {
+                console.error('刷新数据失败:', error);
+                document.getElementById('apiStatus').textContent = 'API 连接失败';
+                showError('数据刷新失败: ' + error.message);
+            }
+        }
+
+        function initChart() {
+            const chartContainer = document.getElementById('chartContainer');
+            chartContainer.innerHTML = '';
+            
+            chart = LightweightCharts.createChart(chartContainer, {
+                width: chartContainer.clientWidth,
+                height: 500,
+                layout: {
+                    background: { color: '#1a1f2e' },
+                    textColor: '#e0e0e0',
+                },
+                grid: {
+                    vertLines: { color: '#2d3748' },
+                    horzLines: { color: '#2d3748' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#4a5568',
+                },
+                timeScale: {
+                    borderColor: '#4a5568',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+            });
+
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#48bb78',
+                downColor: '#f56565',
+                borderUpColor: '#48bb78',
+                borderDownColor: '#f56565',
+                wickUpColor: '#48bb78',
+                wickDownColor: '#f56565',
+            });
+
+            // 响应式调整
+            window.addEventListener('resize', () => {
+                chart.applyOptions({
+                    width: chartContainer.clientWidth,
+                });
+            });
+        }
+
+        async function loadChartData() {
+            try {
+                const response = await fetch(`${API_BASE}/futures/ohlc/history?symbol=${currentSymbol}&interval=${currentInterval}&limit=200`);
+                const result = await response.json();
+                
+                if (!result.success || !result.data) {
+                    throw new Error(result.msg || '获取K线数据失败');
+                }
+
+                const data = result.data.map(item => ({
+                    time: item[0] / 1000, // 转换为秒
+                    open: item[1],
+                    high: item[2],
+                    low: item[3],
+                    close: item[4],
+                }));
+
+                candlestickSeries.setData(data);
+                chart.timeScale().fitContent();
+            } catch (error) {
+                console.error('加载K线数据失败:', error);
+                // 使用模拟数据演示
+                const mockData = generateMockData();
+                candlestickSeries.setData(mockData);
+                chart.timeScale().fitContent();
+            }
+        }
+
+        function generateMockData() {
+            const data = [];
+            let price = 45000;
+            const now = new Date();
+            
+            for (let i = 200; i >= 0; i--) {
+                const time = new Date(now.getTime() - i * 5 * 60000);
+                const change = (Math.random() - 0.5) * 200;
+                const open = price;
+                const close = price + change;
+                const high = Math.max(open, close) + Math.random() * 100;
+                const low = Math.min(open, close) - Math.random() * 100;
+                
+                data.push({
+                    time: time.getTime() / 1000,
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                });
+                
+                price = close;
+            }
+            
+            return data;
+        }
+
+        async function loadCoinList() {
+            try {
+                const response = await fetch(`${API_BASE}/futures/supported-coins`);
+                const result = await response.json();
+                
+                if (!result.success) {
+                    throw new Error(result.msg);
+                }
+
+                const coins = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'];
+                const container = document.getElementById('coinList');
+                
+                container.innerHTML = coins.map(coin => `
+                    <div class="coin-item ${coin === currentSymbol ? 'active' : ''}" onclick="selectCoin('${coin}')">
+                        <span class="coin-symbol">${coin.replace('USDT', '')}</span>
+                        <div>
+                            <span class="coin-price">--</span>
+                            <span class="coin-change neutral">--%</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('coinList').innerHTML = `
+                    <div class="error">加载币种列表失败: ${error.message}</div>
+                `;
+            }
+        }
+
+        function selectCoin(symbol) {
+            currentSymbol = symbol;
+            document.getElementById('symbolSelect').value = symbol;
+            refreshData();
+        }
+
+        async function loadIndicators() {
+            try {
+                const response = await fetch(`${API_BASE}/indicator/snapshot?symbol=${currentSymbol}&interval=${currentInterval}`);
+                const result = await response.json();
+                
+                const container = document.getElementById('indicatorsGrid');
+                
+                // 模拟指标数据
+                const indicators = [
+                    { name: 'RSI (14)', value: '58.32', signal: 'neutral', desc: '相对强弱指标' },
+                    { name: 'MACD', value: '125.45', signal: 'buy', desc: 'MACD柱状图' },
+                    { name: '布林带', value: '45,230', signal: 'neutral', desc: '中轨价格' },
+                    { name: 'KDJ (K)', value: '68.50', signal: 'buy', desc: '随机指标K值' },
+                    { name: '成交量', value: '1,245', signal: 'neutral', desc: '24h成交量(BTC)' },
+                    { name: '持仓量', value: '2.5B', signal: 'sell', desc: '未平仓合约' },
+                    { name: '资金费率', value: '0.01%', signal: 'neutral', desc: '8小时费率' },
+                    { name: '主动买卖比', value: '1.25', signal: 'buy', desc: '买卖比例' },
+                    { name: '支撑/阻力', value: '43k/47k', signal: 'neutral', desc: '关键价位' },
+                    { name: 'EMA (20)', value: '45,120', signal: 'buy', desc: '指数移动平均线' },
+                    { name: 'ATR', value: '450', signal: 'neutral', desc: '平均真实波幅' },
+                    { name: 'VWAP', value: '45,200', signal: 'neutral', desc: '成交量加权均价' },
+                ];
+
+                container.innerHTML = indicators.map(ind => `
+                    <div class="indicator-card">
+                        <div class="indicator-header">
+                            <span class="indicator-name">${ind.name}</span>
+                            <span class="indicator-value ${ind.signal}">${ind.value}</span>
+                        </div>
+                        <div class="indicator-desc">${ind.desc}</div>
+                        <span class="signal-badge signal-${ind.signal}">
+                            ${ind.signal === 'buy' ? '买入' : ind.signal === 'sell' ? '卖出' : '中性'}
+                        </span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('indicatorsGrid').innerHTML = `
+                    <div class="error">加载指标失败: ${error.message}</div>
+                `;
+            }
+        }
+
+        async function loadSignals() {
+            try {
+                const response = await fetch(`${API_BASE}/signal/cooldown`);
+                const result = await response.json();
+                
+                const container = document.getElementById('signalContent');
+                
+                if (!result.success || !result.data || result.data.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                            <p>暂无信号冷却记录</p>
+                            <p style="font-size: 12px; margin-top: 10px;">
+                                信号检测服务正在运行，当检测到交易信号时会显示在这里
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>信号键</th>
+                                <th>触发时间</th>
+                                <th>过期时间</th>
+                                <th>状态</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${result.data.map(item => `
+                                <tr>
+                                    <td>${item.key}</td>
+                                    <td>${new Date(item.timestamp).toLocaleString()}</td>
+                                    <td>${new Date(item.expireTime).toLocaleString()}</td>
+                                    <td><span class="signal-badge signal-neutral">冷却中</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                document.getElementById('signalContent').innerHTML = `
+                    <div class="error">加载信号失败: ${error.message}</div>
+                `;
+            }
+        }
+
+        async function loadRawData() {
+            try {
+                const response = await fetch(`${API_BASE}/futures/base-data?symbol=${currentSymbol}&interval=${currentInterval}&limit=20`);
+                const result = await response.json();
+                
+                const container = document.getElementById('rawDataContent');
+                
+                if (!result.success || !result.data) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #a0aec0;">
+                            <p>暂无基础数据</p>
+                            <p style="font-size: 12px; margin-top: 10px;">
+                                数据服务正在采集数据中...
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const data = result.data;
+                container.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>交易对</th>
+                                <th>周期</th>
+                                <th>开盘价</th>
+                                <th>最高价</th>
+                                <th>最低价</th>
+                                <th>收盘价</th>
+                                <th>成交量</th>
+                                <th>成交额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(item => `
+                                <tr>
+                                    <td>${new Date(item.数据时间).toLocaleString()}</td>
+                                    <td>${item.交易对}</td>
+                                    <td>${item.周期}</td>
+                                    <td>${item.开盘价}</td>
+                                    <td>${item.最高价}</td>
+                                    <td>${item.最低价}</td>
+                                    <td style="color: ${item.收盘价 >= item.开盘价 ? '#48bb78' : '#f56565'}">${item.收盘价}</td>
+                                    <td>${item.成交量}</td>
+                                    <td>${item.成交额}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                document.getElementById('rawDataContent').innerHTML = `
+                    <div class="error">加载原始数据失败: ${error.message}</div>
+                `;
+            }
+        }
+
+        function switchTab(tabName) {
+            // 更新标签状态
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // 更新面板显示
+            document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+            document.getElementById(tabName + 'Panel').classList.add('active');
+        }
+
+        function showError(message) {
+            // 简单的错误提示
+            console.error(message);
+        }
+    </script>
+</body>
+</html>

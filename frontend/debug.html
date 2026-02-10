@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeCat 调试页面</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { font-family: monospace; background: #0a0e1a; color: #e0e0e0; padding: 20px; }
+        .section { background: #1a1f2e; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .error { color: #f56565; }
+        .success { color: #48bb78; }
+        pre { background: #0f1419; padding: 10px; overflow-x: auto; font-size: 12px; }
+        button { padding: 10px 20px; background: #48bb78; border: none; color: white; cursor: pointer; margin: 5px; }
+        #chartContainer { height: 300px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔧 TradeCat API 调试</h1>
+    
+    <div class="section">
+        <button onclick="testAll()">🧪 测试所有 API</button>
+        <button onclick="clearLog()">🗑️ 清空日志</button>
+    </div>
+
+    <div id="log"></div>
+
+    <div class="section">
+        <h3>📈 K线图表</h3>
+        <div id="chartContainer">点击"测试所有 API"按钮加载</div>
+    </div>
+
+    <script>
+        const API = 'http://localhost:8088/api';
+        let chart = null, series = null;
+
+        function log(msg, isError = false) {
+            const div = document.getElementById('log');
+            const color = isError ? 'error' : 'success';
+            div.innerHTML += `<div class="${color}">${new Date().toLocaleTimeString()}: ${msg}</div>`;
+        }
+
+        function logJSON(data) {
+            const div = document.getElementById('log');
+            div.innerHTML += `<pre>${JSON.stringify(data, null, 2).substring(0, 2000)}</pre>`;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function testAll() {
+            clearLog();
+            
+            // 测试 1: 健康检查
+            try {
+                log('🔄 测试 /api/health...');
+                const resp = await fetch(`${API}/health`);
+                const data = await resp.json();
+                log(`✓ Health: ${data.status || 'OK'}`);
+            } catch (e) {
+                log(`✗ Health 失败: ${e.message}`, true);
+            }
+
+            // 测试 2: 指标快照
+            try {
+                log('🔄 测试 /api/indicator/snapshot...');
+                const resp = await fetch(`${API}/indicator/snapshot?symbol=BTCUSDT&interval=1m&panels=basic`);
+                const data = await resp.json();
+                
+                if (data.success) {
+                    log('✓ Snapshot API 成功');
+                    
+                    // 提取关键数据
+                    const panels = data.data?.panels?.basic;
+                    if (panels && panels.tables) {
+                        const macdTable = panels.tables['MACD柱状排行卡片'];
+                        if (macdTable && macdTable.periods && macdTable.periods['1m']) {
+                            const macd = macdTable.periods['1m'];
+                            log(`✓ MACD: ${macd.MACD柱状图?.toFixed(2) || 'N/A'}`);
+                            log(`✓ 价格: ${macd.当前价格 || macd.price || 'N/A'}`);
+                            log(`✓ 时间: ${macd.数据时间 || 'N/A'}`);
+                        } else {
+                            log('✗ MACD 1m 数据不存在', true);
+                        }
+                        
+                        // 显示完整数据结构
+                        log('📋 Snapshot 数据结构:');
+                        logJSON({
+                            has_panels: !!data.data.panels,
+                            has_basic: !!panels,
+                            table_names: Object.keys(panels.tables || {}),
+                            sample_macd: macdTable?.periods?.['1m'] ? '存在' : '不存在'
+                        });
+                    } else {
+                        log('✗ panels 或 tables 不存在', true);
+                        logJSON(data.data);
+                    }
+                } else {
+                    log(`✗ Snapshot 失败: ${data.msg}`, true);
+                }
+            } catch (e) {
+                log(`✗ Snapshot 异常: ${e.message}`, true);
+                console.error(e);
+            }
+
+            // 测试 3: K线数据
+            try {
+                log('🔄 测试 /api/futures/ohlc/history...');
+                const resp = await fetch(`${API}/futures/ohlc/history?symbol=BTCUSDT&interval=1m&limit=100`);
+                const data = await resp.json();
+                
+                if (data.success) {
+                    log(`✓ K线 API 成功，${data.data.length} 条数据`);
+                    if (data.data.length > 0) {
+                        const last = data.data[data.data.length - 1];
+                        log(`✓ 最新价格: ${last.close}`);
+                        log(`✓ 最新时间: ${new Date(last.time).toLocaleString()}`);
+                        
+                        // 绘制图表
+                        drawChart(data.data);
+                    }
+                } else {
+                    log(`✗ K线失败: ${data.msg}`, true);
+                }
+            } catch (e) {
+                log(`✗ K线异常: ${e.message}`, true);
+                console.error(e);
+            }
+
+            // 测试 4: Base Data
+            try {
+                log('🔄 测试 /api/futures/base-data...');
+                const resp = await fetch(`${API}/futures/base-data?symbol=BTCUSDT&interval=1m&limit=1`);
+                const data = await resp.json();
+                
+                if (data.success) {
+                    log('✓ Base Data API 成功');
+                    if (data.data?.list?.length > 0) {
+                        const item = data.data.list[0];
+                        log(`✓ 收盘价: ${item.close}`);
+                        log(`✓ 成交量: ${item.volume}`);
+                    } else {
+                        log('✗ Base Data 列表为空', true);
+                        logJSON(data);
+                    }
+                } else {
+                    log(`✗ Base Data 失败: ${data.msg}`, true);
+                }
+            } catch (e) {
+                log(`✗ Base Data 异常: ${e.message}`, true);
+                console.error(e);
+            }
+        }
+
+        function drawChart(klineData) {
+            const container = document.getElementById('chartContainer');
+            container.innerHTML = '';
+            
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 300,
+                layout: { background: { color: '#1a1f2e' }, textColor: '#e0e0e0' },
+                grid: { vertLines: { color: '#2d3748' }, horzLines: { color: '#2d3748' } },
+            });
+
+            series = chart.addCandlestickSeries({
+                upColor: '#48bb78', downColor: '#f56565',
+                borderUpColor: '#48bb78', borderDownColor: '#f56565',
+            });
+
+            const formatted = klineData.map(d => ({
+                time: d.time / 1000,
+                open: parseFloat(d.open),
+                high: parseFloat(d.high),
+                low: parseFloat(d.low),
+                close: parseFloat(d.close)
+            }));
+
+            series.setData(formatted);
+            chart.timeScale().fitContent();
+            log('✓ 图表绘制完成');
+        }
+
+        // 页面加载自动测试
+        window.onload = testAll;
+    </script>
+</body>
+</html>

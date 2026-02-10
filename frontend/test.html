@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeCat 实时数据</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0e1a; color: #e0e0e0; padding: 20px; }
+        .header { background: #1a1f2e; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+        .header h1 { color: #48bb78; font-size: 20px; }
+        select, button { padding: 8px 15px; border-radius: 6px; border: 1px solid #4a5568; background: #2d3748; color: #e0e0e0; cursor: pointer; }
+        button { background: #48bb78; border-color: #48bb78; font-weight: 600; }
+        .status { margin-left: auto; font-size: 12px; color: #a0aec0; }
+        .grid { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+        @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+        .card { background: #1a1f2e; border-radius: 8px; padding: 15px; border: 1px solid #2d3748; margin-bottom: 15px; }
+        .card-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+        #chartContainer { height: 400px; }
+        .indicator-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .indicator-item { background: #0f1419; padding: 10px; border-radius: 6px; font-size: 12px; }
+        .indicator-name { color: #718096; margin-bottom: 4px; }
+        .indicator-value { font-size: 16px; font-weight: 700; font-family: monospace; }
+        .up { color: #48bb78; }
+        .down { color: #f56565; }
+        .neutral { color: #ecc94b; }
+        .loading { text-align: center; padding: 40px; color: #718096; }
+        .error { background: #f56565; color: white; padding: 10px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 TradeCat 实时数据</h1>
+        <select id="symbol">
+            <option value="BTCUSDT">BTC</option>
+            <option value="ETHUSDT">ETH</option>
+            <option value="BNBUSDT">BNB</option>
+            <option value="SOLUSDT">SOL</option>
+        </select>
+        <select id="interval">
+            <option value="1m" selected>1m</option>
+            <option value="5m">5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+        </select>
+        <button onclick="loadAll()">🔄 加载</button>
+        <div class="status">更新: <span id="updateTime">--</span></div>
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <div class="card-title">📈 K线图表</div>
+            <div id="chartContainer"><div class="loading">加载中...</div></div>
+        </div>
+        
+        <div>
+            <div class="card">
+                <div class="card-title">💰 最新价格</div>
+                <div id="priceInfo"><div class="loading">加载中...</div></div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">📊 基础指标</div>
+                <div id="indicators"><div class="loading">加载中...</div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = 'http://localhost:8088/api';
+        let chart = null, series = null;
+
+        // 初始化图表
+        function initChart() {
+            const container = document.getElementById('chartContainer');
+            container.innerHTML = '';
+            
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 400,
+                layout: { background: { color: '#1a1f2e' }, textColor: '#e0e0e0' },
+                grid: { vertLines: { color: '#2d3748' }, horzLines: { color: '#2d3748' } },
+                timeScale: { timeVisible: true, borderColor: '#4a5568' },
+            });
+
+            series = chart.addCandlestickSeries({
+                upColor: '#48bb78', downColor: '#f56565',
+                borderUpColor: '#48bb78', borderDownColor: '#f56565',
+            });
+
+            window.addEventListener('resize', () => chart.applyOptions({ width: container.clientWidth }));
+        }
+
+        // 加载所有数据
+        async function loadAll() {
+            const symbol = document.getElementById('symbol').value;
+            const interval = document.getElementById('interval').value;
+            
+            try {
+                await Promise.all([
+                    loadKline(symbol, interval),
+                    loadPriceAndIndicators(symbol, interval)
+                ]);
+                
+                document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+            } catch (error) {
+                console.error('加载失败:', error);
+                alert('加载失败: ' + error.message);
+            }
+        }
+
+        // 加载K线
+        async function loadKline(symbol, interval) {
+            const response = await fetch(`${API}/futures/ohlc/history?symbol=${symbol}&interval=${interval}&limit=200`);
+            const result = await response.json();
+            
+            if (!result.success) throw new Error(result.msg);
+
+            if (!chart) initChart();
+
+            const data = result.data.map(item => ({
+                time: item.time / 1000,
+                open: parseFloat(item.open),
+                high: parseFloat(item.high),
+                low: parseFloat(item.low),
+                close: parseFloat(item.close)
+            }));
+
+            series.setData(data);
+            chart.timeScale().fitContent();
+        }
+
+        // 加载价格和指标（合并为一个API调用）
+        async function loadPriceAndIndicators(symbol, interval) {
+            const response = await fetch(`${API}/indicator/snapshot?symbol=${symbol}&interval=${interval}&panels=basic`);
+            const result = await response.json();
+            
+            if (!result.success) {
+                throw new Error(result.msg);
+            }
+
+            const data = result.data;
+            const tables = data.panels?.basic?.tables || {};
+            
+            // ========== 提取价格数据 ==========
+            const macdData = tables['MACD柱状排行卡片']?.periods?.[interval];
+            const price = macdData?.当前价格 || macdData?.price || '--';
+            const updateTime = macdData?.数据时间 || '--';
+            
+            // 计算涨跌（使用1m数据的开盘价和收盘价）
+            const baseData = data.base?.periods?.[interval];
+            let changePercent = 0;
+            if (baseData && baseData.开盘价 && baseData.收盘价) {
+                changePercent = ((baseData.收盘价 - baseData.开盘价) / baseData.开盘价 * 100);
+            }
+            
+            const changeClass = changePercent >= 0 ? 'up' : 'down';
+            const changeStr = (changePercent >= 0 ? '+' : '') + changePercent.toFixed(2) + '%';
+            
+            // 显示价格
+            document.getElementById('priceInfo').innerHTML = `
+                <div style="font-size: 28px; font-weight: 700; font-family: monospace;">${typeof price === 'number' ? price.toLocaleString() : price}</div>
+                <div style="margin-top: 8px;"><span class="${changeClass}">${changeStr}</span></div>
+                <div style="margin-top: 8px; font-size: 11px; color: #718096;">数据时间: ${updateTime}</div>
+            `;
+            
+            // ========== 提取指标数据 ==========
+            const indicators = [];
+            
+            // MACD
+            if (macdData) {
+                const macdValue = macdData.MACD柱状图;
+                indicators.push({
+                    name: 'MACD',
+                    value: typeof macdValue === 'number' ? macdValue.toFixed(2) : '--',
+                    signal: macdValue > 0 ? 'up' : macdValue < 0 ? 'down' : 'neutral'
+                });
+            }
+            
+            // KDJ
+            const kdjData = tables['KDJ排行卡片']?.periods?.[interval];
+            if (kdjData) {
+                const kValue = kdjData.K值;
+                indicators.push({
+                    name: 'KDJ (K)',
+                    value: typeof kValue === 'number' ? kValue.toFixed(2) : '--',
+                    signal: kValue > 80 ? 'down' : kValue < 20 ? 'up' : 'neutral'
+                });
+            }
+            
+            // 布林带
+            const bollData = tables['布林带排行卡片']?.periods?.[interval];
+            if (bollData) {
+                const midPrice = bollData.中轨价格;
+                indicators.push({
+                    name: '布林带',
+                    value: typeof midPrice === 'number' ? midPrice.toFixed(0) : '--',
+                    signal: 'neutral'
+                });
+            }
+            
+            // RSI
+            const rsiData = tables['RSI谐波排行卡片']?.periods?.[interval];
+            if (rsiData) {
+                const rsiValue = rsiData.谐波值;
+                indicators.push({
+                    name: 'RSI',
+                    value: typeof rsiValue === 'number' ? rsiValue.toFixed(1) : '--',
+                    signal: rsiValue > 70 ? 'down' : rsiValue < 30 ? 'up' : 'neutral'
+                });
+            }
+            
+            // 支撑/阻力
+            const srData = tables['支撑阻力排行卡片']?.periods?.[interval];
+            if (srData) {
+                const support = srData.支撑位;
+                indicators.push({
+                    name: '支撑位',
+                    value: typeof support === 'number' ? support.toFixed(0) : '--',
+                    signal: 'neutral'
+                });
+            }
+
+            // 显示指标
+            const container = document.getElementById('indicators');
+            if (indicators.length > 0) {
+                container.innerHTML = indicators.map(ind => `
+                    <div class="indicator-item">
+                        <div class="indicator-name">${ind.name}</div>
+                        <div class="indicator-value ${ind.signal}">${ind.value}</div>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<div style="color: #718096;">暂无指标数据</div>';
+            }
+        }
+
+        // 页面加载后自动加载
+        window.onload = () => {
+            initChart();
+            loadAll();
+        };
+    </script>
+</body>
+</html>
