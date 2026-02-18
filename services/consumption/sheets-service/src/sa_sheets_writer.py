@@ -22,6 +22,17 @@ def _col_to_index(col: str) -> int:
     return idx
 
 
+def _index_to_col(idx: int) -> str:
+    n = int(idx)
+    if n <= 0:
+        raise ValueError(f"invalid_col_index:{idx}")
+    out = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        out = chr(ord("A") + rem) + out
+    return out
+
+
 def _sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -201,6 +212,25 @@ class SaSheetsWriter:
             self._write_limiter.acquire()
         return req.execute()
 
+    # ==================== runtime overrides（用于 CLI/运维） ====================
+    def set_dashboard_mode(self, mode: str) -> None:
+        self._dashboard_mode = (mode or "").strip().lower() or self._dashboard_mode
+
+    def compute_col_r(self, *, col_l: str, needed_cols: int, min_col_r: str) -> str:
+        """
+        计算 dashboard 的 col_r：
+        - 从 col_l 起，需要容纳 needed_cols 列
+        - 同时不小于 min_col_r（避免把用户显式配置的右边界“缩回去”）
+        """
+        left = _col_to_index(col_l)
+        need = max(int(needed_cols), 1)
+        want_r = left + need - 1
+        try:
+            min_r = _col_to_index(min_col_r)
+        except Exception:
+            min_r = want_r
+        return _index_to_col(max(want_r, min_r))
+
     # ==================== bootstrap ====================
     def bootstrap(self, *, title: str) -> BootstrapResult:
         if not self._spreadsheet_id:
@@ -344,7 +374,7 @@ class SaSheetsWriter:
         self._ensured_schema = True
 
     # ==================== ops ====================
-    def reset_dashboard(self, *, col_l: str, col_r: str) -> dict[str, Any]:
+    def reset_dashboard(self, *, col_l: str, col_r: str, compact: bool = False) -> dict[str, Any]:
         """
         清理看板展示面（不动事实表）：
         - 清空看板全部单元格
@@ -353,6 +383,10 @@ class SaSheetsWriter:
         - 清空 slot.*.y（避免“重置后仍沿用旧卡片 y”造成看起来像堆叠/错位）
         """
         self.ensure_schema()
+        col_l_u = str(col_l).strip().upper()
+        col_r_u = str(col_r).strip().upper()
+        self._dashboard_col_l = col_l_u
+        self._dashboard_col_r = col_r_u
 
         # 1) clear values
         self._exec(
@@ -388,13 +422,49 @@ class SaSheetsWriter:
 
         kv = {
             "dashboard_next_row": "1",
-            "dashboard_col_l": str(col_l).strip().upper(),
-            "dashboard_col_r": str(col_r).strip().upper(),
+            "dashboard_col_l": col_l_u,
+            "dashboard_col_r": col_r_u,
             "dashboard_mode": self._dashboard_mode,
             "dashboard_slot_height": str(self._dashboard_slot_height),
             **slot_clear,
         }
         self._meta_set(kv)
+
+        if compact:
+            # 只压缩 dashboard 本身（展示面允许破坏性变更），避免历史事实表被误删。
+            sh_id = self._sheet_id_by_title.get(self._tab_dashboard)
+            if sh_id is None:
+                self._refresh_sheet_map()
+                sh_id = self._sheet_id_by_title[self._tab_dashboard]
+
+            target_rows = 2000
+            target_cols = max(_col_to_index(col_r_u), 1)
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {
+                                        "sheetId": int(sh_id),
+                                        "gridProperties": {
+                                            "rowCount": int(target_rows),
+                                            "columnCount": int(target_cols),
+                                            # 看板会大量 mergeCells（title/update/sort/hint/last 全行合并）；
+                                            # Sheets 禁止跨“冻结列边界”合并，因此这里强制关闭冻结列。
+                                            "frozenColumnCount": 0,
+                                        },
+                                    },
+                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenColumnCount",
+                                }
+                            }
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+            self._refresh_sheet_map()
         return {"ok": True, "dashboard": {"sheet": self._tab_dashboard, "col_l": col_l, "col_r": col_r, "row_y": 1}}
 
     def rebuild_dashboard(self, *, max_cards: int = 200) -> dict[str, Any]:
@@ -877,8 +947,9 @@ class SaSheetsWriter:
             raise RuntimeError("missing_card_key")
 
         meta = self._meta_get()
-        col_l = (meta.get("dashboard_col_l") or self._dashboard_col_l).strip().upper()
-        col_r = (meta.get("dashboard_col_r") or self._dashboard_col_r).strip().upper()
+        # 以运行时配置（进程参数/env）为真相源：避免“表内 meta 被写坏/漂移”导致列从 A 飘到 N 等错位。
+        col_l = (self._dashboard_col_l or "A").strip().upper()
+        col_r = (self._dashboard_col_r or "M").strip().upper()
         # 行为口径：以“运行时配置/构造参数”为准，避免表内 meta 被旧进程写坏导致模式漂移。
         mode = (self._dashboard_mode or "replace").strip().lower()
         min_slot_height = max(int(self._dashboard_slot_height), 1)

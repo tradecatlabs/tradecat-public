@@ -9,6 +9,11 @@
 - 你也可以直接在 shell 里 `export` 这些变量（纯 CLI）。
 
 - `SHEETS_WRITE_MODE`：写入模式 `webhook|sa`（默认 `webhook`）
+- `SHEETS_SYNC_MODE`：同步模式 `dashboard|snapshot|append`
+  - `dashboard`（SA 推荐，默认）：每轮 **reset 看板并全量重绘**，紧凑排布，不依赖 slot 预留高度，不会出现“卡片间空洞/错位/堆叠”。
+  - `snapshot`：走 outbox + 幂等，只写“新卡片事件”；适合需要事实表 append 的场景。
+  - `append`：保留口径（目前与 `snapshot` 行为一致，历史兼容）。
+- `SHEETS_FORCE_RENDER`：`1` 表示强制重渲染（忽略幂等，用于版式/样式大改后刷新）
 
 ### Webhook 模式（Apps Script，可选）
 - `SHEETS_WEBHOOK_URL`：Apps Script Web App URL（`.../exec`）
@@ -24,7 +29,8 @@
 - `SHEETS_PUBLIC_READ`：`1` 表示将工作簿设为“任何人有链接可读”
 - `SHEETS_SHARE_EMAIL`：可选，授权某个邮箱为 writer（不发通知）
 - `SHEETS_DRIVE_FOLDER_ID`：可选，把工作簿/Blob 放入指定 Drive 目录
-- `SHEETS_DASHBOARD_COL_L` / `SHEETS_DASHBOARD_COL_R`：看板固定列区间（默认 `A..M`）
+- `SHEETS_DASHBOARD_COL_L` / `SHEETS_DASHBOARD_COL_R`：看板列区间（默认：多周期 `A..BS`，否则 `A..M`）
+- `SHEETS_DASHBOARD_AUTO_WIDTH`：`0/1`（默认 `1`；`dashboard` 模式下自动把 `col_r` 扩到“足以容纳本轮最大列数”，避免“超宽表头被纵向分块”让人误以为列丢失）
 - `SHEETS_DASHBOARD_MODE`：`replace|append`（默认 `replace`；同类卡片覆盖写，避免持续堆叠）
 - `SHEETS_DASHBOARD_SLOT_HEIGHT`：replace 模式槽位“最小预留高度”（行数，默认 10；实际预留高度会随卡片高度增长并记录在 `元数据.slot.<card_type>.h`）
 - `SHEETS_FACTS_MODE`：`append|none`（默认 `append`；若工作簿触发 1000 万 cells 上限，需要设为 `none` 仅保留看板覆盖写）
@@ -63,6 +69,12 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa-key.json"
 ```bash
 export SHEETS_SPREADSHEET_ID="..."
 .venv/bin/python -m src --once --cards super_trend_ranking,macd_ranking,bb_ranking
+```
+
+版式/样式更新后需要强制刷新（忽略幂等）：
+
+```bash
+.venv/bin/python -m src --once --force
 ```
 
 ## 本地验收（无需 Google）

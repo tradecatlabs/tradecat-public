@@ -26,6 +26,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--daemon", action="store_true", help="守护模式：按间隔循环执行")
     p.add_argument("--mock-webhook", action="store_true", help="启动本地 mock webhook（用于离线验收）")
     p.add_argument("--dry-run", action="store_true", help="不发网络请求，只打印 payload 概要")
+    p.add_argument("--force", action="store_true", help="强制重渲染：忽略幂等（用于版式/样式大改后刷新）")
     p.add_argument("--write-mode", default="", help="写入模式：webhook|sa（默认读 env: SHEETS_WRITE_MODE）")
     p.add_argument("--bootstrap", action="store_true", help="SA 模式：创建/初始化工作簿并配置权限（全 CLI）")
     p.add_argument("--bootstrap-title", default="TradeCat TG Cards Dashboard", help="SA 模式：新建工作簿标题")
@@ -76,9 +77,6 @@ def _post_with_retry(
 
 
 async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: str) -> int:
-    outbox = JsonlOutbox(settings.outbox_path, settings.checkpoint_path)
-    idem = IdempotencyStore(settings.idempotency_db_path)
-
     if settings.write_mode == "webhook":
         if not settings.webhook_url or not settings.webhook_secret:
             print("❌ 缺少 SHEETS_WEBHOOK_URL / SHEETS_WEBHOOK_SECRET，无法发送（可先用 SHEETS_SYNC_DRY_RUN=1）")
@@ -93,6 +91,11 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
     else:
         print(f"❌ 不支持的 SHEETS_WRITE_MODE={settings.write_mode}（仅支持 webhook|sa）")
         return 2
+
+    # dashboard 模式：每轮把“看板”作为展示面整体覆盖重绘（避免 slot 高度非递减导致的空洞/错位）
+    # - 只建议用于 SA 模式（纯 CLI，可直接 reset+写入）
+    # - webhook 模式无法安全 reset，因此自动降级为 snapshot
+    is_dashboard_mode = settings.sync_mode == "dashboard" and settings.write_mode == "sa"
 
     webhook_client = None
     sa_writer = None
@@ -154,12 +157,63 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
                     max_seconds=settings.webhook_backoff_max_seconds,
                 )
 
+    # dashboard 模式：不走 outbox/idempotency（每轮全量重绘；失败下轮重试即可）
+    if is_dashboard_mode:
+        exporter = TgCardsExporter(include_blacklist=settings.include_blacklist, lang=lang)
+        results = await exporter.export(only_cards=only_cards)
+
+        payloads: list[dict] = []
+        max_cols = 1
+        for r in results:
+            if r.event is None:
+                continue
+            payload = r.event.to_dict()
+            payloads.append(payload)
+            cols = (payload.get("table") or {}).get("columns") or []
+            try:
+                max_cols = max(max_cols, len(cols))
+            except Exception:
+                pass
+
+        if settings.dry_run:
+            print(
+                f"[dry-run] mode=dashboard cards={len(payloads)} max_cols={max_cols} spreadsheet_id={settings.spreadsheet_id}"
+            )
+            return 0
+
+        assert sa_writer is not None
+        # dashboard 模式强制用 append（配合 reset），实现“紧凑排布、不卡槽位、不卡高度”
+        sa_writer.set_dashboard_mode("append")
+
+        # 自动宽度：避免“超宽表头纵向分块”让用户误以为列丢失
+        col_l = settings.dashboard_col_l
+        col_r = settings.dashboard_col_r
+        if settings.dashboard_auto_width:
+            col_r = sa_writer.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=col_r)
+
+        sa_writer.reset_dashboard(col_l=col_l, col_r=col_r, compact=True)
+
+        sent = 0
+        for p in payloads:
+            ok, status, body = _send_one(p)
+            if not ok:
+                print(f"❌ 看板重绘失败 status={status} body={json.dumps(body, ensure_ascii=False)}")
+                return 3
+            sent += 1
+
+        print(f"✅ 看板重绘完成 mode=dashboard cards={sent} col_l={col_l} col_r={col_r}")
+        return 0
+
+    # snapshot/append 模式：outbox + 幂等（用于事实表或 slot 覆盖写）
+    outbox = JsonlOutbox(settings.outbox_path, settings.checkpoint_path)
+    idem = IdempotencyStore(settings.idempotency_db_path)
+
     def _flush_outbox() -> tuple[int, int] | None:
         sent = 0
         skipped = 0
         for item in outbox.iter_unsent():
             card_key = str((item.payload or {}).get("card_key") or "").strip()
-            if card_key and idem.has(card_key):
+            if (not settings.force_render) and card_key and idem.has(card_key):
                 outbox.save_checkpoint(item.offset)
                 skipped += 1
                 continue
@@ -189,7 +243,7 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
             continue
         payload = r.event.to_dict()
         card_key = str(payload.get("card_key") or "").strip()
-        if card_key and idem.has(card_key):
+        if (not settings.force_render) and card_key and idem.has(card_key):
             skipped_append += 1
             continue
         outbox.append(payload)
@@ -291,6 +345,8 @@ def main() -> None:
 
     if args.dry_run:
         settings = replace(settings, dry_run=True)
+    if args.force:
+        settings = replace(settings, force_render=True)
 
     only_cards = [c.strip() for c in (args.cards or settings.export_cards).split(",") if c.strip()] or None
     lang = (args.lang or settings.export_lang).strip() or "zh_CN"

@@ -8,7 +8,9 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     write_mode: str  # webhook|sa
-    sync_mode: str  # snapshot|append
+    sync_mode: str  # dashboard|snapshot|append
+    force_render: bool
+    dashboard_auto_width: bool
 
     # ---------- webhook writer ----------
     webhook_url: str
@@ -44,9 +46,12 @@ class Settings:
     @staticmethod
     def from_env(service_dir: Path) -> Settings:
         write_mode = os.environ.get("SHEETS_WRITE_MODE", "webhook").strip() or "webhook"
-        sync_mode = (os.environ.get("SHEETS_SYNC_MODE", "snapshot") or "snapshot").strip().lower()
-        if sync_mode not in {"snapshot", "append"}:
-            sync_mode = "snapshot"
+        default_sync_mode = "dashboard" if write_mode == "sa" else "snapshot"
+        sync_mode = (os.environ.get("SHEETS_SYNC_MODE", default_sync_mode) or default_sync_mode).strip().lower()
+        if sync_mode not in {"dashboard", "snapshot", "append"}:
+            sync_mode = default_sync_mode
+        force_render = os.environ.get("SHEETS_FORCE_RENDER", "0").strip() == "1"
+        dashboard_auto_width = os.environ.get("SHEETS_DASHBOARD_AUTO_WIDTH", "1").strip() != "0"
 
         webhook_url = os.environ.get("SHEETS_WEBHOOK_URL", "").strip()
         webhook_secret = os.environ.get("SHEETS_WEBHOOK_SECRET", "").strip()
@@ -106,6 +111,8 @@ class Settings:
         return Settings(
             write_mode=write_mode,
             sync_mode=sync_mode,
+            force_render=force_render,
+            dashboard_auto_width=dashboard_auto_width,
             webhook_url=webhook_url,
             webhook_secret=webhook_secret,
             webhook_timeout_seconds=webhook_timeout_seconds,
