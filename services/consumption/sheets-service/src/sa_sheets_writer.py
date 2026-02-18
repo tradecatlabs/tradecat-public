@@ -1290,8 +1290,12 @@ class SaSheetsWriter:
             self._refresh_sheet_map()
             sh_id = self._sheet_id_by_title[self._tab_dashboard]
 
-        col_l_idx = _col_to_index(col_l)
         col_r_idx = _col_to_index(col_r)
+        # unmergeCells 必须覆盖“完整 merged range”，否则会 400：
+        # - 历史上 dashboard 可能用更宽的 col_r（例如 CU），导致 merge 范围超出当前 col_r
+        # - 因此这里对行范围按 slot 精确裁剪，但列范围覆盖整个 sheet 的已分配列数
+        _rc, sheet_cols = self._grid_by_title.get(self._tab_dashboard, (0, 0))
+        end_col = int(max(sheet_cols or 0, col_r_idx))
         self._exec(
             self._sheets.spreadsheets().batchUpdate(
                 spreadsheetId=self._spreadsheet_id,
@@ -1303,8 +1307,8 @@ class SaSheetsWriter:
                                     "sheetId": int(sh_id),
                                     "startRowIndex": y0 - 1,
                                     "endRowIndex": y1,
-                                    "startColumnIndex": col_l_idx - 1,
-                                    "endColumnIndex": col_r_idx,
+                                    "startColumnIndex": 0,
+                                    "endColumnIndex": end_col,
                                 }
                             }
                         }
