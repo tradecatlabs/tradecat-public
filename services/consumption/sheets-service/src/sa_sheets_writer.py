@@ -653,7 +653,7 @@ class SaSheetsWriter:
                                             },
                                             "format": {
                                                 "backgroundColor": _rgb(0.1, 0.45, 0.82),
-                                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0), "fontSize": 11},
+                                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
                                             },
                                         },
                                     },
