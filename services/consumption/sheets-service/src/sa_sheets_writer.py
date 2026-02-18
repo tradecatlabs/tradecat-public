@@ -1212,8 +1212,8 @@ class SaSheetsWriter:
 
         # chunks = max(1, ceil(cols_cnt/width))
         chunks = max(1, (cols_cnt + width - 1) // width)
-        # 固定头部3行 + 每块(字段组表头1行+周期表头1行+明细N行)*chunks + hint/last/blank=3行
-        return chunks * (rows_cnt + 2) + 6
+        # 固定源信息1行 + 每块(字段组表头1行+周期表头1行+明细N行)*chunks + blank=1行
+        return chunks * (rows_cnt + 2) + 2
 
     # ==================== facts writers ====================
     def _append_cards_index(self, payload: dict[str, Any], dash: dict[str, Any]) -> None:
@@ -1395,23 +1395,32 @@ class SaSheetsWriter:
         rows = table.get("rows") or []
 
         title = str(header.get("title") or "")
-        update = f"⏰ 更新 {header.get('update_time')}" if header.get("update_time") else ""
-        sort = f"📊 排序 {header.get('sort_desc')}" if header.get("sort_desc") else ""
-        hint_line = f"💡 {hint.get('text')}" if hint.get("text") else ""
-        last_line = f"⏰ 最后更新 {params.get('last_update')}" if params.get("last_update") else ""
+        update_time = str(header.get("update_time") or "-").strip() or "-"
+        sort_desc = str(header.get("sort_desc") or "-").strip() or "-"
+        hint_text = str(hint.get("text") or "-").strip() or "-"
+        last_update = str(params.get("last_update") or "-").strip() or "-"
+
+        # 源信息压缩（用户要求）：固定顺序拼接进同一单元格
+        info_line = " ".join(
+            [
+                f"📊 {title or '-'}",
+                f"⏰ 更新 {update_time}",
+                f"📊 排序 {sort_desc}",
+                f"💡 {hint_text}",
+                f"⏰ 最后更新 {last_update}",
+            ]
+        )
 
         def pad_row(first: str) -> list[str]:
             return [first] + [""] * (width - 1)
 
         value_rows: list[tuple[str, list[list[str]]]] = []
-        value_rows.append((f"{self._tab_dashboard}!{col_l}{y}:{col_r}{y}", [pad_row(title)]))
-        value_rows.append((f"{self._tab_dashboard}!{col_l}{y + 1}:{col_r}{y + 1}", [pad_row(update)]))
-        value_rows.append((f"{self._tab_dashboard}!{col_l}{y + 2}:{col_r}{y + 2}", [pad_row(sort)]))
+        value_rows.append((f"{self._tab_dashboard}!{col_l}{y}:{col_r}{y}", [pad_row(info_line)]))
 
         # 超宽字段：按固定宽度分块渲染（不截断列）
         chunks = [columns[i : i + width] for i in range(0, len(columns), width)] if columns else [[]]
 
-        table_y = y + 3
+        table_y = y + 1
         for chunk_cols in chunks:
             # header（两行）：字段组行 + 周期行
             group_row = [_parse_field_group(str(c)) for c in chunk_cols]
@@ -1436,10 +1445,8 @@ class SaSheetsWriter:
 
             table_y += 2 + len(rows)
 
-        hint_y = table_y
-        last_y = table_y + 1
-        value_rows.append((f"{self._tab_dashboard}!{col_l}{hint_y}:{col_r}{hint_y}", [pad_row(hint_line)]))
-        value_rows.append((f"{self._tab_dashboard}!{col_l}{last_y}:{col_r}{last_y}", [pad_row(last_line)]))
+        # 兼容：不再渲染独立 hint/last 行（已压缩进 info_line）
+        # 保持 table_y 推进逻辑不变；底部空行由 height 预留但不写值。
 
         # values batchUpdate
         data = [{"range": rng, "values": vals} for rng, vals in value_rows]
@@ -1463,9 +1470,8 @@ class SaSheetsWriter:
         # 颜色策略：
         # - 表头行：浅灰底 + 加粗（按周期列块做灰白分带，便于阅读）
         # - 表体：按周期列块灰白交替
-        # - title/update/sort/hint/last：整行浅底
+        # - 源信息行：整行浅底
         bg_title = _rgb(0.93, 0.93, 0.93)
-        bg_meta = _rgb(0.97, 0.97, 0.97)
         bg_body_even = _rgb(0.96, 0.96, 0.96)  # 灰
         bg_body_odd = _rgb(1.0, 1.0, 1.0)  # 白
         # 表头统一底色（不随周期变化）；周期分带只作用于表体，避免“表头花里胡哨”影响读字段名
@@ -1495,14 +1501,8 @@ class SaSheetsWriter:
 
         requests: list[dict[str, Any]] = []
 
-        # title/update/sort/hint/last 背景
+        # 源信息行背景 + 加粗
         requests.append(repeat_bg(row=y, bg=bg_title))
-        requests.append(repeat_bg(row=y + 1, bg=bg_meta))
-        requests.append(repeat_bg(row=y + 2, bg=bg_meta))
-        requests.append(repeat_bg(row=hint_y, bg=bg_meta))
-        requests.append(repeat_bg(row=last_y, bg=bg_meta))
-
-        # title 行加粗
         requests.append(
             {
                 "repeatCell": {
@@ -1514,7 +1514,7 @@ class SaSheetsWriter:
         )
 
         # 表头/表体：按 chunk 逐段上色（chunk 是纵向堆叠，不影响列下标）
-        table_y = y + 3
+        table_y = y + 1
         for chunk_cols in chunks:
             # header rows style（bold+居中）
             requests.append(
@@ -1646,22 +1646,21 @@ class SaSheetsWriter:
 
             table_y += 2 + len(rows)
 
-        merge_rows = [y, y + 1, y + 2, hint_y, last_y]
-        for ry in merge_rows:
-            requests.append(
-                {
-                    "mergeCells": {
-                        "range": {
-                            "sheetId": sh_id,
-                            "startRowIndex": ry - 1,
-                            "endRowIndex": ry,
-                            "startColumnIndex": col_l_idx - 1,
-                            "endColumnIndex": col_r_idx,
-                        },
-                        "mergeType": "MERGE_ALL",
-                    }
+        # 源信息行合并（整行）
+        requests.append(
+            {
+                "mergeCells": {
+                    "range": {
+                        "sheetId": sh_id,
+                        "startRowIndex": y - 1,
+                        "endRowIndex": y,
+                        "startColumnIndex": col_l_idx - 1,
+                        "endColumnIndex": col_r_idx,
+                    },
+                    "mergeType": "MERGE_ALL",
                 }
-            )
+            }
+        )
         self._exec(
             self._sheets.spreadsheets().batchUpdate(
                 spreadsheetId=self._spreadsheet_id,
