@@ -45,3 +45,4 @@
 - `docs/analysis/tg_cards_google_sheets_dashboard_prd.md`：PRD（卡片块 x,y 渲染 + 全字段无遗漏审计 + Webhook/幂等/outbox）。
 - `docs/analysis/tg_cards_google_sheets_apps_script_webhook.md`：Apps Script Webhook 参考实现（doPost：鉴权/幂等/落事实/渲染）。
 - `docs/analysis/sheets_dashboard_source_info_compaction_plan.md`：展示面优化方案：源信息 5 行压缩为 1 单元格（固定顺序拼接）。
+- `docs/analysis/sheets_dashboard_optimization_options.md`：优化选项集（K1..K7）：配额/吞吐/事实面 cells 上限/性能/运维。
