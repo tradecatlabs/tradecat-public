@@ -16,6 +16,7 @@ from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
 from src.repo import find_repo_root
 from src.sa_sheets_writer import SaSheetsWriter
+from src.symbol_query_exporter import export_symbol_full_txt, normalize_symbol_tab_title
 from src.tg_cards_exporter import TgCardsExporter
 from src.webhook_client import SheetsWebhookClient
 
@@ -201,6 +202,23 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
                 return 3
             sent += 1
 
+        # 币种查询子表（4 个交易对）：覆盖写，不走 facts（默认每 15 分钟刷新一次，避免配额爆炸）
+        if settings.symbol_tabs_mode != "none" and settings.symbol_tabs:
+            now = int(time.time())
+            meta = sa_writer.meta_get()
+            try:
+                last = int(str(meta.get("symbol_tabs_last_epoch") or "0").strip() or "0")
+            except Exception:
+                last = 0
+            interval = int(settings.symbol_tabs_interval_seconds)
+            should = interval <= 0 or (now - last) >= interval
+            if should:
+                for sym in settings.symbol_tabs:
+                    tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
+                    txt = export_symbol_full_txt(symbol=sym, lang=lang)
+                    sa_writer.write_symbol_txt_tab(tab_title=tab_title, text=txt)
+                sa_writer.meta_set({"symbol_tabs_last_epoch": str(now)})
+
         print(f"✅ 看板重绘完成 mode=dashboard cards={sent} col_l={col_l} col_r={col_r}")
         return 0
 
@@ -257,6 +275,15 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
     if flushed is None:
         return 3
     sent, skipped = flushed
+
+    # snapshot 模式默认不刷新币种查询子表（否则每轮写入量过大，容易触发配额/超时）
+    # 如需要可配置：SHEETS_SYMBOL_TABS_MODE=every
+    if settings.write_mode == "sa" and settings.symbol_tabs_mode == "every" and settings.symbol_tabs:
+        assert sa_writer is not None
+        for sym in settings.symbol_tabs:
+            tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
+            txt = export_symbol_full_txt(symbol=sym, lang=lang)
+            sa_writer.write_symbol_txt_tab(tab_title=tab_title, text=txt)
 
     print(
         f"✅ flush 完成 appended={appended} skipped_append={skipped_append} sent={sent} skipped={skipped} checkpoint={outbox.load_checkpoint()} mode={settings.write_mode}"

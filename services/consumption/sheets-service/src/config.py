@@ -36,6 +36,10 @@ class Settings:
     # ---------- common ----------
     export_lang: str
     export_cards: str
+    symbol_tabs: list[str]
+    symbol_tab_prefix: str
+    symbol_tabs_mode: str  # dashboard|every|none
+    symbol_tabs_interval_seconds: int
     include_blacklist: bool
     interval_seconds: int
     dry_run: bool
@@ -96,6 +100,17 @@ class Settings:
 
         export_lang = os.environ.get("SHEETS_EXPORT_LANG", "zh_CN").strip() or "zh_CN"
         export_cards = os.environ.get("SHEETS_EXPORT_CARDS", "").strip()
+        symbol_tabs_raw = (os.environ.get("SHEETS_SYMBOL_TABS", "") or "").strip()
+        if not symbol_tabs_raw:
+            symbol_tabs_raw = (os.environ.get("SYMBOLS_GROUP_main4", "") or "").strip()
+        if not symbol_tabs_raw:
+            symbol_tabs_raw = "BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT"
+        symbol_tabs = [s.strip().upper() for s in symbol_tabs_raw.split(",") if s.strip()]
+        symbol_tab_prefix = (os.environ.get("SHEETS_SYMBOL_TAB_PREFIX", "币种查询_") or "币种查询_").strip()
+        symbol_tabs_mode = (os.environ.get("SHEETS_SYMBOL_TABS_MODE", "dashboard") or "dashboard").strip().lower()
+        if symbol_tabs_mode not in {"dashboard", "every", "none"}:
+            symbol_tabs_mode = "dashboard"
+        symbol_tabs_interval_seconds = int((os.environ.get("SHEETS_SYMBOL_TABS_INTERVAL_SECONDS", "900") or "900").strip())
         include_blacklist = os.environ.get("SHEETS_EXPORT_INCLUDE_BLACKLIST", "0").strip() == "1"
         interval_seconds = int(os.environ.get("SHEETS_SYNC_INTERVAL_SECONDS", "60").strip() or "60")
         dry_run = os.environ.get("SHEETS_SYNC_DRY_RUN", "0").strip() == "1"
@@ -132,6 +147,10 @@ class Settings:
             blob_threshold_chars=blob_threshold_chars,
             export_lang=export_lang,
             export_cards=export_cards,
+            symbol_tabs=symbol_tabs,
+            symbol_tab_prefix=symbol_tab_prefix,
+            symbol_tabs_mode=symbol_tabs_mode,
+            symbol_tabs_interval_seconds=symbol_tabs_interval_seconds,
             include_blacklist=include_blacklist,
             interval_seconds=interval_seconds,
             dry_run=dry_run,

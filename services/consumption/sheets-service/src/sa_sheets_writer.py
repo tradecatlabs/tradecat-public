@@ -380,6 +380,119 @@ class SaSheetsWriter:
 
         self._ensured_schema = True
 
+    # ==================== symbol tabs（币种查询子表） ====================
+    def ensure_symbol_tab(self, *, title: str) -> None:
+        self.ensure_schema()
+        self._refresh_sheet_map()
+        if title in self._sheet_id_by_title:
+            return
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": [{"addSheet": {"properties": {"title": title}}}]},
+            ),
+            is_write=True,
+        )
+        self._refresh_sheet_map()
+
+    def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
+        """
+        覆盖写“币种查询”子表：
+        - 每行文本写到 A 列（一行一个单元格），更接近终端/日志阅读体验
+        - 不做 append，避免 cells 无限增长
+        - 通过 meta 记录上次行数，仅清理尾部差量，避免整表 clear 带来的闪烁
+        """
+        self.ensure_symbol_tab(title=tab_title)
+
+        sh_id = self._sheet_id_by_title.get(tab_title)
+        if sh_id is None:
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title.get(tab_title)
+        if sh_id is None:
+            raise RuntimeError(f"missing_sheet:{tab_title}")
+
+        lines = [ln.rstrip("\n") for ln in (text or "").splitlines()]
+        if not lines:
+            lines = ["-"]
+
+        # 1) 写入新内容（单列）
+        values = [[ln] for ln in lines]
+        n_new = len(values)
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{tab_title}!A1:A{n_new}",
+                valueInputOption="RAW",
+                body={"values": values},
+            ),
+            is_write=True,
+        )
+
+        # 2) 清理旧尾部（避免上次更长导致残留）
+        meta = self._meta_get()
+        key_lines = f"symtab.{tab_title}.lines"
+        try:
+            n_old = int(str(meta.get(key_lines) or "0").strip() or "0")
+        except Exception:
+            n_old = 0
+        if n_old > n_new:
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!A{n_new+1}:A{n_old}",
+                ),
+                is_write=True,
+            )
+
+        # 3) 样式（尽量只做一次）
+        key_style = f"symtab.{tab_title}.styled"
+        if (meta.get(key_style) or "") != "1":
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 0,
+                                        "endRowIndex": int(max(n_new, 50)),
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": 1,
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "textFormat": {"fontFamily": "Courier New", "fontSize": 10},
+                                            "horizontalAlignment": "LEFT",
+                                            "verticalAlignment": "TOP",
+                                            "wrapStrategy": "OVERFLOW_CELL",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                }
+                            },
+                            {
+                                "updateDimensionProperties": {
+                                    "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                                    "properties": {"pixelSize": 900},
+                                    "fields": "pixelSize",
+                                }
+                            },
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+            self._meta_set({key_style: "1"})
+
+        self._meta_set({key_lines: str(n_new)})
+        return {"ok": True, "tab": tab_title, "lines": n_new}
+
     # ==================== ops ====================
     def reset_dashboard(self, *, col_l: str, col_r: str, compact: bool = False) -> dict[str, Any]:
         """
@@ -975,6 +1088,15 @@ class SaSheetsWriter:
                 ),
                 is_write=True,
             )
+
+    # 运维友好：对外暴露 meta（用于节流/周期性任务）
+    def meta_get(self) -> dict[str, str]:
+        self.ensure_schema()
+        return self._meta_get()
+
+    def meta_set(self, kv: dict[str, str]) -> None:
+        self.ensure_schema()
+        self._meta_set(kv)
 
     # ==================== write ====================
     def write_card(self, payload: dict[str, Any]) -> dict[str, Any]:

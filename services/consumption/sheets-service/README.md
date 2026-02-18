@@ -44,6 +44,10 @@
 - `SHEETS_EXPORT_MULTI_PERIODS`：`0/1`（默认 `1`；对排行榜卡片导出 7 周期横向表：`1m..1w`）
   - 列顺序：按“字段组”展开周期（`趋势强度@1m..1w` → 下一字段组 …），并在看板渲染时生成“两行表头”：字段组行 + 周期行。
 - 看板源信息：每张卡片的 `标题/更新/排序/提示/最后更新` 会按固定顺序拼接到 **同一单元格**（整行合并），紧贴在表格主体上方。
+- `SHEETS_SYMBOL_TABS`：逗号分隔交易对（默认取 `SYMBOLS_GROUP_main4`，再回退 `BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT`），为每个交易对创建一个中文前缀的子表 `币种查询_<SYMBOL>` 并覆盖写“币种查询完整 TXT”。
+- `SHEETS_SYMBOL_TAB_PREFIX`：子表名前缀（默认 `币种查询_`）
+- `SHEETS_SYMBOL_TABS_MODE`：`dashboard|every|none`（默认 `dashboard`；仅在 dashboard 全量重绘时刷新子表；`every` 表示 snapshot 模式也刷新，写入量更大）
+- `SHEETS_SYMBOL_TABS_INTERVAL_SECONDS`：子表刷新最小间隔（默认 900；仅对 `dashboard` 模式下的子表刷新节流生效）
 - `SHEETS_SYNC_INTERVAL_SECONDS`：daemon 模式间隔（默认 60）
 - `SHEETS_IDEMPOTENCY_DB_PATH`：本地幂等键库（默认 `data/idempotency.db`）
 
