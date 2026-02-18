@@ -1460,6 +1460,34 @@ class SaSheetsWriter:
                     )
                     start = end
 
+            def add_period_separators(*, row0: int, row1: int, _period_by_col: list[str] = period_by_col) -> None:
+                # 在“周期块”之间加竖线分隔：对每个新周期块的第一列，加 left border。
+                # - 只对有 @period 的列生效
+                # - 不在第一周期前画线
+                sep_color = _rgb(0.70, 0.70, 0.70)
+                border = {"style": "SOLID_MEDIUM", "width": 2, "color": sep_color}
+
+                last = ""
+                for idx, suf in enumerate(_period_by_col):
+                    if not suf:
+                        continue
+                    if last and suf != last:
+                        # 在本列左侧画分隔线
+                        requests.append(
+                            {
+                                "updateBorders": {
+                                    "range": rrange(
+                                        r0=row0,
+                                        r1=row1,
+                                        c0=col_l0 + idx,
+                                        c1=col_l0 + idx + 1,
+                                    ),
+                                    "left": border,
+                                }
+                            }
+                        )
+                    last = suf
+
             # header 背景（统一）
             requests.append(
                 {
@@ -1475,6 +1503,8 @@ class SaSheetsWriter:
                 body_r0 = table_y  # = (table_y+1)-1
                 body_r1 = table_y + len(rows)
                 add_bg_segments(row0=body_r0, row1=body_r1, bgs=body_bgs)
+                # 周期竖线分隔（覆盖 header+body）
+                add_period_separators(row0=table_y - 1, row1=body_r1)
 
             table_y += 1 + len(rows)
 
