@@ -1356,8 +1356,8 @@ class SaSheetsWriter:
         bg_meta = _rgb(0.97, 0.97, 0.97)
         bg_body_even = _rgb(0.96, 0.96, 0.96)  # 灰
         bg_body_odd = _rgb(1.0, 1.0, 1.0)  # 白
-        bg_hdr_even = _rgb(0.90, 0.90, 0.90)
-        bg_hdr_odd = _rgb(0.97, 0.97, 0.97)
+        # 表头统一底色（不随周期变化）；周期分带只作用于表体，避免“表头花里胡哨”影响读字段名
+        bg_hdr = _rgb(0.90, 0.90, 0.90)
 
         def rrange(*, r0: int, r1: int, c0: int, c1: int) -> dict[str, Any]:
             return {
@@ -1432,16 +1432,15 @@ class SaSheetsWriter:
                     period_order.append(suf)
                 period_by_col.append(suf)
 
-            def col_bg(is_header: bool, suf: str, *, _period_index: dict[str, int] = period_index) -> dict[str, float]:
+            def col_bg(suf: str, *, _period_index: dict[str, int] = period_index) -> dict[str, float]:
                 if not suf:
-                    return bg_hdr_odd if is_header else bg_body_odd
+                    return bg_body_odd
                 idx = int(_period_index.get(suf, 0))
                 if idx % 2 == 0:
-                    return bg_hdr_even if is_header else bg_body_even
-                return bg_hdr_odd if is_header else bg_body_odd
+                    return bg_body_even
+                return bg_body_odd
 
-            hdr_bgs = [col_bg(True, suf) for suf in period_by_col]
-            body_bgs = [col_bg(False, suf) for suf in period_by_col]
+            body_bgs = [col_bg(suf) for suf in period_by_col]
 
             def add_bg_segments(*, row0: int, row1: int, bgs: list[dict[str, float]]) -> None:
                 start = 0
@@ -1461,8 +1460,16 @@ class SaSheetsWriter:
                     )
                     start = end
 
-            # header 背景（分段）
-            add_bg_segments(row0=table_y - 1, row1=table_y, bgs=hdr_bgs)
+            # header 背景（统一）
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
+                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr}},
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
             # body 背景（分段）
             if rows:
                 body_r0 = table_y  # = (table_y+1)-1
