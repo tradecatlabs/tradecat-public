@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 
@@ -51,6 +52,7 @@ def _parse_period_suffix(col: str) -> str:
         return ""
     _field, suf = s.rsplit("@", 1)
     return suf.strip()
+
 
 def _parse_field_group(col: str) -> str:
     s = str(col or "").strip()
@@ -156,6 +158,8 @@ class SaSheetsWriter:
         drive_folder_id: str,
         blob_threshold_chars: int,
         timeout_seconds: int = 15,
+        schema_mode: str = "full",
+        local_meta_path: Path | None = None,
     ) -> None:
         try:
             import google_auth_httplib2  # type: ignore
@@ -196,6 +200,10 @@ class SaSheetsWriter:
         self._drive_folder_id = drive_folder_id
         self._blob_threshold_chars = int(blob_threshold_chars)
         self._timeout_seconds = timeout_seconds
+        self._schema_mode = (schema_mode or "full").strip().lower()
+        if self._schema_mode not in {"full", "minimal"}:
+            self._schema_mode = "full"
+        self._local_meta_path = local_meta_path
 
         # Sheet tabs（要求：全部中文命名；如需定制可用 env 覆盖）
         self._tab_dashboard = _env_text("SHEETS_TAB_DASHBOARD", "看板")
@@ -209,6 +217,7 @@ class SaSheetsWriter:
         self._ensured_schema = False
         self._sheet_id_by_title: dict[str, int] = {}
         self._grid_by_title: dict[str, tuple[int, int]] = {}
+        self._append_cursor_y = 1
 
         # Google Sheets 默认配额很低（常见为 60 write req/min/user），不做节流会稳定触发 429。
         write_rpm = int((os.environ.get("SHEETS_SA_WRITE_RPM", "55") or "55").strip())
@@ -307,6 +316,27 @@ class SaSheetsWriter:
     # ==================== schema ====================
     def ensure_schema(self) -> None:
         if self._ensured_schema:
+            return
+
+        # minimal schema：只保留“看板 + 币种查询子表”，不创建事实/元数据等 tab。
+        if self._schema_mode == "minimal":
+            self._refresh_sheet_map()
+            if self._tab_dashboard not in self._sheet_id_by_title:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={"requests": [{"addSheet": {"properties": {"title": self._tab_dashboard}}}]},
+                    ),
+                    is_write=True,
+                )
+                self._refresh_sheet_map()
+            # 进程启动后尽量恢复 append cursor（避免 append 模式重启后从 1 覆盖）
+            try:
+                meta = self._local_meta_get()
+                self._append_cursor_y = int(str(meta.get("dashboard_next_row") or "1").strip() or "1")
+            except Exception:
+                self._append_cursor_y = 1
+            self._ensured_schema = True
             return
 
         wanted = [
@@ -507,6 +537,7 @@ class SaSheetsWriter:
         col_r_u = str(col_r).strip().upper()
         self._dashboard_col_l = col_l_u
         self._dashboard_col_r = col_r_u
+        self._append_cursor_y = 1
 
         # 1) clear values
         self._exec(
@@ -564,22 +595,35 @@ class SaSheetsWriter:
             is_write=True,
         )
 
-        # 3) reset meta（并清空 slot y/h）
-        meta = self._meta_get()
-        slot_clear: dict[str, str] = {}
-        for k in meta.keys():
-            if k.startswith("slot.") and (k.endswith(".y") or k.endswith(".h")):
-                slot_clear[k] = "0"
+        # 3) reset meta
+        if self._schema_mode == "minimal":
+            # local meta：只清理 dashboard 与 slot，避免无意义增长
+            self._local_meta_set(
+                {
+                    "dashboard_next_row": "1",
+                    "dashboard_col_l": col_l_u,
+                    "dashboard_col_r": col_r_u,
+                    "dashboard_mode": self._dashboard_mode,
+                    "dashboard_slot_height": str(self._dashboard_slot_height),
+                },
+                clear_prefixes=["slot."],
+            )
+        else:
+            meta = self._meta_get()
+            slot_clear: dict[str, str] = {}
+            for k in meta.keys():
+                if k.startswith("slot.") and (k.endswith(".y") or k.endswith(".h")):
+                    slot_clear[k] = "0"
 
-        kv = {
-            "dashboard_next_row": "1",
-            "dashboard_col_l": col_l_u,
-            "dashboard_col_r": col_r_u,
-            "dashboard_mode": self._dashboard_mode,
-            "dashboard_slot_height": str(self._dashboard_slot_height),
-            **slot_clear,
-        }
-        self._meta_set(kv)
+            kv = {
+                "dashboard_next_row": "1",
+                "dashboard_col_l": col_l_u,
+                "dashboard_col_r": col_r_u,
+                "dashboard_mode": self._dashboard_mode,
+                "dashboard_slot_height": str(self._dashboard_slot_height),
+                **slot_clear,
+            }
+            self._meta_set(kv)
 
         if compact:
             # 只压缩 dashboard 本身（展示面允许破坏性变更），避免历史事实表被误删。
@@ -628,6 +672,8 @@ class SaSheetsWriter:
         - card_rows：row_json 还原 table.rows
         """
         self.ensure_schema()
+        if self._schema_mode == "minimal":
+            raise RuntimeError("minimal_schema 下不支持从事实表重建：请先切回 SHEETS_SCHEMA_MODE=full 或关闭 --rebuild-dashboard")
 
         meta = self._meta_get()
         col_l = (meta.get("dashboard_col_l") or self._dashboard_col_l).strip().upper()
@@ -1019,6 +1065,8 @@ class SaSheetsWriter:
 
     # ==================== meta ====================
     def _meta_get(self) -> dict[str, str]:
+        if self._schema_mode == "minimal":
+            return self._local_meta_get()
         got = self._exec(
             self._sheets.spreadsheets()
             .values()
@@ -1040,6 +1088,9 @@ class SaSheetsWriter:
         return out
 
     def _meta_set(self, kv: dict[str, str]) -> None:
+        if self._schema_mode == "minimal":
+            self._local_meta_set(kv)
+            return
         # 简单 upsert：读出当前 mapping -> 更新/append（低频路径）
         got = self._exec(
             self._sheets.spreadsheets()
@@ -1098,6 +1149,42 @@ class SaSheetsWriter:
         self.ensure_schema()
         self._meta_set(kv)
 
+    def _local_meta_get(self) -> dict[str, str]:
+        p = self._local_meta_path
+        if not p:
+            return {}
+        try:
+            if not p.exists():
+                return {}
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {}
+            out: dict[str, str] = {}
+            for k, v in data.items():
+                if k is None:
+                    continue
+                out[str(k)] = "" if v is None else str(v)
+            return out
+        except Exception:
+            return {}
+
+    def _local_meta_set(self, kv: dict[str, str], *, clear_prefixes: list[str] | None = None) -> None:
+        p = self._local_meta_path
+        if not p:
+            return
+        p.parent.mkdir(parents=True, exist_ok=True)
+        cur = self._local_meta_get()
+        if clear_prefixes:
+            for pref in clear_prefixes:
+                for k in list(cur.keys()):
+                    if str(k).startswith(pref):
+                        cur.pop(k, None)
+        for k, v in kv.items():
+            cur[str(k)] = "" if v is None else str(v)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cur, ensure_ascii=False, separators=(",", ":"), sort_keys=True), encoding="utf-8")
+        tmp.replace(p)
+
     # ==================== write ====================
     def write_card(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure_schema()
@@ -1106,7 +1193,6 @@ class SaSheetsWriter:
         if not card_key:
             raise RuntimeError("missing_card_key")
 
-        meta = self._meta_get()
         # 以运行时配置（进程参数/env）为真相源：避免“表内 meta 被写坏/漂移”导致列从 A 飘到 N 等错位。
         col_l = (self._dashboard_col_l or "A").strip().upper()
         col_r = (self._dashboard_col_r or "M").strip().upper()
@@ -1116,6 +1202,10 @@ class SaSheetsWriter:
         facts_mode = (self._facts_mode or "append").strip().lower()
         if facts_mode not in {"append", "none"}:
             facts_mode = "append"
+        # minimal schema：不允许写事实表（tab 会被修剪掉）；强制降级为只写看板。
+        if self._schema_mode == "minimal":
+            facts_mode = "none"
+            self._facts_mode = "none"
 
         if mode not in {"append", "replace"}:
             mode = "replace"
@@ -1128,6 +1218,7 @@ class SaSheetsWriter:
         if mode == "replace":
             slot_y_key = f"slot.{slot_key}.y"
             slot_h_key = f"slot.{slot_key}.h"
+            meta = self._meta_get()
             y = int(meta.get(slot_y_key) or "0")
             prev_reserved = int(meta.get(slot_h_key) or "0")
 
@@ -1152,7 +1243,12 @@ class SaSheetsWriter:
                     # meta 已在 _dashboard_insert_rows 内更新；重新读取以免漂移
                     meta = self._meta_get()
         else:
-            y = int(meta.get("dashboard_next_row") or "1")
+            # append：minimal schema 不依赖 sheet meta，使用进程内 cursor；full schema 仍可用 meta
+            if self._schema_mode == "minimal":
+                y = int(self._append_cursor_y or 1)
+            else:
+                meta = self._meta_get()
+                y = int(meta.get("dashboard_next_row") or "1")
 
         dash = {
             "sheet": self._tab_dashboard,
@@ -1193,7 +1289,11 @@ class SaSheetsWriter:
 
         # 3) meta bump
         if mode == "append":
-            self._meta_set({"dashboard_next_row": str(y + height)})
+            if self._schema_mode == "minimal":
+                self._append_cursor_y = int(y + height)
+                self._local_meta_set({"dashboard_next_row": str(self._append_cursor_y)})
+            else:
+                self._meta_set({"dashboard_next_row": str(y + height)})
         elif mode == "replace":
             # 记录最终预留高度（非递减），用于后续清理/扩容判断
             slot_h_key = f"slot.{slot_key}.h"
@@ -1205,6 +1305,50 @@ class SaSheetsWriter:
                 self._meta_set({slot_h_key: str(reserved_height)})
 
         return {"ok": True, "card_key": card_key, "idempotent": False, "dashboard": dash, "facts_mode": facts_mode}
+
+    def prune_tabs(
+        self,
+        *,
+        symbol_tab_prefix: str,
+        keep_symbol_tabs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        删除非必要 tab：只保留：
+        - 看板（SHEETS_TAB_DASHBOARD）
+        - 交易对子表（默认：title 以 symbol_tab_prefix 开头；可选：仅保留 keep_symbol_tabs）
+        """
+        self.ensure_schema()
+        self._refresh_sheet_map()
+        keep: set[str] = {self._tab_dashboard}
+
+        if keep_symbol_tabs is not None:
+            for t in keep_symbol_tabs:
+                if t:
+                    keep.add(str(t).strip())
+        else:
+            pref = (symbol_tab_prefix or "").strip()
+            for t in list(self._sheet_id_by_title.keys()):
+                if pref and str(t).startswith(pref):
+                    keep.add(str(t))
+
+        delete_ids: list[int] = []
+        for title, sid in self._sheet_id_by_title.items():
+            if title not in keep:
+                delete_ids.append(int(sid))
+
+        if not delete_ids:
+            return {"deleted": 0, "kept": sorted(keep)}
+
+        reqs = [{"deleteSheet": {"sheetId": int(sid)}} for sid in delete_ids]
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": reqs},
+            ),
+            is_write=True,
+        )
+        self._refresh_sheet_map()
+        return {"deleted": len(delete_ids), "kept": sorted(keep)}
 
     def _dashboard_insert_rows(self, *, y: int, reserved_height: int, delta: int, meta: dict[str, str]) -> None:
         """

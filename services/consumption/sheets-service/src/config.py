@@ -11,6 +11,8 @@ class Settings:
     sync_mode: str  # dashboard|snapshot|append
     force_render: bool
     dashboard_auto_width: bool
+    schema_mode: str  # full|minimal
+    local_meta_path: Path
 
     # ---------- webhook writer ----------
     webhook_url: str
@@ -56,6 +58,9 @@ class Settings:
             sync_mode = default_sync_mode
         force_render = os.environ.get("SHEETS_FORCE_RENDER", "0").strip() == "1"
         dashboard_auto_width = os.environ.get("SHEETS_DASHBOARD_AUTO_WIDTH", "1").strip() != "0"
+        schema_mode = (os.environ.get("SHEETS_SCHEMA_MODE", "full") or "full").strip().lower()
+        if schema_mode not in {"full", "minimal"}:
+            schema_mode = "full"
 
         webhook_url = os.environ.get("SHEETS_WEBHOOK_URL", "").strip()
         webhook_secret = os.environ.get("SHEETS_WEBHOOK_SECRET", "").strip()
@@ -123,11 +128,16 @@ class Settings:
         idem_env = os.environ.get("SHEETS_IDEMPOTENCY_DB_PATH", "").strip()
         idempotency_db_path = Path(idem_env).expanduser() if idem_env else (service_dir / "data" / "idempotency.db")
 
+        local_meta_env = os.environ.get("SHEETS_LOCAL_META_PATH", "").strip()
+        local_meta_path = Path(local_meta_env).expanduser() if local_meta_env else (service_dir / "data" / "local_meta.json")
+
         return Settings(
             write_mode=write_mode,
             sync_mode=sync_mode,
             force_render=force_render,
             dashboard_auto_width=dashboard_auto_width,
+            schema_mode=schema_mode,
+            local_meta_path=local_meta_path,
             webhook_url=webhook_url,
             webhook_secret=webhook_secret,
             webhook_timeout_seconds=webhook_timeout_seconds,

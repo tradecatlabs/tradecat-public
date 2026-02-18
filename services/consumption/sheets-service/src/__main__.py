@@ -33,6 +33,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--bootstrap-title", default="TradeCat TG Cards Dashboard", help="SA 模式：新建工作簿标题")
     p.add_argument("--reset-dashboard", action="store_true", help="SA 模式：清空看板并重置 y 指针/列区间")
     p.add_argument("--rebuild-dashboard", action="store_true", help="SA 模式：从事实表重建看板（可能较慢）")
+    p.add_argument(
+        "--prune-tabs",
+        action="store_true",
+        help="SA 模式：删除非必要 tab（仅保留 看板 + 配置的币种查询子表）",
+    )
     p.add_argument("--rebuild-max-cards", type=int, default=200, help="重建：只取最后 N 张卡片（默认 200）")
     p.add_argument("--cards", default="", help="逗号分隔 card_id 白名单；空=全部")
     p.add_argument("--lang", default="", help="导出语言（默认 zh_CN）")
@@ -120,6 +125,8 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
             drive_folder_id=settings.drive_folder_id,
             blob_threshold_chars=settings.blob_threshold_chars,
             timeout_seconds=settings.webhook_timeout_seconds,
+            schema_mode=settings.schema_mode,
+            local_meta_path=settings.local_meta_path,
         )
     else:
         print(f"❌ 不支持的 SHEETS_WRITE_MODE={settings.write_mode}（仅支持 webhook|sa）")
@@ -333,6 +340,8 @@ def main() -> None:
             drive_folder_id=settings.drive_folder_id,
             blob_threshold_chars=settings.blob_threshold_chars,
             timeout_seconds=settings.webhook_timeout_seconds,
+            schema_mode=settings.schema_mode,
+            local_meta_path=settings.local_meta_path,
         )
         res = writer.bootstrap(title=args.bootstrap_title)
         print(
@@ -342,7 +351,7 @@ def main() -> None:
         )
         sys.exit(0)
 
-    if args.reset_dashboard or args.rebuild_dashboard:
+    if args.reset_dashboard or args.rebuild_dashboard or args.prune_tabs:
         if settings.write_mode != "sa":
             print(
                 "❌ --reset-dashboard/--rebuild-dashboard 仅支持 SA 模式：设置 SHEETS_WRITE_MODE=sa 或 --write-mode sa"
@@ -361,14 +370,27 @@ def main() -> None:
             drive_folder_id=settings.drive_folder_id,
             blob_threshold_chars=settings.blob_threshold_chars,
             timeout_seconds=settings.webhook_timeout_seconds,
+            schema_mode=settings.schema_mode,
+            local_meta_path=settings.local_meta_path,
         )
-        if args.reset_dashboard:
-            res = writer.reset_dashboard(col_l=settings.dashboard_col_l, col_r=settings.dashboard_col_r)
-            print(json.dumps({"ok": True, "op": "reset_dashboard", **res}, ensure_ascii=False))
+        try:
+            if args.prune_tabs:
+                keep_symbol_tabs = []
+                for sym in settings.symbol_tabs:
+                    keep_symbol_tabs.append(normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix))
+                res = writer.prune_tabs(symbol_tab_prefix=settings.symbol_tab_prefix, keep_symbol_tabs=keep_symbol_tabs)
+                print(json.dumps({"ok": True, "op": "prune_tabs", **res}, ensure_ascii=False))
+                sys.exit(0)
+            if args.reset_dashboard:
+                res = writer.reset_dashboard(col_l=settings.dashboard_col_l, col_r=settings.dashboard_col_r)
+                print(json.dumps({"ok": True, "op": "reset_dashboard", **res}, ensure_ascii=False))
+                sys.exit(0)
+            res = writer.rebuild_dashboard(max_cards=int(args.rebuild_max_cards or 0))
+            print(json.dumps({"ok": True, "op": "rebuild_dashboard", **res}, ensure_ascii=False))
             sys.exit(0)
-        res = writer.rebuild_dashboard(max_cards=int(args.rebuild_max_cards or 0))
-        print(json.dumps({"ok": True, "op": "rebuild_dashboard", **res}, ensure_ascii=False))
-        sys.exit(0)
+        except Exception as exc:
+            print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
+            sys.exit(3)
 
     if args.dry_run:
         settings = replace(settings, dry_run=True)
