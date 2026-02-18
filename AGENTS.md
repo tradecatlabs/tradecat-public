@@ -194,9 +194,9 @@ sqlite3 libs/database/services/telegram-service/market_data.db
 
 - **微服务独立**：每个服务有独立的 `.venv`、`requirements.txt`、`pyproject.toml`、`Makefile`
 - **配置统一**：所有配置集中在 `config/.env`，各服务共用
-- **数据流向**：`ingestion → TimescaleDB → trading-service → SQLite → telegram/api → (ai/signal)`
+- **数据流向**：`ingestion → TimescaleDB → trading-service → SQLite → telegram/api/sheets → (ai/signal)`
 
-### 4.2 服务清单（6 个）
+### 4.2 服务清单（7 个）
 
 | 服务 | 分层 | 位置 | 职责 | 入口 |
 |:---|:---|:---|:---|:---|
@@ -206,6 +206,7 @@ sqlite3 libs/database/services/telegram-service/market_data.db
 | ai-service | compute | `services/compute/ai-service/` | AI 分析（telegram 子模块） | `src/__main__.py` |
 | telegram-service | consumption | `services/consumption/telegram-service/` | Bot 交互、卡片渲染、订阅管理 | `src/main.py` |
 | api-service | consumption | `services/consumption/api-service/` | REST API（只读查询） | `src/__main__.py` |
+| sheets-service | consumption | `services/consumption/sheets-service/` | Google Sheets 公共看板同步（卡片→表格） | `src/__main__.py` |
 
 > 低频/分时采集服务：`services/ingestion/data-service/`（兼容链路，不进入默认启动链路，需要时手动运行）。
 
@@ -219,6 +220,7 @@ sqlite3 libs/database/services/telegram-service/market_data.db
 | telegram-service | Bot 交互、卡片渲染、订阅管理 | 禁止包含信号检测核心逻辑（规则引擎在 signal-service） |
 | ai-service | AI 分析（telegram 子模块） | 禁止承担常驻采集/计算职责（避免与 data/trading 重叠） |
 | api-service | REST API 数据查询 | 只读数据库，禁止写入 |
+| sheets-service | Google Sheets 看板同步（卡片导出/审计） | 禁止承担指标计算/采集；只做消费层导出与旁路同步 |
 
 > **注意**：telegram-service/signals 模块已解耦，仅保留适配层 (`adapter.py`) 和 UI (`ui.py`)，信号检测逻辑全部在 signal-service 中。
 > 冷却持久化：`services/compute/signal-service/src/storage/cooldown.py` 负责将冷却键写入 `libs/database/services/signal-service/cooldown.db`，SQLite 引擎启动时加载，`_set_cooldown()` 同步落盘；公共接口 `get_cooldown_storage()` 供其他模块复用。
@@ -337,7 +339,8 @@ tradecat/
 │   │   └── ai-service/             # AI 分析（telegram 子模块）
 │   └── consumption/                # 消费层：Telegram/API
 │       ├── telegram-service/       # Telegram Bot
-│       └── api-service/            # REST API（可选）
+│       ├── api-service/            # REST API（可选）
+│       └── sheets-service/         # Google Sheets 公共看板同步（可选）
 │
 ├── libs/
 │   ├── database/                   # 数据库文件

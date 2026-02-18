@@ -17,7 +17,7 @@ cd "$ROOT"
 CORE_SERVICES=(trading-service telegram-service ai-service signal-service)
 
 # 可选服务（默认不在核心启动链）
-OPTIONAL_SERVICES=(api-service)
+OPTIONAL_SERVICES=(api-service sheets-service)
 
 # ==================== 工具函数 ====================
 success() { echo -e "\033[0;32m✓ $1\033[0m"; }

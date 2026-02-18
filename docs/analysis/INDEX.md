@@ -43,3 +43,4 @@
 ## 5) Telegram → Google Sheets 看板（TG 卡片公共表格化）
 
 - `docs/analysis/tg_cards_google_sheets_dashboard_prd.md`：PRD（卡片块 x,y 渲染 + 全字段无遗漏审计 + Webhook/幂等/outbox）。
+- `docs/analysis/tg_cards_google_sheets_apps_script_webhook.md`：Apps Script Webhook 参考实现（doPost：鉴权/幂等/落事实/渲染）。

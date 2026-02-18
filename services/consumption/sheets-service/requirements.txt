@@ -1,0 +1,8 @@
+python-telegram-bot>=20.0
+python-dotenv>=1.0.0
+google-api-python-client>=2.0.0
+# NOTE: 在部分 WSL + 本机代理环境中，新版 httplib2/google-auth 会出现 TLS reset；
+# 先 pin 到已验证可用的版本，后续再做版本升级验证。
+google-auth==2.35.0
+google-auth-httplib2>=0.2.0
+httplib2==0.22.0

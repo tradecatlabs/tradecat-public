@@ -182,7 +182,9 @@ vim config/.env
 
 > 说明：顶层 `./scripts/start.sh` 管理 `ai-service`、`signal-service`、`telegram-service`、`trading-service`（ai-service 为子模块，仅做就绪检查，无独立进程）。  
 > 低频/分时采集服务 data-service：`services/ingestion/data-service/`（兼容链路，不在默认启动链路）。  
-> 可选服务需手动启动：`cd services/consumption/api-service && ./scripts/start.sh start`（REST API，默认端口 8088）。
+> 可选服务需手动启动：  
+> - `cd services/consumption/api-service && ./scripts/start.sh start`（REST API，默认端口 8088）  
+> - `cd services/consumption/sheets-service && ./scripts/start.sh start`（Google Sheets 公共看板同步，默认 daemon）
 
 ### ⚙️ 配置（必须）
 
@@ -534,6 +536,7 @@ graph TD
 | **telegram-service** | - | Bot 交互、排行榜展示、信号推送 UI（通过 adapter 调用 signal-service） | python-telegram-bot, aiohttp |
 | **ai-service** | - | AI 分析、Wyckoff 方法论（作为 telegram-service 子模块） | Gemini/OpenAI/Claude/DeepSeek |
 | **api-service** | 8000 | REST API 服务（指标/K线/信号数据查询） | FastAPI, Pydantic |
+| **sheets-service** | - | Google Sheets 公共看板同步（TG 卡片→表格；可审计/可重放） | python-dotenv, python-telegram-bot |
 | **predict-service** | - | 预测市场信号（Polymarket/Kalshi/Opinion） | Node.js, Telegram Bot |
 | **vis-service** | 8087 | 可视化渲染（K线图/指标图/VPVR） | FastAPI, matplotlib, mplfinance |
 | **order-service** | - | 交易执行、Avellaneda-Stoikov 做市 | Python, ccxt, cryptofeed |
@@ -876,7 +879,8 @@ tradecat/
 │   │
 │   └── 📂 consumption/             # 消费层：对外呈现（Telegram/API）
 │       ├── 📂 telegram-service/    # Telegram Bot（卡片/订阅/快照）
-│       └── 📂 api-service/         # REST API（可选）
+│       ├── 📂 api-service/         # REST API（可选）
+│       └── 📂 sheets-service/      # Google Sheets 公共看板同步（可选）
 │
 ├── 📂 libs/                        # 共享库
 │   ├── 📂 database/                # 数据库文件

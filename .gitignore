@@ -92,6 +92,11 @@ libs/database/telegram-cards/
 **/config.json
 !**/config.example.json
 **/ft_userdir/
+**/gcp/credentials/*.json
+**/.config/gcp/credentials/*.json
+**/.config/google/**/*.json
+**/*service-account*.json
+**/*sa-key*.json
 
 # 敏感配置（绝对不提交）
 config/.env

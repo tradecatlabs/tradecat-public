@@ -197,7 +197,9 @@ vim config/.env
 
 > Note: top-level `./scripts/start.sh` manages `ai-service`, `signal-service`, `telegram-service`, `trading-service` (ai-service is a sub-module; readiness check only, no standalone process).  
 > Legacy ingestion service (low-frequency 1m/5m): `services/ingestion/data-service/` (not enabled by default).  
-> Optional service manual start: `cd services/consumption/api-service && ./scripts/start.sh start` (REST API, default port 8088).
+> Optional services (manual start):  
+> - `cd services/consumption/api-service && ./scripts/start.sh start` (REST API, default port 8088)  
+> - `cd services/consumption/sheets-service && ./scripts/start.sh start` (Google Sheets dashboard sync, daemon by default)
 
 ### ⚙️ Configuration (required)
 
@@ -541,6 +543,7 @@ graph TD
 | **ai-service** | - | AI analysis, Wyckoff methodology (as telegram-service submodule) | Gemini/OpenAI/Claude/DeepSeek |
 | **signal-service** | - | Standalone signal detection (129 rules, 8 categories, event publishing) | Python, SQLite, psycopg2 |
 | **api-service** | 8000 | REST API service (indicators/candlesticks/signals query) [preview] | FastAPI, Pydantic |
+| **sheets-service** | - | Google Sheets public dashboard sync (TG cards → Sheets; auditable/replayable) | python-dotenv, python-telegram-bot |
 | **markets-service** | - | Multi-market data collection (US/China stocks, macro) [preview] | yfinance, akshare, fredapi, QuantLib |
 | **predict-service** | - | Prediction market signals (Polymarket/Kalshi/Opinion) [preview] | Node.js, Telegram Bot |
 | **vis-service** | 8087 | Visualization rendering (K-line/indicators/VPVR) [preview] | FastAPI, matplotlib, mplfinance |
@@ -872,7 +875,8 @@ tradecat/
 │   │
 │   └── 📂 consumption/             # Consumption layer: Telegram/API
 │       ├── 📂 telegram-service/    # Telegram Bot
-│       └── 📂 api-service/         # REST API (optional)
+│       ├── 📂 api-service/         # REST API (optional)
+│       └── 📂 sheets-service/      # Google Sheets dashboard sync (optional)
 │
 ├── 📂 libs/                        # Shared libraries
 │   ├── 📂 database/                # Database files

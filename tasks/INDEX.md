@@ -12,6 +12,7 @@
 | 0008 | futures-um-book-metrics-ingestion | Done | P1 | 补齐 futures/um 的 bookTicker/bookDepth/metrics（下载回填为主，必要时 WS），并完成审计/治理闭环 | tasks/0008-futures-um-book-metrics-ingestion/ |
 | 0009 | futures-cm-book-metrics-ingestion | Not Started | P2 | 在 UM 成熟实现基础上对称补齐 futures/cm 的 bookTicker/bookDepth/metrics（下载回填为主） | tasks/0009-futures-cm-book-metrics-ingestion/ |
 | 0010 | option-bvol-eoh-ingestion | Not Started | P2 | 补齐 option 的 BVOLIndex/EOHSummary（下载回填），并完成字段解析与审计闭环 | tasks/0010-option-bvol-eoh-ingestion/ |
+| 0011 | tg-cards-sheets-dashboard | Done | P0 | 将 telegram-service 现有 TG 卡片同步到 Google Sheets 公共看板：卡片块 x,y 渲染 + 全字段无遗漏审计 + 幂等/outbox/可重建 | tasks/0011-tg-cards-sheets-dashboard/ |
 
 ## 相关索引（单点入口）
 

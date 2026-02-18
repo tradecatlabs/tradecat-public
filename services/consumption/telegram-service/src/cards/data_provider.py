@@ -264,7 +264,9 @@ atexit.register(_cleanup_pool)
 # ============================================================
 class RankingDataProvider:
     def __init__(self, db_path: Optional[Path] = None) -> None:
-        _project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+        # __file__ = .../services/consumption/telegram-service/src/cards/data_provider.py
+        # repo root = parents[5] (cards/src/telegram-service/consumption/services/<repo>)
+        _project_root = Path(__file__).resolve().parents[5]
         _default_db = _project_root / "libs" / "database" / "services" / "telegram-service" / "market_data.db"
 
         # 支持相对路径：统一基于项目根目录解析为绝对路径
