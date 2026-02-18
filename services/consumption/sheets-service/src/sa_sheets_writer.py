@@ -481,9 +481,15 @@ class SaSheetsWriter:
         # 3) 样式（尽量低频做；允许通过 style_version 强制刷新）
         style_version = "2"
         key_style_version = f"symtab.{tab_title}.style_version"
-        if (meta.get(key_style_version) or "") != style_version:
+        key_style_rows = f"symtab.{tab_title}.style_rows"
+        try:
+            styled_rows = int(str(meta.get(key_style_rows) or "0").strip() or "0")
+        except Exception:
+            styled_rows = 0
+        need_style = (meta.get(key_style_version) or "") != style_version or n_new > styled_rows
+        if need_style:
             # 预留足够行数，避免条件格式只覆盖少量区域
-            target_rows = int(max(n_new, 600))
+            target_rows = int(max(n_new, styled_rows, 600))
             self._ensure_grid_size(tab_title, min_rows=target_rows, min_cols=2)
 
             # base styles + conditional formatting（一次性写入）
@@ -665,7 +671,7 @@ class SaSheetsWriter:
                 ),
                 is_write=True,
             )
-            self._meta_set({key_style_version: style_version})
+            self._meta_set({key_style_version: style_version, key_style_rows: str(target_rows)})
 
         self._meta_set({key_lines: str(n_new)})
         return {"ok": True, "tab": tab_title, "lines": n_new}
