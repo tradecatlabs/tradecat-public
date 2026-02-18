@@ -428,7 +428,7 @@ class SaSheetsWriter:
     def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
         """
         覆盖写“币种查询”子表：
-        - 每行文本写到 A 列（一行一个单元格），更接近终端/日志阅读体验
+        - 两列布局：A=行号，B=内容（更适合审计/定位/阅读）
         - 不做 append，避免 cells 无限增长
         - 通过 meta 记录上次行数，仅清理尾部差量，避免整表 clear 带来的闪烁
         """
@@ -445,15 +445,15 @@ class SaSheetsWriter:
         if not lines:
             lines = ["-"]
 
-        # 1) 写入新内容（单列）
-        values = [[ln] for ln in lines]
+        # 1) 写入新内容（A=行号，B=内容）
+        values = [[str(i), ln] for i, ln in enumerate(lines, start=1)]
         n_new = len(values)
         self._exec(
             self._sheets.spreadsheets()
             .values()
             .update(
                 spreadsheetId=self._spreadsheet_id,
-                range=f"{tab_title}!A1:A{n_new}",
+                range=f"{tab_title}!A1:B{n_new}",
                 valueInputOption="RAW",
                 body={"values": values},
             ),
@@ -473,14 +473,20 @@ class SaSheetsWriter:
                 .values()
                 .clear(
                     spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!A{n_new+1}:A{n_old}",
+                    range=f"{tab_title}!A{n_new+1}:B{n_old}",
                 ),
                 is_write=True,
             )
 
-        # 3) 样式（尽量只做一次）
-        key_style = f"symtab.{tab_title}.styled"
-        if (meta.get(key_style) or "") != "1":
+        # 3) 样式（尽量低频做；允许通过 style_version 强制刷新）
+        style_version = "2"
+        key_style_version = f"symtab.{tab_title}.style_version"
+        if (meta.get(key_style_version) or "") != style_version:
+            # 预留足够行数，避免条件格式只覆盖少量区域
+            target_rows = int(max(n_new, 600))
+            self._ensure_grid_size(tab_title, min_rows=target_rows, min_cols=2)
+
+            # base styles + conditional formatting（一次性写入）
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
@@ -491,9 +497,9 @@ class SaSheetsWriter:
                                     "range": {
                                         "sheetId": int(sh_id),
                                         "startRowIndex": 0,
-                                        "endRowIndex": int(max(n_new, 50)),
+                                        "endRowIndex": int(target_rows),
                                         "startColumnIndex": 0,
-                                        "endColumnIndex": 1,
+                                        "endColumnIndex": 2,
                                     },
                                     "cell": {
                                         "userEnteredFormat": {
@@ -509,8 +515,149 @@ class SaSheetsWriter:
                             {
                                 "updateDimensionProperties": {
                                     "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                                    "properties": {"pixelSize": 900},
+                                    "properties": {"pixelSize": 60},
                                     "fields": "pixelSize",
+                                }
+                            },
+                            {
+                                "updateDimensionProperties": {
+                                    "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+                                    "properties": {"pixelSize": 980},
+                                    "fields": "pixelSize",
+                                }
+                            },
+                            # A 列（行号）视觉弱化：灰底、右对齐、浅色字
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 0,
+                                        "endRowIndex": int(target_rows),
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": 1,
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "backgroundColor": _rgb(0.95, 0.95, 0.96),
+                                            "textFormat": {"foregroundColor": _rgb(0.45, 0.45, 0.45), "fontSize": 9},
+                                            "horizontalAlignment": "RIGHT",
+                                            "verticalAlignment": "TOP",
+                                            "wrapStrategy": "CLIP",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(backgroundColor,textFormat.foregroundColor,textFormat.fontSize,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                }
+                            },
+                            # -------------------- Conditional formatting rules --------------------
+                            # 规则说明：
+                            # - 交替底色（最低优先级）
+                            # - 分隔线/表头/章节标题（更高优先级覆盖）
+                            {
+                                "addConditionalFormatRule": {
+                                    "rule": {
+                                        "ranges": [
+                                            {
+                                                "sheetId": int(sh_id),
+                                                "startRowIndex": 0,
+                                                "endRowIndex": int(target_rows),
+                                                "startColumnIndex": 0,
+                                                "endColumnIndex": 2,
+                                            }
+                                        ],
+                                        "booleanRule": {
+                                            "condition": {
+                                                "type": "CUSTOM_FORMULA",
+                                                "values": [{"userEnteredValue": "=ISEVEN(ROW())"}],
+                                            },
+                                            "format": {"backgroundColor": _rgb(0.98, 0.98, 0.99)},
+                                        },
+                                    },
+                                    "index": 0,
+                                }
+                            },
+                            # 分隔线（psql 分隔行）
+                            {
+                                "addConditionalFormatRule": {
+                                    "rule": {
+                                        "ranges": [
+                                            {
+                                                "sheetId": int(sh_id),
+                                                "startRowIndex": 0,
+                                                "endRowIndex": int(target_rows),
+                                                "startColumnIndex": 0,
+                                                "endColumnIndex": 2,
+                                            }
+                                        ],
+                                        "booleanRule": {
+                                            "condition": {
+                                                "type": "CUSTOM_FORMULA",
+                                                "values": [{"userEnteredValue": '=REGEXMATCH($B1,"^[-+ ]+$")'}],
+                                            },
+                                            "format": {
+                                                "backgroundColor": _rgb(0.95, 0.95, 0.96),
+                                                "textFormat": {"foregroundColor": _rgb(0.55, 0.55, 0.55)},
+                                            },
+                                        },
+                                    },
+                                    "index": 0,
+                                }
+                            },
+                            # 表头行（包含 " | " 且不是分隔线）
+                            {
+                                "addConditionalFormatRule": {
+                                    "rule": {
+                                        "ranges": [
+                                            {
+                                                "sheetId": int(sh_id),
+                                                "startRowIndex": 0,
+                                                "endRowIndex": int(target_rows),
+                                                "startColumnIndex": 0,
+                                                "endColumnIndex": 2,
+                                            }
+                                        ],
+                                        "booleanRule": {
+                                            "condition": {
+                                                "type": "CUSTOM_FORMULA",
+                                                "values": [
+                                                    {
+                                                        "userEnteredValue": '=AND(REGEXMATCH($B1,"\\\\|"),NOT(REGEXMATCH($B1,"^[-+ ]+$")))',
+                                                    }
+                                                ],
+                                            },
+                                            "format": {
+                                                "backgroundColor": _rgb(0.91, 0.95, 1.0),
+                                                "textFormat": {"bold": True, "foregroundColor": _rgb(0.1, 0.1, 0.1)},
+                                            },
+                                        },
+                                    },
+                                    "index": 0,
+                                }
+                            },
+                            # 章节标题（=== xxx ===）
+                            {
+                                "addConditionalFormatRule": {
+                                    "rule": {
+                                        "ranges": [
+                                            {
+                                                "sheetId": int(sh_id),
+                                                "startRowIndex": 0,
+                                                "endRowIndex": int(target_rows),
+                                                "startColumnIndex": 0,
+                                                "endColumnIndex": 2,
+                                            }
+                                        ],
+                                        "booleanRule": {
+                                            "condition": {
+                                                "type": "CUSTOM_FORMULA",
+                                                "values": [{"userEnteredValue": '=REGEXMATCH($B1,"^=== ")'}],
+                                            },
+                                            "format": {
+                                                "backgroundColor": _rgb(0.1, 0.45, 0.82),
+                                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0), "fontSize": 11},
+                                            },
+                                        },
+                                    },
+                                    "index": 0,
                                 }
                             },
                         ]
@@ -518,7 +665,7 @@ class SaSheetsWriter:
                 ),
                 is_write=True,
             )
-            self._meta_set({key_style: "1"})
+            self._meta_set({key_style_version: style_version})
 
         self._meta_set({key_lines: str(n_new)})
         return {"ok": True, "tab": tab_title, "lines": n_new}
