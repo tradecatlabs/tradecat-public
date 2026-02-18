@@ -309,18 +309,18 @@ def _merge_multi_period_tables(
     rest = sorted([s for s in all_syms if s not in set(base_order)])
     ordered = base_order + rest
 
-    # columns：币种 + (按周期分组：该周期下的全部字段)
-    # 目标：1m(排名/趋势强度/...) → 5m(...) → 15m(...) → ...
+    # columns：币种 + (按字段分组：该字段下的全部周期)
+    # 目标：趋势强度(1m/5m/15m/1h/4h/1d/1w) → 持续根数(...) → ...
     columns: list[str] = [symbol_col]
-    for p in periods:
-        for f in union_fields:
+    for f in union_fields:
+        for p in periods:
             columns.append(f"{f}@{p}")
 
     out_rows: list[dict[str, Any]] = []
     for sym in ordered:
         row: dict[str, Any] = {symbol_col: sym}
-        for p in periods:
-            for f in union_fields:
+        for f in union_fields:
+            for p in periods:
                 key = f"{f}@{p}"
                 row[key] = per_symbol.get(sym, {}).get(p, {}).get(f, "")
         out_rows.append(row)

@@ -52,6 +52,13 @@ def _parse_period_suffix(col: str) -> str:
     _field, suf = s.rsplit("@", 1)
     return suf.strip()
 
+def _parse_field_group(col: str) -> str:
+    s = str(col or "").strip()
+    if "@" not in s:
+        return s
+    field, _suf = s.rsplit("@", 1)
+    return field.strip()
+
 
 def _env_text(key: str, default: str) -> str:
     v = (os.environ.get(key, "") or "").strip()
@@ -409,6 +416,37 @@ class SaSheetsWriter:
             self._sheets.spreadsheets().batchUpdate(
                 spreadsheetId=self._spreadsheet_id,
                 body={"requests": [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]},
+            ),
+            is_write=True,
+        )
+
+        # 2.5) clear formats/borders（避免“残留配色/残留竖线”）
+        # values.clear 不会清掉 userEnteredFormat；必须显式重置。
+        try:
+            target_cols = max(_col_to_index(col_r_u), 1)
+        except Exception:
+            target_cols = 26
+        target_rows = 2000 if compact else max(int(self._grid_by_title.get(self._tab_dashboard, (2000, 0))[0] or 2000), 1)
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": 0,
+                                    "endRowIndex": int(target_rows),
+                                    "startColumnIndex": 0,
+                                    "endColumnIndex": int(target_cols),
+                                },
+                                "cell": {"userEnteredFormat": {}},
+                                "fields": "userEnteredFormat",
+                            }
+                        }
+                    ]
+                },
             ),
             is_write=True,
         )
@@ -1174,8 +1212,8 @@ class SaSheetsWriter:
 
         # chunks = max(1, ceil(cols_cnt/width))
         chunks = max(1, (cols_cnt + width - 1) // width)
-        # 固定头部3行 + 每块(表头1行+明细N行)*chunks + hint/last/blank=3行
-        return chunks * (rows_cnt + 1) + 6
+        # 固定头部3行 + 每块(字段组表头1行+周期表头1行+明细N行)*chunks + hint/last/blank=3行
+        return chunks * (rows_cnt + 2) + 6
 
     # ==================== facts writers ====================
     def _append_cards_index(self, payload: dict[str, Any], dash: dict[str, Any]) -> None:
@@ -1375,12 +1413,15 @@ class SaSheetsWriter:
 
         table_y = y + 3
         for chunk_cols in chunks:
-            # header
-            hdr = [str(c) for c in chunk_cols]
-            hdr = hdr + [""] * (width - len(hdr))
-            value_rows.append((f"{self._tab_dashboard}!{col_l}{table_y}:{col_r}{table_y}", [hdr]))
+            # header（两行）：字段组行 + 周期行
+            group_row = [_parse_field_group(str(c)) for c in chunk_cols]
+            period_row = [_parse_period_suffix(str(c)) for c in chunk_cols]
+            group_row = group_row + [""] * (width - len(group_row))
+            period_row = period_row + [""] * (width - len(period_row))
+            value_rows.append((f"{self._tab_dashboard}!{col_l}{table_y}:{col_r}{table_y}", [group_row]))
+            value_rows.append((f"{self._tab_dashboard}!{col_l}{table_y+1}:{col_r}{table_y+1}", [period_row]))
 
-            # body
+            # body（从 table_y+2 开始）
             if rows:
                 body_vals: list[list[str]] = []
                 for r in rows:
@@ -1389,11 +1430,11 @@ class SaSheetsWriter:
                         line.append("" if r.get(c) is None else str(r.get(c)))
                     line = line + [""] * (width - len(line))
                     body_vals.append(line)
-                y0 = table_y + 1
-                y1 = table_y + len(body_vals)
+                y0 = table_y + 2
+                y1 = table_y + 1 + len(body_vals)
                 value_rows.append((f"{self._tab_dashboard}!{col_l}{y0}:{col_r}{y1}", body_vals))
 
-            table_y += 1 + len(rows)
+            table_y += 2 + len(rows)
 
         hint_y = table_y
         last_y = table_y + 1
@@ -1428,7 +1469,8 @@ class SaSheetsWriter:
         bg_body_even = _rgb(0.96, 0.96, 0.96)  # 灰
         bg_body_odd = _rgb(1.0, 1.0, 1.0)  # 白
         # 表头统一底色（不随周期变化）；周期分带只作用于表体，避免“表头花里胡哨”影响读字段名
-        bg_hdr = _rgb(0.90, 0.90, 0.90)
+        bg_hdr_group = _rgb(0.88, 0.88, 0.88)  # 字段组行（略深）
+        bg_hdr_period = _rgb(0.92, 0.92, 0.92)  # 周期行（略浅）
 
         def rrange(*, r0: int, r1: int, c0: int, c1: int) -> dict[str, Any]:
             return {
@@ -1474,11 +1516,11 @@ class SaSheetsWriter:
         # 表头/表体：按 chunk 逐段上色（chunk 是纵向堆叠，不影响列下标）
         table_y = y + 3
         for chunk_cols in chunks:
-            # header row style（bold+居中）
+            # header rows style（bold+居中）
             requests.append(
                 {
                     "repeatCell": {
-                        "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
+                        "range": rrange(r0=table_y - 1, r1=table_y + 1, c0=col_l0, c1=col_r1),
                         "cell": {
                             "userEnteredFormat": {
                                 "textFormat": {"bold": True},
@@ -1531,53 +1573,78 @@ class SaSheetsWriter:
                     )
                     start = end
 
-            def add_period_separators(*, row0: int, row1: int, _period_by_col: list[str] = period_by_col) -> None:
-                # 在“周期块”之间加竖线分隔：对每个新周期块的第一列，加 left border。
-                # - 只对有 @period 的列生效
-                # - 不在第一周期前画线
+            def add_field_group_separators(*, row0: int, row1: int, _cols: list[str] = chunk_cols) -> None:
+                # 在“字段组”之间加竖线分隔：对每个新字段组的第一列，加 left border。
                 sep_color = _rgb(0.70, 0.70, 0.70)
                 border = {"style": "SOLID_MEDIUM", "width": 2, "color": sep_color}
-
-                last = ""
-                for idx, suf in enumerate(_period_by_col):
-                    if not suf:
+                last_group = ""
+                for idx, c in enumerate(list(_cols) + [""] * (width - len(_cols))):
+                    g = _parse_field_group(str(c))
+                    if not g:
                         continue
-                    if last and suf != last:
-                        # 在本列左侧画分隔线
+                    if last_group and g != last_group:
                         requests.append(
                             {
                                 "updateBorders": {
-                                    "range": rrange(
-                                        r0=row0,
-                                        r1=row1,
-                                        c0=col_l0 + idx,
-                                        c1=col_l0 + idx + 1,
-                                    ),
+                                    "range": rrange(r0=row0, r1=row1, c0=col_l0 + idx, c1=col_l0 + idx + 1),
                                     "left": border,
                                 }
                             }
                         )
-                    last = suf
+                    last_group = g
 
-            # header 背景（统一）
+            # header 背景（两行）
             requests.append(
                 {
                     "repeatCell": {
                         "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
-                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr}},
+                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_group}},
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=table_y, r1=table_y + 1, c0=col_l0, c1=col_r1),
+                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_period}},
                         "fields": "userEnteredFormat.backgroundColor",
                     }
                 }
             )
             # body 背景（分段）
             if rows:
-                body_r0 = table_y  # = (table_y+1)-1
-                body_r1 = table_y + len(rows)
+                body_r0 = table_y + 1  # = (table_y+2)-1
+                body_r1 = table_y + 1 + len(rows)
                 add_bg_segments(row0=body_r0, row1=body_r1, bgs=body_bgs)
-                # 周期竖线分隔（覆盖 header+body）
-                add_period_separators(row0=table_y - 1, row1=body_r1)
+                # 字段组竖线分隔（覆盖 header+body）
+                add_field_group_separators(row0=table_y - 1, row1=body_r1)
 
-            table_y += 1 + len(rows)
+            # 字段组表头行：按字段名做 merge（提升可读性）
+            group_names = [_parse_field_group(str(c)) for c in chunk_cols] + [""] * (width - len(chunk_cols))
+            start = 0
+            while start < width:
+                g = group_names[start]
+                end = start + 1
+                while end < width and group_names[end] == g:
+                    end += 1
+                if g and end - start >= 2:
+                    requests.append(
+                        {
+                            "mergeCells": {
+                                "range": rrange(
+                                    r0=table_y - 1,
+                                    r1=table_y,
+                                    c0=col_l0 + start,
+                                    c1=col_l0 + end,
+                                ),
+                                "mergeType": "MERGE_ALL",
+                            }
+                        }
+                    )
+                start = end
+
+            table_y += 2 + len(rows)
 
         merge_rows = [y, y + 1, y + 2, hint_y, last_y]
         for ry in merge_rows:

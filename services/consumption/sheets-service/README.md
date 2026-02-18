@@ -42,6 +42,7 @@
 - `SHEETS_EXPORT_CARDS`：逗号分隔 card_id 白名单；空=全部
 - `SHEETS_EXPORT_INCLUDE_BLACKLIST`：`1` 表示包含 cards registry 黑名单卡片
 - `SHEETS_EXPORT_MULTI_PERIODS`：`0/1`（默认 `1`；对排行榜卡片导出 7 周期横向表：`1m..1w`）
+  - 列顺序：按“字段组”展开周期（`趋势强度@1m..1w` → 下一字段组 …），并在看板渲染时生成“两行表头”：字段组行 + 周期行。
 - `SHEETS_SYNC_INTERVAL_SECONDS`：daemon 模式间隔（默认 60）
 - `SHEETS_IDEMPOTENCY_DB_PATH`：本地幂等键库（默认 `data/idempotency.db`）
 
