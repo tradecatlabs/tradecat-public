@@ -30,8 +30,8 @@
 
 ### 2) 本地 SA 写入真实工作簿成功（可重复验证）
 - Spreadsheet（用户创建并分享给 SA 编辑）：
-  - `SHEETS_SPREADSHEET_ID=1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4`
-  - SA key（本地私密）：`/home/lenovo/.config/gcp/credentials/just-effect-487712-p4-ec65508ad391.json`
+  - `SHEETS_SPREADSHEET_ID=<your_spreadsheet_id>`
+  - SA key（本地私密）：`<your_service_account_key_json_path>`
 - Evidence command:
   - `cd services/consumption/sheets-service && SHEETS_WRITE_MODE=sa SHEETS_SPREADSHEET_ID=... GOOGLE_APPLICATION_CREDENTIALS=... .venv/bin/python -m src --once --cards super_trend_ranking,macd_ranking,bb_ranking`
 - Observed signal（示例）：
