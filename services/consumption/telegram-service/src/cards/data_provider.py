@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -276,6 +277,19 @@ class RankingDataProvider:
             if not p.is_absolute():
                 return (_project_root / p).resolve()
             return p
+
+        # 支持通过环境变量覆盖（便于 sheets-service/运维拉取远程 DB 后复用同口径）
+        # - MARKET_DATA_DB_PATH: 通用覆盖键
+        # - TELEGRAM_MARKET_DATA_DB_PATH: telegram-service 专用覆盖键
+        if db_path is None:
+            env_p = (os.environ.get("MARKET_DATA_DB_PATH", "") or "").strip() or (
+                os.environ.get("TELEGRAM_MARKET_DATA_DB_PATH", "") or ""
+            ).strip()
+            if env_p:
+                try:
+                    db_path = Path(env_p).expanduser()
+                except Exception:
+                    db_path = None
 
         self.db_path = _resolve_path(db_path)
         self._pool = _get_pool(self.db_path)
