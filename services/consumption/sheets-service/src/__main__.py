@@ -11,6 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.config import Settings
+from src.dashboard_dedup import inject_base_card_and_dedup
 from src.idempotency import IdempotencyStore
 from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
@@ -182,6 +183,9 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
                 max_cols = max(max_cols, len(cols))
             except Exception:
                 pass
+
+        # 主看板去重：把“重复基础字段”抽到第一个“基础数据”卡片，其它卡片删掉这些列
+        payloads = inject_base_card_and_dedup(payloads)
 
         if settings.dry_run:
             print(
