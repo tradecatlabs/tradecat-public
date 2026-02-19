@@ -354,6 +354,22 @@ class TgCardsExporter:
     async def export(self, *, only_cards: list[str] | None = None) -> list[ExportResult]:
         self._prepare_import_path()
 
+        # ==================== 币种范围（导出侧强控） ====================
+        # 默认行为：
+        # - telegram-service 的 cards.data_provider 会按 libs/common/symbols.py 做币种过滤
+        # - 这会导致“看板只有 main4 几个币种”，与“使用服务器全量数据”诉求冲突
+        #
+        # 这里提供一个导出侧开关：SHEETS_EXPORT_SYMBOLS_UNFILTERED=1 时，强制关闭过滤。
+        # 实现：把 SYMBOLS_GROUPS 置为 auto（get_configured_symbols_set() -> None），并重置 data_provider 缓存。
+        if (os.environ.get("SHEETS_EXPORT_SYMBOLS_UNFILTERED", "0") or "0").strip() == "1":
+            os.environ["SYMBOLS_GROUPS"] = "auto"
+            try:
+                from cards.data_provider import reset_symbols_cache
+
+                reset_symbols_cache()
+            except Exception:
+                pass
+
         from cards.registry import RankingRegistry
 
         if self._include_blacklist:

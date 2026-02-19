@@ -1478,7 +1478,7 @@ class SaSheetsWriter:
                 )
 
                 # v4：对“纵向多周期表”的币种列做纵向合并（每个币种通常对应 7 行周期）
-                if mode == "v4":
+                if mode in {"v4", "v5"}:
                     try:
                         table = p.get("table") or {}
                         cols = table.get("columns") or []
