@@ -1437,9 +1437,20 @@ class SaSheetsWriter:
                 col_l=col_l,
                 col_r=col_r,
                 compact=True,
-                frozen_row_count=0,
+                frozen_row_count=1 if mode == "v5" else 0,
                 frozen_column_count=frozen_cols,
             )
+
+            # v5：表头完全一致（币种/字段/7周期），只写一次全局表头并冻结，不在每张卡里重复写表头。
+            if mode == "v5":
+                self._write_v5_field_rows_period_columns_sheet(
+                    payloads=transformed,
+                    sheet_title=title,
+                    col_l=col_l,
+                    col_r=col_r,
+                )
+                results["variants"].append({"sheet": title, "mode": mode, "col_r": col_r, "cards": len(transformed)})
+                continue
 
             y = 1
             for p in transformed:
@@ -1521,6 +1532,215 @@ class SaSheetsWriter:
             results["variants"].append({"sheet": title, "mode": mode, "col_r": col_r, "cards": len(transformed)})
 
         return results
+
+    def _write_v5_field_rows_period_columns_sheet(
+        self, *, payloads: list[dict[str, Any]], sheet_title: str, col_l: str, col_r: str
+    ) -> None:
+        """
+        v5 专用渲染：
+        - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结 top header（frozenRowCount=1）
+        - 每张卡仅写：1 行源信息 + 明细 rows（不重复表头）
+        - 币种列纵向 merge（同币种连续行合并）
+        """
+        if not payloads:
+            return
+
+        sh_id = self._sheet_id_by_title.get(sheet_title)
+        if sh_id is None:
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title.get(sheet_title)
+        if sh_id is None:
+            return
+
+        col_l_idx = _col_to_index(col_l)
+        col_r_idx = _col_to_index(col_r)
+        width = col_r_idx - col_l_idx + 1
+        if width <= 0:
+            raise RuntimeError("invalid_dashboard_col_range")
+
+        # 取第一张卡的 columns 作为全局表头口径（v5 应该对齐）
+        first_table = (payloads[0].get("table") or {}) if isinstance(payloads[0], dict) else {}
+        columns = list(first_table.get("columns") or [])
+        columns = ["" if c is None else str(c) for c in columns]
+        if not columns:
+            columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+
+        # 只支持 v5 的“统一表头”：至少包含 币种/字段 两列
+        if len(columns) < 2:
+            columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+
+        # 1) values：全局表头 + 每张卡 info/body
+        def pad_row(vals: list[str]) -> list[str]:
+            return (list(vals) + [""] * width)[:width]
+
+        data: list[dict[str, Any]] = []
+        header_vals = pad_row(columns)
+        data.append({"range": f"{sheet_title}!{col_l}1:{col_r}1", "values": [header_vals]})
+
+        y = 2  # 1-based
+        info_rows: list[int] = []
+        merge_tasks: list[tuple[int, list[dict[str, Any]]]] = []  # (body_start_row_1, body_rows)
+        max_y_used = 1
+
+        for p in payloads:
+            header = p.get("header") or {}
+            hint = p.get("hint") or {}
+            params = p.get("params") or {}
+            table = p.get("table") or {}
+            rows = table.get("rows") or []
+            cols = table.get("columns") or []
+            cols = ["" if c is None else str(c) for c in (cols or [])]
+
+            # v5 约束：跳过“非 v5 表头”的卡片（避免破坏全局表头一致性）
+            if cols and (len(cols) < 2 or cols[0] != columns[0] or cols[1] != columns[1]):
+                continue
+
+            title = str(header.get("title") or "")
+            update_time = str(header.get("update_time") or "-").strip() or "-"
+            sort_desc = str(header.get("sort_desc") or "-").strip() or "-"
+            hint_text = str(hint.get("text") or "-").strip() or "-"
+            last_update = str(params.get("last_update") or "-").strip() or "-"
+            info_line = " ".join(
+                [
+                    f"📊 {title or '-'}",
+                    f"⏰ 更新 {update_time}",
+                    f"📊 排序 {sort_desc}",
+                    f"💡 {hint_text}",
+                    f"⏰ 最后更新 {last_update}",
+                ]
+            )
+
+            # info row（不 merge；冻结列场景禁止整行 merge）
+            data.append({"range": f"{sheet_title}!{col_l}{y}:{col_r}{y}", "values": [pad_row([info_line])]})
+            info_rows.append(int(y))
+            y_body = y + 1
+
+            body_vals: list[list[str]] = []
+            for r in rows or []:
+                if not isinstance(r, dict):
+                    continue
+                line: list[str] = []
+                for c in columns:
+                    v = r.get(c)
+                    line.append("" if v is None else str(v))
+                body_vals.append(pad_row(line))
+
+            if body_vals:
+                y1 = y_body + len(body_vals) - 1
+                data.append({"range": f"{sheet_title}!{col_l}{y_body}:{col_r}{y1}", "values": body_vals})
+                merge_tasks.append((int(y_body), list(rows)))
+                max_y_used = max(max_y_used, y1)
+                y = y1 + 2  # +1 blank separator
+            else:
+                max_y_used = max(max_y_used, y)
+                y = y + 2
+
+        self._ensure_grid_size(sheet_title, min_rows=max(int(max_y_used) + 50, 2000), min_cols=_col_to_index(col_r))
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"valueInputOption": "RAW", "data": data},
+            ),
+            is_write=True,
+        )
+
+        # 2) merges：币种列纵向 merge（每张卡 body 单独合并）
+        for body_start_row_1, body_rows in merge_tasks:
+            try:
+                self._merge_symbol_column_groups_on_sheet(
+                    sheet_title=sheet_title,
+                    col_l=col_l,
+                    sym_col=str(columns[0] or "币种"),
+                    body_start_row_1=int(body_start_row_1),
+                    body_rows=body_rows,
+                )
+            except Exception:
+                pass
+
+        # 3) styles：全局表头 + 周期列灰白交替 + 每张卡 info 行
+        col_l0 = col_l_idx - 1
+        col_r1 = col_r_idx
+
+        def rrange(*, r0: int, r1: int, c0: int, c1: int) -> dict[str, Any]:
+            return {
+                "sheetId": int(sh_id),
+                "startRowIndex": int(r0),
+                "endRowIndex": int(r1),
+                "startColumnIndex": int(c0),
+                "endColumnIndex": int(c1),
+            }
+
+        bg_hdr_info = _rgb(0.13, 0.15, 0.18)
+        bg_hdr_group = _rgb(0.86, 0.90, 0.96)
+        bg_body_even = _rgb(1.0, 1.0, 1.0)
+        bg_body_odd = _rgb(0.97, 0.97, 0.97)
+
+        reqs: list[dict[str, Any]] = []
+        # header row style (row 1)
+        reqs.append(
+            {
+                "repeatCell": {
+                    "range": rrange(r0=0, r1=1, c0=col_l0, c1=col_r1),
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": bg_hdr_group,
+                            "textFormat": {"bold": True},
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                            "wrapStrategy": "WRAP",
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                }
+            }
+        )
+
+        # period columns shading (rows 2..max_y_used)
+        period_index = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
+        for idx, c in enumerate(columns):
+            name = str(c or "").strip()
+            if name not in period_index:
+                continue
+            bg = bg_body_even if (int(period_index[name]) % 2 == 0) else bg_body_odd
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=1, r1=int(max_y_used), c0=col_l0 + idx, c1=col_l0 + idx + 1),
+                        "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
+
+        # info rows emphasis
+        for y1 in info_rows:
+            r0 = int(y1) - 1
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=r0, r1=r0 + 1, c0=col_l0, c1=col_r1),
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": bg_hdr_info,
+                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
+                                "wrapStrategy": "WRAP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy)",
+                    }
+                }
+            )
+
+        if reqs:
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": reqs},
+                ),
+                is_write=True,
+            )
 
     def _merge_symbol_column_groups_on_sheet(
         self,
