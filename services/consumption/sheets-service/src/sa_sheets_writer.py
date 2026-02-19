@@ -1209,6 +1209,22 @@ class SaSheetsWriter:
             ("看板_方案4_纵向合并币种", "v4"),
         ]
 
+        # 允许只生成指定方案，避免写入配额爆炸
+        # - SHEETS_DASHBOARD_VARIANTS=1,2,4 或 v1,v2,v4
+        sel_raw = (os.environ.get("SHEETS_DASHBOARD_VARIANTS", "") or "").strip()
+        if sel_raw:
+            want: set[str] = set()
+            for it in sel_raw.split(","):
+                s = it.strip().lower()
+                if not s:
+                    continue
+                if s in {"1", "2", "3", "4"}:
+                    want.add(f"v{s}")
+                elif s.startswith("v") and s[1:] in {"1", "2", "3", "4"}:
+                    want.add(f"v{s[1:]}")
+            if want:
+                variants = [(t, m) for (t, m) in variants if m in want]
+
         results: dict[str, Any] = {"ok": True, "variants": []}
         for title, mode in variants:
             # 变体 tab 用更窄的 col_r（按实际列数计算），但不小于 min_col_r

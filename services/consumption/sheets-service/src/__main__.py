@@ -41,6 +41,11 @@ def _parse_args() -> argparse.Namespace:
         help="SA 模式：删除非必要 tab（仅保留 看板 + 配置的币种查询子表）",
     )
     p.add_argument("--dashboard-variants", action="store_true", help="SA 模式：生成 3 套高密度看板变体（新建 tab）")
+    p.add_argument(
+        "--dashboard-variants-only",
+        action="store_true",
+        help="SA 模式：仅生成看板变体（不重绘主看板；用于避免写入配额压力）",
+    )
     p.add_argument("--rebuild-max-cards", type=int, default=200, help="重建：只取最后 N 张卡片（默认 200）")
     p.add_argument("--cards", default="", help="逗号分隔 card_id 白名单；空=全部")
     p.add_argument("--lang", default="", help="导出语言（默认 zh_CN）")
@@ -91,6 +96,7 @@ async def _run_once(
     only_cards: list[str] | None,
     lang: str,
     dashboard_variants: bool,
+    dashboard_variants_only: bool,
 ) -> int:
     # 可选：使用服务器 DB 作为数据源（避免本机 DB 落后/不全）
     try:
@@ -232,19 +238,19 @@ async def _run_once(
         if settings.dashboard_auto_width:
             col_r = sa_writer.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=col_r)
 
-        sa_writer.reset_dashboard(col_l=col_l, col_r=col_r, compact=True)
-
         sent = 0
-        for p in payloads:
-            ok, status, body = _send_one(p)
-            if not ok:
-                print(f"❌ 看板重绘失败 status={status} body={json.dumps(body, ensure_ascii=False)}")
-                return 3
-            sent += 1
+        if not dashboard_variants_only:
+            sa_writer.reset_dashboard(col_l=col_l, col_r=col_r, compact=True)
 
-        if dashboard_variants:
+            for p in payloads:
+                ok, status, body = _send_one(p)
+                if not ok:
+                    print(f"❌ 看板重绘失败 status={status} body={json.dumps(body, ensure_ascii=False)}")
+                    return 3
+                sent += 1
+
+        if dashboard_variants or dashboard_variants_only:
             try:
-                assert sa_writer is not None
                 sa_writer.write_dashboard_variants(payloads=payloads, col_l=col_l, min_col_r="M")
             except Exception as exc:
                 print(f"⚠️ 变体看板生成失败：{type(exc).__name__}: {exc}")
@@ -275,7 +281,12 @@ async def _run_once(
                     }
                 )
 
-        print(f"✅ 看板重绘完成 mode=dashboard cards={sent} col_l={col_l} col_r={col_r}")
+        if dashboard_variants_only:
+            print(
+                f"✅ 看板变体生成完成 mode=dashboard variants_only=1 cards={len(payloads)} col_l={col_l} col_r={col_r}"
+            )
+        else:
+            print(f"✅ 看板重绘完成 mode=dashboard cards={sent} col_l={col_l} col_r={col_r}")
         return 0
 
     # snapshot/append 模式：outbox + 幂等（用于事实表或 slot 覆盖写）
@@ -465,7 +476,13 @@ def main() -> None:
     if args.daemon:
         while True:
             rc = asyncio.run(
-                _run_once(settings, only_cards=only_cards, lang=lang, dashboard_variants=args.dashboard_variants)
+                _run_once(
+                    settings,
+                    only_cards=only_cards,
+                    lang=lang,
+                    dashboard_variants=args.dashboard_variants,
+                    dashboard_variants_only=args.dashboard_variants_only,
+                )
             )
             if rc != 0:
                 # daemon 模式失败：不退出，避免写入临时错误导致服务退出；由外层守护脚本管理
@@ -473,7 +490,13 @@ def main() -> None:
             time.sleep(max(settings.interval_seconds, 5))
     else:
         rc = asyncio.run(
-            _run_once(settings, only_cards=only_cards, lang=lang, dashboard_variants=args.dashboard_variants)
+            _run_once(
+                settings,
+                only_cards=only_cards,
+                lang=lang,
+                dashboard_variants=args.dashboard_variants,
+                dashboard_variants_only=args.dashboard_variants_only,
+            )
         )
         sys.exit(rc)
 

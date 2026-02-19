@@ -205,7 +205,7 @@ def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
             key_path=key_path,
             remote_path=spec.remote_db_path,
             local_path=spec.local_db_path,
-            timeout_seconds=600,
+            timeout_seconds=3600,
         )
     except Exception:
         _scp_get(
@@ -213,7 +213,7 @@ def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
             key_path=key_path,
             remote_path=spec.remote_db_path,
             local_path=spec.local_db_path,
-            timeout_seconds=600,
+            timeout_seconds=3600,
         )
     _write_meta(
         spec.meta_path,
