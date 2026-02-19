@@ -156,8 +156,12 @@ def inject_base_card_and_dedup(payloads: list[dict[str, Any]]) -> list[dict[str,
 
     # 生成“基础数据”卡片（置顶）
     first = tabular[0]
-    update_time = str(((first.get("header") or {}) if isinstance(first.get("header"), dict) else {}).get("update_time") or "-")
-    last_update = str(((first.get("params") or {}) if isinstance(first.get("params"), dict) else {}).get("last_update") or "-")
+    update_time = str(
+        ((first.get("header") or {}) if isinstance(first.get("header"), dict) else {}).get("update_time") or "-"
+    )
+    last_update = str(
+        ((first.get("params") or {}) if isinstance(first.get("params"), dict) else {}).get("last_update") or "-"
+    )
     base_payload: dict[str, Any] = {
         "schema_version": 1,
         "card_key": f"cards:base_fields:{_now_utc_iso()}",

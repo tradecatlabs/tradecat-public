@@ -1,8 +1,8 @@
 # ruff: noqa: UP017
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path

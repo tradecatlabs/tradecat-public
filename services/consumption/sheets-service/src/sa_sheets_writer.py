@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.dashboard_variants import VariantTable, compact_cell_multiperiod, vertical_multiperiod
+
 
 def _col_to_index(col: str) -> int:
     s = (col or "").strip().upper()
@@ -425,6 +427,118 @@ class SaSheetsWriter:
         )
         self._refresh_sheet_map()
 
+    # ==================== generic sheet ops（用于变体看板） ====================
+    def ensure_sheet(self, *, title: str) -> None:
+        self.ensure_schema()
+        self._refresh_sheet_map()
+        if title in self._sheet_id_by_title:
+            return
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": [{"addSheet": {"properties": {"title": title}}}]},
+            ),
+            is_write=True,
+        )
+        self._refresh_sheet_map()
+
+    def reset_sheet_display(self, *, title: str, col_l: str, col_r: str, compact: bool = True) -> dict[str, Any]:
+        """
+        清理指定 sheet 的展示面（用于“看板变体 tab”）：
+        - clear values
+        - unmerge all
+        - clear formats（避免残留背景色/边框）
+        - 可选：压缩 grid（仅影响该 sheet）
+        """
+        self.ensure_sheet(title=title)
+        col_l_u = str(col_l).strip().upper()
+        col_r_u = str(col_r).strip().upper()
+
+        # 1) clear values
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .clear(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{title}!A:ZZ",
+            ),
+            is_write=True,
+        )
+
+        sh_id = self._sheet_id_by_title.get(title)
+        if sh_id is None:
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title[title]
+
+        # 2) unmerge all
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]},
+            ),
+            is_write=True,
+        )
+
+        # 3) clear formats
+        try:
+            target_cols = max(_col_to_index(col_r_u), 1)
+        except Exception:
+            target_cols = 26
+        target_rows = 2000 if compact else max(int(self._grid_by_title.get(title, (2000, 0))[0] or 2000), 1)
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": 0,
+                                    "endRowIndex": int(target_rows),
+                                    "startColumnIndex": 0,
+                                    "endColumnIndex": int(target_cols),
+                                },
+                                "cell": {"userEnteredFormat": {}},
+                                "fields": "userEnteredFormat",
+                            }
+                        }
+                    ]
+                },
+            ),
+            is_write=True,
+        )
+
+        if compact:
+            target_rows = 2000
+            target_cols = max(_col_to_index(col_r_u), 1)
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {
+                                        "sheetId": int(sh_id),
+                                        "gridProperties": {
+                                            "rowCount": int(target_rows),
+                                            "columnCount": int(target_cols),
+                                            "frozenColumnCount": 0,
+                                        },
+                                    },
+                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenColumnCount",
+                                }
+                            }
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+            self._refresh_sheet_map()
+
+        return {"ok": True, "sheet": title, "col_l": col_l_u, "col_r": col_r_u}
+
     def write_symbol_query_tab(self, *, tab_title: str, sheet: Any) -> dict[str, Any]:
         """
         覆盖写“币种查询”子表（真表格）：
@@ -483,7 +597,7 @@ class SaSheetsWriter:
                 .values()
                 .clear(
                     spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!A{n_rows+1}:{_index_to_col(max(c_old, n_cols))}{r_old}",
+                    range=f"{tab_title}!A{n_rows + 1}:{_index_to_col(max(c_old, n_cols))}{r_old}",
                 ),
                 is_write=True,
             )
@@ -493,7 +607,7 @@ class SaSheetsWriter:
                 .values()
                 .clear(
                     spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!{_index_to_col(n_cols+1)}1:{_index_to_col(c_old)}{max(r_old, n_rows)}",
+                    range=f"{tab_title}!{_index_to_col(n_cols + 1)}1:{_index_to_col(c_old)}{max(r_old, n_rows)}",
                 ),
                 is_write=True,
             )
@@ -514,7 +628,11 @@ class SaSheetsWriter:
 
         target_rows = int(max(n_rows, styled_rows, 800))
         target_cols = int(max(n_cols, styled_cols, 9))
-        need_style = (meta.get(key_style_version) or "") != style_version or target_rows > styled_rows or target_cols != styled_cols
+        need_style = (
+            (meta.get(key_style_version) or "") != style_version
+            or target_rows > styled_rows
+            or target_cols != styled_cols
+        )
         if need_style:
             self._ensure_grid_size(tab_title, min_rows=target_rows, min_cols=target_cols)
 
@@ -536,7 +654,9 @@ class SaSheetsWriter:
                     cond_cnt = len(cond)
                     break
                 if cond_cnt > 0:
-                    reqs = [{"deleteConditionalFormatRule": {"sheetId": int(sh_id), "index": 0}} for _ in range(cond_cnt)]
+                    reqs = [
+                        {"deleteConditionalFormatRule": {"sheetId": int(sh_id), "index": 0}} for _ in range(cond_cnt)
+                    ]
                     self._exec(
                         self._sheets.spreadsheets().batchUpdate(
                             spreadsheetId=self._spreadsheet_id,
@@ -614,7 +734,12 @@ class SaSheetsWriter:
                 reqs.append(
                     {
                         "updateDimensionProperties": {
-                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": ci, "endIndex": ci + 1},
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": ci,
+                                "endIndex": ci + 1,
+                            },
                             "properties": {"pixelSize": int(px)},
                             "fields": "pixelSize",
                         }
@@ -802,6 +927,365 @@ class SaSheetsWriter:
     def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
         raise RuntimeError("币种查询子表已升级为真表格：请改用 write_symbol_query_tab(tab_title=..., sheet=...)")
 
+    # ==================== dashboard variants ====================
+    def _render_dashboard_to_sheet(
+        self, payload: dict[str, Any], *, sheet_title: str, y: int, col_l: str, col_r: str
+    ) -> None:
+        """
+        与 `_render_dashboard` 同口径渲染，但写入到指定 sheet（用于“看板变体 tab”）。
+        说明：
+        - 仍保留：字段组/周期两行表头、周期灰白交替、字段组竖线、源信息行整行合并
+        - 该函数只负责渲染，不负责 slot/meta
+        """
+        col_l_idx = _col_to_index(col_l)
+        col_r_idx = _col_to_index(col_r)
+        width = col_r_idx - col_l_idx + 1
+        if width <= 0:
+            raise RuntimeError("invalid_dashboard_col_range")
+
+        header = payload.get("header") or {}
+        hint = payload.get("hint") or {}
+        params = payload.get("params") or {}
+        table = payload.get("table") or {}
+        columns = table.get("columns") or []
+        rows = table.get("rows") or []
+
+        title = str(header.get("title") or "")
+        update_time = str(header.get("update_time") or "-").strip() or "-"
+        sort_desc = str(header.get("sort_desc") or "-").strip() or "-"
+        hint_text = str(hint.get("text") or "-").strip() or "-"
+        last_update = str(params.get("last_update") or "-").strip() or "-"
+
+        info_line = " ".join(
+            [
+                f"📊 {title or '-'}",
+                f"⏰ 更新 {update_time}",
+                f"📊 排序 {sort_desc}",
+                f"💡 {hint_text}",
+                f"⏰ 最后更新 {last_update}",
+            ]
+        )
+
+        def pad_row(first: str) -> list[str]:
+            return [first] + [""] * (width - 1)
+
+        value_rows: list[tuple[str, list[list[str]]]] = []
+        value_rows.append((f"{sheet_title}!{col_l}{y}:{col_r}{y}", [pad_row(info_line)]))
+
+        chunks = [columns[i : i + width] for i in range(0, len(columns), width)] if columns else [[]]
+
+        table_y = y + 1
+        for chunk_cols in chunks:
+            group_row = [_parse_field_group(str(c)) for c in chunk_cols]
+            period_row = [_parse_period_suffix(str(c)) for c in chunk_cols]
+            group_row = group_row + [""] * (width - len(group_row))
+            period_row = period_row + [""] * (width - len(period_row))
+            value_rows.append((f"{sheet_title}!{col_l}{table_y}:{col_r}{table_y}", [group_row]))
+            value_rows.append((f"{sheet_title}!{col_l}{table_y + 1}:{col_r}{table_y + 1}", [period_row]))
+
+            if rows:
+                body_vals: list[list[str]] = []
+                for r in rows:
+                    line: list[str] = []
+                    for c in chunk_cols:
+                        line.append("" if r.get(c) is None else str(r.get(c)))
+                    line = line + [""] * (width - len(line))
+                    body_vals.append(line)
+                y0 = table_y + 2
+                y1 = table_y + 1 + len(body_vals)
+                value_rows.append((f"{sheet_title}!{col_l}{y0}:{col_r}{y1}", body_vals))
+
+            table_y += 2 + len(rows)
+
+        data = [{"range": rng, "values": vals} for rng, vals in value_rows]
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"valueInputOption": "RAW", "data": data},
+            ),
+            is_write=True,
+        )
+
+        sh_id = self._sheet_id_by_title.get(sheet_title)
+        if sh_id is None:
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title[sheet_title]
+
+        col_l0 = col_l_idx - 1
+        col_r1 = col_r_idx
+
+        def rrange(*, r0: int, r1: int, c0: int, c1: int) -> dict[str, Any]:
+            return {
+                "sheetId": int(sh_id),
+                "startRowIndex": int(r0),
+                "endRowIndex": int(r1),
+                "startColumnIndex": int(c0),
+                "endColumnIndex": int(c1),
+            }
+
+        bg_hdr_info = _rgb(0.13, 0.15, 0.18)
+        bg_hdr_group = _rgb(0.86, 0.90, 0.96)
+        bg_hdr_period = _rgb(0.93, 0.94, 0.96)
+        bg_body_even = _rgb(1.0, 1.0, 1.0)
+        bg_body_odd = _rgb(0.97, 0.97, 0.97)
+
+        requests: list[dict[str, Any]] = []
+
+        # 源信息行：背景/字体
+        requests.append(
+            {
+                "repeatCell": {
+                    "range": rrange(r0=y - 1, r1=y, c0=col_l0, c1=col_r1),
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": bg_hdr_info,
+                            "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
+                            "wrapStrategy": "WRAP",
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy)",
+                }
+            }
+        )
+
+        # 每个 chunk 的 header/body 样式
+        table_y = y + 1
+        for chunk_cols in chunks:
+            # header 字体加粗
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=table_y - 1, r1=table_y + 1, c0=col_l0, c1=col_r1),
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "WRAP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            period_index: dict[str, int] = {}
+            period_by_col: list[str] = []
+            for c in chunk_cols + [""] * (width - len(chunk_cols)):
+                suf = _parse_period_suffix(str(c))
+                if suf and suf not in period_index:
+                    period_index[suf] = len(period_index)
+                period_by_col.append(suf)
+
+            def col_bg(suf: str, *, _period_index: dict[str, int] = period_index) -> dict[str, float]:
+                if not suf:
+                    return bg_body_odd
+                idx = int(_period_index.get(suf, 0))
+                return bg_body_even if idx % 2 == 0 else bg_body_odd
+
+            body_bgs = [col_bg(suf) for suf in period_by_col]
+
+            def add_bg_segments(*, row0: int, row1: int, bgs: list[dict[str, float]]) -> None:
+                start = 0
+                while start < width:
+                    bg = bgs[start]
+                    end = start + 1
+                    while end < width and bgs[end] == bg:
+                        end += 1
+                    requests.append(
+                        {
+                            "repeatCell": {
+                                "range": rrange(r0=row0, r1=row1, c0=col_l0 + start, c1=col_l0 + end),
+                                "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                                "fields": "userEnteredFormat.backgroundColor",
+                            }
+                        }
+                    )
+                    start = end
+
+            def add_field_group_separators(*, row0: int, row1: int, _cols: list[str] = chunk_cols) -> None:
+                sep_color = _rgb(0.70, 0.70, 0.70)
+                border = {"style": "SOLID_MEDIUM", "width": 2, "color": sep_color}
+                last_group = ""
+                for idx, c in enumerate(list(_cols) + [""] * (width - len(_cols))):
+                    g = _parse_field_group(str(c))
+                    if not g:
+                        continue
+                    if last_group and g != last_group:
+                        requests.append(
+                            {
+                                "updateBorders": {
+                                    "range": rrange(r0=row0, r1=row1, c0=col_l0 + idx, c1=col_l0 + idx + 1),
+                                    "left": border,
+                                }
+                            }
+                        )
+                    last_group = g
+
+            # header 背景（两行）
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
+                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_group}},
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
+            requests.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=table_y, r1=table_y + 1, c0=col_l0, c1=col_r1),
+                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_period}},
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
+            if rows:
+                body_r0 = table_y + 1
+                body_r1 = table_y + 1 + len(rows)
+                add_bg_segments(row0=body_r0, row1=body_r1, bgs=body_bgs)
+                add_field_group_separators(row0=table_y - 1, row1=body_r1)
+
+            # 字段组表头 merge
+            group_names = [_parse_field_group(str(c)) for c in chunk_cols] + [""] * (width - len(chunk_cols))
+            start = 0
+            while start < width:
+                g = group_names[start]
+                end = start + 1
+                while end < width and group_names[end] == g:
+                    end += 1
+                if g and end - start >= 2:
+                    requests.append(
+                        {
+                            "mergeCells": {
+                                "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0 + start, c1=col_l0 + end),
+                                "mergeType": "MERGE_ALL",
+                            }
+                        }
+                    )
+                start = end
+
+            table_y += 2 + len(rows)
+
+        # info 行合并（整行）
+        requests.append(
+            {
+                "mergeCells": {
+                    "range": {
+                        "sheetId": int(sh_id),
+                        "startRowIndex": y - 1,
+                        "endRowIndex": y,
+                        "startColumnIndex": col_l_idx - 1,
+                        "endColumnIndex": col_r_idx,
+                    },
+                    "mergeType": "MERGE_ALL",
+                }
+            }
+        )
+
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": requests},
+            ),
+            is_write=True,
+        )
+
+    def write_dashboard_variants(self, *, payloads: list[dict[str, Any]], col_l: str, min_col_r: str) -> dict[str, Any]:
+        """
+        生成 3 套“单面板高密度”看板变体（各自独立 tab，便于对比后择优）：
+        - 方案1：单元格内多周期（最窄，0 交互）
+        - 方案2：紧凑 + 原始展开（同一 tab 内上下两段；原始段浅灰）
+        - 方案3：纵向多周期（真表格，可排序/筛选，0 交互但更长）
+        """
+        variants = [
+            ("看板_方案1_单元格多周期", "v1"),
+            ("看板_方案2_紧凑+详情", "v2"),
+            ("看板_方案3_纵向多周期", "v3"),
+        ]
+
+        results: dict[str, Any] = {"ok": True, "variants": []}
+        for title, mode in variants:
+            # 变体 tab 用更窄的 col_r（按实际列数计算），但不小于 min_col_r
+            max_cols = 1
+            transformed: list[dict[str, Any]] = []
+            for p in payloads:
+                table = p.get("table") or {}
+                cols = table.get("columns") or []
+                rows = table.get("rows") or []
+                if not isinstance(cols, list) or not isinstance(rows, list):
+                    transformed.append(p)
+                    continue
+
+                cols_s = [str(c) for c in cols if c is not None]
+                if mode == "v1":
+                    vt: VariantTable = compact_cell_multiperiod(columns=cols_s, rows=rows)
+                    np = dict(p)
+                    np["table"] = {"columns": vt.columns, "rows": vt.rows}
+                    transformed.append(np)
+                    max_cols = max(max_cols, len(vt.columns))
+                elif mode == "v3":
+                    vt = vertical_multiperiod(columns=cols_s, rows=rows)
+                    np = dict(p)
+                    np["table"] = {"columns": vt.columns, "rows": vt.rows}
+                    transformed.append(np)
+                    max_cols = max(max_cols, len(vt.columns))
+                else:
+                    # v2：保留原始表（第二段），紧凑表（第一段）
+                    vt = compact_cell_multiperiod(columns=cols_s, rows=rows)
+                    np = dict(p)
+                    np["table"] = {"columns": vt.columns, "rows": vt.rows}
+                    # 原始表放到 params（只用于本次渲染，不落事实表）
+                    prm = dict(np.get("params") or {}) if isinstance(np.get("params"), dict) else {}
+                    prm["_variant_raw_table"] = {"columns": cols_s, "rows": rows}
+                    np["params"] = prm
+                    transformed.append(np)
+                    max_cols = max(max_cols, len(vt.columns), len(cols_s))
+
+            col_r = self.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=min_col_r)
+            self.reset_sheet_display(title=title, col_l=col_l, col_r=col_r, compact=True)
+
+            y = 1
+            for p in transformed:
+                # v2：先渲染紧凑表，再渲染原始展开表（浅灰标题）
+                if mode == "v2":
+                    raw_tbl = None
+                    prm = p.get("params") or {}
+                    if isinstance(prm, dict):
+                        raw_tbl = prm.get("_variant_raw_table")
+                    height = self._calc_dashboard_height(p, col_l=col_l, col_r=col_r)
+                    self._ensure_grid_size(title, min_rows=y + height, min_cols=_col_to_index(col_r))
+                    self._render_dashboard_to_sheet(p, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+                    y += height
+
+                    if isinstance(raw_tbl, dict):
+                        # 详情段：复用同一 header，但 title 加前缀，避免误解为另一张卡
+                        pp = dict(p)
+                        hdr = dict(pp.get("header") or {}) if isinstance(pp.get("header"), dict) else {}
+                        hdr["title"] = f"🔎 详情（原始展开） {str(hdr.get('title') or '').replace('📊', '').strip()}"
+                        pp["header"] = hdr
+                        pp["table"] = {
+                            "columns": list(raw_tbl.get("columns") or []),
+                            "rows": list(raw_tbl.get("rows") or []),
+                        }
+                        height2 = self._calc_dashboard_height(pp, col_l=col_l, col_r=col_r)
+                        self._ensure_grid_size(title, min_rows=y + height2, min_cols=_col_to_index(col_r))
+                        self._render_dashboard_to_sheet(pp, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+                        y += height2
+                    continue
+
+                height = self._calc_dashboard_height(p, col_l=col_l, col_r=col_r)
+                self._ensure_grid_size(title, min_rows=y + height, min_cols=_col_to_index(col_r))
+                self._render_dashboard_to_sheet(p, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+                y += height
+
+            results["variants"].append({"sheet": title, "mode": mode, "col_r": col_r, "cards": len(transformed)})
+
+        return results
+
     # ==================== ops ====================
     def reset_dashboard(self, *, col_l: str, col_r: str, compact: bool = False) -> dict[str, Any]:
         """
@@ -849,7 +1333,9 @@ class SaSheetsWriter:
             target_cols = max(_col_to_index(col_r_u), 1)
         except Exception:
             target_cols = 26
-        target_rows = 2000 if compact else max(int(self._grid_by_title.get(self._tab_dashboard, (2000, 0))[0] or 2000), 1)
+        target_rows = (
+            2000 if compact else max(int(self._grid_by_title.get(self._tab_dashboard, (2000, 0))[0] or 2000), 1)
+        )
         self._exec(
             self._sheets.spreadsheets().batchUpdate(
                 spreadsheetId=self._spreadsheet_id,
@@ -952,7 +1438,9 @@ class SaSheetsWriter:
         """
         self.ensure_schema()
         if self._schema_mode == "minimal":
-            raise RuntimeError("minimal_schema 下不支持从事实表重建：请先切回 SHEETS_SCHEMA_MODE=full 或关闭 --rebuild-dashboard")
+            raise RuntimeError(
+                "minimal_schema 下不支持从事实表重建：请先切回 SHEETS_SCHEMA_MODE=full 或关闭 --rebuild-dashboard"
+            )
 
         meta = self._meta_get()
         col_l = (meta.get("dashboard_col_l") or self._dashboard_col_l).strip().upper()
@@ -1600,6 +2088,14 @@ class SaSheetsWriter:
         self._refresh_sheet_map()
         keep: set[str] = {self._tab_dashboard}
 
+        # 可选：保留“看板变体 tab”（用于对比不同高密度布局）
+        # 默认不保留：避免用户只想保留最小集合时被额外 tab 污染。
+        keep_variants = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_VARIANTS", "0") or "0").strip() == "1"
+        if keep_variants:
+            for t in list(self._sheet_id_by_title.keys()):
+                if str(t).startswith("看板_方案"):
+                    keep.add(str(t))
+
         if keep_symbol_tabs is not None:
             for t in keep_symbol_tabs:
                 if t:
@@ -1977,7 +2473,7 @@ class SaSheetsWriter:
             group_row = group_row + [""] * (width - len(group_row))
             period_row = period_row + [""] * (width - len(period_row))
             value_rows.append((f"{self._tab_dashboard}!{col_l}{table_y}:{col_r}{table_y}", [group_row]))
-            value_rows.append((f"{self._tab_dashboard}!{col_l}{table_y+1}:{col_r}{table_y+1}", [period_row]))
+            value_rows.append((f"{self._tab_dashboard}!{col_l}{table_y + 1}:{col_r}{table_y + 1}", [period_row]))
 
             # body（从 table_y+2 开始）
             if rows:

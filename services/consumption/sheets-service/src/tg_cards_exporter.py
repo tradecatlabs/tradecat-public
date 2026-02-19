@@ -270,7 +270,7 @@ def _merge_multi_period_tables(
         t = per_period.get(p)
         if not t:
             continue
-        for c in (t.columns or []):
+        for c in t.columns or []:
             add_field(c)
 
     # period -> symbol -> field -> value

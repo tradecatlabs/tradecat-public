@@ -115,7 +115,9 @@ class Settings:
         symbol_tabs_mode = (os.environ.get("SHEETS_SYMBOL_TABS_MODE", "dashboard") or "dashboard").strip().lower()
         if symbol_tabs_mode not in {"dashboard", "every", "none"}:
             symbol_tabs_mode = "dashboard"
-        symbol_tabs_interval_seconds = int((os.environ.get("SHEETS_SYMBOL_TABS_INTERVAL_SECONDS", "900") or "900").strip())
+        symbol_tabs_interval_seconds = int(
+            (os.environ.get("SHEETS_SYMBOL_TABS_INTERVAL_SECONDS", "900") or "900").strip()
+        )
         include_blacklist = os.environ.get("SHEETS_EXPORT_INCLUDE_BLACKLIST", "0").strip() == "1"
         interval_seconds = int(os.environ.get("SHEETS_SYNC_INTERVAL_SECONDS", "60").strip() or "60")
         dry_run = os.environ.get("SHEETS_SYNC_DRY_RUN", "0").strip() == "1"
@@ -129,7 +131,9 @@ class Settings:
         idempotency_db_path = Path(idem_env).expanduser() if idem_env else (service_dir / "data" / "idempotency.db")
 
         local_meta_env = os.environ.get("SHEETS_LOCAL_META_PATH", "").strip()
-        local_meta_path = Path(local_meta_env).expanduser() if local_meta_env else (service_dir / "data" / "local_meta.json")
+        local_meta_path = (
+            Path(local_meta_env).expanduser() if local_meta_env else (service_dir / "data" / "local_meta.json")
+        )
 
         return Settings(
             write_mode=write_mode,

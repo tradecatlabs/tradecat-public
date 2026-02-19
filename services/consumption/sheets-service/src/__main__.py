@@ -39,6 +39,7 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="SA 模式：删除非必要 tab（仅保留 看板 + 配置的币种查询子表）",
     )
+    p.add_argument("--dashboard-variants", action="store_true", help="SA 模式：生成 3 套高密度看板变体（新建 tab）")
     p.add_argument("--rebuild-max-cards", type=int, default=200, help="重建：只取最后 N 张卡片（默认 200）")
     p.add_argument("--cards", default="", help="逗号分隔 card_id 白名单；空=全部")
     p.add_argument("--lang", default="", help="导出语言（默认 zh_CN）")
@@ -83,7 +84,13 @@ def _post_with_retry(
         _sleep_backoff(attempt, base=backoff_base_seconds, max_seconds=backoff_max_seconds)
 
 
-async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: str) -> int:
+async def _run_once(
+    settings: Settings,
+    *,
+    only_cards: list[str] | None,
+    lang: str,
+    dashboard_variants: bool,
+) -> int:
     if settings.write_mode == "webhook":
         if not settings.webhook_url or not settings.webhook_secret:
             print("❌ 缺少 SHEETS_WEBHOOK_URL / SHEETS_WEBHOOK_SECRET，无法发送（可先用 SHEETS_SYNC_DRY_RUN=1）")
@@ -215,6 +222,13 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
                 print(f"❌ 看板重绘失败 status={status} body={json.dumps(body, ensure_ascii=False)}")
                 return 3
             sent += 1
+
+        if dashboard_variants:
+            try:
+                assert sa_writer is not None
+                sa_writer.write_dashboard_variants(payloads=payloads, col_l=col_l, min_col_r="M")
+            except Exception as exc:
+                print(f"⚠️ 变体看板生成失败：{type(exc).__name__}: {exc}")
 
         # 币种查询子表（4 个交易对）：覆盖写，不走 facts（默认每 15 分钟刷新一次，避免配额爆炸）
         if settings.symbol_tabs_mode != "none" and settings.symbol_tabs:
@@ -431,13 +445,17 @@ def main() -> None:
 
     if args.daemon:
         while True:
-            rc = asyncio.run(_run_once(settings, only_cards=only_cards, lang=lang))
+            rc = asyncio.run(
+                _run_once(settings, only_cards=only_cards, lang=lang, dashboard_variants=args.dashboard_variants)
+            )
             if rc != 0:
                 # daemon 模式失败：不退出，避免写入临时错误导致服务退出；由外层守护脚本管理
                 print(f"⚠️ 本轮执行失败 rc={rc}，{settings.interval_seconds}s 后重试")
             time.sleep(max(settings.interval_seconds, 5))
     else:
-        rc = asyncio.run(_run_once(settings, only_cards=only_cards, lang=lang))
+        rc = asyncio.run(
+            _run_once(settings, only_cards=only_cards, lang=lang, dashboard_variants=args.dashboard_variants)
+        )
         sys.exit(rc)
 
 
