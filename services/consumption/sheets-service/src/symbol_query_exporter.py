@@ -135,7 +135,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     exporter = SingleTokenTxtExporter()
     exporter.lang = lang
 
-    values: list[list[str]] = []
+    values: list[list[Any]] = []
     panel_title_rows: list[int] = []
     panel_header_rows: list[int] = []
 
