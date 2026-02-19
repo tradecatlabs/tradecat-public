@@ -2248,6 +2248,12 @@ msgstr "Dist Key%"
 msgid "export.field.taker_buy"
 msgstr "Taker Buy"
 
+msgid "export.field.taker_sell"
+msgstr "Taker Sell"
+
+msgid "export.field.macd_hist"
+msgstr "MACD Histogram"
+
 
 msgid "export.field.harmonic"
 msgstr "Harmonic"

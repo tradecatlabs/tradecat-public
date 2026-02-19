@@ -2248,6 +2248,12 @@ msgstr "距关键位%"
 msgid "export.field.taker_buy"
 msgstr "主动买量"
 
+msgid "export.field.taker_sell"
+msgstr "主动卖量"
+
+msgid "export.field.macd_hist"
+msgstr "MACD柱状图"
+
 
 msgid "export.field.harmonic"
 msgstr "谐波值"
