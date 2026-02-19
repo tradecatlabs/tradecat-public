@@ -59,6 +59,18 @@ export SHEETS_REMOTE_DB_PATH="/home/nvidia/.projects/tradecat/libs/database/serv
 export SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS=3600
 ```
 
+### 3.1 一致性快照（可选但推荐）
+
+为了避免远端 SQLite 在 WAL/并发写入期间被直接拉取导致“不一致快照”，可以先在远端生成 `.backup` 快照再拉取：
+
+```bash
+export SHEETS_REMOTE_DB_SNAPSHOT=1
+export SHEETS_REMOTE_DB_SNAPSHOT_PATH="/tmp/tradecat_market_data.snapshot.db"
+export SHEETS_REMOTE_DB_SNAPSHOT_TIMEOUT_SECONDS=300
+```
+
+> 依赖：远端需要存在 `sqlite3` 命令；失败会自动降级为“直接拉取原始 DB”，不阻断主流程。
+
 ## 4) Google Sheets 写入：SA 模式（推荐 CLI）
 
 ```bash

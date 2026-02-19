@@ -141,6 +141,55 @@ def sh_quote(s: str) -> str:
     return "'" + v.replace("'", "'\"'\"'") + "'"
 
 
+def _remote_sqlite_backup(
+    *,
+    user_at_host: str,
+    key_path: str,
+    src_db_path: str,
+    snapshot_path: str,
+    timeout_seconds: int,
+) -> None:
+    """
+    在远端生成 SQLite 一致性快照（避免直接拉取正在写入的 DB 导致不一致）。
+
+    依赖：远端必须有 `python3`（标准库 sqlite3）。
+    注意：snapshot_path 建议使用无空格路径（默认 /tmp/...）。
+    """
+    snap = (snapshot_path or "").strip()
+    if not snap:
+        raise RuntimeError("empty_snapshot_path")
+    # 先删旧快照，避免行为依赖历史文件
+    remote_cmd = "\n".join(
+        [
+            "set -e",
+            f"export SRC_DB={sh_quote(src_db_path)}",
+            f"export SNAP_DB={sh_quote(snap)}",
+            "rm -f \"$SNAP_DB\"",
+            "python3 - <<'PY'",
+            "import os",
+            "import sqlite3",
+            "",
+            "src = os.environ['SRC_DB']",
+            "dst = os.environ['SNAP_DB']",
+            "",
+            "# 生成一致性快照（不会受 WAL/并发写入影响）",
+            "conn = sqlite3.connect(src, timeout=30)",
+            "try:",
+            "    bak = sqlite3.connect(dst)",
+            "    try:",
+            "        conn.backup(bak)",
+            "    finally:",
+            "        bak.close()",
+            "finally:",
+            "    conn.close()",
+            "PY",
+        ]
+    )
+    res = _ssh_run(user_at_host=user_at_host, key_path=key_path, remote_cmd=remote_cmd, timeout_seconds=timeout_seconds)
+    if res.returncode != 0:
+        raise RuntimeError(f"remote_sqlite_backup_failed rc={res.returncode} stderr={res.stderr.strip()[:500]}")
+
+
 def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
     """
     准备一个本地可读的 market_data.db：
@@ -200,11 +249,33 @@ def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
             pass
 
     # 更稳：优先 rsync（支持断点续传）；失败再退回 scp
+    # 可选：先在远端生成一致性快照再拉取（避免 WAL/并发写入导致本地 DB 不一致）
+    snapshot_enabled = (os.environ.get("SHEETS_REMOTE_DB_SNAPSHOT", "0") or "0").strip() == "1"
+    snapshot_path = (os.environ.get("SHEETS_REMOTE_DB_SNAPSHOT_PATH", "/tmp/tradecat_market_data.snapshot.db") or "").strip()
+    snapshot_timeout = int((os.environ.get("SHEETS_REMOTE_DB_SNAPSHOT_TIMEOUT_SECONDS", "300") or "300").strip() or "300")
+
+    pull_remote_path = spec.remote_db_path
+    snapshot_ok = False
+    if snapshot_enabled:
+        try:
+            _remote_sqlite_backup(
+                user_at_host=uah,
+                key_path=key_path,
+                src_db_path=spec.remote_db_path,
+                snapshot_path=snapshot_path,
+                timeout_seconds=snapshot_timeout,
+            )
+            pull_remote_path = snapshot_path
+            snapshot_ok = True
+        except Exception as exc:
+            # 失败降级：继续拉取原始 DB（不阻断主流程）
+            _write_meta(spec.meta_path, {"remote_db.snapshot_error": f"{type(exc).__name__}: {exc}"[:500]})
+
     try:
         _rsync_get(
             user_at_host=uah,
             key_path=key_path,
-            remote_path=spec.remote_db_path,
+            remote_path=pull_remote_path,
             local_path=spec.local_db_path,
             timeout_seconds=3600,
         )
@@ -212,10 +283,22 @@ def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
         _scp_get(
             user_at_host=uah,
             key_path=key_path,
-            remote_path=spec.remote_db_path,
+            remote_path=pull_remote_path,
             local_path=spec.local_db_path,
             timeout_seconds=3600,
         )
+
+    # 拉取完成：清理远端快照（避免 /tmp 持续堆积）
+    if snapshot_enabled and snapshot_ok:
+        try:
+            _ssh_run(
+                user_at_host=uah,
+                key_path=key_path,
+                remote_cmd=f"rm -f {sh_quote(pull_remote_path)}",
+                timeout_seconds=15,
+            )
+        except Exception:
+            pass
 
     # 传输完成后再取一次远端签名（避免“传输期间远端文件更新”导致 sig 漂移）
     try:
@@ -233,6 +316,9 @@ def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
             "remote_db.local_path": str(spec.local_db_path),
             "remote_db.sig": sig,
             "remote_db.last_pull_epoch": str(now),
+            "remote_db.snapshot_enabled": "1" if snapshot_enabled else "0",
+            "remote_db.snapshot_ok": "1" if snapshot_ok else "0",
+            "remote_db.snapshot_path": snapshot_path if snapshot_enabled else "",
         },
     )
 
