@@ -1200,11 +1200,13 @@ class SaSheetsWriter:
         - 方案1：单元格内多周期（最窄，0 交互）
         - 方案2：紧凑 + 原始展开（同一 tab 内上下两段；原始段浅灰）
         - 方案3：纵向多周期（真表格，可排序/筛选，0 交互但更长）
+        - 方案4：纵向多周期 + 合并币种单元格（每个币种 7 行周期，币种列纵向 merge）
         """
         variants = [
             ("看板_方案1_单元格多周期", "v1"),
             ("看板_方案2_紧凑+详情", "v2"),
             ("看板_方案3_纵向多周期", "v3"),
+            ("看板_方案4_纵向合并币种", "v4"),
         ]
 
         results: dict[str, Any] = {"ok": True, "variants": []}
@@ -1227,7 +1229,7 @@ class SaSheetsWriter:
                     np["table"] = {"columns": vt.columns, "rows": vt.rows}
                     transformed.append(np)
                     max_cols = max(max_cols, len(vt.columns))
-                elif mode == "v3":
+                elif mode in {"v3", "v4"}:
                     vt = vertical_multiperiod(columns=cols_s, rows=rows)
                     np = dict(p)
                     np["table"] = {"columns": vt.columns, "rows": vt.rows}
@@ -1280,11 +1282,127 @@ class SaSheetsWriter:
                 height = self._calc_dashboard_height(p, col_l=col_l, col_r=col_r)
                 self._ensure_grid_size(title, min_rows=y + height, min_cols=_col_to_index(col_r))
                 self._render_dashboard_to_sheet(p, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+
+                # v4：对“纵向多周期表”的币种列做纵向合并（每个币种通常对应 7 行周期）
+                if mode == "v4":
+                    try:
+                        table = p.get("table") or {}
+                        cols = table.get("columns") or []
+                        rows = table.get("rows") or []
+                        if isinstance(cols, list) and isinstance(rows, list) and cols:
+                            sym_col = str(cols[0] or "").strip() or "币种"
+                            # body 第 1 行：y(info) + 2(header rows) + 1
+                            body_start_row_1 = int(y) + 3
+                            self._merge_symbol_column_groups_on_sheet(
+                                sheet_title=title,
+                                col_l=col_l,
+                                sym_col=sym_col,
+                                body_start_row_1=body_start_row_1,
+                                body_rows=rows,
+                            )
+                    except Exception:
+                        pass
+
                 y += height
 
             results["variants"].append({"sheet": title, "mode": mode, "col_r": col_r, "cards": len(transformed)})
 
         return results
+
+    def _merge_symbol_column_groups_on_sheet(
+        self,
+        *,
+        sheet_title: str,
+        col_l: str,
+        sym_col: str,
+        body_start_row_1: int,
+        body_rows: list[dict[str, Any]],
+    ) -> None:
+        """
+        将同一币种的连续行在“币种列”纵向合并，提升纵向多周期表的可读性。
+        - 只合并 body（不动 header）
+        - 只合并连续相同值（不强依赖 7 行/币种的假设）
+        """
+        if not body_rows:
+            return
+
+        sh_id = self._sheet_id_by_title.get(sheet_title)
+        if sh_id is None:
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title.get(sheet_title)
+        if sh_id is None:
+            return
+
+        col_l_idx = _col_to_index(col_l)
+        sym_col_idx0 = col_l_idx - 1  # 币种列在该变体中固定为第一列（A 起始）
+
+        def val_at(i: int) -> str:
+            try:
+                r = body_rows[i]
+                v = r.get(sym_col)
+                return "" if v is None else str(v).strip()
+            except Exception:
+                return ""
+
+        requests: list[dict[str, Any]] = []
+        i = 0
+        while i < len(body_rows):
+            v0 = val_at(i)
+            j = i + 1
+            while j < len(body_rows) and val_at(j) == v0:
+                j += 1
+            span = j - i
+            if v0 and span >= 2:
+                r0 = (body_start_row_1 + i) - 1
+                r1 = (body_start_row_1 + j) - 1
+                requests.append(
+                    {
+                        "mergeCells": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": int(sym_col_idx0),
+                                "endColumnIndex": int(sym_col_idx0 + 1),
+                            },
+                            "mergeType": "MERGE_ALL",
+                        }
+                    }
+                )
+                # 合并后居中（更像“分组标题”）
+                requests.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": int(sym_col_idx0),
+                                "endColumnIndex": int(sym_col_idx0 + 1),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "textFormat": {"bold": True},
+                                }
+                            },
+                            "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold)",
+                        }
+                    }
+                )
+            i = j
+
+        if not requests:
+            return
+
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": requests},
+            ),
+            is_write=True,
+        )
 
     # ==================== ops ====================
     def reset_dashboard(self, *, col_l: str, col_r: str, compact: bool = False) -> dict[str, Any]:
