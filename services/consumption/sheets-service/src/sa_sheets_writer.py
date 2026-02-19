@@ -234,7 +234,26 @@ class SaSheetsWriter:
     def _exec(self, req: Any, *, is_write: bool) -> Any:
         if is_write:
             self._write_limiter.acquire()
-        return req.execute()
+            return req.execute()
+
+        # 读请求也可能在弱网/代理环境下超时；读是幂等的，可以安全重试。
+        try:
+            read_retries = int((os.environ.get("SHEETS_SA_READ_RETRIES", "3") or "3").strip())
+        except Exception:
+            read_retries = 3
+        read_retries = max(read_retries, 0)
+
+        attempt = 0
+        while True:
+            try:
+                return req.execute()
+            except TimeoutError:
+                if attempt >= read_retries:
+                    raise
+                # 简单指数退避：1s,2s,4s...（上限 8s），避免瞬时抖动导致整轮失败
+                delay = min(1.0 * (2**attempt), 8.0)
+                time.sleep(delay)
+                attempt += 1
 
     # ==================== runtime overrides（用于 CLI/运维） ====================
     def set_dashboard_mode(self, mode: str) -> None:
