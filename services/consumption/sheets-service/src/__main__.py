@@ -16,7 +16,7 @@ from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
 from src.repo import find_repo_root
 from src.sa_sheets_writer import SaSheetsWriter
-from src.symbol_query_exporter import export_symbol_full_txt, normalize_symbol_tab_title
+from src.symbol_query_exporter import export_symbol_query_sheet, normalize_symbol_tab_title
 from src.tg_cards_exporter import TgCardsExporter
 from src.webhook_client import SheetsWebhookClient
 
@@ -222,8 +222,8 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
             if should:
                 for sym in settings.symbol_tabs:
                     tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
-                    txt = export_symbol_full_txt(symbol=sym, lang=lang)
-                    sa_writer.write_symbol_txt_tab(tab_title=tab_title, text=txt)
+                    sheet = export_symbol_query_sheet(symbol=sym, lang=lang)
+                    sa_writer.write_symbol_query_tab(tab_title=tab_title, sheet=sheet)
                 sa_writer.meta_set({"symbol_tabs_last_epoch": str(now)})
 
         print(f"✅ 看板重绘完成 mode=dashboard cards={sent} col_l={col_l} col_r={col_r}")
@@ -289,8 +289,8 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
         assert sa_writer is not None
         for sym in settings.symbol_tabs:
             tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
-            txt = export_symbol_full_txt(symbol=sym, lang=lang)
-            sa_writer.write_symbol_txt_tab(tab_title=tab_title, text=txt)
+            sheet = export_symbol_query_sheet(symbol=sym, lang=lang)
+            sa_writer.write_symbol_query_tab(tab_title=tab_title, sheet=sheet)
 
     print(
         f"✅ flush 完成 appended={appended} skipped_append={skipped_append} sent={sent} skipped={skipped} checkpoint={outbox.load_checkpoint()} mode={settings.write_mode}"
