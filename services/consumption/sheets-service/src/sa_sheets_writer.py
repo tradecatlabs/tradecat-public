@@ -499,7 +499,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v2"
+        style_version = "symbol_table_v3"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -596,12 +596,26 @@ class SaSheetsWriter:
                     }
                 }
             )
+
+            raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
+            try:
+                raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
+            except Exception:
+                raw_block_start_col_0 = None
+
+            # columns >= C：默认 90；若存在 raw 镜像区，则 display/raw 区域分别设置宽度并可隐藏
             for ci in range(2, int(target_cols)):
+                px = 90
+                if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
+                    if ci == int(raw_block_start_col_0):
+                        px = 26  # 分隔列
+                    elif int(raw_block_start_col_0) < ci < int(n_cols):
+                        px = 80  # raw 周期列
                 reqs.append(
                     {
                         "updateDimensionProperties": {
                             "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": ci, "endIndex": ci + 1},
-                            "properties": {"pixelSize": 90},
+                            "properties": {"pixelSize": int(px)},
                             "fields": "pixelSize",
                         }
                     }
@@ -624,6 +638,65 @@ class SaSheetsWriter:
                         }
                     }
                 )
+
+            # raw 镜像区：浅灰底 + 可隐藏（默认隐藏）
+            if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
+                raw_sep = int(raw_block_start_col_0)
+                raw_end = int(n_cols)
+
+                # separator column subtle bg
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": int(target_rows),
+                                "startColumnIndex": raw_sep,
+                                "endColumnIndex": raw_sep + 1,
+                            },
+                            "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.97, 0.97, 0.97)}},
+                            "fields": "userEnteredFormat(backgroundColor)",
+                        }
+                    }
+                )
+
+                # raw columns bg
+                if raw_end > raw_sep + 1:
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": 0,
+                                    "endRowIndex": int(target_rows),
+                                    "startColumnIndex": raw_sep + 1,
+                                    "endColumnIndex": raw_end,
+                                },
+                                "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.985, 0.985, 0.99)}},
+                                "fields": "userEnteredFormat(backgroundColor)",
+                            }
+                        }
+                    )
+
+                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "hidden") or "hidden").strip().lower()
+                if raw_mode not in {"hidden", "show", "off"}:
+                    raw_mode = "hidden"
+                if raw_mode != "off":
+                    reqs.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": raw_sep,
+                                    "endIndex": raw_end,
+                                },
+                                "properties": {"hiddenByUser": raw_mode == "hidden"},
+                                "fields": "hiddenByUser",
+                            }
+                        }
+                    )
 
             # freeze top info rows
             reqs.append(

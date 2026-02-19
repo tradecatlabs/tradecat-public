@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import sys
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from src.repo import find_repo_root, find_telegram_service_src
 
@@ -27,16 +29,78 @@ class SymbolQuerySheet:
     """
     “币种查询”导出（用于写入 Google Sheets 的真表格，而不是伪表格文本）。
 
-    values: 2D 表格（每个元素为单元格值，统一用字符串口径写入）
+    values: 2D 表格（每个元素为单元格值；支持 number 写入以便排序/图表）
     panel_title_rows/panel_header_rows: 1-based 行号，用于 writer 上色
     """
 
     symbol: str
-    values: list[list[str]]
+    values: list[list[Any]]
     panel_title_rows: list[int]
     panel_header_rows: list[int]
     n_rows: int
     n_cols: int
+    raw_block_start_col_0: int | None = None
+
+
+_NUM_SUFFIX = {
+    "K": 1_000.0,
+    "M": 1_000_000.0,
+    "B": 1_000_000_000.0,
+    "T": 1_000_000_000_000.0,
+}
+
+
+def _coerce_number(v: object) -> float | int | None:
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return v
+
+    if not isinstance(v, str):
+        return None
+
+    s = v.strip()
+    if not s or s == "-":
+        return None
+
+    sign = 1.0
+    if s[0] == "+":
+        s = s[1:].strip()
+    elif s[0] == "-":
+        sign = -1.0
+        s = s[1:].strip()
+
+    is_percent = s.endswith("%")
+    if is_percent:
+        s = s[:-1].strip()
+
+    mult = 1.0
+    if s and s[-1].upper() in _NUM_SUFFIX:
+        mult = _NUM_SUFFIX[s[-1].upper()]
+        s = s[:-1].strip()
+
+    s = s.replace(",", "")
+    try:
+        x = float(s)
+    except Exception:
+        return None
+
+    x = sign * x * mult
+    # 百分号按“百分数”保留（例如 "0.15%" -> 0.15），不转小数 0.0015
+    if is_percent:
+        return int(x) if float(int(x)) == x else x
+    return int(x) if float(int(x)) == x else x
+
+
+def _raw_value(*, val: object, display: object) -> float | int | None:
+    x = _coerce_number(val)
+    if x is not None:
+        return x
+    return _coerce_number(display)
 
 
 def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuerySheet:
@@ -75,13 +139,21 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     panel_title_rows: list[int] = []
     panel_header_rows: list[int] = []
 
-    def pad_row(row: list[str], n_cols: int) -> list[str]:
+    def pad_row(row: list[Any], n_cols: int) -> list[Any]:
         if len(row) >= n_cols:
             return row[:n_cols]
         return row + [""] * (n_cols - len(row))
 
     # 统一列宽：2 个维度列 + 7 个周期列
-    n_cols = 2 + len(periods_all)
+    # - 为了支持表内排序/阈值/图表，追加一个“raw 镜像区”（默认隐藏）：[分隔列] + raw(7周期)
+    n_display = len(periods_all)
+    raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "hidden") or "hidden").strip().lower()
+    if raw_mode not in {"hidden", "show", "off"}:
+        raw_mode = "hidden"
+
+    include_raw = raw_mode != "off"
+    raw_block_start_col_0 = (2 + n_display) if include_raw else None  # 分隔列起始（0-based）
+    n_cols = (2 + n_display + 1 + n_display) if include_raw else (2 + n_display)
 
     # -------------------- 顶部信息块 --------------------
     values.append(
@@ -140,7 +212,10 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
 
         # 横表：指标组/指标 + 周期列
         panel_header_rows.append(len(values) + 1)
-        values.append(pad_row(["指标组", "指标", *periods_all], n_cols))
+        if include_raw:
+            values.append(pad_row(["指标组", "指标", *periods_all, "原始值", *periods_all], n_cols))
+        else:
+            values.append(pad_row(["指标组", "指标", *periods_all], n_cols))
 
         # panel periods（期货面板没有 1m）
         cfg_periods = tuple(config.get("periods") or periods_all)
@@ -150,23 +225,46 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         for table_name, fields in tables.items():
             for field_id, display_key, formatter in fields:
                 display_name = _t(display_key, lang=lang)
-                row: list[str] = [str(table_name), str(display_name)]
+                display_row: list[Any] = [str(table_name), str(display_name)]
+                raw_row: list[Any] = []
                 for p in periods_all:
                     if str(p) not in cfg_periods_set:
-                        row.append("-")
+                        display_row.append("-")
+                        if include_raw:
+                            raw_row.append("")
                         continue
                     data = exporter._get_data(str(table_name), sym, str(p))  # noqa: SLF001
                     if not data:
-                        row.append("-")
+                        display_row.append("-")
+                        if include_raw:
+                            raw_row.append("")
                         continue
                     val = data.get(field_id)
                     if formatter is str and isinstance(val, str):
                         val = translate_value(val, lang=lang)
                     try:
-                        row.append("-" if val is None else str(formatter(val)))
+                        disp = "-" if val is None else formatter(val)
+                        if formatter is str and isinstance(disp, str):
+                            disp = translate_value(disp, lang=lang)
+                        display_row.append("-" if disp is None else str(disp))
+                        if include_raw:
+                            if val is None:
+                                raw_row.append("")
+                            else:
+                                raw = _raw_value(val=val, display=disp)
+                                raw_row.append("" if raw is None else raw)
                     except Exception:
-                        row.append("-" if val is None else str(val))
-                values.append(pad_row(row, n_cols))
+                        display_row.append("-" if val is None else str(val))
+                        if include_raw:
+                            if val is None:
+                                raw_row.append("")
+                            else:
+                                raw = _raw_value(val=val, display=val)
+                                raw_row.append("" if raw is None else raw)
+                if include_raw:
+                    values.append(pad_row([*display_row, "", *raw_row], n_cols))
+                else:
+                    values.append(pad_row(display_row, n_cols))
             # table 分隔空行
             values.append([""] * n_cols)
 
@@ -177,6 +275,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         panel_header_rows=panel_header_rows,
         n_rows=len(values),
         n_cols=n_cols,
+        raw_block_start_col_0=raw_block_start_col_0,
     )
 
 
