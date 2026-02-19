@@ -499,7 +499,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v1"
+        style_version = "symbol_table_v2"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -631,7 +631,7 @@ class SaSheetsWriter:
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 3, "frozenColumnCount": 0},
+                            "gridProperties": {"frozenRowCount": 3, "frozenColumnCount": 2},
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
                     }
