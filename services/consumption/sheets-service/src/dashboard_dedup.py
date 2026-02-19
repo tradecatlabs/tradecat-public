@@ -52,14 +52,13 @@ def inject_base_card_and_dedup(payloads: list[dict[str, Any]]) -> list[dict[str,
     if not enabled:
         return payloads
 
-    base_groups = set(
-        _env_csv(
-            "SHEETS_BASE_FIELD_GROUPS",
-            # 默认：这些字段在多数排行榜卡片里重复出现（属于“基础行情字段”）
-            "成交额,振幅,成交笔数,主动买卖比,价格",
-        )
+    base_groups_list = _env_csv(
+        "SHEETS_BASE_FIELD_GROUPS",
+        # 默认：这些字段在多数排行榜卡片里重复出现（属于“基础行情字段”）
+        "成交额,振幅,成交笔数,主动买卖比,价格",
     )
-    if not base_groups:
+    base_groups = set(base_groups_list)
+    if not base_groups_list:
         return payloads
 
     periods_order = _env_csv("SHEETS_BASE_PERIODS", "1m,5m,15m,1h,4h,1d,1w")
@@ -134,7 +133,10 @@ def inject_base_card_and_dedup(payloads: list[dict[str, Any]]) -> list[dict[str,
 
     # 只保留“实际存在”的 base 列
     base_cols: list[str] = [symbol_col]
-    for g in sorted(base_groups):
+    for g in base_groups_list:
+        # non-multi（无 @）也支持：只出现一次
+        if g in present_cols:
+            base_cols.append(g)
         for per in periods_order:
             key = f"{g}@{per}"
             if key in present_cols:
