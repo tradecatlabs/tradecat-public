@@ -12,7 +12,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.dashboard_variants import PERIODS_DEFAULT, VariantTable, compact_cell_multiperiod, vertical_multiperiod
+from src.dashboard_variants import (
+    PERIODS_DEFAULT,
+    VariantTable,
+    compact_cell_multiperiod,
+    field_rows_period_columns,
+    vertical_multiperiod,
+)
 
 
 def _col_to_index(col: str) -> int:
@@ -1213,7 +1219,7 @@ class SaSheetsWriter:
                     }
                 )
                 if rows:
-                    # 若存在“周期”列：按周期行灰白交替；否则保持默认背景
+                    # (a) 若存在“周期”列：按周期行灰白交替
                     body_r0 = table_y  # 0-based: header(1 row) ends at table_y, body begins at table_y
                     body_r1 = table_y + len(rows)
                     if "周期" in (str(c or "").strip() for c in columns):
@@ -1259,6 +1265,29 @@ class SaSheetsWriter:
                                 }
                             }
                         )
+                    else:
+                        # (b) 若表头包含周期列（1m..1w）：按周期列灰白交替（字段纵向+周期横向）
+                        # 只对当前 chunk 里的周期列着色；其它列保持默认背景。
+                        period_cols = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
+                        for idx, c in enumerate(list(chunk_cols) + [""] * (width - len(chunk_cols))):
+                            name = str(c or "").strip()
+                            if name not in period_cols:
+                                continue
+                            bg = bg_body_even if int(period_cols[name]) % 2 == 0 else bg_body_odd
+                            requests.append(
+                                {
+                                    "repeatCell": {
+                                        "range": rrange(
+                                            r0=body_r0,
+                                            r1=body_r1,
+                                            c0=col_l0 + idx,
+                                            c1=col_l0 + idx + 1,
+                                        ),
+                                        "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                                        "fields": "userEnteredFormat.backgroundColor",
+                                    }
+                                }
+                            )
 
             table_y += header_rows + len(rows)
 
@@ -1289,17 +1318,19 @@ class SaSheetsWriter:
 
     def write_dashboard_variants(self, *, payloads: list[dict[str, Any]], col_l: str, min_col_r: str) -> dict[str, Any]:
         """
-        生成 3 套“单面板高密度”看板变体（各自独立 tab，便于对比后择优）：
+        生成“单面板高密度”看板变体（各自独立 tab，便于对比后择优）：
         - 方案1：单元格内多周期（最窄，0 交互）
         - 方案2：紧凑 + 原始展开（同一 tab 内上下两段；原始段浅灰）
         - 方案3：纵向多周期（真表格，可排序/筛选，0 交互但更长）
         - 方案4：纵向多周期 + 合并币种单元格（每个币种 7 行周期，币种列纵向 merge）
+        - 方案5：字段纵向 + 周期横向（宽度稳定，适合冻结）
         """
         variants = [
             ("看板_方案1_单元格多周期", "v1"),
             ("看板_方案2_紧凑+详情", "v2"),
             ("看板_方案3_纵向多周期", "v3"),
             ("看板_方案4_纵向合并币种", "v4"),
+            ("看板_方案5_字段纵向周期横向", "v5"),
         ]
 
         # 允许只生成指定方案，避免写入配额爆炸
@@ -1311,9 +1342,9 @@ class SaSheetsWriter:
                 s = it.strip().lower()
                 if not s:
                     continue
-                if s in {"1", "2", "3", "4"}:
+                if s in {"1", "2", "3", "4", "5"}:
                     want.add(f"v{s}")
-                elif s.startswith("v") and s[1:] in {"1", "2", "3", "4"}:
+                elif s.startswith("v") and s[1:] in {"1", "2", "3", "4", "5"}:
                     want.add(f"v{s[1:]}")
             if want:
                 variants = [(t, m) for (t, m) in variants if m in want]
@@ -1344,6 +1375,12 @@ class SaSheetsWriter:
                     np["table"] = {"columns": vt.columns, "rows": vt.rows}
                     transformed.append(np)
                     max_cols = max(max_cols, len(vt.columns))
+                elif mode == "v5":
+                    vt = field_rows_period_columns(columns=cols_s, rows=rows)
+                    np = dict(p)
+                    np["table"] = {"columns": vt.columns, "rows": vt.rows}
+                    transformed.append(np)
+                    max_cols = max(max_cols, len(vt.columns))
                 else:
                     # v2：保留原始表（第二段），紧凑表（第一段）
                     vt = compact_cell_multiperiod(columns=cols_s, rows=rows)
@@ -1357,7 +1394,7 @@ class SaSheetsWriter:
                     max_cols = max(max_cols, len(vt.columns), len(cols_s))
 
             col_r = self.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=min_col_r)
-            frozen_cols = 2 if mode in {"v3", "v4"} else 0
+            frozen_cols = 2 if mode in {"v3", "v4", "v5"} else 0
             self.reset_sheet_display(
                 title=title,
                 col_l=col_l,
@@ -1418,7 +1455,7 @@ class SaSheetsWriter:
                     y=y,
                     col_l=col_l,
                     col_r=col_r,
-                    merge_info_row=mode not in {"v3", "v4"},
+                    merge_info_row=mode not in {"v3", "v4", "v5"},
                 )
 
                 # v4：对“纵向多周期表”的币种列做纵向合并（每个币种通常对应 7 行周期）
