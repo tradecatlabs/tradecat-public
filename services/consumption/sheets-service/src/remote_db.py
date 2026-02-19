@@ -118,7 +118,8 @@ def _rsync_get(*, user_at_host: str, key_path: str, remote_path: str, local_path
         ],
         timeout_seconds=timeout_seconds,
     )
-    if res.returncode != 0:
+    # rsync 可能因“传输期间远端文件被更新”返回 24（部分文件消失/变化），但该场景下本地仍可能拿到完整快照。
+    if res.returncode not in {0, 24}:
         raise RuntimeError(f"rsync_failed rc={res.returncode} stderr={res.stderr.strip()[:500]}")
     part.replace(local_path)
 
@@ -215,6 +216,13 @@ def ensure_local_market_db(spec: RemoteDbSpec) -> dict[str, Any]:
             local_path=spec.local_db_path,
             timeout_seconds=3600,
         )
+
+    # 传输完成后再取一次远端签名（避免“传输期间远端文件更新”导致 sig 漂移）
+    try:
+        mtime2, size2 = _remote_sig_ssh(user_at_host=uah, key_path=key_path, remote_path=spec.remote_db_path)
+        sig = f"{mtime2}:{size2}"
+    except Exception:
+        pass
     _write_meta(
         spec.meta_path,
         {
