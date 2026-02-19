@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 import time
 from dataclasses import replace
@@ -116,14 +115,6 @@ async def _run_once(
             print(f"🛰️ 使用远程 market_data.db: action={res.get('action')} local={res.get('local_db')}")
     except Exception as exc:
         print(f"⚠️ 远程数据源准备失败（将继续使用本机 DB）：{type(exc).__name__}: {exc}")
-
-    # 服务器数据源场景：默认关闭“本机 SYMBOLS_GROUP_*”过滤，避免只导出 main4 这种小集合。
-    # 说明：
-    # - telegram-service 的 data_provider 会读 libs/common/symbols.py 的 SYMBOLS_GROUPS 配置并做过滤
-    # - 这里把 SYMBOLS_GROUPS 强制设为 auto（即不做过滤），让“币种范围”以 DB 实际数据为准
-    # - 用户仍可显式设置 SHEETS_EXPORT_SYMBOLS_UNFILTERED=0 来恢复过滤
-    if settings.remote_db_mode != "off":
-        os.environ.setdefault("SHEETS_EXPORT_SYMBOLS_UNFILTERED", "1")
 
     if settings.write_mode == "webhook":
         if not settings.webhook_url or not settings.webhook_secret:
