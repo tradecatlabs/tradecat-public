@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from dataclasses import replace
@@ -12,6 +13,7 @@ from dotenv import load_dotenv
 
 from src.config import Settings
 from src.dashboard_dedup import inject_base_card_and_dedup
+from src.dashboard_variants import field_rows_period_columns
 from src.idempotency import IdempotencyStore
 from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
@@ -213,14 +215,23 @@ async def _run_once(
         # 主看板去重：把“重复基础字段”抽到第一个“基础数据”卡片，其它卡片删掉这些列
         payloads = inject_base_card_and_dedup(payloads)
 
-        # dedup 可能新增/删除列：重算 max_cols，用于 auto width
-        max_cols = 1
-        for payload in payloads:
-            cols = (payload.get("table") or {}).get("columns") or []
-            try:
-                max_cols = max(max_cols, len(cols))
-            except Exception:
-                pass
+        # 选择主看板渲染方案：
+        # - v5：字段纵向 + 周期横向（宽度稳定、可冻结、可筛选；当前默认）
+        # - legacy：保留原始“超宽分块纵向堆叠”渲染
+        main_variant = (os.environ.get("SHEETS_DASHBOARD_MAIN_VARIANT", "5") or "5").strip().lower()
+        use_v5_main = main_variant in {"5", "v5", "方案5"}
+
+        # 为 auto width 预估列数（v5 固定 9 列；legacy 取原始最大列数）
+        if use_v5_main:
+            max_cols = 9
+        else:
+            max_cols = 1
+            for payload in payloads:
+                cols = (payload.get("table") or {}).get("columns") or []
+                try:
+                    max_cols = max(max_cols, len(cols))
+                except Exception:
+                    pass
 
         if settings.dry_run:
             print(
@@ -229,25 +240,59 @@ async def _run_once(
             return 0
 
         assert sa_writer is not None
-        # dashboard 模式强制用 append（配合 reset），实现“紧凑排布、不卡槽位、不卡高度”
-        sa_writer.set_dashboard_mode("append")
+        # minimal schema：确保只保留“主看板 + 配置的币种查询 tab”，避免旧表残留/复活。
+        if settings.schema_mode == "minimal":
+            keep_symbol_tabs = []
+            for sym in settings.symbol_tabs or []:
+                keep_symbol_tabs.append(normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix))
+            try:
+                sa_writer.prune_tabs(symbol_tab_prefix=settings.symbol_tab_prefix, keep_symbol_tabs=keep_symbol_tabs)
+            except Exception as exc:
+                print(f"⚠️ prune_tabs 失败（将继续执行）：{type(exc).__name__}: {exc}")
 
         # 自动宽度：避免“超宽表头纵向分块”让用户误以为列丢失
         col_l = settings.dashboard_col_l
         col_r = settings.dashboard_col_r
         if settings.dashboard_auto_width:
-            col_r = sa_writer.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=col_r)
+            min_r = "I" if use_v5_main else col_r
+            col_r = sa_writer.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=min_r)
 
         sent = 0
         if not dashboard_variants_only:
-            sa_writer.reset_dashboard(col_l=col_l, col_r=col_r, compact=True)
+            if use_v5_main:
+                # v5 主表：先将每张卡的原始表结构变换为 v5 统一表头（币种/字段/7周期）
+                transformed: list[dict] = []
+                for p in payloads:
+                    table = p.get("table") or {}
+                    cols = table.get("columns") or []
+                    rows = table.get("rows") or []
+                    if isinstance(cols, list) and isinstance(rows, list):
+                        cols_s = [str(c) for c in cols if c is not None]
+                        vt = field_rows_period_columns(columns=cols_s, rows=rows)
+                        np = dict(p)
+                        np["table"] = {"columns": vt.columns, "rows": vt.rows}
+                        transformed.append(np)
+                    else:
+                        transformed.append(p)
 
-            for p in payloads:
-                ok, status, body = _send_one(p)
-                if not ok:
-                    print(f"❌ 看板重绘失败 status={status} body={json.dumps(body, ensure_ascii=False)}")
+                try:
+                    sa_writer.write_dashboard_v5_main(payloads=transformed, col_l=col_l, col_r=col_r)
+                    sent = len(transformed)
+                except Exception as exc:
+                    print(f"❌ 看板重绘失败（v5）{type(exc).__name__}: {exc}")
                     return 3
-                sent += 1
+            else:
+                # legacy：逐张卡写入（兼容“超宽字段分块纵向堆叠”）
+                # dashboard 模式强制用 append（配合 reset），实现“紧凑排布、不卡槽位、不卡高度”
+                sa_writer.set_dashboard_mode("append")
+                sa_writer.reset_dashboard(col_l=col_l, col_r=col_r, compact=True)
+
+                for p in payloads:
+                    ok, status, body = _send_one(p)
+                    if not ok:
+                        print(f"❌ 看板重绘失败 status={status} body={json.dumps(body, ensure_ascii=False)}")
+                        return 3
+                    sent += 1
 
         if dashboard_variants or dashboard_variants_only:
             try:

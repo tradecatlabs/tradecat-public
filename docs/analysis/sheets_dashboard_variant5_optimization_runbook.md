@@ -2,7 +2,7 @@
 
 ## 0) 目标
 
-把 `看板_方案5_字段纵向周期横向` 优化为“真正的表格面板”：
+把 **方案5（字段纵向×周期横向）** 升级为“真正的表格面板”，并可作为 **主看板 `看板`** 使用：
 
 - **全局只保留 1 行表头**：`币种 | 字段 | 1m | 5m | 15m | 1h | 4h | 1d | 1w`
 - **冻结**：冻结第 1 行表头 + 冻结前 2 列（币种/字段）
@@ -76,7 +76,33 @@ export SHEETS_SA_READ_RETRIES=6
 export SHEETS_WEBHOOK_TIMEOUT_SECONDS=60
 ```
 
-## 5) 执行：只刷新方案5（不动其他方案/不动事实表）
+## 5) 执行：刷新主看板（方案5）并裁剪 tab（仅保留看板+币种查询）
+
+> 注意：dashboard+SA 模式下，代码已默认 `SHEETS_SCHEMA_MODE=minimal`（除非你显式设置为 full），以避免事实/元数据 tab 复活。
+
+```bash
+cd services/consumption/sheets-service
+
+export SHEETS_SYNC_MODE=dashboard
+export SHEETS_DASHBOARD_MAIN_VARIANT=5
+export SHEETS_FACTS_MODE=none
+
+# 可选：强制 minimal（避免你环境里残留 full 配置）
+export SHEETS_SCHEMA_MODE=minimal
+
+.venv/bin/python -m src --once --force
+```
+
+验收点（打开 Google Sheet）：
+
+- `看板`
+  - 只出现 1 次表头行（第 1 行）
+  - 冻结：第 1 行 + 前两列（币种/字段）
+  - 每张卡片第 1 行是 `📊 ...` 源信息行（单行不换行）
+  - 同一币种单元格纵向合并（A 列）
+  - “币种行组”双色交替（作用于 A/B 列）
+
+## 6) 执行：只刷新方案5变体（用于对比/回归）
 
 只生成变体（避免把主看板也全量重绘），并只生成方案5：
 
@@ -97,7 +123,7 @@ export SHEETS_FACTS_MODE=none
   - 每张卡片第 1 行是 `📊 ...` 源信息行
   - 同一币种单元格纵向合并（A 列）
 
-## 6) 常见问题排查
+## 7) 常见问题排查
 
 ### 6.1 出现“很多币种”
 
@@ -113,4 +139,3 @@ export SHEETS_FACTS_MODE=none
 - 降低 `SHEETS_SA_WRITE_RPM`（例如 15~20）
 - 增加 `SHEETS_SA_429_RETRIES`
 - 尽量用 `--dashboard-variants-only`，不要每次都重绘主看板
-

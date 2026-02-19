@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from collections import deque
 from collections.abc import Iterable
@@ -1533,6 +1534,34 @@ class SaSheetsWriter:
 
         return results
 
+    def write_dashboard_v5_main(self, *, payloads: list[dict[str, Any]], col_l: str, col_r: str) -> dict[str, Any]:
+        """
+        将“方案5（字段纵向 + 周期横向）”作为主看板写入到 `SHEETS_TAB_DASHBOARD`（默认：看板）。
+
+        特性：
+        - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结（1 行 + 2 列）
+        - 每张卡仅写：1 行源信息 + 明细 rows（不重复表头）
+        - 币种列纵向合并（同币种连续行合并）
+        - 美化：周期列灰白交替 + 币种行组双色交替（仅作用于 A/B 列）
+        """
+        self.ensure_schema()
+        # v5 主看板是“展示面”，允许破坏性重绘：直接 reset（避免残留格式/残留 merge）
+        self.reset_sheet_display(
+            title=self._tab_dashboard,
+            col_l=col_l,
+            col_r=col_r,
+            compact=True,
+            frozen_row_count=1,
+            frozen_column_count=2,
+        )
+        self._write_v5_field_rows_period_columns_sheet(
+            payloads=payloads,
+            sheet_title=self._tab_dashboard,
+            col_l=col_l,
+            col_r=col_r,
+        )
+        return {"ok": True, "sheet": self._tab_dashboard, "mode": "v5", "cards": len(payloads), "col_l": col_l, "col_r": col_r}
+
     def _write_v5_field_rows_period_columns_sheet(
         self, *, payloads: list[dict[str, Any]], sheet_title: str, col_l: str, col_r: str
     ) -> None:
@@ -1600,13 +1629,18 @@ class SaSheetsWriter:
             sort_desc = str(header.get("sort_desc") or "-").strip() or "-"
             hint_text = str(hint.get("text") or "-").strip() or "-"
             last_update = str(params.get("last_update") or "-").strip() or "-"
+
+            def one_line(s: str) -> str:
+                # Google Sheets：值里如果含 '\n' 会强制换行并把整行撑高；这里强制压成单行。
+                return re.sub(r"\\s+", " ", str(s or "").strip()).strip() or "-"
+
             info_line = " ".join(
                 [
-                    f"📊 {title or '-'}",
-                    f"⏰ 更新 {update_time}",
-                    f"📊 排序 {sort_desc}",
-                    f"💡 {hint_text}",
-                    f"⏰ 最后更新 {last_update}",
+                    f"📊 {one_line(title)}",
+                    f"⏰ 更新 {one_line(update_time)}",
+                    f"📊 排序 {one_line(sort_desc)}",
+                    f"💡 {one_line(hint_text)}",
+                    f"⏰ 最后更新 {one_line(last_update)}",
                 ]
             )
 
@@ -1676,6 +1710,8 @@ class SaSheetsWriter:
         bg_hdr_group = _rgb(0.86, 0.90, 0.96)
         bg_body_even = _rgb(1.0, 1.0, 1.0)
         bg_body_odd = _rgb(0.97, 0.97, 0.97)
+        bg_sym_a = _rgb(0.95, 0.97, 1.0)  # A/B 列：币种行组背景色1（淡蓝）
+        bg_sym_b = _rgb(0.98, 0.98, 0.98)  # A/B 列：币种行组背景色2（淡灰）
 
         reqs: list[dict[str, Any]] = []
         # header row style (row 1)
@@ -1714,6 +1750,50 @@ class SaSheetsWriter:
                 }
             )
 
+        # symbol row-group shading (仅 A/B 列)：按币种分组双色交替，提升阅读性
+        for body_start_row_1, body_rows in merge_tasks:
+            try:
+                # body_start_row_1 是 1-based；rrange 用 0-based
+                r0_base = int(body_start_row_1) - 1
+                # 分组：同一币种的连续行作为一个组
+                rows_for_card = body_rows
+                sym_col_name = str(columns[0] or "币种")
+
+                def sym_at(i: int, *, _rows: list[dict[str, Any]] = rows_for_card, _k: str = sym_col_name) -> str:
+                    try:
+                        v = (_rows[i] or {}).get(_k)
+                        return "" if v is None else str(v).strip()
+                    except Exception:
+                        return ""
+
+                i = 0
+                group_idx = 0
+                while i < len(rows_for_card):
+                    v0 = sym_at(i)
+                    j = i + 1
+                    while j < len(rows_for_card) and sym_at(j) == v0:
+                        j += 1
+                    if v0:
+                        bg = bg_sym_a if (group_idx % 2 == 0) else bg_sym_b
+                        reqs.append(
+                            {
+                                "repeatCell": {
+                                    "range": rrange(
+                                        r0=r0_base + i,
+                                        r1=r0_base + j,
+                                        c0=col_l0 + 0,
+                                        c1=col_l0 + 2,  # A..B
+                                    ),
+                                    "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                                    "fields": "userEnteredFormat.backgroundColor",
+                                }
+                            }
+                        )
+                        group_idx += 1
+                    i = j
+            except Exception:
+                continue
+
         # info rows emphasis
         for y1 in info_rows:
             r0 = int(y1) - 1
@@ -1729,12 +1809,46 @@ class SaSheetsWriter:
                                 # 注意：本行我们只填充第 1 个单元格，其余列为空，OVERFLOW_CELL 会自然“溢出显示”。
                                 "wrapStrategy": "OVERFLOW_CELL",
                                 "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
                             }
                         },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy,horizontalAlignment)",
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy,horizontalAlignment,verticalAlignment)",
                     }
                 }
             )
+
+        # 列宽（美化）：A=币种，B=字段，C..=周期列
+        try:
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
+                        "properties": {"pixelSize": 64},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
+                        "properties": {"pixelSize": 110},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+            # 周期列统一宽度
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_r1)},
+                        "properties": {"pixelSize": 86},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+        except Exception:
+            pass
 
         if reqs:
             self._exec(
@@ -3002,13 +3116,16 @@ class SaSheetsWriter:
         last_update = str(params.get("last_update") or "-").strip() or "-"
 
         # 源信息压缩（用户要求）：固定顺序拼接进同一单元格
+        def one_line(s: str) -> str:
+            return re.sub(r"\\s+", " ", str(s or "").strip()).strip() or "-"
+
         info_line = " ".join(
             [
-                f"📊 {title or '-'}",
-                f"⏰ 更新 {update_time}",
-                f"📊 排序 {sort_desc}",
-                f"💡 {hint_text}",
-                f"⏰ 最后更新 {last_update}",
+                f"📊 {one_line(title)}",
+                f"⏰ 更新 {one_line(update_time)}",
+                f"📊 排序 {one_line(sort_desc)}",
+                f"💡 {one_line(hint_text)}",
+                f"⏰ 最后更新 {one_line(last_update)}",
             ]
         )
 

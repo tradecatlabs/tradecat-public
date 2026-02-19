@@ -66,9 +66,12 @@ class Settings:
             sync_mode = default_sync_mode
         force_render = os.environ.get("SHEETS_FORCE_RENDER", "0").strip() == "1"
         dashboard_auto_width = os.environ.get("SHEETS_DASHBOARD_AUTO_WIDTH", "1").strip() != "0"
-        schema_mode = (os.environ.get("SHEETS_SCHEMA_MODE", "full") or "full").strip().lower()
+        # dashboard+SA 的主诉求是“公开看板 + 币种查询”，默认不需要事实表/元数据表。
+        # 因此当用户未显式配置时，这里默认 minimal，避免每次运行又把一堆 tab 建回来。
+        schema_mode_default = "minimal" if (write_mode == "sa" and sync_mode == "dashboard") else "full"
+        schema_mode = (os.environ.get("SHEETS_SCHEMA_MODE", schema_mode_default) or schema_mode_default).strip().lower()
         if schema_mode not in {"full", "minimal"}:
-            schema_mode = "full"
+            schema_mode = schema_mode_default
 
         webhook_url = os.environ.get("SHEETS_WEBHOOK_URL", "").strip()
         webhook_secret = os.environ.get("SHEETS_WEBHOOK_SECRET", "").strip()
