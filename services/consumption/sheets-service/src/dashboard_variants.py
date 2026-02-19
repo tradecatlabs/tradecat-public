@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 PERIODS_DEFAULT = ("1m", "5m", "15m", "1h", "4h", "1d", "1w")
+SYMBOL_COL_OUT = "币种"
 
 
 def _parse_period_suffix(col: str) -> str:
@@ -65,24 +66,24 @@ def compact_cell_multiperiod(*, columns: list[str], rows: list[dict[str, Any]]) 
     - cell: 每字段组一个单元格，内部用换行列出 7 个周期值（带周期标签）
     """
     cols = [str(c or "").strip() for c in (columns or []) if str(c or "").strip()]
-    sym_col = _symbol_col(cols)
+    sym_key = _symbol_col(cols)
     periods = _periods_in_table(cols)
 
     groups: list[str] = []
     for c in cols:
-        if c == sym_col:
+        if c == sym_key:
             continue
         g = _parse_field_group(c)
         if g and g not in groups:
             groups.append(g)
 
-    out_cols = [sym_col, *groups]
+    out_cols = [SYMBOL_COL_OUT, *groups]
     out_rows: list[dict[str, Any]] = []
 
     for r in rows or []:
         if not isinstance(r, dict):
             continue
-        nr: dict[str, Any] = {sym_col: "" if r.get(sym_col) is None else str(r.get(sym_col))}
+        nr: dict[str, Any] = {SYMBOL_COL_OUT: "" if r.get(sym_key) is None else str(r.get(sym_key))}
         for g in groups:
             # 单周期字段（无 @）直接透传
             if g in r and all((f"{g}@{p}") not in r for p in periods):
@@ -112,26 +113,26 @@ def vertical_multiperiod(*, columns: list[str], rows: list[dict[str, Any]]) -> V
     - rows: 每个币种拆成 7 行，每行一个周期的字段值
     """
     cols = [str(c or "").strip() for c in (columns or []) if str(c or "").strip()]
-    sym_col = _symbol_col(cols)
+    sym_key = _symbol_col(cols)
     periods = _periods_in_table(cols)
 
     groups: list[str] = []
     for c in cols:
-        if c == sym_col:
+        if c == sym_key:
             continue
         g = _parse_field_group(c)
         if g and g not in groups:
             groups.append(g)
 
-    out_cols = [sym_col, "周期", *groups]
+    out_cols = [SYMBOL_COL_OUT, "周期", *groups]
     out_rows: list[dict[str, Any]] = []
 
     for r in rows or []:
         if not isinstance(r, dict):
             continue
-        sym = "" if r.get(sym_col) is None else str(r.get(sym_col))
+        sym = "" if r.get(sym_key) is None else str(r.get(sym_key))
         for p in periods:
-            nr: dict[str, Any] = {sym_col: sym, "周期": p}
+            nr: dict[str, Any] = {SYMBOL_COL_OUT: sym, "周期": p}
             for g in groups:
                 key = f"{g}@{p}"
                 v = r.get(key, "")
@@ -154,26 +155,26 @@ def field_rows_period_columns(*, columns: list[str], rows: list[dict[str, Any]])
     - 如果某字段只有单值（没有任何 `字段@周期`），则该单值会填充到所有周期列（避免丢字段）。
     """
     cols = [str(c or "").strip() for c in (columns or []) if str(c or "").strip()]
-    sym_col = _symbol_col(cols)
+    sym_key = _symbol_col(cols)
     periods = _periods_in_table(cols)
 
     groups: list[str] = []
     for c in cols:
-        if c == sym_col:
+        if c == sym_key:
             continue
         g = _parse_field_group(c)
         if g and g not in groups:
             groups.append(g)
 
-    out_cols = [sym_col, "字段", *periods]
+    out_cols = [SYMBOL_COL_OUT, "字段", *periods]
     out_rows: list[dict[str, Any]] = []
 
     for r in rows or []:
         if not isinstance(r, dict):
             continue
-        sym = "" if r.get(sym_col) is None else str(r.get(sym_col))
+        sym = "" if r.get(sym_key) is None else str(r.get(sym_key))
         for g in groups:
-            nr: dict[str, Any] = {sym_col: sym, "字段": g}
+            nr: dict[str, Any] = {SYMBOL_COL_OUT: sym, "字段": g}
             has_any = False
             for p in periods:
                 key = f"{g}@{p}"

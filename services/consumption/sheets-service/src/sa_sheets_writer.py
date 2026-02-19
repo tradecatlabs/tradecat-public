@@ -234,7 +234,25 @@ class SaSheetsWriter:
     def _exec(self, req: Any, *, is_write: bool) -> Any:
         if is_write:
             self._write_limiter.acquire()
-            return req.execute()
+            # 429 是明确的“未执行”限流错误，重试不会造成重复写入风险（包括 append）。
+            try:
+                max_retries = int((os.environ.get("SHEETS_SA_429_RETRIES", "8") or "8").strip())
+            except Exception:
+                max_retries = 8
+            max_retries = max(max_retries, 0)
+
+            attempt = 0
+            while True:
+                try:
+                    return req.execute()
+                except Exception as exc:
+                    status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
+                    if status != 429 or attempt >= max_retries:
+                        raise
+                    # 指数退避：2s,4s,8s...（上限 60s），给配额窗口留时间
+                    delay = min(2.0 * (2**attempt), 60.0)
+                    time.sleep(delay)
+                    attempt += 1
 
         # 读请求也可能在弱网/代理环境下超时；读是幂等的，可以安全重试。
         try:
