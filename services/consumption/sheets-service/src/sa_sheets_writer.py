@@ -1545,26 +1545,117 @@ class SaSheetsWriter:
         - 美化：周期列灰白交替 + 币种行组双色交替（仅作用于 A/B 列）
         """
         self.ensure_schema()
-        # v5 主看板是“展示面”，允许破坏性重绘：直接 reset（避免残留格式/残留 merge）
-        self.reset_sheet_display(
-            title=self._tab_dashboard,
-            col_l=col_l,
-            col_r=col_r,
-            compact=True,
-            frozen_row_count=1,
-            frozen_column_count=2,
-        )
-        self._write_v5_field_rows_period_columns_sheet(
+        hard_reset = (os.environ.get("SHEETS_DASHBOARD_V5_HARD_RESET", "0") or "0").strip() == "1"
+
+        # 记录上次使用区域，用于“清尾巴”（避免残留）
+        meta = self._meta_get()
+        try:
+            prev_used_rows = int(str(meta.get("dashboard_v5_used_rows") or "0").strip() or "0")
+        except Exception:
+            prev_used_rows = 0
+
+        if hard_reset:
+            # 破坏性重绘（会闪烁）：用于“样式大改/历史残留严重”场景
+            self.reset_sheet_display(
+                title=self._tab_dashboard,
+                col_l=col_l,
+                col_r=col_r,
+                compact=True,
+                frozen_row_count=1,
+                frozen_column_count=2,
+            )
+        else:
+            # 无感刷新：不做 values.clear，全程覆盖写 + 清尾巴，避免整页“先消失再出现”
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title.get(self._tab_dashboard)
+            if sh_id is None:
+                self._refresh_sheet_map()
+                sh_id = self._sheet_id_by_title.get(self._tab_dashboard)
+            if sh_id is None:
+                raise RuntimeError("missing_dashboard_sheet")
+
+            cur_rows, cur_cols = self._grid_by_title.get(self._tab_dashboard, (0, 0))
+            want_rows = max(int(cur_rows or 0), 2000)
+            want_cols = max(int(cur_cols or 0), _col_to_index(col_r))
+
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {"unmergeCells": {"range": {"sheetId": int(sh_id)}}},
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {
+                                        "sheetId": int(sh_id),
+                                        "gridProperties": {
+                                            "rowCount": int(want_rows),
+                                            "columnCount": int(want_cols),
+                                            "frozenRowCount": 1,
+                                            "frozenColumnCount": 2,
+                                        },
+                                    },
+                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                                }
+                            },
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+            self._refresh_sheet_map()
+
+        used_end_row_1 = self._write_v5_field_rows_period_columns_sheet(
             payloads=payloads,
             sheet_title=self._tab_dashboard,
             col_l=col_l,
             col_r=col_r,
+            clear_tail_rows_to=prev_used_rows,
         )
-        return {"ok": True, "sheet": self._tab_dashboard, "mode": "v5", "cards": len(payloads), "col_l": col_l, "col_r": col_r}
+
+        # 清尾巴（值）：上一轮比本轮更长时，清掉尾部旧内容
+        if prev_used_rows > int(used_end_row_1):
+            y0 = int(used_end_row_1) + 1
+            y1 = int(prev_used_rows)
+            try:
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .clear(
+                        spreadsheetId=self._spreadsheet_id,
+                        range=f"{self._tab_dashboard}!{col_l}{y0}:{col_r}{y1}",
+                    ),
+                    is_write=True,
+                )
+            except Exception:
+                pass
+
+        # 记录本轮使用区域（用于下轮“清尾巴”）
+        try:
+            self._meta_set({"dashboard_v5_used_rows": str(int(used_end_row_1)), "dashboard_v5_used_cols": str(int(_col_to_index(col_r)))})
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "sheet": self._tab_dashboard,
+            "mode": "v5",
+            "cards": len(payloads),
+            "col_l": col_l,
+            "col_r": col_r,
+            "used_rows": int(used_end_row_1),
+            "hard_reset": bool(hard_reset),
+        }
 
     def _write_v5_field_rows_period_columns_sheet(
-        self, *, payloads: list[dict[str, Any]], sheet_title: str, col_l: str, col_r: str
-    ) -> None:
+        self,
+        *,
+        payloads: list[dict[str, Any]],
+        sheet_title: str,
+        col_l: str,
+        col_r: str,
+        clear_tail_rows_to: int = 0,
+    ) -> int:
         """
         v5 专用渲染：
         - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结 top header（frozenRowCount=1）
@@ -1572,14 +1663,14 @@ class SaSheetsWriter:
         - 币种列纵向 merge（同币种连续行合并）
         """
         if not payloads:
-            return
+            return 0
 
         sh_id = self._sheet_id_by_title.get(sheet_title)
         if sh_id is None:
             self._refresh_sheet_map()
             sh_id = self._sheet_id_by_title.get(sheet_title)
         if sh_id is None:
-            return
+            return 0
 
         col_l_idx = _col_to_index(col_l)
         col_r_idx = _col_to_index(col_r)
@@ -1610,6 +1701,7 @@ class SaSheetsWriter:
         info_rows: list[int] = []
         merge_tasks: list[tuple[int, list[dict[str, Any]]]] = []  # (body_start_row_1, body_rows)
         max_y_used = 1
+        used_end_row_1 = 1
 
         for p in payloads:
             header = p.get("header") or {}
@@ -1663,11 +1755,17 @@ class SaSheetsWriter:
                 y1 = y_body + len(body_vals) - 1
                 data.append({"range": f"{sheet_title}!{col_l}{y_body}:{col_r}{y1}", "values": body_vals})
                 merge_tasks.append((int(y_body), list(rows)))
-                max_y_used = max(max_y_used, y1)
-                y = y1 + 2  # +1 blank separator
+                # 分隔空行：显式写空，避免旧值残留（无感刷新场景尤其重要）
+                sep_y = int(y1) + 1
+                data.append({"range": f"{sheet_title}!{col_l}{sep_y}:{col_r}{sep_y}", "values": [pad_row([])]})
+                max_y_used = max(max_y_used, int(y1))
+                y = int(y1) + 2
             else:
-                max_y_used = max(max_y_used, y)
-                y = y + 2
+                sep_y = int(y) + 1
+                data.append({"range": f"{sheet_title}!{col_l}{sep_y}:{col_r}{sep_y}", "values": [pad_row([])]})
+                max_y_used = max(max_y_used, int(y))
+                y = int(y) + 2
+            used_end_row_1 = max(int(used_end_row_1), int(y) - 1)
 
         self._ensure_grid_size(sheet_title, min_rows=max(int(max_y_used) + 50, 2000), min_cols=_col_to_index(col_r))
         self._exec(
@@ -1680,20 +1778,7 @@ class SaSheetsWriter:
             is_write=True,
         )
 
-        # 2) merges：币种列纵向 merge（每张卡 body 单独合并）
-        for body_start_row_1, body_rows in merge_tasks:
-            try:
-                self._merge_symbol_column_groups_on_sheet(
-                    sheet_title=sheet_title,
-                    col_l=col_l,
-                    sym_col=str(columns[0] or "币种"),
-                    body_start_row_1=int(body_start_row_1),
-                    body_rows=body_rows,
-                )
-            except Exception:
-                pass
-
-        # 3) styles：全局表头 + 周期列灰白交替 + 每张卡 info 行
+        # 2) styles：全局表头 + 周期列灰白交替 + 每张卡 info 行 + merges（合并币种列）
         col_l0 = col_l_idx - 1
         col_r1 = col_r_idx
 
@@ -1733,7 +1818,7 @@ class SaSheetsWriter:
             }
         )
 
-        # period columns shading (rows 2..max_y_used)
+        # period columns shading (rows 2..used_end_row_1)
         period_index = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
         for idx, c in enumerate(columns):
             name = str(c or "").strip()
@@ -1743,14 +1828,14 @@ class SaSheetsWriter:
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": rrange(r0=1, r1=int(max_y_used), c0=col_l0 + idx, c1=col_l0 + idx + 1),
+                        "range": rrange(r0=1, r1=int(used_end_row_1), c0=col_l0 + idx, c1=col_l0 + idx + 1),
                         "cell": {"userEnteredFormat": {"backgroundColor": bg}},
                         "fields": "userEnteredFormat.backgroundColor",
                     }
                 }
             )
 
-        # symbol row-group shading (仅 A/B 列)：按币种分组双色交替，提升阅读性
+        # symbol merges + row-group shading (仅 A/B 列)：按币种分组双色交替，提升阅读性
         for body_start_row_1, body_rows in merge_tasks:
             try:
                 # body_start_row_1 是 1-based；rrange 用 0-based
@@ -1774,6 +1859,39 @@ class SaSheetsWriter:
                     while j < len(rows_for_card) and sym_at(j) == v0:
                         j += 1
                     if v0:
+                        # merge symbol column (A) for this group
+                        if (j - i) >= 2:
+                            r0 = r0_base + i
+                            r1 = r0_base + j
+                            reqs.append(
+                                {
+                                    "mergeCells": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": int(r0),
+                                            "endRowIndex": int(r1),
+                                            "startColumnIndex": int(col_l0 + 0),
+                                            "endColumnIndex": int(col_l0 + 1),
+                                        },
+                                        "mergeType": "MERGE_ALL",
+                                    }
+                                }
+                            )
+                            reqs.append(
+                                {
+                                    "repeatCell": {
+                                        "range": rrange(r0=int(r0), r1=int(r1), c0=int(col_l0 + 0), c1=int(col_l0 + 1)),
+                                        "cell": {
+                                            "userEnteredFormat": {
+                                                "horizontalAlignment": "CENTER",
+                                                "verticalAlignment": "MIDDLE",
+                                                "textFormat": {"bold": True},
+                                            }
+                                        },
+                                        "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold)",
+                                    }
+                                }
+                            )
                         bg = bg_sym_a if (group_idx % 2 == 0) else bg_sym_b
                         reqs.append(
                             {
@@ -1813,6 +1931,23 @@ class SaSheetsWriter:
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy,horizontalAlignment,verticalAlignment)",
+                    }
+                }
+            )
+
+        # 清尾巴（格式）：上一轮比本轮更长时，清掉尾部旧样式，避免残留“灰带/分隔线”
+        if int(clear_tail_rows_to) > int(used_end_row_1):
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(
+                            r0=int(used_end_row_1),
+                            r1=int(clear_tail_rows_to),
+                            c0=int(col_l0),
+                            c1=int(col_r1),
+                        ),
+                        "cell": {"userEnteredFormat": {}},
+                        "fields": "userEnteredFormat",
                     }
                 }
             )
@@ -1858,6 +1993,7 @@ class SaSheetsWriter:
                 ),
                 is_write=True,
             )
+        return int(used_end_row_1)
 
     def _merge_symbol_column_groups_on_sheet(
         self,
