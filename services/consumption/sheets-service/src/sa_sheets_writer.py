@@ -1725,10 +1725,13 @@ class SaSheetsWriter:
                             "userEnteredFormat": {
                                 "backgroundColor": bg_hdr_info,
                                 "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
-                                "wrapStrategy": "WRAP",
+                                # 信息行很长：必须保持单行展示（不自动换行），让文本溢出到右侧空单元格。
+                                # 注意：本行我们只填充第 1 个单元格，其余列为空，OVERFLOW_CELL 会自然“溢出显示”。
+                                "wrapStrategy": "OVERFLOW_CELL",
+                                "horizontalAlignment": "LEFT",
                             }
                         },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy)",
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy,horizontalAlignment)",
                     }
                 }
             )
