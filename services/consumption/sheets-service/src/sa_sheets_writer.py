@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.dashboard_variants import VariantTable, compact_cell_multiperiod, vertical_multiperiod
+from src.dashboard_variants import PERIODS_DEFAULT, VariantTable, compact_cell_multiperiod, vertical_multiperiod
 
 
 def _col_to_index(col: str) -> int:
@@ -442,7 +442,16 @@ class SaSheetsWriter:
         )
         self._refresh_sheet_map()
 
-    def reset_sheet_display(self, *, title: str, col_l: str, col_r: str, compact: bool = True) -> dict[str, Any]:
+    def reset_sheet_display(
+        self,
+        *,
+        title: str,
+        col_l: str,
+        col_r: str,
+        compact: bool = True,
+        frozen_row_count: int = 0,
+        frozen_column_count: int = 0,
+    ) -> dict[str, Any]:
         """
         清理指定 sheet 的展示面（用于“看板变体 tab”）：
         - clear values
@@ -453,6 +462,8 @@ class SaSheetsWriter:
         self.ensure_sheet(title=title)
         col_l_u = str(col_l).strip().upper()
         col_r_u = str(col_r).strip().upper()
+        frozen_row_count = max(int(frozen_row_count or 0), 0)
+        frozen_column_count = max(int(frozen_column_count or 0), 0)
 
         # 1) clear values
         self._exec(
@@ -524,10 +535,11 @@ class SaSheetsWriter:
                                         "gridProperties": {
                                             "rowCount": int(target_rows),
                                             "columnCount": int(target_cols),
-                                            "frozenColumnCount": 0,
+                                            "frozenRowCount": int(frozen_row_count),
+                                            "frozenColumnCount": int(frozen_column_count),
                                         },
                                     },
-                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenColumnCount",
+                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
                                 }
                             }
                         ]
@@ -929,12 +941,21 @@ class SaSheetsWriter:
 
     # ==================== dashboard variants ====================
     def _render_dashboard_to_sheet(
-        self, payload: dict[str, Any], *, sheet_title: str, y: int, col_l: str, col_r: str
+        self,
+        payload: dict[str, Any],
+        *,
+        sheet_title: str,
+        y: int,
+        col_l: str,
+        col_r: str,
+        merge_info_row: bool = True,
     ) -> None:
         """
         与 `_render_dashboard` 同口径渲染，但写入到指定 sheet（用于“看板变体 tab”）。
         说明：
-        - 仍保留：字段组/周期两行表头、周期灰白交替、字段组竖线、源信息行整行合并
+        - 若 columns 存在 `字段@周期`：渲染 2 行表头（字段组 + 周期），并按“周期列”灰白交替
+        - 若 columns 不含 `@`：渲染 1 行表头（单行列名）；若存在“周期”列则按“周期行”灰白交替
+        - 源信息行默认整行合并；当 sheet 需要冻结列时必须关闭（Sheets 禁止跨冻结列边界 merge）
         - 该函数只负责渲染，不负责 slot/meta
         """
         col_l_idx = _col_to_index(col_l)
@@ -949,6 +970,8 @@ class SaSheetsWriter:
         table = payload.get("table") or {}
         columns = table.get("columns") or []
         rows = table.get("rows") or []
+        has_period_suffix = any("@" in str(c) for c in columns if c is not None)
+        header_rows = 2 if has_period_suffix else 1
 
         title = str(header.get("title") or "")
         update_time = str(header.get("update_time") or "-").strip() or "-"
@@ -976,12 +999,19 @@ class SaSheetsWriter:
 
         table_y = y + 1
         for chunk_cols in chunks:
-            group_row = [_parse_field_group(str(c)) for c in chunk_cols]
-            period_row = [_parse_period_suffix(str(c)) for c in chunk_cols]
-            group_row = group_row + [""] * (width - len(group_row))
-            period_row = period_row + [""] * (width - len(period_row))
-            value_rows.append((f"{sheet_title}!{col_l}{table_y}:{col_r}{table_y}", [group_row]))
-            value_rows.append((f"{sheet_title}!{col_l}{table_y + 1}:{col_r}{table_y + 1}", [period_row]))
+            if has_period_suffix:
+                group_row = [_parse_field_group(str(c)) for c in chunk_cols]
+                period_row = [_parse_period_suffix(str(c)) for c in chunk_cols]
+                group_row = group_row + [""] * (width - len(group_row))
+                period_row = period_row + [""] * (width - len(period_row))
+                value_rows.append((f"{sheet_title}!{col_l}{table_y}:{col_r}{table_y}", [group_row]))
+                value_rows.append((f"{sheet_title}!{col_l}{table_y + 1}:{col_r}{table_y + 1}", [period_row]))
+                body_y0 = table_y + 2
+            else:
+                hdr_row = ["" if c is None else str(c) for c in chunk_cols]
+                hdr_row = hdr_row + [""] * (width - len(hdr_row))
+                value_rows.append((f"{sheet_title}!{col_l}{table_y}:{col_r}{table_y}", [hdr_row]))
+                body_y0 = table_y + 1
 
             if rows:
                 body_vals: list[list[str]] = []
@@ -991,11 +1021,11 @@ class SaSheetsWriter:
                         line.append("" if r.get(c) is None else str(r.get(c)))
                     line = line + [""] * (width - len(line))
                     body_vals.append(line)
-                y0 = table_y + 2
-                y1 = table_y + 1 + len(body_vals)
+                y0 = body_y0
+                y1 = body_y0 - 1 + len(body_vals)
                 value_rows.append((f"{sheet_title}!{col_l}{y0}:{col_r}{y1}", body_vals))
 
-            table_y += 2 + len(rows)
+            table_y += header_rows + len(rows)
 
         data = [{"range": rng, "values": vals} for rng, vals in value_rows]
         self._exec(
@@ -1053,11 +1083,14 @@ class SaSheetsWriter:
         # 每个 chunk 的 header/body 样式
         table_y = y + 1
         for chunk_cols in chunks:
+            hdr_r0 = table_y - 1
+            hdr_r1 = table_y - 1 + header_rows
+
             # header 字体加粗
             requests.append(
                 {
                     "repeatCell": {
-                        "range": rrange(r0=table_y - 1, r1=table_y + 1, c0=col_l0, c1=col_r1),
+                        "range": rrange(r0=hdr_r0, r1=hdr_r1, c0=col_l0, c1=col_r1),
                         "cell": {
                             "userEnteredFormat": {
                                 "textFormat": {"bold": True},
@@ -1071,120 +1104,180 @@ class SaSheetsWriter:
                 }
             )
 
-            period_index: dict[str, int] = {}
-            period_by_col: list[str] = []
-            for c in chunk_cols + [""] * (width - len(chunk_cols)):
-                suf = _parse_period_suffix(str(c))
-                if suf and suf not in period_index:
-                    period_index[suf] = len(period_index)
-                period_by_col.append(suf)
+            if has_period_suffix:
+                period_index: dict[str, int] = {}
+                period_by_col: list[str] = []
+                for c in chunk_cols + [""] * (width - len(chunk_cols)):
+                    suf = _parse_period_suffix(str(c))
+                    if suf and suf not in period_index:
+                        period_index[suf] = len(period_index)
+                    period_by_col.append(suf)
 
-            def col_bg(suf: str, *, _period_index: dict[str, int] = period_index) -> dict[str, float]:
-                if not suf:
-                    return bg_body_odd
-                idx = int(_period_index.get(suf, 0))
-                return bg_body_even if idx % 2 == 0 else bg_body_odd
+                def col_bg(suf: str, *, _period_index: dict[str, int] = period_index) -> dict[str, float]:
+                    if not suf:
+                        return bg_body_odd
+                    idx = int(_period_index.get(suf, 0))
+                    return bg_body_even if idx % 2 == 0 else bg_body_odd
 
-            body_bgs = [col_bg(suf) for suf in period_by_col]
+                body_bgs = [col_bg(suf) for suf in period_by_col]
 
-            def add_bg_segments(*, row0: int, row1: int, bgs: list[dict[str, float]]) -> None:
-                start = 0
-                while start < width:
-                    bg = bgs[start]
-                    end = start + 1
-                    while end < width and bgs[end] == bg:
-                        end += 1
-                    requests.append(
-                        {
-                            "repeatCell": {
-                                "range": rrange(r0=row0, r1=row1, c0=col_l0 + start, c1=col_l0 + end),
-                                "cell": {"userEnteredFormat": {"backgroundColor": bg}},
-                                "fields": "userEnteredFormat.backgroundColor",
-                            }
-                        }
-                    )
-                    start = end
-
-            def add_field_group_separators(*, row0: int, row1: int, _cols: list[str] = chunk_cols) -> None:
-                sep_color = _rgb(0.70, 0.70, 0.70)
-                border = {"style": "SOLID_MEDIUM", "width": 2, "color": sep_color}
-                last_group = ""
-                for idx, c in enumerate(list(_cols) + [""] * (width - len(_cols))):
-                    g = _parse_field_group(str(c))
-                    if not g:
-                        continue
-                    if last_group and g != last_group:
+                def add_bg_segments(*, row0: int, row1: int, bgs: list[dict[str, float]]) -> None:
+                    start = 0
+                    while start < width:
+                        bg = bgs[start]
+                        end = start + 1
+                        while end < width and bgs[end] == bg:
+                            end += 1
                         requests.append(
                             {
-                                "updateBorders": {
-                                    "range": rrange(r0=row0, r1=row1, c0=col_l0 + idx, c1=col_l0 + idx + 1),
-                                    "left": border,
+                                "repeatCell": {
+                                    "range": rrange(r0=row0, r1=row1, c0=col_l0 + start, c1=col_l0 + end),
+                                    "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                                    "fields": "userEnteredFormat.backgroundColor",
                                 }
                             }
                         )
-                    last_group = g
+                        start = end
 
-            # header 背景（两行）
-            requests.append(
-                {
-                    "repeatCell": {
-                        "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
-                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_group}},
-                        "fields": "userEnteredFormat.backgroundColor",
-                    }
-                }
-            )
-            requests.append(
-                {
-                    "repeatCell": {
-                        "range": rrange(r0=table_y, r1=table_y + 1, c0=col_l0, c1=col_r1),
-                        "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_period}},
-                        "fields": "userEnteredFormat.backgroundColor",
-                    }
-                }
-            )
-            if rows:
-                body_r0 = table_y + 1
-                body_r1 = table_y + 1 + len(rows)
-                add_bg_segments(row0=body_r0, row1=body_r1, bgs=body_bgs)
-                add_field_group_separators(row0=table_y - 1, row1=body_r1)
+                def add_field_group_separators(*, row0: int, row1: int, _cols: list[str] = chunk_cols) -> None:
+                    sep_color = _rgb(0.70, 0.70, 0.70)
+                    border = {"style": "SOLID_MEDIUM", "width": 2, "color": sep_color}
+                    last_group = ""
+                    for idx, c in enumerate(list(_cols) + [""] * (width - len(_cols))):
+                        g = _parse_field_group(str(c))
+                        if not g:
+                            continue
+                        if last_group and g != last_group:
+                            requests.append(
+                                {
+                                    "updateBorders": {
+                                        "range": rrange(r0=row0, r1=row1, c0=col_l0 + idx, c1=col_l0 + idx + 1),
+                                        "left": border,
+                                    }
+                                }
+                            )
+                        last_group = g
 
-            # 字段组表头 merge
-            group_names = [_parse_field_group(str(c)) for c in chunk_cols] + [""] * (width - len(chunk_cols))
-            start = 0
-            while start < width:
-                g = group_names[start]
-                end = start + 1
-                while end < width and group_names[end] == g:
-                    end += 1
-                if g and end - start >= 2:
-                    requests.append(
-                        {
-                            "mergeCells": {
-                                "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0 + start, c1=col_l0 + end),
-                                "mergeType": "MERGE_ALL",
-                            }
+                # header 背景（两行）
+                requests.append(
+                    {
+                        "repeatCell": {
+                            "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
+                            "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_group}},
+                            "fields": "userEnteredFormat.backgroundColor",
                         }
-                    )
-                start = end
+                    }
+                )
+                requests.append(
+                    {
+                        "repeatCell": {
+                            "range": rrange(r0=table_y, r1=table_y + 1, c0=col_l0, c1=col_r1),
+                            "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_period}},
+                            "fields": "userEnteredFormat.backgroundColor",
+                        }
+                    }
+                )
+                if rows:
+                    body_r0 = table_y + 1
+                    body_r1 = table_y + 1 + len(rows)
+                    add_bg_segments(row0=body_r0, row1=body_r1, bgs=body_bgs)
+                    add_field_group_separators(row0=table_y - 1, row1=body_r1)
 
-            table_y += 2 + len(rows)
+                # 字段组表头 merge
+                group_names = [_parse_field_group(str(c)) for c in chunk_cols] + [""] * (width - len(chunk_cols))
+                start = 0
+                while start < width:
+                    g = group_names[start]
+                    end = start + 1
+                    while end < width and group_names[end] == g:
+                        end += 1
+                    if g and end - start >= 2:
+                        requests.append(
+                            {
+                                "mergeCells": {
+                                    "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0 + start, c1=col_l0 + end),
+                                    "mergeType": "MERGE_ALL",
+                                }
+                            }
+                        )
+                    start = end
+            else:
+                # 单行表头：统一用字段组 header 背景
+                requests.append(
+                    {
+                        "repeatCell": {
+                            "range": rrange(r0=table_y - 1, r1=table_y, c0=col_l0, c1=col_r1),
+                            "cell": {"userEnteredFormat": {"backgroundColor": bg_hdr_group}},
+                            "fields": "userEnteredFormat.backgroundColor",
+                        }
+                    }
+                )
+                if rows:
+                    # 若存在“周期”列：按周期行灰白交替；否则保持默认背景
+                    body_r0 = table_y  # 0-based: header(1 row) ends at table_y, body begins at table_y
+                    body_r1 = table_y + len(rows)
+                    if "周期" in (str(c or "").strip() for c in columns):
+                        p_index: dict[str, int] = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
+                        for r_idx, r in enumerate(rows):
+                            p = "" if r.get("周期") is None else str(r.get("周期")).strip()
+                            if p not in p_index:
+                                p_index[p] = len(p_index)
+                            bg = bg_body_even if int(p_index.get(p, 0)) % 2 == 0 else bg_body_odd
+                            # 合并相同背景的连续行，减少请求数
+                            if r_idx == 0:
+                                seg_bg = bg
+                                seg_start = 0
+                            elif bg != seg_bg:
+                                requests.append(
+                                    {
+                                        "repeatCell": {
+                                            "range": rrange(
+                                                r0=body_r0 + seg_start,
+                                                r1=body_r0 + r_idx,
+                                                c0=col_l0,
+                                                c1=col_r1,
+                                            ),
+                                            "cell": {"userEnteredFormat": {"backgroundColor": seg_bg}},
+                                            "fields": "userEnteredFormat.backgroundColor",
+                                        }
+                                    }
+                                )
+                                seg_bg = bg
+                                seg_start = r_idx
+                        # last segment
+                        requests.append(
+                            {
+                                "repeatCell": {
+                                    "range": rrange(
+                                        r0=body_r0 + seg_start,
+                                        r1=body_r0 + len(rows),
+                                        c0=col_l0,
+                                        c1=col_r1,
+                                    ),
+                                    "cell": {"userEnteredFormat": {"backgroundColor": seg_bg}},
+                                    "fields": "userEnteredFormat.backgroundColor",
+                                }
+                            }
+                        )
 
-        # info 行合并（整行）
-        requests.append(
-            {
-                "mergeCells": {
-                    "range": {
-                        "sheetId": int(sh_id),
-                        "startRowIndex": y - 1,
-                        "endRowIndex": y,
-                        "startColumnIndex": col_l_idx - 1,
-                        "endColumnIndex": col_r_idx,
-                    },
-                    "mergeType": "MERGE_ALL",
+            table_y += header_rows + len(rows)
+
+        if merge_info_row:
+            # info 行合并（整行）
+            requests.append(
+                {
+                    "mergeCells": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": y - 1,
+                            "endRowIndex": y,
+                            "startColumnIndex": col_l_idx - 1,
+                            "endColumnIndex": col_r_idx,
+                        },
+                        "mergeType": "MERGE_ALL",
+                    }
                 }
-            }
-        )
+            )
 
         self._exec(
             self._sheets.spreadsheets().batchUpdate(
@@ -1264,7 +1357,15 @@ class SaSheetsWriter:
                     max_cols = max(max_cols, len(vt.columns), len(cols_s))
 
             col_r = self.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=min_col_r)
-            self.reset_sheet_display(title=title, col_l=col_l, col_r=col_r, compact=True)
+            frozen_cols = 2 if mode in {"v3", "v4"} else 0
+            self.reset_sheet_display(
+                title=title,
+                col_l=col_l,
+                col_r=col_r,
+                compact=True,
+                frozen_row_count=0,
+                frozen_column_count=frozen_cols,
+            )
 
             y = 1
             for p in transformed:
@@ -1276,7 +1377,14 @@ class SaSheetsWriter:
                         raw_tbl = prm.get("_variant_raw_table")
                     height = self._calc_dashboard_height(p, col_l=col_l, col_r=col_r)
                     self._ensure_grid_size(title, min_rows=y + height, min_cols=_col_to_index(col_r))
-                    self._render_dashboard_to_sheet(p, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+                    self._render_dashboard_to_sheet(
+                        p,
+                        sheet_title=title,
+                        y=y,
+                        col_l=col_l,
+                        col_r=col_r,
+                        merge_info_row=True,
+                    )
                     y += height
 
                     if isinstance(raw_tbl, dict):
@@ -1291,13 +1399,27 @@ class SaSheetsWriter:
                         }
                         height2 = self._calc_dashboard_height(pp, col_l=col_l, col_r=col_r)
                         self._ensure_grid_size(title, min_rows=y + height2, min_cols=_col_to_index(col_r))
-                        self._render_dashboard_to_sheet(pp, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+                        self._render_dashboard_to_sheet(
+                            pp,
+                            sheet_title=title,
+                            y=y,
+                            col_l=col_l,
+                            col_r=col_r,
+                            merge_info_row=True,
+                        )
                         y += height2
                     continue
 
                 height = self._calc_dashboard_height(p, col_l=col_l, col_r=col_r)
                 self._ensure_grid_size(title, min_rows=y + height, min_cols=_col_to_index(col_r))
-                self._render_dashboard_to_sheet(p, sheet_title=title, y=y, col_l=col_l, col_r=col_r)
+                self._render_dashboard_to_sheet(
+                    p,
+                    sheet_title=title,
+                    y=y,
+                    col_l=col_l,
+                    col_r=col_r,
+                    merge_info_row=mode not in {"v3", "v4"},
+                )
 
                 # v4：对“纵向多周期表”的币种列做纵向合并（每个币种通常对应 7 行周期）
                 if mode == "v4":
@@ -1307,8 +1429,9 @@ class SaSheetsWriter:
                         rows = table.get("rows") or []
                         if isinstance(cols, list) and isinstance(rows, list) and cols:
                             sym_col = str(cols[0] or "").strip() or "币种"
-                            # body 第 1 行：y(info) + 2(header rows) + 1
-                            body_start_row_1 = int(y) + 3
+                            header_rows = 2 if any("@" in str(c) for c in cols if c is not None) else 1
+                            # body 第 1 行（1-based）：y(info) + header_rows
+                            body_start_row_1 = int(y) + 1 + int(header_rows)
                             self._merge_symbol_column_groups_on_sheet(
                                 sheet_title=title,
                                 col_l=col_l,
@@ -2388,11 +2511,13 @@ class SaSheetsWriter:
         rows = table.get("rows") or []
         rows_cnt = len(rows)
         cols_cnt = len(columns)
+        has_period_suffix = any("@" in str(c) for c in columns if c is not None)
+        header_rows = 2 if has_period_suffix else 1
 
         # chunks = max(1, ceil(cols_cnt/width))
         chunks = max(1, (cols_cnt + width - 1) // width)
-        # 固定源信息1行 + 每块(字段组表头1行+周期表头1行+明细N行)*chunks + blank=1行
-        return chunks * (rows_cnt + 2) + 2
+        # 固定源信息1行 + 每块(header_rows + 明细N行)*chunks + blank=1行
+        return chunks * (rows_cnt + int(header_rows)) + 2
 
     # ==================== facts writers ====================
     def _append_cards_index(self, payload: dict[str, Any], dash: dict[str, Any]) -> None:
