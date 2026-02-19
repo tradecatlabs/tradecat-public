@@ -220,11 +220,20 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
             interval = int(settings.symbol_tabs_interval_seconds)
             should = interval <= 0 or (now - last) >= interval
             if should:
+                errors: list[str] = []
                 for sym in settings.symbol_tabs:
-                    tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
-                    sheet = export_symbol_query_sheet(symbol=sym, lang=lang)
-                    sa_writer.write_symbol_query_tab(tab_title=tab_title, sheet=sheet)
-                sa_writer.meta_set({"symbol_tabs_last_epoch": str(now)})
+                    try:
+                        tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
+                        sheet = export_symbol_query_sheet(symbol=sym, lang=lang)
+                        sa_writer.write_symbol_query_tab(tab_title=tab_title, sheet=sheet)
+                    except Exception as exc:
+                        errors.append(f"{sym}:{type(exc).__name__}:{exc}")
+                sa_writer.meta_set(
+                    {
+                        "symbol_tabs_last_epoch": str(now),
+                        "symbol_tabs_last_error": ";".join(errors)[:2000],
+                    }
+                )
 
         print(f"✅ 看板重绘完成 mode=dashboard cards={sent} col_l={col_l} col_r={col_r}")
         return 0
@@ -287,10 +296,19 @@ async def _run_once(settings: Settings, *, only_cards: list[str] | None, lang: s
     # 如需要可配置：SHEETS_SYMBOL_TABS_MODE=every
     if settings.write_mode == "sa" and settings.symbol_tabs_mode == "every" and settings.symbol_tabs:
         assert sa_writer is not None
+        errors: list[str] = []
         for sym in settings.symbol_tabs:
-            tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
-            sheet = export_symbol_query_sheet(symbol=sym, lang=lang)
-            sa_writer.write_symbol_query_tab(tab_title=tab_title, sheet=sheet)
+            try:
+                tab_title = normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix)
+                sheet = export_symbol_query_sheet(symbol=sym, lang=lang)
+                sa_writer.write_symbol_query_tab(tab_title=tab_title, sheet=sheet)
+            except Exception as exc:
+                errors.append(f"{sym}:{type(exc).__name__}:{exc}")
+        if errors:
+            try:
+                sa_writer.meta_set({"symbol_tabs_last_error": ";".join(errors)[:2000]})
+            except Exception:
+                pass
 
     print(
         f"✅ flush 完成 appended={appended} skipped_append={skipped_append} sent={sent} skipped={skipped} checkpoint={outbox.load_checkpoint()} mode={settings.write_mode}"
