@@ -867,7 +867,7 @@ class SaSheetsWriter:
                 if base and (not base.endswith("，")):
                     base = base + "，"
 
-                label = "📌 目录（点击跳转）"
+                label = "目录（点击跳转）"
                 prefix = base
                 if label not in prefix:
                     prefix = prefix + label
@@ -882,13 +882,16 @@ class SaSheetsWriter:
                     parts.append(sep)
                     pos += idx_len(sep)
 
-                    t = str(title or "-").strip() or "-"
+                    t = re.sub(r"^[📌🧱📊🌊📈💧📏🎯🚩📐🧾🚦⚡↕️🌐🐳🚀🐋🛰️🚨🕯️🔬]+\\s*", "", str(title or "")).strip() or "-"
                     start = int(pos)
                     parts.append(t)
                     pos += idx_len(t)
                     end = int(pos)
 
-                    url = f"#gid={int(sh_id)}&range=A{int(start_0) + 1}"
+                    url = (
+                        f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit"
+                        f"#gid={int(sh_id)}&range=A{int(start_0) + 1}"
+                    )
                     runs.append(
                         {
                             "startIndex": int(start),
@@ -2830,7 +2833,8 @@ class SaSheetsWriter:
                 continue
             render_payloads.append(p)
 
-        dir_label = "📌 目录（点击跳转）"
+        # 目录行尽量不放 emoji：降低富文本链接索引/渲染复杂度（不同客户端兼容更稳）
+        dir_label = "目录（点击跳转）"
         # 固定为 1 行：目录文本放入单单元格（A1），避免“铺满一行超链接”挤压主表宽度
         dir_rows = 1
         header_row_1 = int(dir_rows) + 1  # 1-based
@@ -2913,9 +2917,13 @@ class SaSheetsWriter:
                 # 之前按 UTF-16 code units 计数会导致 startIndex 超界（400）。
                 return len(str(s))
 
-            text_parts: list[str] = [dir_label]
+            def strip_leading_emoji(s: str) -> str:
+                return re.sub(r"^[📌🧱📊🌊📈💧📏🎯🚩📐🧾🚦⚡↕️🌐🐳🚀🐋🛰️🚨🕯️🔬]+\\s*", "", str(s or "")).strip()
+
+            clean_label = strip_leading_emoji(dir_label)
+            text_parts: list[str] = [clean_label]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
-            pos = int(idx_len(dir_label))
+            pos = int(idx_len(clean_label))
             item_count = 1  # 已写入 label
 
             for title, row_1 in dir_entries:
@@ -2923,13 +2931,16 @@ class SaSheetsWriter:
                 text_parts.append(sep)
                 pos += idx_len(sep)
 
-                title_s = str(title or "-").strip() or "-"
+                title_s = strip_leading_emoji(str(title or "-").strip() or "-")
                 start = int(pos)
                 text_parts.append(title_s)
                 pos += idx_len(title_s)
                 end = int(pos)
 
-                url = f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
+                url = (
+                    f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit"
+                    f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
+                )
                 runs.append(
                     {
                         "startIndex": int(start),
