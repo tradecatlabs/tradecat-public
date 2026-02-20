@@ -845,37 +845,55 @@ class SaSheetsWriter:
             is_write=True,
         )
 
-        # -------------------- directory (HYPERLINK) --------------------
-        # 目录行用公式写入，因此必须用 USER_ENTERED；values.update(RAW) 会把公式当成普通文本。
+        # -------------------- directory (single cell, rich links) --------------------
+        # 需求：目录行改成“一个单元格（整行合并）+ 逗号分隔”，仍保留每个条目的点击跳转。
         if directory_row_0 is None:
-            directory_row_0 = 2
+            directory_row_0 = 1
+        dir_text: str | None = None
+        dir_runs: list[dict[str, Any]] | None = None
         if 0 <= int(directory_row_0) < int(n_rows) and panel_blocks:
             try:
-                dir_row_1 = int(directory_row_0) + 1
-                formulas: list[str] = []
-                for start_0, _end_0_excl, title in panel_blocks:
-                    target_row_1 = int(start_0) + 1
-                    safe_title = str(title).replace('"', '""')
-                    formulas.append(f'=HYPERLINK("#gid={int(sh_id)}&range=A{target_row_1}","{safe_title}")')
+                items_per_line = 10
 
-                start_col_1 = 2  # B
-                end_col_1 = start_col_1 + len(formulas) - 1
-                if end_col_1 >= start_col_1:
-                    col_l = _index_to_col(int(start_col_1))
-                    col_r = _index_to_col(int(end_col_1))
-                    self._exec(
-                        self._sheets.spreadsheets()
-                        .values()
-                        .update(
-                            spreadsheetId=self._spreadsheet_id,
-                            range=f"{tab_title}!{col_l}{dir_row_1}:{col_r}{dir_row_1}",
-                            valueInputOption="USER_ENTERED",
-                            body={"values": [formulas]},
-                        ),
-                        is_write=True,
+                def idx_len(s: str) -> int:
+                    # Sheets API startIndex 使用字符索引计数
+                    return len(str(s))
+
+                parts: list[str] = ["📌 目录（点击跳转）"]
+                runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+                pos = idx_len(parts[0])
+                item_count = 1
+                for start_0, _end_0_excl, title in panel_blocks:
+                    sep = ","  # 币种查询目录：保持单行；需要换行时用 items_per_line 改成 ",\n"
+                    if item_count % items_per_line == 0:
+                        sep = ",\n"
+                    parts.append(sep)
+                    pos += idx_len(sep)
+
+                    t = str(title or "-").strip() or "-"
+                    start = int(pos)
+                    parts.append(t)
+                    pos += idx_len(t)
+                    end = int(pos)
+
+                    url = f"#gid={int(sh_id)}&range=A{int(start_0) + 1}"
+                    runs.append(
+                        {
+                            "startIndex": int(start),
+                            "format": {
+                                "link": {"uri": str(url)},
+                                "foregroundColor": _rgb(0.1, 0.4, 0.8),
+                                "underline": True,
+                            },
+                        }
                     )
+                    runs.append({"startIndex": int(end), "format": {}})
+                    item_count += 1
+
+                dir_text = "".join(parts) + ("," if not "".join(parts).endswith(",") else "")
+                dir_runs = runs
             except Exception:
-                pass
+                dir_text, dir_runs = None, None
 
         meta = self._meta_get()
         key_rows = f"symtab.{tab_title}.rows"
@@ -912,7 +930,7 @@ class SaSheetsWriter:
 
         # -------------------- style --------------------
         # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
-        style_version = "symbol_table_v8"
+        style_version = "symbol_table_v9"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -1169,7 +1187,8 @@ class SaSheetsWriter:
                             "sheetId": int(sh_id),
                             "gridProperties": {
                                 "frozenRowCount": int(int(header_row_0) + 1),
-                                "frozenColumnCount": 3,
+                                # 目录/元信息行需要“整行合并”，冻结列会阻止跨边界 merge，因此这里设为 0。
+                                "frozenColumnCount": 0,
                             },
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
@@ -1220,6 +1239,38 @@ class SaSheetsWriter:
                                 }
                             },
                             "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment)",
+                        }
+                    }
+                )
+
+            # 元信息行（第 1 行）整行合并：提升信息密度与阅读一致性
+            reqs.append(
+                {
+                    "mergeCells": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(n_cols),
+                        },
+                        "mergeType": "MERGE_ALL",
+                    }
+                }
+            )
+            # 目录行整行合并
+            if directory_row_0 is not None:
+                reqs.append(
+                    {
+                        "mergeCells": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(directory_row_0),
+                                "endRowIndex": int(directory_row_0) + 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(n_cols),
+                            },
+                            "mergeType": "MERGE_ALL",
                         }
                     }
                 )
@@ -1366,7 +1417,7 @@ class SaSheetsWriter:
                     row_count=want_rows,
                     col_count=want_cols,
                     frozen_row_count=int(int(header_row_0) + 1),
-                    frozen_column_count=3,
+                    frozen_column_count=0,
                 )
 
         # -------------------- merges（指标组列合并） --------------------
@@ -1426,6 +1477,44 @@ class SaSheetsWriter:
                 except Exception as exc:
                     # 不吞错：合并失败会直接导致“面板列空白/指标组重复”，属于高可见问题
                     print(f"⚠️ symtab.merge_failed tab={tab_title} merges={len(reqs)} {type(exc).__name__}: {exc}")
+
+        # -------------------- directory richtext links (after merges) --------------------
+        if dir_text and dir_runs and directory_row_0 is not None:
+            try:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "updateCells": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": int(directory_row_0),
+                                            "endRowIndex": int(directory_row_0) + 1,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": 1,
+                                        },
+                                        "rows": [
+                                            {
+                                                "values": [
+                                                    {
+                                                        "userEnteredValue": {"stringValue": str(dir_text)},
+                                                        "textFormatRuns": dir_runs,
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "fields": "userEnteredValue,textFormatRuns",
+                                    }
+                                }
+                            ]
+                        },
+                    ),
+                    is_write=True,
+                )
+            except Exception as exc:
+                print(f"⚠️ symtab.dir_links_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
         # 隐藏周期列（默认隐藏 1m）：对“币种查询”子表也生效
         hide_periods = _hidden_periods()
