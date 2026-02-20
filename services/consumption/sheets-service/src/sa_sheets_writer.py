@@ -823,6 +823,14 @@ class SaSheetsWriter:
             if end_0_excl > start_0:
                 panel_blocks.append((int(start_0), int(end_0_excl), str(title)))
 
+        # 顶部两行（元信息/目录）横向合并：保证“单行一个单元格”的展示效果
+        if directory_row_0 is None:
+            directory_row_0 = 1
+        if int(n_cols) >= 2:
+            merge_ranges.append((0, 1, 0, int(n_cols)))
+            if 0 <= int(directory_row_0) < int(n_rows):
+                merge_ranges.append((int(directory_row_0), int(directory_row_0) + 1, 0, int(n_cols)))
+
         # 将“面板合并”加入 merge_ranges（与指标组合并共用一套 batch merge）
         for start_0, end_0_excl, _title in panel_blocks:
             if (end_0_excl - start_0) > 1:
