@@ -37,12 +37,28 @@
 - `SHEETS_BLOB_THRESHOLD_CHARS`：raw 超长阈值（默认 20000；超长会落 Drive 并在表内存引用）
 - `SHEETS_SA_WRITE_RPM`：SA 写入限流（写请求/分钟，默认 55；配额为 60 时建议 50）
 
+### 远程数据源（SSH 拉取服务器 market_data.db，可选，推荐）
+
+> 用途：当本机 `libs/database/.../market_data.db` 不全/落后时，sheets-service 可在每轮同步前先从服务器拉取一份快照作为数据源。
+
+- `SHEETS_REMOTE_DB_MODE`：`off|ssh`（默认：检测到 `SHEETS_REMOTE_DB_SSH_HOST` 则自动启用 `ssh`）
+- `SHEETS_REMOTE_DB_SSH_HOST`：SSH 主机（例如 `100.91.176.84`）
+- `SHEETS_REMOTE_DB_SSH_USER`：SSH 用户（默认 `nvidia`）
+- `SHEETS_REMOTE_DB_SSH_KEY_PATH`：SSH 私钥路径（建议 `chmod 600`）
+- `SHEETS_REMOTE_DB_PATH`：远端 DB 路径（例如 `/home/nvidia/.../market_data.db`）
+- `SHEETS_REMOTE_DB_LOCAL_PATH`：本地落地路径（默认 `data/remote/market_data.db`）
+- `SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS`：最小刷新间隔（默认 300；避免每次都传 170MB）
+- `SHEETS_REMOTE_DB_SNAPSHOT`：`0/1`（默认 `0`；`1` 表示先在远端生成一致性快照再拉取，避免并发写入导致 DB 不一致）
+
 ### 导出与运行
 - `SHEETS_EXPORT_LANG`：默认 `zh_CN`
 - `SHEETS_EXPORT_CARDS`：逗号分隔 card_id 白名单；空=全部
 - `SHEETS_EXPORT_INCLUDE_BLACKLIST`：`1` 表示包含 cards registry 黑名单卡片
 - `SHEETS_EXPORT_MULTI_PERIODS`：`0/1`（默认 `1`；对排行榜卡片导出 7 周期横向表：`1m..1w`）
   - 列顺序：按“字段组”展开周期（`趋势强度@1m..1w` → 下一字段组 …），并在看板渲染时生成“两行表头”：字段组行 + 周期行。
+- `SHEETS_EXPORT_SYMBOLS_GROUPS`：导出侧覆盖 `SYMBOLS_GROUPS`（例如 `main4`），避免继承全局配置导致看板币种不全
+- `SHEETS_EXPORT_SYMBOLS_UNFILTERED`：`0/1`（`1` 表示导出侧强制关闭币种过滤，等价 `SYMBOLS_GROUPS=auto`）
+  - 常见现象：如果你的全局 `config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。
 - 看板源信息：每张卡片的 `标题/更新/排序/提示/最后更新` 会按固定顺序拼接到 **同一单元格**（整行合并），紧贴在表格主体上方。
 - `SHEETS_SYMBOL_TABS`：逗号分隔交易对（默认取 `SYMBOLS_GROUP_main4`，再回退 `BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT`），为每个交易对创建一个中文前缀的子表 `币种查询_<SYMBOL>` 并覆盖写“币种查询完整 TXT”。
 - `SHEETS_SYMBOL_TAB_PREFIX`：子表名前缀（默认 `币种查询_`）
