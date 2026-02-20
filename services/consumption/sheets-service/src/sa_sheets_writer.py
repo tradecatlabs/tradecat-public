@@ -1537,32 +1537,108 @@ class SaSheetsWriter:
         except Exception:
             pass
         try:
+            reqs_align: list[dict[str, Any]] = []
+
+            # Row1（元信息+目录）保持“单行溢出显示”，避免自动换行挤压信息密度
+            reqs_align.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "OVERFLOW_CELL",
+                            }
+                        },
+                        "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            # 需求：币种查询表的“列头/表头类型字段”必须上下左右居中 + 加粗（每次都强制，防手工样式漂移）
+            rrh = max(int(header_row_0), 0)
+            reqs_align.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(rrh),
+                            "endRowIndex": int(rrh + 1),
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            for r in (panel_title_rows or []):
+                rr0 = max(int(r) - 1, 0)
+                reqs_align.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(rr0),
+                                "endRowIndex": int(rr0 + 1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+            for r in (panel_header_rows or []):
+                rr0 = max(int(r) - 1, 0)
+                reqs_align.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(rr0),
+                                "endRowIndex": int(rr0 + 1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
-                    body={
-                        "requests": [
-                            {
-                                "repeatCell": {
-                                    "range": {
-                                        "sheetId": int(sh_id),
-                                        "startRowIndex": 0,
-                                        "endRowIndex": 1,
-                                        "startColumnIndex": 0,
-                                        "endColumnIndex": int(target_cols),
-                                    },
-                                    "cell": {
-                                        "userEnteredFormat": {
-                                            "horizontalAlignment": "LEFT",
-                                            "verticalAlignment": "MIDDLE",
-                                            "wrapStrategy": "OVERFLOW_CELL",
-                                        }
-                                    },
-                                    "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
-                                }
-                            }
-                        ]
-                    },
+                    body={"requests": reqs_align},
                 ),
                 is_write=True,
             )
