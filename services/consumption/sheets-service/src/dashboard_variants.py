@@ -6,6 +6,7 @@ from typing import Any
 
 PERIODS_DEFAULT = ("1m", "5m", "15m", "1h", "4h", "1d", "1w")
 SYMBOL_COL_OUT = "币种"
+DROP_GROUPS_DEFAULT = {"排名", "rank", "Rank", "序号", "#"}
 
 
 def _parse_period_suffix(col: str) -> str:
@@ -74,7 +75,7 @@ def compact_cell_multiperiod(*, columns: list[str], rows: list[dict[str, Any]]) 
         if c == sym_key:
             continue
         g = _parse_field_group(c)
-        if g and g not in groups:
+        if g and g not in DROP_GROUPS_DEFAULT and g not in groups:
             groups.append(g)
 
     out_cols = [SYMBOL_COL_OUT, *groups]
@@ -121,7 +122,7 @@ def vertical_multiperiod(*, columns: list[str], rows: list[dict[str, Any]]) -> V
         if c == sym_key:
             continue
         g = _parse_field_group(c)
-        if g and g not in groups:
+        if g and g not in DROP_GROUPS_DEFAULT and g not in groups:
             groups.append(g)
 
     out_cols = [SYMBOL_COL_OUT, "周期", *groups]
@@ -163,7 +164,7 @@ def field_rows_period_columns(*, columns: list[str], rows: list[dict[str, Any]])
         if c == sym_key:
             continue
         g = _parse_field_group(c)
-        if g and g not in groups:
+        if g and g not in DROP_GROUPS_DEFAULT and g not in groups:
             groups.append(g)
 
     out_cols = [SYMBOL_COL_OUT, "字段", *periods]

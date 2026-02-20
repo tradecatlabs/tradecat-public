@@ -92,6 +92,64 @@ def _post_with_retry(
         _sleep_backoff(attempt, base=backoff_base_seconds, max_seconds=backoff_max_seconds)
 
 
+def _extract_volume_sorted_symbols(payloads: list[dict]) -> list[str]:
+    """
+    统一交易对排序口径：使用“成交量榜单（volume_ranking）”的行顺序作为全局币种顺序。
+    - volume_ranking 的 base_period 默认 15m，且按成交量（base_volume）排序，因此其 rows 顺序即“按交易量排序”。
+    - 不做数值解析（避免 K/M/B 格式与语言变化引入误差）。
+    """
+    card_type = (os.environ.get("SHEETS_SYMBOL_SORT_CARD_TYPE", "volume_ranking") or "volume_ranking").strip()
+    if not card_type:
+        card_type = "volume_ranking"
+
+    vol_payload = None
+    for p in payloads:
+        if str(p.get("card_type") or "").strip() == card_type:
+            vol_payload = p
+            break
+    if not isinstance(vol_payload, dict):
+        return []
+
+    table = vol_payload.get("table") or {}
+    cols = table.get("columns") or []
+    rows = table.get("rows") or []
+    if not (isinstance(cols, list) and isinstance(rows, list) and cols):
+        return []
+
+    sym_key = str(cols[0] or "").strip() or "币种"
+    out: list[str] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        sym = str(r.get(sym_key) or r.get("币种") or r.get("symbol") or "").strip()
+        if sym and sym not in out:
+            out.append(sym)
+    return out
+
+
+def _reorder_payload_rows_by_symbols(payload: dict, *, symbols: list[str]) -> None:
+    table = payload.get("table") or {}
+    cols = table.get("columns") or []
+    rows = table.get("rows") or []
+    if not (isinstance(cols, list) and isinstance(rows, list) and cols and rows):
+        return
+
+    sym_key = str(cols[0] or "").strip() or "币种"
+    order = {s: i for i, s in enumerate(symbols or [])}
+
+    indexed: list[tuple[int, int, object]] = []
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict):
+            indexed.append((10**9, i, r))
+            continue
+        sym = str(r.get(sym_key) or r.get("币种") or r.get("symbol") or "").strip()
+        indexed.append((int(order.get(sym, 10**9)), int(i), r))
+
+    indexed.sort(key=lambda t: (t[0], t[1]))
+    table["rows"] = [t[2] for t in indexed]
+    payload["table"] = table
+
+
 async def _run_once(
     settings: Settings,
     *,
@@ -220,6 +278,14 @@ async def _run_once(
         # - legacy：保留原始“超宽分块纵向堆叠”渲染
         main_variant = (os.environ.get("SHEETS_DASHBOARD_MAIN_VARIANT", "5") or "5").strip().lower()
         use_v5_main = main_variant in {"5", "v5", "方案5"}
+
+        # 统一交易对排序：按“成交量榜单”行顺序作为全局币种顺序（即按交易量排序）
+        # - 默认开启，可用 SHEETS_SYMBOL_SORT_BY_VOLUME=0 关闭
+        if use_v5_main and (os.environ.get("SHEETS_SYMBOL_SORT_BY_VOLUME", "1") or "1").strip() != "0":
+            syms = _extract_volume_sorted_symbols(payloads)
+            if syms:
+                for p in payloads:
+                    _reorder_payload_rows_by_symbols(p, symbols=syms)
 
         # 为 auto width 预估列数（v5 固定 9 列；legacy 取原始最大列数）
         if use_v5_main:
