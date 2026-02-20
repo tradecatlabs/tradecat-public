@@ -2730,7 +2730,7 @@ class SaSheetsWriter:
         def pad_row(vals: list[str]) -> list[str]:
             return (list(vals) + [""] * width)[:width]
 
-        # 目录（多行、多列，一行最多 width 个条目；首格放 label）
+        # 目录（单单元格，多行文本）：首格放 label + 逗号分隔条目（更紧凑）
         render_payloads: list[dict[str, Any]] = []
         for p in payloads:
             if not isinstance(p, dict):
@@ -2745,8 +2745,8 @@ class SaSheetsWriter:
             render_payloads.append(p)
 
         dir_label = "📌 目录（点击跳转）"
-        dir_cells_needed = max(int(len(render_payloads)), 0) + 1  # +1 for label cell
-        dir_rows = max(int(math.ceil(dir_cells_needed / max(int(width), 1))), 1)
+        # 固定为 1 行：目录文本放入单单元格（A1），避免“铺满一行超链接”挤压主表宽度
+        dir_rows = 1
         header_row_1 = int(dir_rows) + 1  # 1-based
         body_start_row_1 = int(header_row_1) + 1
 
@@ -2815,29 +2815,43 @@ class SaSheetsWriter:
             is_write=True,
         )
 
-        # 目录：写入 HYPERLINK 公式（必须 USER_ENTERED，否则会变成纯文本）
-        # - 不做 merge（冻结列禁止跨边界 merge）
+        # 目录：写入“逗号分隔 + 换行”的单单元格文本（A1）
+        # - 保留“点击跳转”：通过 RichText 的 textFormatRuns 为每个条目单独绑定 link
         # - 目录区域无内容时也覆盖写，避免历史残留
         if dir_rows > 0:
-            grid = [[""] * width for _ in range(int(dir_rows))]
-            grid[0][0] = dir_label
+            items_per_line = 10
+            col_l0 = int(col_l_idx) - 1
 
-            def esc(s: str) -> str:
-                return str(s or "").replace('"', '""')
+            def u16_len(s: str) -> int:
+                # Google Sheets textFormatRuns.startIndex 使用 UTF-16 code units；emoji 会占 2 个 code unit
+                return len(str(s).encode("utf-16-le")) // 2
 
-            # 逐格填充：从 (0,1) 开始，填满后换行
-            k = 0
+            text_parts: list[str] = [dir_label]
+            runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+            pos_u16 = int(u16_len(dir_label))
+            item_count = 1  # 已写入 label
+
             for title, row_1 in dir_entries:
-                pos = 1 + k
-                rr = pos // int(width)
-                cc = pos % int(width)
-                if rr >= int(dir_rows):
-                    break
-                label = esc(title) or f"卡片{int(k) + 1}"
-                url = f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
-                grid[int(rr)][int(cc)] = f'=HYPERLINK("{esc(url)}","{label}")'
-                k += 1
+                sep = ",\n" if (item_count % items_per_line == 0) else ","
+                text_parts.append(sep)
+                pos_u16 += u16_len(sep)
 
+                title_s = str(title or "-").strip() or "-"
+                start_u16 = int(pos_u16)
+                text_parts.append(title_s)
+                pos_u16 += u16_len(title_s)
+                end_u16 = int(pos_u16)
+
+                url = f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
+                runs.append({"startIndex": int(start_u16), "format": {"link": {"uri": str(url)}}})
+                runs.append({"startIndex": int(end_u16), "format": {}})
+                item_count += 1
+
+            dir_text = "".join(text_parts)
+
+            # 先写入纯文本（RAW），再注入 RichText links（避免公式拼接导致链接丢失）
+            grid = [[""] * width for _ in range(int(dir_rows))]
+            grid[0][0] = dir_text
             dir_rng = f"{sheet_title}!{col_l}1:{col_r}{int(dir_rows)}"
             self._exec(
                 self._sheets.spreadsheets()
@@ -2845,11 +2859,47 @@ class SaSheetsWriter:
                 .update(
                     spreadsheetId=self._spreadsheet_id,
                     range=dir_rng,
-                    valueInputOption="USER_ENTERED",
+                    valueInputOption="RAW",
                     body={"values": grid},
                 ),
                 is_write=True,
             )
+
+            try:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "updateCells": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": 0,
+                                            "endRowIndex": 1,
+                                            "startColumnIndex": int(col_l0),
+                                            "endColumnIndex": int(col_l0 + 1),
+                                        },
+                                        "rows": [
+                                            {
+                                                "values": [
+                                                    {
+                                                        "userEnteredValue": {"stringValue": dir_text},
+                                                        "textFormatRuns": runs,
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "fields": "userEnteredValue,textFormatRuns",
+                                    }
+                                }
+                            ]
+                        },
+                    ),
+                    is_write=True,
+                )
+            except Exception as exc:
+                print(f"⚠️ dashboard_v5.dir_links_failed {type(exc).__name__}: {exc}")
 
         # 2) styles：全局表头 + 周期列灰白交替 + 每张卡 info 行 + merges（合并币种列）
         col_l0 = col_l_idx - 1
@@ -2875,7 +2925,7 @@ class SaSheetsWriter:
         # -------------------- 差量样式（只扩不重刷） --------------------
         # 目标：避免每轮对大范围做重复 repeatCell（尤其是长表），减少耗时与配额压力。
         meta = self._meta_get()
-        style_version = "dashboard_v5_style_v6"
+        style_version = "dashboard_v5_style_v7"
         key_style_version = "dashboard_v5_style_version"
         key_styled_rows = "dashboard_v5_styled_rows"
         key_dir_rows = "dashboard_v5_dir_rows"
@@ -2946,10 +2996,20 @@ class SaSheetsWriter:
                                 "textFormat": {"bold": True},
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "CLIP",
+                                "wrapStrategy": "WRAP",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            # 目录行高度略增，便于多行阅读
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                        "properties": {"pixelSize": 80},
+                        "fields": "pixelSize",
                     }
                 }
             )
