@@ -1563,6 +1563,7 @@ class SaSheetsWriter:
             )
 
             # 需求：币种查询表的“列头/表头类型字段”必须上下左右居中 + 加粗（每次都强制，防手工样式漂移）
+            # 注意：这里只覆盖 对齐+加粗，不覆盖背景色/换行策略，避免影响“数据区”既有样式。
             rrh = max(int(header_row_0), 0)
             reqs_align.append(
                 {
@@ -1579,10 +1580,9 @@ class SaSheetsWriter:
                                 "textFormat": {"bold": True},
                                 "horizontalAlignment": "CENTER",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "CLIP",
                             }
                         },
-                        "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment)",
                     }
                 }
             )
@@ -1603,10 +1603,9 @@ class SaSheetsWriter:
                                     "textFormat": {"bold": True},
                                     "horizontalAlignment": "CENTER",
                                     "verticalAlignment": "MIDDLE",
-                                    "wrapStrategy": "CLIP",
                                 }
                             },
-                            "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                            "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment)",
                         }
                     }
                 )
@@ -1627,10 +1626,9 @@ class SaSheetsWriter:
                                     "textFormat": {"bold": True},
                                     "horizontalAlignment": "CENTER",
                                     "verticalAlignment": "MIDDLE",
-                                    "wrapStrategy": "CLIP",
                                 }
                             },
-                            "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                            "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment)",
                         }
                     }
                 )
