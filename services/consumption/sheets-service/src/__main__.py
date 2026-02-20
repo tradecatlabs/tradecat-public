@@ -176,6 +176,23 @@ async def _run_once(
     except Exception as exc:
         print(f"⚠️ 远程数据源准备失败（将继续使用本机 DB）：{type(exc).__name__}: {exc}")
 
+    # ==================== 币种过滤默认策略（sheets-service 侧） ====================
+    # 现象：如果用户的全局配置是 SYMBOLS_GROUPS=main1（仅 BTC），看板会“只有 BTC”。
+    # 但当启用 remote_db=ssh 时，通常意味着“使用服务器全量数据源”，此时继续沿用 main1 会让看板失真。
+    #
+    # 策略：
+    # - remote_db=ssh 且用户未显式设置导出侧覆盖时：默认关闭过滤（auto）
+    # - 显式覆盖优先级：
+    #   1) SHEETS_EXPORT_SYMBOLS_UNFILTERED=1
+    #   2) SHEETS_EXPORT_SYMBOLS_GROUPS=<group>
+    if (settings.remote_db_mode or "").strip().lower() == "ssh":
+        if (
+            (os.environ.get("SHEETS_EXPORT_SYMBOLS_UNFILTERED") or "").strip() == ""
+            and (os.environ.get("SHEETS_EXPORT_SYMBOLS_GROUPS") or "").strip() == ""
+        ):
+            os.environ["SHEETS_EXPORT_SYMBOLS_UNFILTERED"] = "1"
+            print("🧩 Sheets 导出：检测到 remote_db=ssh，默认关闭币种过滤（可用 SHEETS_EXPORT_SYMBOLS_GROUPS 覆盖）")
+
     if settings.write_mode == "webhook":
         if not settings.webhook_url or not settings.webhook_secret:
             print("❌ 缺少 SHEETS_WEBHOOK_URL / SHEETS_WEBHOOK_SECRET，无法发送（可先用 SHEETS_SYNC_DRY_RUN=1）")

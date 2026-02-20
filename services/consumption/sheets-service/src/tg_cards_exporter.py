@@ -361,8 +361,11 @@ class TgCardsExporter:
         #
         # 这里提供一个导出侧开关：SHEETS_EXPORT_SYMBOLS_UNFILTERED=1 时，强制关闭过滤。
         # 实现：把 SYMBOLS_GROUPS 置为 auto（get_configured_symbols_set() -> None），并重置 data_provider 缓存。
-        if (os.environ.get("SHEETS_EXPORT_SYMBOLS_UNFILTERED", "0") or "0").strip() == "1":
-            os.environ["SYMBOLS_GROUPS"] = "auto"
+        export_groups = (os.environ.get("SHEETS_EXPORT_SYMBOLS_GROUPS", "") or "").strip()
+        export_unfiltered = (os.environ.get("SHEETS_EXPORT_SYMBOLS_UNFILTERED", "0") or "0").strip() == "1"
+        if export_unfiltered or export_groups:
+            # 约定：unfiltered 优先级更高（显式要求“不做过滤”）
+            os.environ["SYMBOLS_GROUPS"] = "auto" if export_unfiltered else export_groups
             try:
                 from cards.data_provider import reset_symbols_cache
 
