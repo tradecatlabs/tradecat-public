@@ -162,9 +162,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     # -------------------- 顶部信息块（压缩为 1 行；单单元格） --------------------
     # 需求：币种查询子表只保留 1 行元信息（包含目录占位），用中文逗号分隔。
     # - 目录的具体条目与跳转链接由 writer 在同一单元格内补齐（RichText links）。
-    meta_text = (
-        f"币种，{sym}，导出时间(UTC)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格），📌 目录（点击跳转），"
-    )
+    meta_text = f"币种，{sym}，导出时间(UTC)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格），"
     values.append(pad_row([meta_text], n_cols))
 
     # 全局表头（只写一次，不在每个面板重复写）

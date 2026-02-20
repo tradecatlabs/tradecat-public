@@ -867,7 +867,11 @@ class SaSheetsWriter:
                 if base and (not base.endswith("，")):
                     base = base + "，"
 
-                parts: list[str] = [base + "📌 目录（点击跳转）"]
+                label = "📌 目录（点击跳转）"
+                prefix = base
+                if label not in prefix:
+                    prefix = prefix + label
+                parts: list[str] = [prefix]
                 runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
                 pos = idx_len(parts[0])
                 item_count = 1
