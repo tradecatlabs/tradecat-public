@@ -151,7 +151,10 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     # - 右侧周期列：7 周期
     # - 为了支持表内排序/阈值/图表，追加一个“raw 镜像区”（默认隐藏）：[分隔列] + raw(7周期)
     n_display = len(periods_all)
-    raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "hidden") or "hidden").strip().lower()
+    # raw 镜像区（用于排序/图表的数值镜像）默认关闭：
+    # - 否则会额外生成 1 列分隔 + N 列 raw（你看到的 J..P 等多余列），信息密度变差
+    # - 如确需 raw：设置 `SHEETS_SYMBOL_QUERY_RAW_MODE=hidden|show`
+    raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "off") or "off").strip().lower()
     if raw_mode not in {"hidden", "show", "off"}:
         raw_mode = "hidden"
 

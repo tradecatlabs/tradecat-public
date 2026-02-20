@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import os
 import re
 import time
@@ -138,10 +137,10 @@ def _hidden_periods() -> set[str]:
     """
     需要在 Google Sheets 里“移除（删除列）”的周期列（仅展示层，不影响数据生成）。
 
-    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认不移除任何周期（全部展开）
+    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认移除 `1m`（避免主表/币种表过宽、写入量过大）
     - 禁用：`SHEETS_HIDE_PERIODS=0|off|none`
     """
-    raw = (os.environ.get("SHEETS_HIDE_PERIODS", "off") or "off").strip()
+    raw = (os.environ.get("SHEETS_HIDE_PERIODS", "1m") or "1m").strip()
     if raw.lower() in {"0", "off", "none"}:
         return set()
     return {s.strip() for s in raw.split(",") if s.strip()}
@@ -163,6 +162,34 @@ def _symbol_query_frozen_cols() -> int:
     except Exception:
         v = 3
     return max(v, 0)
+
+
+def _symbol_query_col_widths_px() -> tuple[int, int, int, int]:
+    """
+    币种查询表列宽（像素）：
+    - A: 面板
+    - B: 指标组
+    - C: 指标
+    - 周期列：5m..1w
+    """
+    try:
+        w_panel = int((os.environ.get("SHEETS_SYMBOL_QUERY_COL_WIDTH_PANEL", "90") or "90").strip() or "90")
+    except Exception:
+        w_panel = 90
+    try:
+        w_group = int((os.environ.get("SHEETS_SYMBOL_QUERY_COL_WIDTH_GROUP", "150") or "150").strip() or "150")
+    except Exception:
+        w_group = 150
+    try:
+        w_metric = int((os.environ.get("SHEETS_SYMBOL_QUERY_COL_WIDTH_METRIC", "170") or "170").strip() or "170")
+    except Exception:
+        w_metric = 170
+    try:
+        w_period = int((os.environ.get("SHEETS_SYMBOL_QUERY_COL_WIDTH_PERIOD", "78") or "78").strip() or "78")
+    except Exception:
+        w_period = 78
+
+    return max(w_panel, 40), max(w_group, 60), max(w_metric, 60), max(w_period, 50)
 
 
 def _value_type(v: Any) -> str:
@@ -314,6 +341,7 @@ class SaSheetsWriter:
         self._tab_row_fields_eav = _env_text("SHEETS_TAB_ROW_FIELDS_EAV", "明细字段EAV")
         self._tab_blobs_index = _env_text("SHEETS_TAB_BLOBS_INDEX", "大字段索引")
         self._tab_meta = _env_text("SHEETS_TAB_META", "元数据")
+        self._tab_polymarket_stats = _env_text("SHEETS_TAB_POLYMARKET_STATS", "Polymarket统计")
 
         self._ensured_schema = False
         self._sheet_id_by_title: dict[str, int] = {}
@@ -871,7 +899,7 @@ class SaSheetsWriter:
                                 raw_sep2 = int(ci)
                                 break
                     try:
-                        setattr(sheet, "raw_block_start_col_0", raw_sep2)
+                        sheet.raw_block_start_col_0 = raw_sep2  # type: ignore[attr-defined]
                     except Exception:
                         pass
 
@@ -936,8 +964,6 @@ class SaSheetsWriter:
         dir_runs: list[dict[str, Any]] | None = None
         if 0 <= int(directory_row_0) < int(n_rows) and panel_blocks:
             try:
-                items_per_line = 10
-
                 def idx_len(s: str) -> int:
                     # Sheets API startIndex 使用字符索引计数
                     return len(str(s))
@@ -1120,12 +1146,13 @@ class SaSheetsWriter:
                 }
             )
 
-            # widths：A,B,C wider；periods fixed
+            # widths：更紧凑（提升信息密度）
+            w_panel, w_group, w_metric, w_period = _symbol_query_col_widths_px()
             reqs.append(
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 140},
+                        "properties": {"pixelSize": int(w_panel)},
                         "fields": "pixelSize",
                     }
                 }
@@ -1134,7 +1161,7 @@ class SaSheetsWriter:
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-                        "properties": {"pixelSize": 220},
+                        "properties": {"pixelSize": int(w_group)},
                         "fields": "pixelSize",
                     }
                 }
@@ -1143,7 +1170,7 @@ class SaSheetsWriter:
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-                        "properties": {"pixelSize": 240},
+                        "properties": {"pixelSize": int(w_metric)},
                         "fields": "pixelSize",
                     }
                 }
@@ -1155,14 +1182,14 @@ class SaSheetsWriter:
             except Exception:
                 raw_block_start_col_0 = None
 
-            # columns >= C：默认 90；若存在 raw 镜像区，则 display/raw 区域分别设置宽度并可隐藏
+            # columns >= C：周期列更窄；若存在 raw 镜像区，则 display/raw 区域分别设置宽度并可隐藏
             for ci in range(3, int(target_cols)):
-                px = 90
+                px = int(w_period)
                 if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
                     if ci == int(raw_block_start_col_0):
                         px = 26  # 分隔列
                     elif int(raw_block_start_col_0) < ci < int(n_cols):
-                        px = 80  # raw 周期列
+                        px = max(int(w_period) - 6, 60)  # raw 周期列更窄
                 reqs.append(
                     {
                         "updateDimensionProperties": {
@@ -1267,9 +1294,9 @@ class SaSheetsWriter:
                         }
                     )
 
-                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "show") or "show").strip().lower()
+                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "off") or "off").strip().lower()
                 if raw_mode not in {"hidden", "show", "off"}:
-                    raw_mode = "hidden"
+                    raw_mode = "off"
                 if raw_mode != "off":
                     reqs.append(
                         {
@@ -1712,7 +1739,7 @@ class SaSheetsWriter:
                 }
             )
 
-            # raw 镜像区：按 raw_mode 控制显示/隐藏（默认 show）；放在“全展开”之后以覆盖其效果
+            # raw 镜像区：按 raw_mode 控制显示/隐藏（默认 off）；放在“全展开”之后以覆盖其效果
             try:
                 raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
                 raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
@@ -1721,9 +1748,9 @@ class SaSheetsWriter:
             if raw_block_start_col_0 is not None and 0 <= int(raw_block_start_col_0) < int(n_cols):
                 raw_sep = int(raw_block_start_col_0)
                 raw_end = int(n_cols)
-                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "show") or "show").strip().lower()
+                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "off") or "off").strip().lower()
                 if raw_mode not in {"hidden", "show", "off"}:
-                    raw_mode = "show"
+                    raw_mode = "off"
                 if raw_mode != "off":
                     reqs_align.append(
                         {
@@ -1872,6 +1899,404 @@ class SaSheetsWriter:
         # 周期列不再使用 hiddenByUser 折叠：已在 values 阶段直接删除列（见上方 drop_periods）。
 
         self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
+        return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
+
+    # ==================== polymarket stats tab ====================
+    def write_polymarket_stats_tab(self, *, tab_title: str, sheet: Any) -> dict[str, Any]:
+        """
+        覆盖写 Polymarket 统计子表（真表格，分段 CSV）：
+        - 1 行元信息（单单元格，中文逗号分隔）
+        - 多个分段：标题行（整行合并）+ 表头行 + 数据行
+        - 通过 meta 记录上次 rows/cols，仅清理尾部差量，避免整表 clear 带来的闪烁
+        """
+        self.ensure_sheet(title=tab_title)
+        self._refresh_sheet_map()
+
+        sh_id = self._sheet_id_by_title.get(tab_title)
+        if sh_id is None:
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title.get(tab_title)
+        if sh_id is None:
+            raise RuntimeError(f"missing_sheet:{tab_title}")
+
+        # 先 unmerge，避免旧版合并残留导致 values.update 报错或结构错乱
+        try:
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]},
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
+
+        values = getattr(sheet, "values", None) or []
+        n_rows = int(getattr(sheet, "n_rows", 0) or len(values))
+        n_cols = int(getattr(sheet, "n_cols", 0) or (len(values[0]) if values else 0))
+        panel_title_rows = list(getattr(sheet, "panel_title_rows", []) or [])
+        panel_header_rows = list(getattr(sheet, "panel_header_rows", []) or [])
+        merge_ranges = list(getattr(sheet, "merge_ranges", []) or [])
+
+        if not values or n_rows <= 0 or n_cols <= 0:
+            values = [["Polymarket统计，错误，导出为空"]]
+            n_rows, n_cols = 1, 1
+
+        # 统一补齐行长度，避免 merge/style 计算时行长度不一致
+        n_cols2 = max((len(r) for r in values if isinstance(r, list)), default=n_cols or 1)
+        n_cols = int(max(int(n_cols2), 1))
+        for row in values:
+            if isinstance(row, list) and len(row) < int(n_cols):
+                row.extend([""] * (int(n_cols) - len(row)))
+
+        n_rows = int(len(values))
+
+        # 保底：若 exporter 未给 merge_ranges，这里将“第一行元信息”合并
+        if not merge_ranges and int(n_cols) > 1:
+            merge_ranges.append((0, 1, 0, int(n_cols)))
+
+        # NOTE: 先确保 grid 足够大，避免 values.update 超出当前网格范围而报错。
+        self._ensure_grid_size(tab_title, min_rows=n_rows, min_cols=n_cols)
+
+        col_r = _index_to_col(n_cols)
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{tab_title}!A1:{col_r}{n_rows}",
+                valueInputOption="RAW",
+                body={"values": values},
+            ),
+            is_write=True,
+        )
+
+        # tail clear（避免历史残留）
+        meta = self._meta_get()
+        key_rows = f"pmtab.{tab_title}.rows"
+        key_cols = f"pmtab.{tab_title}.cols"
+        try:
+            r_old = int(str(meta.get(key_rows) or "0").strip() or "0")
+        except Exception:
+            r_old = 0
+        try:
+            c_old = int(str(meta.get(key_cols) or "0").strip() or "0")
+        except Exception:
+            c_old = 0
+
+        if r_old > n_rows:
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!A{n_rows + 1}:{_index_to_col(max(c_old, n_cols))}{r_old}",
+                ),
+                is_write=True,
+            )
+        if c_old > n_cols:
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!{_index_to_col(n_cols + 1)}1:{_index_to_col(c_old)}{max(r_old, n_rows)}",
+                ),
+                is_write=True,
+            )
+
+        # -------------------- style --------------------
+        style_version = "polymarket_table_v1"
+        key_style_version = f"pmtab.{tab_title}.style_version"
+        key_style_rows = f"pmtab.{tab_title}.style_rows"
+        key_style_cols = f"pmtab.{tab_title}.style_cols"
+        try:
+            styled_rows = int(str(meta.get(key_style_rows) or "0").strip() or "0")
+        except Exception:
+            styled_rows = 0
+        try:
+            styled_cols = int(str(meta.get(key_style_cols) or "0").strip() or "0")
+        except Exception:
+            styled_cols = 0
+
+        target_rows = int(max(n_rows, styled_rows, 800))
+        target_cols = int(max(n_cols, 6))
+        need_style = (
+            (meta.get(key_style_version) or "") != style_version
+            or target_rows > styled_rows
+            or target_cols != styled_cols
+        )
+        if need_style:
+            self._ensure_grid_size(tab_title, min_rows=target_rows, min_cols=target_cols)
+
+            # 清除旧 conditional formatting（避免历史规则残留）
+            try:
+                ss = self._exec(
+                    self._sheets.spreadsheets().get(
+                        spreadsheetId=self._spreadsheet_id,
+                        fields="sheets(properties(sheetId,title),conditionalFormats)",
+                    ),
+                    is_write=False,
+                )
+                cond_cnt = 0
+                for sh in ss.get("sheets", []):
+                    props = sh.get("properties") or {}
+                    if int(props.get("sheetId") or 0) != int(sh_id):
+                        continue
+                    cond = sh.get("conditionalFormats") or []
+                    cond_cnt = len(cond)
+                    break
+                if cond_cnt > 0:
+                    reqs_del = [
+                        {"deleteConditionalFormatRule": {"sheetId": int(sh_id), "index": 0}} for _ in range(cond_cnt)
+                    ]
+                    self._exec(
+                        self._sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=self._spreadsheet_id,
+                            body={"requests": reqs_del},
+                        ),
+                        is_write=True,
+                    )
+            except Exception:
+                pass
+
+            reqs: list[dict[str, Any]] = []
+
+            # base style
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 0,
+                            "endRowIndex": int(target_rows),
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
+                                "textFormat": {"fontFamily": "Arial", "fontSize": 10},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            # column widths：A 宽一些，B.. 适中
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                        "properties": {"pixelSize": 520},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+            for ci in range(1, int(target_cols)):
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(ci),
+                                "endIndex": int(ci + 1),
+                            },
+                            "properties": {"pixelSize": 140},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+
+            # freeze meta row
+            reqs.append(
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": int(sh_id),
+                            "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 0},
+                        },
+                        "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                    }
+                }
+            )
+
+            # meta row emphasis（第 1 行）
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.96, 0.97, 0.98),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "OVERFLOW_CELL",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            # title rows emphasis
+            for r in (panel_title_rows or []):
+                rr0 = max(int(r) - 1, 0)
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(rr0),
+                                "endRowIndex": int(rr0 + 1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(0.90, 0.95, 0.98),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
+            # header rows emphasis
+            for r in (panel_header_rows or []):
+                rr0 = max(int(r) - 1, 0)
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(rr0),
+                                "endRowIndex": int(rr0 + 1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": reqs},
+                ),
+                is_write=True,
+            )
+
+        # compact grid：让“无数据区域”在 UI 中消失
+        compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
+        if compact_grid:
+            try:
+                cur_rows, cur_cols = self._grid_by_title.get(tab_title, (0, 0))
+            except Exception:
+                cur_rows, cur_cols = 0, 0
+            want_rows = max(int(cur_rows or 0), int(target_rows))
+            want_cols = int(target_cols)
+            if int(cur_cols or 0) != int(want_cols) or int(cur_rows or 0) != int(want_rows):
+                self._set_sheet_grid_properties(
+                    tab_title,
+                    row_count=want_rows,
+                    col_count=want_cols,
+                    frozen_row_count=1,
+                    frozen_column_count=0,
+                )
+
+        # merges（标题行整行合并）
+        if merge_ranges:
+            reqs_merge: list[dict[str, Any]] = []
+            for rg in merge_ranges:
+                try:
+                    r0, r1, c0, c1 = rg
+                except Exception:
+                    continue
+                try:
+                    r0 = int(r0)
+                    r1 = int(r1)
+                    c0 = int(c0)
+                    c1 = int(c1)
+                except Exception:
+                    continue
+                if r0 < 0 or r1 <= r0:
+                    continue
+                if c0 < 0 or c1 <= c0:
+                    continue
+                if r0 >= n_rows:
+                    continue
+                if r1 > n_rows:
+                    r1 = n_rows
+                if c0 >= n_cols:
+                    continue
+                if c1 > n_cols:
+                    c1 = n_cols
+                if (r1 - r0) <= 1 and (c1 - c0) <= 1:
+                    continue
+                reqs_merge.append(
+                    {
+                        "mergeCells": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": int(c0),
+                                "endColumnIndex": int(c1),
+                            },
+                            "mergeType": "MERGE_ALL",
+                        }
+                    }
+                )
+            if reqs_merge:
+                try:
+                    self._exec(
+                        self._sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=self._spreadsheet_id,
+                            body={"requests": reqs_merge},
+                        ),
+                        is_write=True,
+                    )
+                except Exception:
+                    pass
+
+        # meta bump（记录 rows/cols/style）
+        self._meta_set(
+            {
+                key_rows: str(n_rows),
+                key_cols: str(n_cols),
+                key_style_version: style_version,
+                key_style_rows: str(target_rows),
+                key_style_cols: str(target_cols),
+            }
+        )
+
         return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
 
     def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
@@ -3193,7 +3618,6 @@ class SaSheetsWriter:
         # - 保留“点击跳转”：通过 RichText 的 textFormatRuns 为每个条目单独绑定 link
         # - 目录区域无内容时也覆盖写，避免历史残留
         if dir_rows > 0:
-            items_per_line = 10
             col_l0 = int(col_l_idx) - 1
 
             def idx_len(s: str) -> int:
@@ -4683,6 +5107,11 @@ class SaSheetsWriter:
             keep.add(self._tab_dashboard_history)
         if keep_meta:
             keep.add(self._tab_dashboard_meta)
+
+        # 外部数据旁路：Polymarket 统计子表（默认保留）
+        keep_polymarket = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_STATS", "1") or "1").strip() != "0"
+        if keep_polymarket:
+            keep.add(self._tab_polymarket_stats)
 
         # 可选：保留“看板变体 tab”（用于对比不同高密度布局）
         # 默认不保留：避免用户只想保留最小集合时被额外 tab 污染。

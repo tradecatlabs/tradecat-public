@@ -17,6 +17,7 @@ from src.dashboard_variants import field_rows_period_columns
 from src.idempotency import IdempotencyStore
 from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
+from src.polymarket_exporter import export_polymarket_stats_sheet
 from src.remote_db import RemoteDbSpec, ensure_local_market_db
 from src.repo import find_repo_root
 from src.sa_sheets_writer import SaSheetsWriter
@@ -408,6 +409,39 @@ async def _run_once(
                     {
                         "symbol_tabs_last_epoch": str(now),
                         "symbol_tabs_last_error": ";".join(errors)[:2000],
+                    }
+                )
+
+        # Polymarket 统计子表：默认 auto（配置了 ssh host 则走 ssh，否则本机运行 node）
+        pm_enable = (os.environ.get("SHEETS_POLYMARKET_STATS_ENABLE", "1") or "1").strip().lower()
+        if pm_enable in {"0", "off", "false", "no"}:
+            pm_on = False
+        elif pm_enable in {"1", "on", "true", "yes"}:
+            pm_on = True
+        else:
+            # auto：默认启用（即使导出失败也会写入“错误卡片”，避免用户“看不到 tab”）
+            pm_on = True
+        if pm_on:
+            now = int(time.time())
+            meta = sa_writer.meta_get()
+            try:
+                last = int(str(meta.get("polymarket_stats_last_epoch") or "0").strip() or "0")
+            except Exception:
+                last = 0
+            interval = int((os.environ.get("SHEETS_POLYMARKET_STATS_INTERVAL_SECONDS", "900") or "900").strip() or "900")
+            should = interval <= 0 or (now - last) >= interval
+            if should:
+                tab_title = (os.environ.get("SHEETS_TAB_POLYMARKET_STATS", "Polymarket统计") or "Polymarket统计").strip()
+                err = ""
+                try:
+                    pm_sheet = export_polymarket_stats_sheet(lang=lang)
+                    sa_writer.write_polymarket_stats_tab(tab_title=tab_title, sheet=pm_sheet)
+                except Exception as exc:
+                    err = f"{type(exc).__name__}:{exc}"
+                sa_writer.meta_set(
+                    {
+                        "polymarket_stats_last_epoch": str(now),
+                        "polymarket_stats_last_error": (err or "")[:2000],
                     }
                 )
 
