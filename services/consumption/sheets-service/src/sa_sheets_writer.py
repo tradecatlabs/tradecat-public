@@ -1395,7 +1395,9 @@ class SaSheetsWriter:
                     continue
                 if c1 > n_cols:
                     c1 = n_cols
-                if (r1 - r0) <= 1 or (c1 - c0) <= 1:
+                # mergeCells 允许“单列纵向合并”或“单行横向合并”，
+                # 只要范围内的单元格数量 > 1 就应该执行。
+                if (r1 - r0) <= 1 and (c1 - c0) <= 1:
                     continue
                 reqs.append(
                     {
