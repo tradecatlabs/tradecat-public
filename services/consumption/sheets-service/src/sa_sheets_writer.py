@@ -3174,12 +3174,13 @@ class SaSheetsWriter:
                     }
                 }
             )
-            # 目录行高度略增，便于阅读（目录为单行溢出显示，避免撑满屏）
+            # 目录行行高：保持默认（避免“首行很高”影响信息密度）
             reqs.append(
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 36},
+                        # Google Sheets 默认行高通常为 21px
+                        "properties": {"pixelSize": 21},
                         "fields": "pixelSize",
                     }
                 }
