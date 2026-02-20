@@ -802,7 +802,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v5"
+        style_version = "symbol_table_v6"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -1035,13 +1035,13 @@ class SaSheetsWriter:
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
-                        "cell": {
-                            "userEnteredFormat": {
+	                        "cell": {
+	                            "userEnteredFormat": {
 	                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
 	                                "textFormat": {"bold": True},
 	                            }
 	                        },
-	                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold)",
+	                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
 	                    }
 	                }
 	            )
@@ -1065,7 +1065,7 @@ class SaSheetsWriter:
 	                                    "textFormat": {"bold": True},
 	                                }
 	                            },
-	                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold)",
+	                            "fields": "userEnteredFormat(backgroundColor,textFormat)",
 	                        }
 	                    }
 	                )
@@ -1329,7 +1329,7 @@ class SaSheetsWriter:
                             "wrapStrategy": "WRAP",
                         }
                     },
-                    "fields": "userEnteredFormat(backgroundColor,textFormat.bold,wrapStrategy)",
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,wrapStrategy)",
                 }
             }
         )
@@ -2101,7 +2101,7 @@ class SaSheetsWriter:
 	                                                "wrapStrategy": "CLIP",
 	                                            }
 	                                        },
-	                                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+	                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
 	                                    }
 	                                },
                                 # value_num 列右对齐
@@ -2553,10 +2553,10 @@ class SaSheetsWriter:
 	                                "wrapStrategy": "CLIP",
 	                            }
 	                        },
-	                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
-	                    }
-	                }
-	            )
+		                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+		                    }
+		                }
+		            )
 
         # header row style（只在 full_style 时重刷）
         if full_style:
