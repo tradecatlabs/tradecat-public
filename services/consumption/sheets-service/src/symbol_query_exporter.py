@@ -40,6 +40,7 @@ class SymbolQuerySheet:
     n_rows: int
     n_cols: int
     raw_block_start_col_0: int | None = None
+    merge_ranges: list[tuple[int, int, int, int]] | None = None
 
 
 _NUM_SUFFIX = {
@@ -138,6 +139,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     values: list[list[Any]] = []
     panel_title_rows: list[int] = []
     panel_header_rows: list[int] = []
+    merge_ranges: list[tuple[int, int, int, int]] = []
 
     def pad_row(row: list[Any], n_cols: int) -> list[Any]:
         if len(row) >= n_cols:
@@ -170,7 +172,6 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         )
     )
     values.append(pad_row(["说明", "结构化表格（非文本伪表格）"], n_cols))
-    values.append([""] * n_cols)
 
     # -------------------- 4 个面板 --------------------
     for panel_name in ["basic", "futures", "advanced", "pattern"]:
@@ -207,7 +208,6 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
                     )
                 else:
                     values.append(pad_row([str(p), "-", "-", "-"], n_cols))
-            values.append([""] * n_cols)
             continue
 
         # 横表：指标组/指标 + 周期列
@@ -223,6 +223,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         tables: dict[str, list[tuple[str, str, object]]] = config.get("tables") or {}
 
         for table_name, fields in tables.items():
+            group_row_start_0 = len(values)  # 0-based, inclusive
             for field_id, display_key, formatter in fields:
                 display_name = _t(display_key, lang=lang)
                 display_row: list[Any] = [str(table_name), str(display_name)]
@@ -265,8 +266,10 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
                     values.append(pad_row([*display_row, "", *raw_row], n_cols))
                 else:
                     values.append(pad_row(display_row, n_cols))
-            # table 分隔空行
-            values.append([""] * n_cols)
+            group_row_end_0_excl = len(values)
+            # 合并“指标组”列（A 列）：仅对多行组生效
+            if (group_row_end_0_excl - group_row_start_0) > 1:
+                merge_ranges.append((group_row_start_0, group_row_end_0_excl, 0, 1))
 
     return SymbolQuerySheet(
         symbol=sym,
@@ -276,6 +279,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         n_rows=len(values),
         n_cols=n_cols,
         raw_block_start_col_0=raw_block_start_col_0,
+        merge_ranges=merge_ranges,
     )
 
 

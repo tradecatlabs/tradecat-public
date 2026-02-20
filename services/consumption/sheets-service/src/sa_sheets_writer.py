@@ -728,11 +728,24 @@ class SaSheetsWriter:
         if sh_id is None:
             raise RuntimeError(f"missing_sheet:{tab_title}")
 
+        # 先 unmerge，避免旧版合并残留导致 values.update 报错或结构错乱
+        try:
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]},
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
+
         values = getattr(sheet, "values", None) or []
         n_rows = int(getattr(sheet, "n_rows", 0) or len(values))
         n_cols = int(getattr(sheet, "n_cols", 0) or (len(values[0]) if values else 0))
         panel_title_rows = list(getattr(sheet, "panel_title_rows", []) or [])
         panel_header_rows = list(getattr(sheet, "panel_header_rows", []) or [])
+        merge_ranges = list(getattr(sheet, "merge_ranges", []) or [])
 
         if not values or n_rows <= 0 or n_cols <= 0:
             values = [["-", "-", "-", "-", "-", "-", "-", "-", "-"]]
@@ -789,7 +802,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v3"
+        style_version = "symbol_table_v4"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -1005,7 +1018,7 @@ class SaSheetsWriter:
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 3, "frozenColumnCount": 2},
+                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 2},
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
                     }
@@ -1116,9 +1129,64 @@ class SaSheetsWriter:
                     tab_title,
                     row_count=want_rows,
                     col_count=want_cols,
-                    frozen_row_count=3,
+                    frozen_row_count=2,
                     frozen_column_count=2,
                 )
+
+        # -------------------- merges（指标组列合并） --------------------
+        if merge_ranges:
+            reqs: list[dict[str, Any]] = []
+            for rg in merge_ranges:
+                try:
+                    r0, r1, c0, c1 = rg  # 0-based, end exclusive
+                except Exception:
+                    continue
+                try:
+                    r0 = int(r0)
+                    r1 = int(r1)
+                    c0 = int(c0)
+                    c1 = int(c1)
+                except Exception:
+                    continue
+                if r0 < 0 or r1 <= r0:
+                    continue
+                if c0 < 0 or c1 <= c0:
+                    continue
+                if r0 >= n_rows:
+                    continue
+                if r1 > n_rows:
+                    r1 = n_rows
+                if c0 >= n_cols:
+                    continue
+                if c1 > n_cols:
+                    c1 = n_cols
+                if (r1 - r0) <= 1 or (c1 - c0) <= 1:
+                    continue
+                reqs.append(
+                    {
+                        "mergeCells": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": int(c0),
+                                "endColumnIndex": int(c1),
+                            },
+                            "mergeType": "MERGE_ALL",
+                        }
+                    }
+                )
+            if reqs:
+                try:
+                    self._exec(
+                        self._sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=self._spreadsheet_id,
+                            body={"requests": reqs},
+                        ),
+                        is_write=True,
+                    )
+                except Exception:
+                    pass
 
         self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
         return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
