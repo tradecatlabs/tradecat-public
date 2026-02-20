@@ -2111,7 +2111,7 @@ class SaSheetsWriter:
                 col_r=col_r,
                 compact=True,
                 frozen_row_count=1,
-                frozen_column_count=3,
+                frozen_column_count=0,
             )
         else:
             # 无感刷新：不做 values.clear，全程覆盖写 + 清尾巴，避免整页“先消失再出现”
@@ -2150,15 +2150,15 @@ class SaSheetsWriter:
                                 "updateSheetProperties": {
                                     "properties": {
                                         "sheetId": int(sh_id),
-                                        "gridProperties": {
-                                            "rowCount": int(want_rows),
-                                            "columnCount": int(want_cols),
-                                            "frozenRowCount": 1,
-                                            "frozenColumnCount": 3,
-                                        },
+                                    "gridProperties": {
+                                        "rowCount": int(want_rows),
+                                        "columnCount": int(want_cols),
+                                        "frozenRowCount": 1,
+                                        "frozenColumnCount": 0,
                                     },
-                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
-                                }
+                                },
+                                "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                            }
                             },
                         ]
                     },
@@ -2844,7 +2844,18 @@ class SaSheetsWriter:
                 end = int(pos)
 
                 url = f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
-                runs.append({"startIndex": int(start), "format": {"link": {"uri": str(url)}}})
+                runs.append(
+                    {
+                        "startIndex": int(start),
+                        "format": {
+                            "link": {"uri": str(url)},
+                            "textFormat": {
+                                "foregroundColor": _rgb(0.1, 0.4, 0.8),
+                                "underline": True,
+                            },
+                        },
+                    }
+                )
                 runs.append({"startIndex": int(end), "format": {}})
                 item_count += 1
 
@@ -2872,6 +2883,19 @@ class SaSheetsWriter:
                         spreadsheetId=self._spreadsheet_id,
                         body={
                             "requests": [
+                                # 第一行横向合并：目录条占据整行宽度
+                                {
+                                    "mergeCells": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": 0,
+                                            "endRowIndex": 1,
+                                            "startColumnIndex": int(col_l0),
+                                            "endColumnIndex": int(col_r_idx),
+                                        },
+                                        "mergeType": "MERGE_ALL",
+                                    }
+                                },
                                 {
                                     "updateCells": {
                                         "range": {
@@ -2946,7 +2970,7 @@ class SaSheetsWriter:
             self._set_sheet_grid_properties(
                 sheet_title,
                 frozen_row_count=int(dir_rows) + 1,
-                frozen_column_count=3,
+                frozen_column_count=0,
             )
         except Exception:
             pass
