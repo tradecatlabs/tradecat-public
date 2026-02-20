@@ -2822,29 +2822,30 @@ class SaSheetsWriter:
             items_per_line = 10
             col_l0 = int(col_l_idx) - 1
 
-            def u16_len(s: str) -> int:
-                # Google Sheets textFormatRuns.startIndex 使用 UTF-16 code units；emoji 会占 2 个 code unit
-                return len(str(s).encode("utf-16-le")) // 2
+            def idx_len(s: str) -> int:
+                # Sheets API 的 startIndex 以“字符索引”计数（按 Python 的 Unicode 字符长度即可）。
+                # 之前按 UTF-16 code units 计数会导致 startIndex 超界（400）。
+                return len(str(s))
 
             text_parts: list[str] = [dir_label]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
-            pos_u16 = int(u16_len(dir_label))
+            pos = int(idx_len(dir_label))
             item_count = 1  # 已写入 label
 
             for title, row_1 in dir_entries:
                 sep = ",\n" if (item_count % items_per_line == 0) else ","
                 text_parts.append(sep)
-                pos_u16 += u16_len(sep)
+                pos += idx_len(sep)
 
                 title_s = str(title or "-").strip() or "-"
-                start_u16 = int(pos_u16)
+                start = int(pos)
                 text_parts.append(title_s)
-                pos_u16 += u16_len(title_s)
-                end_u16 = int(pos_u16)
+                pos += idx_len(title_s)
+                end = int(pos)
 
                 url = f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
-                runs.append({"startIndex": int(start_u16), "format": {"link": {"uri": str(url)}}})
-                runs.append({"startIndex": int(end_u16), "format": {}})
+                runs.append({"startIndex": int(start), "format": {"link": {"uri": str(url)}}})
+                runs.append({"startIndex": int(end), "format": {}})
                 item_count += 1
 
             dir_text = "".join(text_parts)
