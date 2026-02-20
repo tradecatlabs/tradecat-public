@@ -56,6 +56,9 @@
 - `SHEETS_EXPORT_INCLUDE_BLACKLIST`：`1` 表示包含 cards registry 黑名单卡片
 - `SHEETS_EXPORT_MULTI_PERIODS`：`0/1`（默认 `1`；对排行榜卡片导出 7 周期横向表：`1m..1w`）
   - 列顺序：按“字段组”展开周期（`趋势强度@1m..1w` → 下一字段组 …），并在看板渲染时生成“两行表头”：字段组行 + 周期行。
+- `SHEETS_HIDE_PERIODS`：隐藏指定周期列（仅影响展示，不删除数据；默认 `1m`）
+  - 示例：`SHEETS_HIDE_PERIODS=1m` / `SHEETS_HIDE_PERIODS=1m,1w`
+  - 禁用：`SHEETS_HIDE_PERIODS=off`
 - `SHEETS_EXPORT_SYMBOLS_GROUPS`：导出侧覆盖 `SYMBOLS_GROUPS`（例如 `main4`），避免继承全局配置导致看板币种不全
 - `SHEETS_EXPORT_SYMBOLS_UNFILTERED`：`0/1`（`1` 表示导出侧强制关闭币种过滤，等价 `SYMBOLS_GROUPS=auto`）
   - 常见现象：如果你的全局 `config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。
