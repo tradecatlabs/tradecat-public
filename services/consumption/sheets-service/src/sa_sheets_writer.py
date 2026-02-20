@@ -136,9 +136,9 @@ def _env_text(key: str, default: str) -> str:
 
 def _hidden_periods() -> set[str]:
     """
-    需要在 Google Sheets 里“隐藏/屏蔽”的周期列（仅展示层，不影响数据生成）。
+    需要在 Google Sheets 里“移除（删除列）”的周期列（仅展示层，不影响数据生成）。
 
-    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认隐藏 `1m`
+    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认移除 `1m`
     - 禁用：`SHEETS_HIDE_PERIODS=0|off|none`
     """
     raw = (os.environ.get("SHEETS_HIDE_PERIODS", "1m") or "1m").strip()
@@ -816,6 +816,69 @@ class SaSheetsWriter:
                 break
         if header_row_0 is None:
             header_row_0 = 3  # 向后兼容旧数据时的保底
+
+        # -------------------- drop period columns（删除列，不折叠隐藏） --------------------
+        # 需求：直接删除 1m（以及其它配置的周期列），不使用 hiddenByUser 折叠。
+        # 做法：直接修改 values 矩阵，从源头“删列”，保证：
+        # - 表头与数据区不再出现该周期；
+        # - raw 镜像区（若存在）同步删除对应列；
+        # - compact grid 会随 n_cols 收缩，右侧不再残留多余空列。
+        drop_periods = _hidden_periods()
+        if drop_periods:
+            try:
+                header_row = values[int(header_row_0)] if 0 <= int(header_row_0) < len(values) else []
+                raw_sep: int | None = None
+                if isinstance(header_row, list):
+                    for ci, cell in enumerate(header_row):
+                        if str(cell).strip() == "原始值":
+                            raw_sep = int(ci)
+                            break
+
+                display_end = int(raw_sep) if raw_sep is not None else (len(header_row) if isinstance(header_row, list) else 0)
+                display_period_cols: list[tuple[int, str]] = []
+                if isinstance(header_row, list):
+                    for ci in range(3, int(display_end)):
+                        name = str(header_row[ci]).strip()
+                        if not name:
+                            continue
+                        display_period_cols.append((int(ci), name))
+
+                drop_positions = [pos for pos, (_ci, name) in enumerate(display_period_cols) if name in drop_periods]
+                if drop_positions:
+                    cols_to_remove: set[int] = set()
+                    for pos in drop_positions:
+                        cols_to_remove.add(int(display_period_cols[int(pos)][0]))
+                        if raw_sep is not None:
+                            cols_to_remove.add(int(raw_sep) + 1 + int(pos))
+
+                    for ci in sorted(cols_to_remove, reverse=True):
+                        for row in values:
+                            if isinstance(row, list) and 0 <= int(ci) < len(row):
+                                row.pop(int(ci))
+
+                    # 规整成矩形矩阵，避免 merge/style 计算时行长度不一致
+                    n_cols2 = max((len(r) for r in values if isinstance(r, list)), default=0)
+                    for row in values:
+                        if isinstance(row, list) and len(row) < int(n_cols2):
+                            row.extend([""] * (int(n_cols2) - len(row)))
+
+                    # raw_sep 位置变化：同步回写到 sheet 对象（供后续样式/列宽/隐藏 raw 区使用）
+                    header_row2 = values[int(header_row_0)] if 0 <= int(header_row_0) < len(values) else []
+                    raw_sep2: int | None = None
+                    if isinstance(header_row2, list):
+                        for ci, cell in enumerate(header_row2):
+                            if str(cell).strip() == "原始值":
+                                raw_sep2 = int(ci)
+                                break
+                    try:
+                        setattr(sheet, "raw_block_start_col_0", raw_sep2)
+                    except Exception:
+                        pass
+
+                    n_rows = int(len(values))
+                    n_cols = int(n_cols2)
+            except Exception:
+                pass
 
         panel_starts: list[tuple[int, str]] = []
         for ri in range(int(header_row_0) + 1, int(n_rows)):
@@ -1762,89 +1825,7 @@ class SaSheetsWriter:
             except Exception as exc:
                 print(f"⚠️ symtab.dir_links_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
-        # 隐藏周期列（默认隐藏 1m）：对“币种查询”子表也生效
-        hide_periods = _hidden_periods()
-        if hide_periods:
-            # 解析 header 行中的周期顺序：["面板","指标组","指标", 1m..1w, ("原始值"), ...]
-            periods: list[str] = []
-            for row in values:
-                if not isinstance(row, list) or len(row) < 4:
-                    continue
-                if (
-                    str(row[0]).strip() == "面板"
-                    and str(row[1]).strip() == "指标组"
-                    and str(row[2]).strip() == "指标"
-                ):
-                    for cell in row[3:]:
-                        s = str(cell).strip()
-                        if not s or s == "原始值":
-                            break
-                        periods.append(s)
-                    break
-
-            if periods:
-                reqs_hide: list[dict[str, Any]] = []
-                display_start = 3  # A=面板, B=指标组, C=指标, D 起为周期列
-
-                raw_sep = getattr(sheet, "raw_block_start_col_0", None)
-                try:
-                    raw_sep = int(raw_sep) if raw_sep is not None else None
-                except Exception:
-                    raw_sep = None
-
-                for p in hide_periods:
-                    if p not in periods:
-                        continue
-                    pos = int(periods.index(p))
-
-                    # display 区
-                    ci = int(display_start) + int(pos)
-                    if 0 <= ci < int(n_cols):
-                        reqs_hide.append(
-                            {
-                                "updateDimensionProperties": {
-                                    "range": {
-                                        "sheetId": int(sh_id),
-                                        "dimension": "COLUMNS",
-                                        "startIndex": int(ci),
-                                        "endIndex": int(ci + 1),
-                                    },
-                                    "properties": {"hiddenByUser": True},
-                                    "fields": "hiddenByUser",
-                                }
-                            }
-                        )
-
-                    # raw 镜像区（若开启 raw；raw_sep 为分隔列，raw 列从 raw_sep+1 开始）
-                    if raw_sep is not None:
-                        ci2 = int(raw_sep) + 1 + int(pos)
-                        if 0 <= ci2 < int(n_cols):
-                            reqs_hide.append(
-                                {
-                                    "updateDimensionProperties": {
-                                        "range": {
-                                            "sheetId": int(sh_id),
-                                            "dimension": "COLUMNS",
-                                            "startIndex": int(ci2),
-                                            "endIndex": int(ci2 + 1),
-                                        },
-                                        "properties": {"hiddenByUser": True},
-                                        "fields": "hiddenByUser",
-                                    }
-                                }
-                            )
-
-                if reqs_hide:
-                    try:
-                        self._exec(
-                            self._sheets.spreadsheets().batchUpdate(
-                                spreadsheetId=self._spreadsheet_id,
-                                body={"requests": reqs_hide},
-                            ),
-                            is_write=True,
-                        )
-                    except Exception:
-                        pass
+        # 周期列不再使用 hiddenByUser 折叠：已在 values 阶段直接删除列（见上方 drop_periods）。
 
         self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
         return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
@@ -3045,11 +3026,17 @@ class SaSheetsWriter:
         base_columns = list(first_table.get("columns") or [])
         base_columns = ["" if c is None else str(c) for c in base_columns]
         if not base_columns:
-            base_columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+            base_columns = ["币种", "字段", *[p for p in PERIODS_DEFAULT if p not in _hidden_periods()]]
 
         # 只支持 v5 的“统一表头”：至少包含 币种/字段 两列
         if len(base_columns) < 2:
-            base_columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+            base_columns = ["币种", "字段", *[p for p in PERIODS_DEFAULT if p not in _hidden_periods()]]
+
+        # 删除周期列（例如 1m）：只影响展示层，不改变 payload 数据源
+        drop_periods = _hidden_periods()
+        if drop_periods:
+            period_set = set(PERIODS_DEFAULT)
+            base_columns = [c for c in base_columns if not (str(c).strip() in period_set and str(c).strip() in drop_periods)]
 
         card_col = "卡片"
         payload_col0_name = str(base_columns[0] or "币种") if base_columns else "币种"
@@ -3062,6 +3049,11 @@ class SaSheetsWriter:
         else:
             columns = [card_col, *base_columns]
             symbol_key = payload_col0_name
+
+        # v5 看板渲染：按实际列数写入并收缩网格，避免“删除 1m 后仍留空列”
+        col_r_idx_eff = int(col_l_idx) + int(max(len(columns), 1)) - 1
+        col_r_eff = _index_to_col(int(col_r_idx_eff))
+        width = int(max(len(columns), 1))
 
         # 1) values：目录 + 全局表头 + 每张卡 info/body
         def pad_row(vals: list[str]) -> list[str]:
@@ -3090,7 +3082,7 @@ class SaSheetsWriter:
 
         data: list[dict[str, Any]] = []
         header_vals = pad_row(columns)
-        data.append({"range": f"{sheet_title}!{col_l}{header_row_1}:{col_r}{header_row_1}", "values": [header_vals]})
+        data.append({"range": f"{sheet_title}!{col_l}{header_row_1}:{col_r_eff}{header_row_1}", "values": [header_vals]})
 
         y = int(body_start_row_1)  # 1-based
         merge_tasks: list[tuple[int, list[dict[str, Any]]]] = []  # (body_start_row_1, body_rows)
@@ -3133,7 +3125,7 @@ class SaSheetsWriter:
 
             if body_vals:
                 y1 = y_body + len(body_vals) - 1
-                data.append({"range": f"{sheet_title}!{col_l}{y_body}:{col_r}{y1}", "values": body_vals})
+                data.append({"range": f"{sheet_title}!{col_l}{y_body}:{col_r_eff}{y1}", "values": body_vals})
                 merge_tasks.append((int(y_body), list(rows)))
                 max_y_used = max(max_y_used, int(y1))
                 y = int(y1) + 1
@@ -3142,7 +3134,7 @@ class SaSheetsWriter:
                 y = int(y) + 1
             used_end_row_1 = max(int(used_end_row_1), int(y) - 1)
 
-        self._ensure_grid_size(sheet_title, min_rows=max(int(max_y_used) + 50, 2000), min_cols=_col_to_index(col_r))
+        self._ensure_grid_size(sheet_title, min_rows=max(int(max_y_used) + 50, 2000), min_cols=_col_to_index(col_r_eff))
         self._exec(
             self._sheets.spreadsheets()
             .values()
@@ -3214,7 +3206,7 @@ class SaSheetsWriter:
             # 先写入纯文本（RAW），再注入 RichText links（避免公式拼接导致链接丢失）
             grid = [[""] * width for _ in range(int(dir_rows))]
             grid[0][0] = dir_text
-            dir_rng = f"{sheet_title}!{col_l}1:{col_r}{int(dir_rows)}"
+            dir_rng = f"{sheet_title}!{col_l}1:{col_r_eff}{int(dir_rows)}"
             self._exec(
                 self._sheets.spreadsheets()
                 .values()
@@ -3265,7 +3257,7 @@ class SaSheetsWriter:
 
         # 2) styles：全局表头 + 周期列灰白交替 + 每张卡 info 行 + merges（合并币种列）
         col_l0 = col_l_idx - 1
-        col_r1 = col_r_idx
+        col_r1 = int(col_r_idx_eff)
 
         def rrange(*, r0: int, r1: int, c0: int, c1: int) -> dict[str, Any]:
             return {
@@ -3312,27 +3304,7 @@ class SaSheetsWriter:
         except Exception:
             pass
 
-        # 隐藏周期列（默认隐藏 1m）：仅影响展示，不删除数据
-        hide_periods = _hidden_periods()
-        if hide_periods:
-            for idx, c in enumerate(columns):
-                name = str(c or "").strip()
-                if not name or name not in hide_periods:
-                    continue
-                reqs.append(
-                    {
-                        "updateDimensionProperties": {
-                            "range": {
-                                "sheetId": int(sh_id),
-                                "dimension": "COLUMNS",
-                                "startIndex": int(col_l0 + idx),
-                                "endIndex": int(col_l0 + idx + 1),
-                            },
-                            "properties": {"hiddenByUser": True},
-                            "fields": "hiddenByUser",
-                        }
-                    }
-                )
+        # 周期列不再用 hiddenByUser 折叠：已在 values 阶段直接删除列（见上方 drop_periods）。
 
         # 结构变更时：先清掉“受控范围”的旧格式，避免残留（例如旧版 info 行深色背景）
         if full_style and int(used_end_row_1) > 0:
@@ -3419,7 +3391,8 @@ class SaSheetsWriter:
         shade_r0 = int(body_r0 if full_style else max(int(prev_styled_rows), int(body_r0)))
         shade_r1 = int(used_end_row_1)
         if shade_r1 > shade_r0:
-            period_index = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
+            effective_periods = [p for p in PERIODS_DEFAULT if p not in _hidden_periods()]
+            period_index = {p: i for i, p in enumerate(effective_periods)}
             for idx, c in enumerate(columns):
                 name = str(c or "").strip()
                 if name not in period_index:
