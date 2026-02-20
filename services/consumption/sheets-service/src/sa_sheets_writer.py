@@ -3303,9 +3303,9 @@ class SaSheetsWriter:
                 }
             )
 
-        # header row style（只在 full_style 时重刷）
+        # header row style（full_style 时重刷背景等；每轮都强制“居中+加粗”以防手工样式漂移）
+        hr0 = int(header_row_1) - 1
         if full_style:
-            hr0 = int(header_row_1) - 1
             reqs.append(
                 {
                     "repeatCell": {
@@ -3323,6 +3323,22 @@ class SaSheetsWriter:
                     }
                 }
             )
+        # 需求：全部列头/表头字段必须上下左右居中 + 加粗（不动背景色/换行策略）
+        reqs.append(
+            {
+                "repeatCell": {
+                    "range": rrange(r0=hr0, r1=hr0 + 1, c0=col_l0, c1=col_r1),
+                    "cell": {
+                        "userEnteredFormat": {
+                            "textFormat": {"bold": True},
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                        }
+                    },
+                    "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment)",
+                }
+            }
+        )
 
         # period columns shading（差量）
         body_r0 = int(header_row_1)  # 0-based: row after header
