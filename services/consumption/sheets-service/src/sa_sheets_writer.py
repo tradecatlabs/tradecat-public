@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -1566,10 +1567,11 @@ class SaSheetsWriter:
         将“方案5（字段纵向 + 周期横向）”作为主看板写入到 `SHEETS_TAB_DASHBOARD`（默认：看板）。
 
         特性：
-        - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结（1 行 + 2 列）
+        - 顶部目录区（多行）：点击跳转到各卡片
+        - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结（目录 + 表头；冻结列 A/B）
         - 每张卡仅写：1 行源信息 + 明细 rows（不重复表头）
         - 币种列纵向合并（同币种连续行合并）
-        - 美化：周期列灰白交替 + 币种行组双色交替（仅作用于 A/B 列）
+        - 美化：周期列灰白交替 + 周期列右对齐 + 币种行组双色交替（仅作用于 A/B 列）
         """
         self.ensure_schema()
         hard_reset = (os.environ.get("SHEETS_DASHBOARD_V5_HARD_RESET", "0") or "0").strip() == "1"
@@ -1603,14 +1605,27 @@ class SaSheetsWriter:
 
             cur_rows, cur_cols = self._grid_by_title.get(self._tab_dashboard, (0, 0))
             want_rows = max(int(cur_rows or 0), 2000)
-            want_cols = max(int(cur_cols or 0), _col_to_index(col_r))
+            # v5 主看板是“完全托管展示面”：默认允许收缩列数，保持“右侧无单元格”的紧凑体验。
+            want_cols = int(_col_to_index(col_r))
+            unmerge_end_rows = max(int(prev_used_rows or 0), 2000)
+            unmerge_end_cols = max(int(cur_cols or 0), int(want_cols))
 
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
                     body={
                         "requests": [
-                            {"unmergeCells": {"range": {"sheetId": int(sh_id)}}},
+                            {
+                                "unmergeCells": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 0,
+                                        "endRowIndex": int(unmerge_end_rows),
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": int(unmerge_end_cols),
+                                    }
+                                }
+                            },
                             {
                                 "updateSheetProperties": {
                                     "properties": {
@@ -1716,21 +1731,42 @@ class SaSheetsWriter:
         if len(columns) < 2:
             columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
 
-        # 1) values：全局表头 + 每张卡 info/body
+        # 1) values：目录 + 全局表头 + 每张卡 info/body
         def pad_row(vals: list[str]) -> list[str]:
             return (list(vals) + [""] * width)[:width]
 
+        # 目录（多行、多列，一行最多 width 个条目；首格放 label）
+        render_payloads: list[dict[str, Any]] = []
+        for p in payloads:
+            if not isinstance(p, dict):
+                continue
+            table = p.get("table") or {}
+            if not isinstance(table, dict):
+                continue
+            cols = table.get("columns") or []
+            cols = ["" if c is None else str(c) for c in (cols or [])]
+            if cols and (len(cols) < 2 or cols[0] != columns[0] or cols[1] != columns[1]):
+                continue
+            render_payloads.append(p)
+
+        dir_label = "📌 目录（点击跳转）"
+        dir_cells_needed = max(int(len(render_payloads)), 0) + 1  # +1 for label cell
+        dir_rows = max(int(math.ceil(dir_cells_needed / max(int(width), 1))), 1)
+        header_row_1 = int(dir_rows) + 1  # 1-based
+        body_start_row_1 = int(header_row_1) + 1
+
         data: list[dict[str, Any]] = []
         header_vals = pad_row(columns)
-        data.append({"range": f"{sheet_title}!{col_l}1:{col_r}1", "values": [header_vals]})
+        data.append({"range": f"{sheet_title}!{col_l}{header_row_1}:{col_r}{header_row_1}", "values": [header_vals]})
 
-        y = 2  # 1-based
+        y = int(body_start_row_1)  # 1-based
         info_rows: list[int] = []
         merge_tasks: list[tuple[int, list[dict[str, Any]]]] = []  # (body_start_row_1, body_rows)
         max_y_used = 1
         used_end_row_1 = 1
+        dir_entries: list[tuple[str, int]] = []  # (title, info_row_1)
 
-        for p in payloads:
+        for p in render_payloads:
             header = p.get("header") or {}
             hint = p.get("hint") or {}
             params = p.get("params") or {}
@@ -1738,10 +1774,6 @@ class SaSheetsWriter:
             rows = table.get("rows") or []
             cols = table.get("columns") or []
             cols = ["" if c is None else str(c) for c in (cols or [])]
-
-            # v5 约束：跳过“非 v5 表头”的卡片（避免破坏全局表头一致性）
-            if cols and (len(cols) < 2 or cols[0] != columns[0] or cols[1] != columns[1]):
-                continue
 
             title = str(header.get("title") or "")
             update_time = str(header.get("update_time") or "-").strip() or "-"
@@ -1766,6 +1798,7 @@ class SaSheetsWriter:
             # info row（不 merge；冻结列场景禁止整行 merge）
             data.append({"range": f"{sheet_title}!{col_l}{y}:{col_r}{y}", "values": [pad_row([info_line])]})
             info_rows.append(int(y))
+            dir_entries.append((one_line(title), int(y)))
             y_body = y + 1
 
             body_vals: list[list[str]] = []
@@ -1782,16 +1815,11 @@ class SaSheetsWriter:
                 y1 = y_body + len(body_vals) - 1
                 data.append({"range": f"{sheet_title}!{col_l}{y_body}:{col_r}{y1}", "values": body_vals})
                 merge_tasks.append((int(y_body), list(rows)))
-                # 分隔空行：显式写空，避免旧值残留（无感刷新场景尤其重要）
-                sep_y = int(y1) + 1
-                data.append({"range": f"{sheet_title}!{col_l}{sep_y}:{col_r}{sep_y}", "values": [pad_row([])]})
                 max_y_used = max(max_y_used, int(y1))
-                y = int(y1) + 2
+                y = int(y1) + 1
             else:
-                sep_y = int(y) + 1
-                data.append({"range": f"{sheet_title}!{col_l}{sep_y}:{col_r}{sep_y}", "values": [pad_row([])]})
                 max_y_used = max(max_y_used, int(y))
-                y = int(y) + 2
+                y = int(y) + 1
             used_end_row_1 = max(int(used_end_row_1), int(y) - 1)
 
         self._ensure_grid_size(sheet_title, min_rows=max(int(max_y_used) + 50, 2000), min_cols=_col_to_index(col_r))
@@ -1801,9 +1829,45 @@ class SaSheetsWriter:
             .batchUpdate(
                 spreadsheetId=self._spreadsheet_id,
                 body={"valueInputOption": "RAW", "data": data},
-            ),
+                ),
             is_write=True,
         )
+
+        # 目录：写入 HYPERLINK 公式（必须 USER_ENTERED，否则会变成纯文本）
+        # - 不做 merge（冻结列禁止跨边界 merge）
+        # - 目录区域无内容时也覆盖写，避免历史残留
+        if dir_rows > 0:
+            grid = [[""] * width for _ in range(int(dir_rows))]
+            grid[0][0] = dir_label
+
+            def esc(s: str) -> str:
+                return str(s or "").replace('"', '""')
+
+            # 逐格填充：从 (0,1) 开始，填满后换行
+            k = 0
+            for title, row_1 in dir_entries:
+                pos = 1 + k
+                rr = pos // int(width)
+                cc = pos % int(width)
+                if rr >= int(dir_rows):
+                    break
+                label = esc(title) or f"卡片{int(k) + 1}"
+                url = f"#gid={int(sh_id)}&range={col_l}{int(row_1)}"
+                grid[int(rr)][int(cc)] = f'=HYPERLINK("{esc(url)}","{label}")'
+                k += 1
+
+            dir_rng = f"{sheet_title}!{col_l}1:{col_r}{int(dir_rows)}"
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .update(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=dir_rng,
+                    valueInputOption="USER_ENTERED",
+                    body={"values": grid},
+                ),
+                is_write=True,
+            )
 
         # 2) styles：全局表头 + 周期列灰白交替 + 每张卡 info 行 + merges（合并币种列）
         col_l0 = col_l_idx - 1
@@ -1826,41 +1890,112 @@ class SaSheetsWriter:
         bg_sym_b = _rgb(0.98, 0.98, 0.98)  # A/B 列：币种行组背景色2（淡灰）
 
         reqs: list[dict[str, Any]] = []
-        # header row style (row 1)
-        reqs.append(
-            {
-                "repeatCell": {
-                    "range": rrange(r0=0, r1=1, c0=col_l0, c1=col_r1),
-                    "cell": {
-                        "userEnteredFormat": {
-                            "backgroundColor": bg_hdr_group,
-                            "textFormat": {"bold": True},
-                            "horizontalAlignment": "CENTER",
-                            "verticalAlignment": "MIDDLE",
-                            "wrapStrategy": "WRAP",
-                        }
-                    },
-                    "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
-                }
-            }
-        )
+        # -------------------- 差量样式（只扩不重刷） --------------------
+        # 目标：避免每轮对大范围做重复 repeatCell（尤其是长表），减少耗时与配额压力。
+        meta = self._meta_get()
+        style_version = "dashboard_v5_style_v3"
+        key_style_version = "dashboard_v5_style_version"
+        key_styled_rows = "dashboard_v5_styled_rows"
+        key_dir_rows = "dashboard_v5_dir_rows"
+        try:
+            prev_styled_rows = int(str(meta.get(key_styled_rows) or "0").strip() or "0")
+        except Exception:
+            prev_styled_rows = 0
+        try:
+            prev_dir_rows = int(str(meta.get(key_dir_rows) or "0").strip() or "0")
+        except Exception:
+            prev_dir_rows = 0
 
-        # period columns shading (rows 2..used_end_row_1)
-        period_index = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
-        for idx, c in enumerate(columns):
-            name = str(c or "").strip()
-            if name not in period_index:
-                continue
-            bg = bg_body_even if (int(period_index[name]) % 2 == 0) else bg_body_odd
+        full_style = (meta.get(key_style_version) or "") != style_version or int(prev_dir_rows) != int(dir_rows) or prev_styled_rows <= 0
+
+        # freeze rows：目录 + 1 行表头；列：A/B
+        try:
+            self._set_sheet_grid_properties(
+                sheet_title,
+                frozen_row_count=int(dir_rows) + 1,
+                frozen_column_count=2,
+            )
+        except Exception:
+            pass
+
+        # 目录区样式（始终覆盖，避免旧格式残留）
+        if int(dir_rows) > 0:
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": rrange(r0=1, r1=int(used_end_row_1), c0=col_l0 + idx, c1=col_l0 + idx + 1),
-                        "cell": {"userEnteredFormat": {"backgroundColor": bg}},
-                        "fields": "userEnteredFormat.backgroundColor",
+                        "range": rrange(r0=0, r1=int(dir_rows), c0=col_l0, c1=col_r1),
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": bg_hdr_info,
+                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,verticalAlignment,wrapStrategy)",
                     }
                 }
             )
+
+        # header row style（只在 full_style 时重刷）
+        if full_style:
+            hr0 = int(header_row_1) - 1
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=hr0, r1=hr0 + 1, c0=col_l0, c1=col_r1),
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": bg_hdr_group,
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "WRAP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+        # period columns shading（差量）
+        body_r0 = int(header_row_1)  # 0-based: row after header
+        shade_r0 = int(body_r0 if full_style else max(int(prev_styled_rows), int(body_r0)))
+        shade_r1 = int(used_end_row_1)
+        if shade_r1 > shade_r0:
+            period_index = {p: i for i, p in enumerate(PERIODS_DEFAULT)}
+            for idx, c in enumerate(columns):
+                name = str(c or "").strip()
+                if name not in period_index:
+                    continue
+                bg = bg_body_even if (int(period_index[name]) % 2 == 0) else bg_body_odd
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": rrange(r0=shade_r0, r1=shade_r1, c0=col_l0 + idx, c1=col_l0 + idx + 1),
+                            "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                            "fields": "userEnteredFormat.backgroundColor",
+                        }
+                    }
+                )
+
+            # 数值列（周期列）统一右对齐 + CLIP（差量）
+            if (col_l0 + 2) < int(col_r1):
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": rrange(
+                                r0=shade_r0,
+                                r1=shade_r1,
+                                c0=int(col_l0 + 2),
+                                c1=int(col_r1),
+                            ),
+                            "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "wrapStrategy": "CLIP"}},
+                            "fields": "userEnteredFormat(horizontalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
 
         # symbol merges + row-group shading (仅 A/B 列)：按币种分组双色交替，提升阅读性
         for body_start_row_1, body_rows in merge_tasks:
@@ -1980,37 +2115,38 @@ class SaSheetsWriter:
             )
 
         # 列宽（美化）：A=币种，B=字段，C..=周期列
-        try:
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
-                        "properties": {"pixelSize": 64},
-                        "fields": "pixelSize",
+        if full_style:
+            try:
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
+                            "properties": {"pixelSize": 64},
+                            "fields": "pixelSize",
+                        }
                     }
-                }
-            )
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
-                        "properties": {"pixelSize": 110},
-                        "fields": "pixelSize",
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
+                            "properties": {"pixelSize": 110},
+                            "fields": "pixelSize",
+                        }
                     }
-                }
-            )
-            # 周期列统一宽度
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_r1)},
-                        "properties": {"pixelSize": 86},
-                        "fields": "pixelSize",
+                )
+                # 周期列统一宽度
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_r1)},
+                            "properties": {"pixelSize": 86},
+                            "fields": "pixelSize",
+                        }
                     }
-                }
-            )
-        except Exception:
-            pass
+                )
+            except Exception:
+                pass
 
         if reqs:
             self._exec(
@@ -2020,6 +2156,16 @@ class SaSheetsWriter:
                 ),
                 is_write=True,
             )
+            try:
+                self._meta_set(
+                    {
+                        key_style_version: style_version,
+                        key_styled_rows: str(int(used_end_row_1)),
+                        key_dir_rows: str(int(dir_rows)),
+                    }
+                )
+            except Exception:
+                pass
         return int(used_end_row_1)
 
     def _merge_symbol_column_groups_on_sheet(
