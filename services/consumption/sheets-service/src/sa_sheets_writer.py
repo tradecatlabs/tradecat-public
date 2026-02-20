@@ -882,7 +882,8 @@ class SaSheetsWriter:
                     parts.append(sep)
                     pos += idx_len(sep)
 
-                    t = re.sub(r"^[📌🧱📊🌊📈💧📏🎯🚩📐🧾🚦⚡↕️🌐🐳🚀🐋🛰️🚨🕯️🔬]+\\s*", "", str(title or "")).strip() or "-"
+                    # 顶部目录单元格：去掉前缀图标/emoji，避免 RichText startIndex 在不同客户端下错位
+                    t = re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(title or "")).strip() or "-"
                     start = int(pos)
                     parts.append(t)
                     pos += idx_len(t)
@@ -2918,7 +2919,8 @@ class SaSheetsWriter:
                 return len(str(s))
 
             def strip_leading_emoji(s: str) -> str:
-                return re.sub(r"^[📌🧱📊🌊📈💧📏🎯🚩📐🧾🚦⚡↕️🌐🐳🚀🐋🛰️🚨🕯️🔬]+\\s*", "", str(s or "")).strip()
+                # 仅用于“目录/元信息”行：去掉前缀图标/emoji（含不可见变体选择符/空白）
+                return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
 
             clean_label = strip_leading_emoji(dir_label)
             text_parts: list[str] = [clean_label]
