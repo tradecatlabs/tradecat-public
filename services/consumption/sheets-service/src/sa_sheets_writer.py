@@ -908,6 +908,12 @@ class SaSheetsWriter:
 
                 parts_s = "".join(parts)
                 dir_text = parts_s + ("，" if not parts_s.endswith("，") else "")
+                # Sheets API: TextFormatRun.startIndex 必须 < 字符串长度。
+                # 我们会在每个条目后追加一个“重置格式”的 run；最后一个条目在字符串末尾时会产生 startIndex==len(text)。
+                # 这里统一裁剪掉末尾无效的 run，避免 400。
+                text_len = idx_len(dir_text)
+                while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
+                    runs.pop()
                 dir_runs = runs
             except Exception:
                 dir_text, dir_runs = None, None
@@ -2957,6 +2963,10 @@ class SaSheetsWriter:
                 item_count += 1
 
             dir_text = "".join(text_parts)
+            # Sheets API: TextFormatRun.startIndex 必须 < 字符串长度；裁剪掉末尾无效的 reset run。
+            text_len = idx_len(dir_text)
+            while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
+                runs.pop()
 
             # 先写入纯文本（RAW），再注入 RichText links（避免公式拼接导致链接丢失）
             grid = [[""] * width for _ in range(int(dir_rows))]
