@@ -802,7 +802,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v4"
+        style_version = "symbol_table_v5"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -868,19 +868,18 @@ class SaSheetsWriter:
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
-                                "textFormat": {
-                                    "fontFamily": "Arial",
-                                    "fontSize": 10,
-                                    "foregroundColor": _rgb(0.1, 0.1, 0.1),
-                                },
-                                "horizontalAlignment": "LEFT",
-                                "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "WRAP",
-                            }
-                        },
+	                        "cell": {
+	                            "userEnteredFormat": {
+	                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
+	                                "textFormat": {
+	                                    "fontFamily": "Arial",
+	                                    "fontSize": 10,
+	                                },
+	                                "horizontalAlignment": "LEFT",
+	                                "verticalAlignment": "MIDDLE",
+	                                "wrapStrategy": "WRAP",
+	                            }
+	                        },
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
                     }
                 }
@@ -1038,14 +1037,14 @@ class SaSheetsWriter:
                         },
                         "cell": {
                             "userEnteredFormat": {
-                                "backgroundColor": _rgb(0.13, 0.15, 0.18),
-                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
-                            }
-                        },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor)",
-                    }
-                }
-            )
+	                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+	                                "textFormat": {"bold": True},
+	                            }
+	                        },
+	                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold)",
+	                    }
+	                }
+	            )
 
             # panel title rows
             for r in panel_title_rows:
@@ -1060,16 +1059,16 @@ class SaSheetsWriter:
                                 "startColumnIndex": 0,
                                 "endColumnIndex": int(target_cols),
                             },
-                            "cell": {
-                                "userEnteredFormat": {
-                                    "backgroundColor": _rgb(0.10, 0.45, 0.82),
-                                    "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
-                                }
-                            },
-                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor)",
-                        }
-                    }
-                )
+	                            "cell": {
+	                                "userEnteredFormat": {
+	                                    "backgroundColor": _rgb(0.86, 0.90, 0.96),
+	                                    "textFormat": {"bold": True},
+	                                }
+	                            },
+	                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold)",
+	                        }
+	                    }
+	                )
 
             # panel header rows
             for r in panel_header_rows:
@@ -1310,7 +1309,7 @@ class SaSheetsWriter:
                 "endColumnIndex": int(c1),
             }
 
-        bg_hdr_info = _rgb(0.13, 0.15, 0.18)
+        bg_hdr_info = _rgb(0.93, 0.94, 0.96)
         bg_hdr_group = _rgb(0.86, 0.90, 0.96)
         bg_hdr_period = _rgb(0.93, 0.94, 0.96)
         bg_body_even = _rgb(1.0, 1.0, 1.0)
@@ -1326,11 +1325,11 @@ class SaSheetsWriter:
                     "cell": {
                         "userEnteredFormat": {
                             "backgroundColor": bg_hdr_info,
-                            "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
+                            "textFormat": {"bold": True},
                             "wrapStrategy": "WRAP",
                         }
                     },
-                    "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy)",
+                    "fields": "userEnteredFormat(backgroundColor,textFormat.bold,wrapStrategy)",
                 }
             }
         )
@@ -2093,18 +2092,18 @@ class SaSheetsWriter:
                                             "startColumnIndex": 0,
                                             "endColumnIndex": int(n_cols),
                                         },
-                                        "cell": {
-                                            "userEnteredFormat": {
-                                                "backgroundColor": _rgb(0.13, 0.15, 0.18),
-                                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
-                                                "horizontalAlignment": "CENTER",
-                                                "verticalAlignment": "MIDDLE",
-                                                "wrapStrategy": "CLIP",
-                                            }
-                                        },
-                                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,verticalAlignment,wrapStrategy)",
-                                    }
-                                },
+	                                        "cell": {
+	                                            "userEnteredFormat": {
+	                                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+	                                                "textFormat": {"bold": True},
+	                                                "horizontalAlignment": "CENTER",
+	                                                "verticalAlignment": "MIDDLE",
+	                                                "wrapStrategy": "CLIP",
+	                                            }
+	                                        },
+	                                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+	                                    }
+	                                },
                                 # value_num 列右对齐
                                 {
                                     "repeatCell": {
@@ -2491,7 +2490,7 @@ class SaSheetsWriter:
                 "endColumnIndex": int(c1),
             }
 
-        bg_hdr_info = _rgb(0.13, 0.15, 0.18)
+        bg_hdr_info = _rgb(0.93, 0.94, 0.96)
         bg_hdr_group = _rgb(0.86, 0.90, 0.96)
         bg_body_even = _rgb(1.0, 1.0, 1.0)
         bg_body_odd = _rgb(0.97, 0.97, 0.97)
@@ -2502,7 +2501,7 @@ class SaSheetsWriter:
         # -------------------- 差量样式（只扩不重刷） --------------------
         # 目标：避免每轮对大范围做重复 repeatCell（尤其是长表），减少耗时与配额压力。
         meta = self._meta_get()
-        style_version = "dashboard_v5_style_v5"
+        style_version = "dashboard_v5_style_v6"
         key_style_version = "dashboard_v5_style_version"
         key_styled_rows = "dashboard_v5_styled_rows"
         key_dir_rows = "dashboard_v5_dir_rows"
@@ -2545,19 +2544,19 @@ class SaSheetsWriter:
                 {
                     "repeatCell": {
                         "range": rrange(r0=0, r1=int(dir_rows), c0=col_l0, c1=col_r1),
-                        "cell": {
-                            "userEnteredFormat": {
-                                "backgroundColor": bg_hdr_info,
-                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
-                                "horizontalAlignment": "LEFT",
-                                "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "CLIP",
-                            }
-                        },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,verticalAlignment,wrapStrategy)",
-                    }
-                }
-            )
+	                        "cell": {
+	                            "userEnteredFormat": {
+	                                "backgroundColor": bg_hdr_info,
+	                                "textFormat": {"bold": True},
+	                                "horizontalAlignment": "LEFT",
+	                                "verticalAlignment": "MIDDLE",
+	                                "wrapStrategy": "CLIP",
+	                            }
+	                        },
+	                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+	                    }
+	                }
+	            )
 
         # header row style（只在 full_style 时重刷）
         if full_style:
