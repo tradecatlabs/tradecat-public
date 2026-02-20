@@ -911,7 +911,8 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v7"
+        # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
+        style_version = "symbol_table_v8"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -1422,8 +1423,9 @@ class SaSheetsWriter:
                         ),
                         is_write=True,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # 不吞错：合并失败会直接导致“面板列空白/指标组重复”，属于高可见问题
+                    print(f"⚠️ symtab.merge_failed tab={tab_title} merges={len(reqs)} {type(exc).__name__}: {exc}")
 
         # 隐藏周期列（默认隐藏 1m）：对“币种查询”子表也生效
         hide_periods = _hidden_periods()
