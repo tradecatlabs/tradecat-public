@@ -134,6 +134,19 @@ def _env_text(key: str, default: str) -> str:
     return v or default
 
 
+def _hidden_periods() -> set[str]:
+    """
+    需要在 Google Sheets 里“隐藏/屏蔽”的周期列（仅展示层，不影响数据生成）。
+
+    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认隐藏 `1m`
+    - 禁用：`SHEETS_HIDE_PERIODS=0|off|none`
+    """
+    raw = (os.environ.get("SHEETS_HIDE_PERIODS", "1m") or "1m").strip()
+    if raw.lower() in {"0", "off", "none"}:
+        return set()
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
 def _value_type(v: Any) -> str:
     if v is None:
         return "null"
@@ -1203,6 +1216,86 @@ class SaSheetsWriter:
                     )
                 except Exception:
                     pass
+
+        # 隐藏周期列（默认隐藏 1m）：对“币种查询”子表也生效
+        hide_periods = _hidden_periods()
+        if hide_periods:
+            # 解析 header 行中的周期顺序：["指标组","指标", 1m..1w, ("原始值"), ...]
+            periods: list[str] = []
+            for row in values:
+                if not isinstance(row, list) or len(row) < 3:
+                    continue
+                if str(row[0]).strip() == "指标组" and str(row[1]).strip() == "指标":
+                    for cell in row[2:]:
+                        s = str(cell).strip()
+                        if not s or s == "原始值":
+                            break
+                        periods.append(s)
+                    break
+
+            if periods:
+                reqs_hide: list[dict[str, Any]] = []
+                display_start = 2  # A=指标组, B=指标, C 起为周期列
+
+                raw_sep = getattr(sheet, "raw_block_start_col_0", None)
+                try:
+                    raw_sep = int(raw_sep) if raw_sep is not None else None
+                except Exception:
+                    raw_sep = None
+
+                for p in hide_periods:
+                    if p not in periods:
+                        continue
+                    pos = int(periods.index(p))
+
+                    # display 区
+                    ci = int(display_start) + int(pos)
+                    if 0 <= ci < int(n_cols):
+                        reqs_hide.append(
+                            {
+                                "updateDimensionProperties": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "dimension": "COLUMNS",
+                                        "startIndex": int(ci),
+                                        "endIndex": int(ci + 1),
+                                    },
+                                    "properties": {"hiddenByUser": True},
+                                    "fields": "hiddenByUser",
+                                }
+                            }
+                        )
+
+                    # raw 镜像区（若开启 raw；raw_sep 为分隔列，raw 列从 raw_sep+1 开始）
+                    if raw_sep is not None:
+                        ci2 = int(raw_sep) + 1 + int(pos)
+                        if 0 <= ci2 < int(n_cols):
+                            reqs_hide.append(
+                                {
+                                    "updateDimensionProperties": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "dimension": "COLUMNS",
+                                            "startIndex": int(ci2),
+                                            "endIndex": int(ci2 + 1),
+                                        },
+                                        "properties": {"hiddenByUser": True},
+                                        "fields": "hiddenByUser",
+                                    }
+                                }
+                            )
+
+                if reqs_hide:
+                    try:
+                        self._exec(
+                            self._sheets.spreadsheets().batchUpdate(
+                                spreadsheetId=self._spreadsheet_id,
+                                body={"requests": reqs_hide},
+                            ),
+                            is_write=True,
+                        )
+                    except Exception:
+                        pass
 
         self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
         return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
@@ -2592,6 +2685,28 @@ class SaSheetsWriter:
             )
         except Exception:
             pass
+
+        # 隐藏周期列（默认隐藏 1m）：仅影响展示，不删除数据
+        hide_periods = _hidden_periods()
+        if hide_periods:
+            for idx, c in enumerate(columns):
+                name = str(c or "").strip()
+                if not name or name not in hide_periods:
+                    continue
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(col_l0 + idx),
+                                "endIndex": int(col_l0 + idx + 1),
+                            },
+                            "properties": {"hiddenByUser": True},
+                            "fields": "hiddenByUser",
+                        }
+                    }
+                )
 
         # 结构变更时：先清掉“受控范围”的旧格式，避免残留（例如旧版 info 行深色背景）
         if full_style and int(used_end_row_1) > 0:
