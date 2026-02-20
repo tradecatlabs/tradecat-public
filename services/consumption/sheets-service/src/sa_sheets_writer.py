@@ -3304,6 +3304,16 @@ class SaSheetsWriter:
         except Exception:
             pass
 
+        # 删除周期列后：收缩列数，避免旧列残留（例如旧版 J 列仍残留 1w）
+        reqs.append(
+            {
+                "updateSheetProperties": {
+                    "properties": {"sheetId": int(sh_id), "gridProperties": {"columnCount": int(col_r_idx_eff)}},
+                    "fields": "gridProperties.columnCount",
+                }
+            }
+        )
+
         # 周期列不再用 hiddenByUser 折叠：已在 values 阶段直接删除列（见上方 drop_periods）。
 
         # 结构变更时：先清掉“受控范围”的旧格式，避免残留（例如旧版 info 行深色背景）
