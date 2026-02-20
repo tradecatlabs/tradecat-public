@@ -2627,31 +2627,32 @@ class SaSheetsWriter:
                 card_span = len(rows_for_card)
 
                 # 1) merge card column (A) for this card body
-                if card_span >= 2:
+                if card_span >= 1:
                     r0 = r0_base
                     r1 = r0_base + card_span
-                    reqs.append(
-                        {
-                            "mergeCells": {
-                                "range": {
-                                    "sheetId": int(sh_id),
-                                    "startRowIndex": int(r0),
-                                    "endRowIndex": int(r1),
-                                    "startColumnIndex": int(col_l0 + 0),
-                                    "endColumnIndex": int(col_l0 + 1),
-                                },
-                                "mergeType": "MERGE_ALL",
+                    if card_span >= 2:
+                        reqs.append(
+                            {
+                                "mergeCells": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": int(r0),
+                                        "endRowIndex": int(r1),
+                                        "startColumnIndex": int(col_l0 + 0),
+                                        "endColumnIndex": int(col_l0 + 1),
+                                    },
+                                    "mergeType": "MERGE_ALL",
+                                }
                             }
-                        }
-                    )
+                        )
                     reqs.append(
                         {
                             "repeatCell": {
                                 "range": rrange(r0=int(r0), r1=int(r1), c0=int(col_l0 + 0), c1=int(col_l0 + 1)),
                                 "cell": {
                                     "userEnteredFormat": {
-                                        "horizontalAlignment": "LEFT",
-                                        "verticalAlignment": "TOP",
+                                        "horizontalAlignment": "CENTER",
+                                        "verticalAlignment": "MIDDLE",
                                         "textFormat": {"bold": True},
                                         "backgroundColor": _rgb(0.95, 0.96, 0.98),
                                         "wrapStrategy": "CLIP",
