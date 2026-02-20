@@ -622,6 +622,10 @@ class SaSheetsWriter:
             values = [["-", "-", "-", "-", "-", "-", "-", "-", "-"]]
             n_rows, n_cols = 1, len(values[0])
 
+        # NOTE: 我们会在本函数末尾做“compact grid”（压缩列数/行数），以实现“右侧无单元格”的效果。
+        # 因此这里先确保 grid 足够大，避免 values.update 超出当前网格范围而报错。
+        self._ensure_grid_size(tab_title, min_rows=n_rows, min_cols=n_cols)
+
         col_r = _index_to_col(n_cols)
         self._exec(
             self._sheets.spreadsheets()
@@ -683,7 +687,7 @@ class SaSheetsWriter:
             styled_cols = 0
 
         target_rows = int(max(n_rows, styled_rows, 800))
-        target_cols = int(max(n_cols, styled_cols, 9))
+        target_cols = int(max(n_cols, 9))
         need_style = (
             (meta.get(key_style_version) or "") != style_version
             or target_rows > styled_rows
@@ -976,6 +980,29 @@ class SaSheetsWriter:
                     key_style_cols: str(target_cols),
                 }
             )
+
+        # -------------------- compact grid（只显示“有用的列”） --------------------
+        # 解释：Google Sheets 的“网格”不是按数据自动生成的，默认每个 sheet 有固定 row/col 数。
+        # 通过 updateSheetProperties.gridProperties.columnCount/rowCount 可以让列/行在 UI 中“消失”，
+        # 从而达到你看到的“只有有限几列，其它区域是纯空白背景、无单元格”的效果。
+        compact_grid = (os.environ.get("SHEETS_SYMBOL_QUERY_COMPACT_GRID", "1") or "1").strip() != "0"
+        if compact_grid:
+            try:
+                cur_rows, cur_cols = self._grid_by_title.get(tab_title, (0, 0))
+            except Exception:
+                cur_rows, cur_cols = 0, 0
+
+            # 只收缩列数；行数只保证不小于 target_rows（避免后续样式/写入越界）。
+            want_rows = max(int(cur_rows or 0), int(target_rows))
+            want_cols = int(target_cols)
+            if int(cur_cols or 0) != int(want_cols) or int(cur_rows or 0) != int(want_rows):
+                self._set_sheet_grid_properties(
+                    tab_title,
+                    row_count=want_rows,
+                    col_count=want_cols,
+                    frozen_row_count=3,
+                    frozen_column_count=2,
+                )
 
         self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
         return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
@@ -2606,6 +2633,66 @@ class SaSheetsWriter:
             is_write=True,
         )
         # refresh cache
+        self._refresh_sheet_map()
+
+    def _set_sheet_grid_properties(
+        self,
+        title: str,
+        *,
+        row_count: int | None = None,
+        col_count: int | None = None,
+        frozen_row_count: int | None = None,
+        frozen_column_count: int | None = None,
+    ) -> None:
+        """
+        精确设置 sheet 的网格属性（可收缩），用于“列外无单元格/无网格”的展示效果。
+
+        注意：
+        - rowCount/columnCount 收缩会“删除”网格外的单元格（与在 UI 里删除多余行/列等价）。
+        - 因此该函数默认只用于“由系统完全托管”的展示型 tab（看板/币种查询）。
+        """
+        if row_count is None and col_count is None and frozen_row_count is None and frozen_column_count is None:
+            return
+
+        sheet_id = self._sheet_id_by_title.get(title)
+        if sheet_id is None:
+            self._refresh_sheet_map()
+            sheet_id = self._sheet_id_by_title.get(title)
+        if sheet_id is None:
+            raise RuntimeError(f"missing_sheet:{title}")
+
+        gp: dict[str, int] = {}
+        fields: list[str] = []
+
+        if row_count is not None:
+            gp["rowCount"] = max(int(row_count), 1)
+            fields.append("gridProperties.rowCount")
+        if col_count is not None:
+            gp["columnCount"] = max(int(col_count), 1)
+            fields.append("gridProperties.columnCount")
+        if frozen_row_count is not None:
+            gp["frozenRowCount"] = max(int(frozen_row_count), 0)
+            fields.append("gridProperties.frozenRowCount")
+        if frozen_column_count is not None:
+            gp["frozenColumnCount"] = max(int(frozen_column_count), 0)
+            fields.append("gridProperties.frozenColumnCount")
+
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "updateSheetProperties": {
+                                "properties": {"sheetId": int(sheet_id), "gridProperties": gp},
+                                "fields": ",".join(fields),
+                            }
+                        }
+                    ]
+                },
+            ),
+            is_write=True,
+        )
         self._refresh_sheet_map()
 
     def _ensure_header_row(self, sheet: str, headers: list[str]) -> None:
