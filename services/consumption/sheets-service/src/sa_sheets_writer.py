@@ -138,10 +138,10 @@ def _hidden_periods() -> set[str]:
     """
     需要在 Google Sheets 里“移除（删除列）”的周期列（仅展示层，不影响数据生成）。
 
-    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认移除 `1m`
+    - env: `SHEETS_HIDE_PERIODS`，逗号分隔；默认不移除任何周期（全部展开）
     - 禁用：`SHEETS_HIDE_PERIODS=0|off|none`
     """
-    raw = (os.environ.get("SHEETS_HIDE_PERIODS", "1m") or "1m").strip()
+    raw = (os.environ.get("SHEETS_HIDE_PERIODS", "off") or "off").strip()
     if raw.lower() in {"0", "off", "none"}:
         return set()
     return {s.strip() for s in raw.split(",") if s.strip()}
@@ -1267,7 +1267,7 @@ class SaSheetsWriter:
                         }
                     )
 
-                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "hidden") or "hidden").strip().lower()
+                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "show") or "show").strip().lower()
                 if raw_mode not in {"hidden", "show", "off"}:
                     raw_mode = "hidden"
                 if raw_mode != "off":
