@@ -1602,6 +1602,22 @@ class SaSheetsWriter:
         try:
             reqs_align: list[dict[str, Any]] = []
 
+            # 全部展开：解除此前手工隐藏的列（例如之前隐藏过 1m）
+            reqs_align.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "dimension": "COLUMNS",
+                            "startIndex": 0,
+                            "endIndex": int(target_cols),
+                        },
+                        "properties": {"hiddenByUser": False},
+                        "fields": "hiddenByUser",
+                    }
+                }
+            )
+
             # Row1（元信息+目录）保持“单行溢出显示”，避免自动换行挤压信息密度
             reqs_align.append(
                 {
@@ -1692,9 +1708,37 @@ class SaSheetsWriter:
                                 }
                             },
                             "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment)",
-                        }
                     }
-                )
+                }
+            )
+
+            # raw 镜像区：按 raw_mode 控制显示/隐藏（默认 show）；放在“全展开”之后以覆盖其效果
+            try:
+                raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
+                raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
+            except Exception:
+                raw_block_start_col_0 = None
+            if raw_block_start_col_0 is not None and 0 <= int(raw_block_start_col_0) < int(n_cols):
+                raw_sep = int(raw_block_start_col_0)
+                raw_end = int(n_cols)
+                raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "show") or "show").strip().lower()
+                if raw_mode not in {"hidden", "show", "off"}:
+                    raw_mode = "show"
+                if raw_mode != "off":
+                    reqs_align.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": int(raw_sep),
+                                    "endIndex": int(raw_end),
+                                },
+                                "properties": {"hiddenByUser": raw_mode == "hidden"},
+                                "fields": "hiddenByUser",
+                            }
+                        }
+                    )
 
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
@@ -3310,6 +3354,22 @@ class SaSheetsWriter:
                 "updateSheetProperties": {
                     "properties": {"sheetId": int(sh_id), "gridProperties": {"columnCount": int(col_r_idx_eff)}},
                     "fields": "gridProperties.columnCount",
+                }
+            }
+        )
+
+        # 全部展开：解除用户此前手工隐藏的列（例如之前隐藏过 1m）
+        reqs.append(
+            {
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": int(sh_id),
+                        "dimension": "COLUMNS",
+                        "startIndex": int(col_l0),
+                        "endIndex": int(col_r1),
+                    },
+                    "properties": {"hiddenByUser": False},
+                    "fields": "hiddenByUser",
                 }
             }
         )
