@@ -1419,6 +1419,123 @@ class SaSheetsWriter:
             )
         except Exception:
             pass
+
+        # 列宽：每次都对齐，避免“不同币种 tab 的列宽漂移”（手动拖拽/旧版样式遗留会导致不一致）
+        try:
+            raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
+            try:
+                raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
+            except Exception:
+                raw_block_start_col_0 = None
+
+            col_end = int(max(n_cols, 4))
+            reqs_w: list[dict[str, Any]] = []
+            # A/B/C 固定宽度（层级列）
+            reqs_w.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                        "properties": {"pixelSize": 140},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+            reqs_w.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+                        "properties": {"pixelSize": 220},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+            reqs_w.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
+                        "properties": {"pixelSize": 240},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+
+            # 其余列统一宽度（按 raw 镜像区分段）
+            if raw_block_start_col_0 is not None and 0 <= int(raw_block_start_col_0) < int(col_end):
+                raw_sep = int(raw_block_start_col_0)
+                # display 周期列
+                if raw_sep > 3:
+                    reqs_w.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": 3,
+                                    "endIndex": int(raw_sep),
+                                },
+                                "properties": {"pixelSize": 90},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
+                # 分隔列
+                reqs_w.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(raw_sep),
+                                "endIndex": int(min(raw_sep + 1, col_end)),
+                            },
+                            "properties": {"pixelSize": 26},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                # raw 周期列
+                if col_end > raw_sep + 1:
+                    reqs_w.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": int(raw_sep + 1),
+                                    "endIndex": int(col_end),
+                                },
+                                "properties": {"pixelSize": 80},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
+            else:
+                # 无 raw 区：周期列统一 90
+                if col_end > 3:
+                    reqs_w.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": 3,
+                                    "endIndex": int(col_end),
+                                },
+                                "properties": {"pixelSize": 90},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
+
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": reqs_w},
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
         try:
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
