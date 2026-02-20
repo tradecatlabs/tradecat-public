@@ -147,6 +147,24 @@ def _hidden_periods() -> set[str]:
     return {s.strip() for s in raw.split(",") if s.strip()}
 
 
+def _dashboard_v5_frozen_cols() -> int:
+    # v5 主表列：卡片/币种/字段/周期...；默认冻结前三列（卡片+币种+字段）
+    try:
+        v = int((os.environ.get("SHEETS_DASHBOARD_FROZEN_COLS", "3") or "3").strip() or "3")
+    except Exception:
+        v = 3
+    return max(v, 0)
+
+
+def _symbol_query_frozen_cols() -> int:
+    # 币种查询列：面板/指标组/指标/周期...；默认冻结前三列
+    try:
+        v = int((os.environ.get("SHEETS_SYMBOL_QUERY_FROZEN_COLS", "3") or "3").strip() or "3")
+    except Exception:
+        v = 3
+    return max(v, 0)
+
+
 def _value_type(v: Any) -> str:
     if v is None:
         return "null"
@@ -876,9 +894,8 @@ class SaSheetsWriter:
                 pos = idx_len(parts[0])
                 item_count = 1
                 for start_0, _end_0_excl, title in panel_blocks:
-                    sep = "，"  # 币种查询目录：保持单行；需要换行时用 items_per_line 改成 "，\n"
-                    if item_count % items_per_line == 0:
-                        sep = "，\n"
+                    # 冻结列开启时，不做整行 merge；目录保持单行溢出显示，不插入换行
+                    sep = "，"
                     parts.append(sep)
                     pos += idx_len(sep)
 
@@ -1210,8 +1227,7 @@ class SaSheetsWriter:
                             "sheetId": int(sh_id),
                             "gridProperties": {
                                 "frozenRowCount": int(int(header_row_0) + 1),
-                                # 目录/元信息行需要“整行合并”，冻结列会阻止跨边界 merge，因此这里设为 0。
-                                "frozenColumnCount": 0,
+                                "frozenColumnCount": int(_symbol_query_frozen_cols()),
                             },
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
@@ -1258,26 +1274,10 @@ class SaSheetsWriter:
                                 "textFormat": {"bold": True},
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "WRAP",
+                                "wrapStrategy": "OVERFLOW_CELL",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
-                    }
-                }
-            )
-
-            # 顶部行整行合并（与 merge_ranges 互补，避免“样式没刷新时不合并”）
-            reqs.append(
-                {
-                    "mergeCells": {
-                        "range": {
-                            "sheetId": int(sh_id),
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": int(n_cols),
-                        },
-                        "mergeType": "MERGE_ALL",
                     }
                 }
             )
@@ -1424,7 +1424,7 @@ class SaSheetsWriter:
                     row_count=want_rows,
                     col_count=want_cols,
                     frozen_row_count=int(int(header_row_0) + 1),
-                    frozen_column_count=0,
+                    frozen_column_count=_symbol_query_frozen_cols(),
                 )
 
         # -------------------- merges（指标组列合并） --------------------
@@ -2170,7 +2170,7 @@ class SaSheetsWriter:
 
         特性：
         - 顶部目录区（多行）：点击跳转到各卡片
-        - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结（目录 + 表头；冻结列 A/B）
+        - 全局表头只写 1 次：`卡片 | 币种 | 字段 | 1m..1w`，并冻结（目录 + 表头；冻结列 A..C）
         - 每张卡仅写：1 行源信息 + 明细 rows（不重复表头）
         - 币种列纵向合并（同币种连续行合并）
         - 美化：周期列灰白交替 + 周期列右对齐 + 币种行组双色交替（仅作用于 A/B 列）
@@ -2199,6 +2199,8 @@ class SaSheetsWriter:
         except Exception:
             prev_used_rows = 0
 
+        frozen_cols = _dashboard_v5_frozen_cols()
+
         if hard_reset:
             # 破坏性重绘（会闪烁）：用于“样式大改/历史残留严重”场景
             self.reset_sheet_display(
@@ -2207,7 +2209,7 @@ class SaSheetsWriter:
                 col_r=col_r,
                 compact=True,
                 frozen_row_count=1,
-                frozen_column_count=0,
+                frozen_column_count=frozen_cols,
             )
         else:
             # 无感刷新：不做 values.clear，全程覆盖写 + 清尾巴，避免整页“先消失再出现”
@@ -2250,7 +2252,7 @@ class SaSheetsWriter:
                                         "rowCount": int(want_rows),
                                         "columnCount": int(want_cols),
                                         "frozenRowCount": 1,
-                                        "frozenColumnCount": 0,
+                                        "frozenColumnCount": int(frozen_cols),
                                     },
                                 },
                                 "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
@@ -2935,7 +2937,9 @@ class SaSheetsWriter:
             item_count = 1  # 已写入 label
 
             for title, row_1 in dir_entries:
-                sep = "，\n" if (item_count % items_per_line == 0) else "，"
+                # 冻结列开启时，我们不做“整行横向 merge”（会跨冻结分割线导致 400）。
+                # 目录行改为单行文本溢出显示，因此这里不插入换行，避免首行高度被撑大。
+                sep = "，"
                 text_parts.append(sep)
                 pos += idx_len(sep)
 
@@ -2990,19 +2994,6 @@ class SaSheetsWriter:
                         spreadsheetId=self._spreadsheet_id,
                         body={
                             "requests": [
-                                # 第一行横向合并：目录条占据整行宽度
-                                {
-                                    "mergeCells": {
-                                        "range": {
-                                            "sheetId": int(sh_id),
-                                            "startRowIndex": 0,
-                                            "endRowIndex": 1,
-                                            "startColumnIndex": int(col_l0),
-                                            "endColumnIndex": int(col_r_idx),
-                                        },
-                                        "mergeType": "MERGE_ALL",
-                                    }
-                                },
                                 {
                                     "updateCells": {
                                         "range": {
@@ -3072,12 +3063,12 @@ class SaSheetsWriter:
 
         full_style = (meta.get(key_style_version) or "") != style_version or int(prev_dir_rows) != int(dir_rows) or prev_styled_rows <= 0
 
-        # freeze rows：目录 + 1 行表头；列：A/B
+        # freeze rows：目录 + 1 行表头；列：A..C（卡片/币种/字段）
         try:
             self._set_sheet_grid_properties(
                 sheet_title,
                 frozen_row_count=int(dir_rows) + 1,
-                frozen_column_count=0,
+                frozen_column_count=_dashboard_v5_frozen_cols(),
             )
         except Exception:
             pass
@@ -3128,19 +3119,19 @@ class SaSheetsWriter:
                                 "textFormat": {"bold": True},
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "WRAP",
+                                "wrapStrategy": "OVERFLOW_CELL",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
                     }
                 }
             )
-            # 目录行高度略增，便于多行阅读
+            # 目录行高度略增，便于阅读（目录为单行溢出显示，避免撑满屏）
             reqs.append(
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 80},
+                        "properties": {"pixelSize": 36},
                         "fields": "pixelSize",
                     }
                 }
