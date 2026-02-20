@@ -287,9 +287,9 @@ async def _run_once(
                 for p in payloads:
                     _reorder_payload_rows_by_symbols(p, symbols=syms)
 
-        # 为 auto width 预估列数（v5 固定 9 列；legacy 取原始最大列数）
+        # 为 auto width 预估列数（v5 固定 10 列：卡片/币种/字段/7周期；legacy 取原始最大列数）
         if use_v5_main:
-            max_cols = 9
+            max_cols = 10
         else:
             max_cols = 1
             for payload in payloads:
@@ -320,7 +320,7 @@ async def _run_once(
         col_l = settings.dashboard_col_l
         col_r = settings.dashboard_col_r
         if settings.dashboard_auto_width:
-            min_r = "I" if use_v5_main else col_r
+            min_r = "J" if use_v5_main else col_r
             col_r = sa_writer.compute_col_r(col_l=col_l, needed_cols=max_cols, min_col_r=min_r)
 
         sent = 0

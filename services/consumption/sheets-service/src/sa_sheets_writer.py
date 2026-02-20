@@ -1759,6 +1759,20 @@ class SaSheetsWriter:
         self.ensure_schema()
         hard_reset = (os.environ.get("SHEETS_DASHBOARD_V5_HARD_RESET", "0") or "0").strip() == "1"
 
+        # v5 主表固定列：卡片/币种/字段/7周期
+        required_cols = 10
+        try:
+            col_l_idx = _col_to_index(col_l)
+            col_r_idx = _col_to_index(col_r)
+            width = int(col_r_idx) - int(col_l_idx) + 1
+        except Exception:
+            width = 0
+        if width > 0 and width < required_cols:
+            try:
+                col_r = _index_to_col(int(col_l_idx) + int(required_cols) - 1)
+            except Exception:
+                pass
+
         # 记录上次使用区域，用于“清尾巴”（避免残留）
         meta = self._meta_get()
         try:
@@ -1774,7 +1788,7 @@ class SaSheetsWriter:
                 col_r=col_r,
                 compact=True,
                 frozen_row_count=1,
-                frozen_column_count=2,
+                frozen_column_count=3,
             )
         else:
             # 无感刷新：不做 values.clear，全程覆盖写 + 清尾巴，避免整页“先消失再出现”
@@ -1817,7 +1831,7 @@ class SaSheetsWriter:
                                             "rowCount": int(want_rows),
                                             "columnCount": int(want_cols),
                                             "frozenRowCount": 1,
-                                            "frozenColumnCount": 2,
+                                            "frozenColumnCount": 3,
                                         },
                                     },
                                     "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
@@ -2304,14 +2318,26 @@ class SaSheetsWriter:
 
         # 取第一张卡的 columns 作为全局表头口径（v5 应该对齐）
         first_table = (payloads[0].get("table") or {}) if isinstance(payloads[0], dict) else {}
-        columns = list(first_table.get("columns") or [])
-        columns = ["" if c is None else str(c) for c in columns]
-        if not columns:
-            columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+        base_columns = list(first_table.get("columns") or [])
+        base_columns = ["" if c is None else str(c) for c in base_columns]
+        if not base_columns:
+            base_columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
 
         # 只支持 v5 的“统一表头”：至少包含 币种/字段 两列
-        if len(columns) < 2:
-            columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+        if len(base_columns) < 2:
+            base_columns = ["币种", "字段", *list(PERIODS_DEFAULT)]
+
+        card_col = "卡片"
+        payload_col0_name = str(base_columns[0] or "币种") if base_columns else "币种"
+        payload_col1_name = str(base_columns[1] or "字段") if len(base_columns) >= 2 else "字段"
+        has_payload_card_col = bool(base_columns) and base_columns[0] == card_col
+
+        if has_payload_card_col:
+            columns = list(base_columns)
+            symbol_key = str(base_columns[1] or "币种") if len(base_columns) >= 2 else "币种"
+        else:
+            columns = [card_col, *base_columns]
+            symbol_key = payload_col0_name
 
         # 1) values：目录 + 全局表头 + 每张卡 info/body
         def pad_row(vals: list[str]) -> list[str]:
@@ -2327,7 +2353,7 @@ class SaSheetsWriter:
                 continue
             cols = table.get("columns") or []
             cols = ["" if c is None else str(c) for c in (cols or [])]
-            if cols and (len(cols) < 2 or cols[0] != columns[0] or cols[1] != columns[1]):
+            if cols and (len(cols) < 2 or cols[0] != payload_col0_name or cols[1] != payload_col1_name):
                 continue
             render_payloads.append(p)
 
@@ -2389,6 +2415,9 @@ class SaSheetsWriter:
                     continue
                 line: list[str] = []
                 for c in columns:
+                    if c == card_col:
+                        line.append(one_line(title))
+                        continue
                     v = r.get(c)
                     line.append("" if v is None else str(v))
                 body_vals.append(pad_row(line))
@@ -2475,7 +2504,7 @@ class SaSheetsWriter:
         # -------------------- 差量样式（只扩不重刷） --------------------
         # 目标：避免每轮对大范围做重复 repeatCell（尤其是长表），减少耗时与配额压力。
         meta = self._meta_get()
-        style_version = "dashboard_v5_style_v3"
+        style_version = "dashboard_v5_style_v4"
         key_style_version = "dashboard_v5_style_version"
         key_styled_rows = "dashboard_v5_styled_rows"
         key_dir_rows = "dashboard_v5_dir_rows"
@@ -2495,7 +2524,7 @@ class SaSheetsWriter:
             self._set_sheet_grid_properties(
                 sheet_title,
                 frozen_row_count=int(dir_rows) + 1,
-                frozen_column_count=2,
+                frozen_column_count=3,
             )
         except Exception:
             pass
@@ -2563,14 +2592,14 @@ class SaSheetsWriter:
                 )
 
             # 数值列（周期列）统一右对齐 + CLIP（差量）
-            if (col_l0 + 2) < int(col_r1):
+            if (col_l0 + 3) < int(col_r1):
                 reqs.append(
                     {
                         "repeatCell": {
                             "range": rrange(
                                 r0=shade_r0,
                                 r1=shade_r1,
-                                c0=int(col_l0 + 2),
+                                c0=int(col_l0 + 3),
                                 c1=int(col_r1),
                             ),
                             "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "wrapStrategy": "CLIP"}},
@@ -2579,16 +2608,53 @@ class SaSheetsWriter:
                     }
                 )
 
-        # symbol merges + row-group shading (仅 A/B 列)：按币种分组双色交替，提升阅读性
+        # card merges + symbol merges + row-group shading：按层级合并（卡片 -> 币种），提升阅读性
         for body_start_row_1, body_rows in merge_tasks:
             try:
                 # body_start_row_1 是 1-based；rrange 用 0-based
                 r0_base = int(body_start_row_1) - 1
-                # 分组：同一币种的连续行作为一个组
                 rows_for_card = body_rows
-                sym_col_name = str(columns[0] or "币种")
+                card_span = len(rows_for_card)
 
-                def sym_at(i: int, *, _rows: list[dict[str, Any]] = rows_for_card, _k: str = sym_col_name) -> str:
+                # 1) merge card column (A) for this card body
+                if card_span >= 2:
+                    r0 = r0_base
+                    r1 = r0_base + card_span
+                    reqs.append(
+                        {
+                            "mergeCells": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": int(r0),
+                                    "endRowIndex": int(r1),
+                                    "startColumnIndex": int(col_l0 + 0),
+                                    "endColumnIndex": int(col_l0 + 1),
+                                },
+                                "mergeType": "MERGE_ALL",
+                            }
+                        }
+                    )
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                "range": rrange(r0=int(r0), r1=int(r1), c0=int(col_l0 + 0), c1=int(col_l0 + 1)),
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "horizontalAlignment": "CENTER",
+                                        "verticalAlignment": "MIDDLE",
+                                        "textFormat": {"bold": True},
+                                        "backgroundColor": _rgb(0.95, 0.96, 0.98),
+                                    }
+                                },
+                                "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold,backgroundColor)",
+                            }
+                        }
+                    )
+
+                # 2) 分组：同一币种的连续行作为一个组（按“币种列”纵向 merge）
+                _sym_col_name = symbol_key
+
+                def sym_at(i: int, *, _rows: list[dict[str, Any]] = rows_for_card, _k: str = _sym_col_name) -> str:
                     try:
                         v = (_rows[i] or {}).get(_k)
                         return "" if v is None else str(v).strip()
@@ -2603,7 +2669,7 @@ class SaSheetsWriter:
                     while j < len(rows_for_card) and sym_at(j) == v0:
                         j += 1
                     if v0:
-                        # merge symbol column (A) for this group
+                        # merge symbol column (B) for this group
                         if (j - i) >= 2:
                             r0 = r0_base + i
                             r1 = r0_base + j
@@ -2614,8 +2680,8 @@ class SaSheetsWriter:
                                             "sheetId": int(sh_id),
                                             "startRowIndex": int(r0),
                                             "endRowIndex": int(r1),
-                                            "startColumnIndex": int(col_l0 + 0),
-                                            "endColumnIndex": int(col_l0 + 1),
+                                            "startColumnIndex": int(col_l0 + 1),
+                                            "endColumnIndex": int(col_l0 + 2),
                                         },
                                         "mergeType": "MERGE_ALL",
                                     }
@@ -2624,7 +2690,7 @@ class SaSheetsWriter:
                             reqs.append(
                                 {
                                     "repeatCell": {
-                                        "range": rrange(r0=int(r0), r1=int(r1), c0=int(col_l0 + 0), c1=int(col_l0 + 1)),
+                                        "range": rrange(r0=int(r0), r1=int(r1), c0=int(col_l0 + 1), c1=int(col_l0 + 2)),
                                         "cell": {
                                             "userEnteredFormat": {
                                                 "horizontalAlignment": "CENTER",
@@ -2643,8 +2709,8 @@ class SaSheetsWriter:
                                     "range": rrange(
                                         r0=r0_base + i,
                                         r1=r0_base + j,
-                                        c0=col_l0 + 0,
-                                        c1=col_l0 + 2,  # A..B
+                                        c0=col_l0 + 1,
+                                        c1=col_l0 + 3,  # B..C
                                     ),
                                     "cell": {"userEnteredFormat": {"backgroundColor": bg}},
                                     "fields": "userEnteredFormat.backgroundColor",
@@ -2696,14 +2762,14 @@ class SaSheetsWriter:
                 }
             )
 
-        # 列宽（美化）：A=币种，B=字段，C..=周期列
+        # 列宽（美化）：A=卡片，B=币种，C=字段，D..=周期列
         if full_style:
             try:
                 reqs.append(
                     {
                         "updateDimensionProperties": {
                             "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
-                            "properties": {"pixelSize": 64},
+                            "properties": {"pixelSize": 120},
                             "fields": "pixelSize",
                         }
                     }
@@ -2712,6 +2778,15 @@ class SaSheetsWriter:
                     {
                         "updateDimensionProperties": {
                             "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
+                            "properties": {"pixelSize": 64},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_l0 + 3)},
                             "properties": {"pixelSize": 110},
                             "fields": "pixelSize",
                         }
@@ -2721,7 +2796,7 @@ class SaSheetsWriter:
                 reqs.append(
                     {
                         "updateDimensionProperties": {
-                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_r1)},
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 3), "endIndex": int(col_r1)},
                             "properties": {"pixelSize": 86},
                             "fields": "pixelSize",
                         }
