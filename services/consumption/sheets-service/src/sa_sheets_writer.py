@@ -52,6 +52,63 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+_NUM_SUFFIX = {
+    "K": 1_000.0,
+    "M": 1_000_000.0,
+    "B": 1_000_000_000.0,
+    "T": 1_000_000_000_000.0,
+}
+
+
+def _coerce_number(v: object) -> float | int | None:
+    """
+    将展示字符串尽可能解析为 number，用于图表/排序。
+    - 支持：+/- 前缀、百分号、K/M/B/T 后缀、逗号分隔
+    - 百分号按“百分数”保留（例如 "0.15%" -> 0.15），不转小数 0.0015
+    """
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return v
+    if not isinstance(v, str):
+        return None
+
+    s = v.strip()
+    if not s or s == "-":
+        return None
+
+    sign = 1.0
+    if s[0] == "+":
+        s = s[1:].strip()
+    elif s[0] == "-":
+        sign = -1.0
+        s = s[1:].strip()
+
+    is_percent = s.endswith("%")
+    if is_percent:
+        s = s[:-1].strip()
+
+    mult = 1.0
+    if s and s[-1].upper() in _NUM_SUFFIX:
+        mult = _NUM_SUFFIX[s[-1].upper()]
+        s = s[:-1].strip()
+
+    s = s.replace(",", "")
+    try:
+        x = float(s)
+    except Exception:
+        return None
+
+    x = sign * x * mult
+    if is_percent:
+        return int(x) if float(int(x)) == x else x
+    return int(x) if float(int(x)) == x else x
+
+
 def _rgb(r: float, g: float, b: float) -> dict[str, float]:
     return {"red": float(r), "green": float(g), "blue": float(b)}
 
@@ -217,6 +274,8 @@ class SaSheetsWriter:
 
         # Sheet tabs（要求：全部中文命名；如需定制可用 env 覆盖）
         self._tab_dashboard = _env_text("SHEETS_TAB_DASHBOARD", "看板")
+        self._tab_dashboard_data = _env_text("SHEETS_TAB_DASHBOARD_DATA", "看板_数据")
+        self._tab_dashboard_history = _env_text("SHEETS_TAB_DASHBOARD_HISTORY", "看板_历史")
         self._tab_cards_index = _env_text("SHEETS_TAB_CARDS_INDEX", "卡片索引")
         self._tab_card_fields_eav = _env_text("SHEETS_TAB_CARD_FIELDS_EAV", "卡片字段EAV")
         self._tab_card_rows = _env_text("SHEETS_TAB_CARD_ROWS", "卡片明细行")
@@ -388,6 +447,8 @@ class SaSheetsWriter:
 
         wanted = [
             self._tab_dashboard,
+            self._tab_dashboard_data,
+            self._tab_dashboard_history,
             self._tab_cards_index,
             self._tab_card_fields_eav,
             self._tab_card_rows,
@@ -413,7 +474,50 @@ class SaSheetsWriter:
             )
             self._refresh_sheet_map()
 
+        # 数据层/历史层默认隐藏（不影响阅读 tab）
+        try:
+            self._set_sheet_hidden(self._tab_dashboard_data, hidden=True)
+        except Exception:
+            pass
+        try:
+            self._set_sheet_hidden(self._tab_dashboard_history, hidden=True)
+        except Exception:
+            pass
+
         # headers（dashboard 不需要，但保留一致性）
+        self._ensure_header_row(
+            self._tab_dashboard_data,
+            [
+                "export_ts_utc",
+                "card_key",
+                "ts_utc",
+                "source_service",
+                "card_type",
+                "title",
+                "update_time",
+                "sort_desc",
+                "last_update",
+                "symbol",
+                "field",
+                "period",
+                "value_display",
+                "value_num",
+            ],
+        )
+        self._ensure_header_row(
+            self._tab_dashboard_history,
+            [
+                "export_ts_utc",
+                "card_type",
+                "title",
+                "update_time",
+                "symbol",
+                "field",
+                "period",
+                "value_num",
+                "value_display",
+            ],
+        )
         self._ensure_header_row(
             self._tab_cards_index,
             [
@@ -486,6 +590,17 @@ class SaSheetsWriter:
             is_write=True,
         )
         self._refresh_sheet_map()
+
+    def ensure_hidden_sheet(self, *, title: str) -> None:
+        """
+        确保 sheet 存在且处于隐藏状态（用于“数据层/历史层”等非阅读面板）。
+        """
+        self.ensure_sheet(title=title)
+        try:
+            self._set_sheet_hidden(title, hidden=True)
+        except Exception:
+            # 隐藏失败不影响写入；最多是 tab 可见
+            pass
 
     def reset_sheet_display(
         self,
@@ -1678,6 +1793,17 @@ class SaSheetsWriter:
         except Exception:
             pass
 
+        data_res: dict[str, Any] | None = None
+        hist_res: dict[str, Any] | None = None
+        try:
+            data_res = self.write_dashboard_v5_data_tab(payloads=payloads)
+        except Exception as exc:
+            data_res = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+        try:
+            hist_res = self.append_dashboard_v5_history_tab(payloads=payloads)
+        except Exception as exc:
+            hist_res = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+
         return {
             "ok": True,
             "sheet": self._tab_dashboard,
@@ -1687,7 +1813,395 @@ class SaSheetsWriter:
             "col_r": col_r,
             "used_rows": int(used_end_row_1),
             "hard_reset": bool(hard_reset),
+            "data_tab": data_res,
+            "history": hist_res,
         }
+
+    def _iter_dashboard_v5_long_rows(
+        self, *, payloads: list[dict[str, Any]], export_ts_utc: str, periods: list[str]
+    ) -> Iterable[list[Any]]:
+        """
+        将 v5 看板的“宽表”展开为长表（每行一个 (card,symbol,field,period)）。
+        用途：数据层/历史层（图表/透视/统计友好）。
+        """
+        per = [p for p in (periods or []) if p]
+        if not per:
+            per = list(PERIODS_DEFAULT)
+
+        for p in payloads or []:
+            if not isinstance(p, dict):
+                continue
+            card_key = str(p.get("card_key") or "").strip()
+            ts_utc = str(p.get("ts_utc") or "").strip()
+            source_service = str(p.get("source_service") or "").strip()
+            card_type = str(p.get("card_type") or "").strip()
+
+            header = p.get("header") or {}
+            params = p.get("params") or {}
+            title = str((header.get("title") if isinstance(header, dict) else "") or "").strip()
+            update_time = str((header.get("update_time") if isinstance(header, dict) else "") or "").strip()
+            sort_desc = str((header.get("sort_desc") if isinstance(header, dict) else "") or "").strip()
+            last_update = str((params.get("last_update") if isinstance(params, dict) else "") or "").strip()
+
+            table = p.get("table") or {}
+            cols = table.get("columns") or []
+            rows = table.get("rows") or []
+            if not (isinstance(cols, list) and isinstance(rows, list) and len(cols) >= 2):
+                continue
+
+            sym_key = str(cols[0] or "").strip() or "币种"
+            field_key = str(cols[1] or "").strip() or "字段"
+
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                sym = str(r.get(sym_key) or "").strip()
+                field = str(r.get(field_key) or "").strip()
+                for period in per:
+                    disp_obj = r.get(period)
+                    disp = "" if disp_obj is None else str(disp_obj)
+                    num = _coerce_number(disp)
+                    yield [
+                        export_ts_utc,
+                        card_key,
+                        ts_utc,
+                        source_service,
+                        card_type,
+                        title,
+                        update_time,
+                        sort_desc,
+                        last_update,
+                        sym,
+                        field,
+                        str(period),
+                        disp,
+                        "" if num is None else num,
+                    ]
+
+    def write_dashboard_v5_data_tab(self, *, payloads: list[dict[str, Any]]) -> dict[str, Any]:
+        """
+        写入“看板数据层”（隐藏 tab）：
+        - 结构化长表（强类型 number），用于：图表 / 透视表 / 统计查询
+        - 仅覆盖写（snapshot），不保留历史
+        - 通过 interval 控制频率，避免写入量翻倍导致 429
+        """
+        enabled = (os.environ.get("SHEETS_DASHBOARD_V5_DATA_ENABLED", "1") or "1").strip() != "0"
+        if not enabled:
+            return {"ok": True, "skipped": True, "reason": "disabled"}
+
+        try:
+            interval = int((os.environ.get("SHEETS_DASHBOARD_V5_DATA_INTERVAL_SECONDS", "300") or "300").strip() or "300")
+        except Exception:
+            interval = 300
+        interval = max(int(interval), 0)
+
+        meta = self._meta_get()
+        try:
+            last = int(str(meta.get("dashboard_v5_data_last_epoch") or "0").strip() or "0")
+        except Exception:
+            last = 0
+        now = int(time.time())
+        if interval > 0 and (now - last) < interval:
+            return {"ok": True, "skipped": True, "reason": "interval", "interval_seconds": interval, "age_seconds": now - last}
+
+        title = self._tab_dashboard_data
+        self.ensure_hidden_sheet(title=title)
+
+        export_ts = _now_utc_iso()
+        periods = list(PERIODS_DEFAULT)
+        headers = [
+            "export_ts_utc",
+            "card_key",
+            "ts_utc",
+            "source_service",
+            "card_type",
+            "title",
+            "update_time",
+            "sort_desc",
+            "last_update",
+            "symbol",
+            "field",
+            "period",
+            "value_display",
+            "value_num",
+        ]
+
+        body = list(self._iter_dashboard_v5_long_rows(payloads=payloads, export_ts_utc=export_ts, periods=periods))
+        values: list[list[Any]] = [headers, *body]
+        n_rows = int(len(values))
+        n_cols = int(len(headers))
+        col_r = _index_to_col(n_cols)
+
+        # 确保网格足够大（避免 update 越界），然后覆盖写
+        self._ensure_grid_size(title, min_rows=max(n_rows + 50, 2000), min_cols=n_cols)
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{title}!A1:{col_r}{n_rows}",
+                valueInputOption="RAW",
+                body={"values": values},
+            ),
+            is_write=True,
+        )
+
+        # 清尾巴：上一轮更长时清掉残留
+        key_rows = "dashboard_v5_data_rows"
+        key_cols = "dashboard_v5_data_cols"
+        try:
+            r_old = int(str(meta.get(key_rows) or "0").strip() or "0")
+        except Exception:
+            r_old = 0
+        try:
+            c_old = int(str(meta.get(key_cols) or "0").strip() or "0")
+        except Exception:
+            c_old = 0
+        if r_old > n_rows:
+            try:
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .clear(
+                        spreadsheetId=self._spreadsheet_id,
+                        range=f"{title}!A{n_rows + 1}:{_index_to_col(max(c_old, n_cols))}{r_old}",
+                    ),
+                    is_write=True,
+                )
+            except Exception:
+                pass
+        if c_old > n_cols:
+            try:
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .clear(
+                        spreadsheetId=self._spreadsheet_id,
+                        range=f"{title}!{_index_to_col(n_cols + 1)}1:{_index_to_col(c_old)}{max(r_old, n_rows)}",
+                    ),
+                    is_write=True,
+                )
+            except Exception:
+                pass
+
+        # 版式：压缩 grid + 冻结 header
+        try:
+            self._set_sheet_grid_properties(title, row_count=max(n_rows + 50, 2000), col_count=n_cols, frozen_row_count=1)
+        except Exception:
+            pass
+
+        # header 样式（一次性即可）
+        try:
+            sh_id = self._sheet_id_by_title.get(title)
+            if sh_id is None:
+                self._refresh_sheet_map()
+                sh_id = self._sheet_id_by_title.get(title)
+            if sh_id is not None:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "repeatCell": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": 0,
+                                            "endRowIndex": 1,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": int(n_cols),
+                                        },
+                                        "cell": {
+                                            "userEnteredFormat": {
+                                                "backgroundColor": _rgb(0.13, 0.15, 0.18),
+                                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
+                                                "horizontalAlignment": "CENTER",
+                                                "verticalAlignment": "MIDDLE",
+                                                "wrapStrategy": "CLIP",
+                                            }
+                                        },
+                                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                    }
+                                },
+                                # value_num 列右对齐
+                                {
+                                    "repeatCell": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": 1,
+                                            "endRowIndex": int(max(n_rows, 2)),
+                                            "startColumnIndex": int(n_cols - 1),
+                                            "endColumnIndex": int(n_cols),
+                                        },
+                                        "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "wrapStrategy": "CLIP"}},
+                                        "fields": "userEnteredFormat(horizontalAlignment,wrapStrategy)",
+                                    }
+                                },
+                            ]
+                        },
+                    ),
+                    is_write=True,
+                )
+        except Exception:
+            pass
+
+        try:
+            self._meta_set(
+                {
+                    "dashboard_v5_data_last_epoch": str(now),
+                    key_rows: str(n_rows),
+                    key_cols: str(n_cols),
+                }
+            )
+        except Exception:
+            pass
+
+        return {"ok": True, "sheet": title, "rows": n_rows, "cols": n_cols, "export_ts_utc": export_ts}
+
+    def append_dashboard_v5_history_tab(self, *, payloads: list[dict[str, Any]]) -> dict[str, Any]:
+        """
+        写入“看板历史层”（隐藏 tab）：
+        - append-only（带 retention，可选）
+        - 默认关闭（避免无意写爆配额/行数）
+        """
+        enabled = (os.environ.get("SHEETS_DASHBOARD_V5_HISTORY_ENABLED", "0") or "0").strip() == "1"
+        if not enabled:
+            return {"ok": True, "skipped": True, "reason": "disabled"}
+
+        def _split_csv(env_key: str) -> list[str]:
+            raw = (os.environ.get(env_key, "") or "").strip()
+            if not raw:
+                return []
+            return [s.strip() for s in raw.split(",") if s.strip()]
+
+        card_types = set(_split_csv("SHEETS_DASHBOARD_V5_HISTORY_CARD_TYPES"))
+        fields = set(_split_csv("SHEETS_DASHBOARD_V5_HISTORY_FIELDS"))
+        periods = _split_csv("SHEETS_DASHBOARD_V5_HISTORY_PERIODS") or ["15m"]
+        periods = [p for p in periods if p]
+        if not periods:
+            periods = ["15m"]
+
+        try:
+            max_append = int((os.environ.get("SHEETS_DASHBOARD_V5_HISTORY_MAX_APPEND_ROWS", "2000") or "2000").strip() or "2000")
+        except Exception:
+            max_append = 2000
+        max_append = max(int(max_append), 0)
+
+        try:
+            max_rows = int((os.environ.get("SHEETS_DASHBOARD_V5_HISTORY_MAX_ROWS", "50000") or "50000").strip() or "50000")
+        except Exception:
+            max_rows = 50000
+        max_rows = max(int(max_rows), 0)
+
+        title = self._tab_dashboard_history
+        self.ensure_hidden_sheet(title=title)
+
+        headers = [
+            "export_ts_utc",
+            "card_type",
+            "title",
+            "update_time",
+            "symbol",
+            "field",
+            "period",
+            "value_num",
+            "value_display",
+        ]
+        self._ensure_header_row(title, headers)
+        n_cols = len(headers)
+        col_r = _index_to_col(n_cols)
+
+        export_ts = _now_utc_iso()
+        rows_out: list[list[Any]] = []
+        for rec in self._iter_dashboard_v5_long_rows(payloads=payloads, export_ts_utc=export_ts, periods=periods):
+            # rec schema: export_ts, card_key, ts_utc, source_service, card_type, title, update_time, sort_desc, last_update, sym, field, period, disp, num
+            ctype = str(rec[4] or "").strip()
+            ctitle = str(rec[5] or "").strip()
+            up = str(rec[6] or "").strip()
+            sym = str(rec[9] or "").strip()
+            fld = str(rec[10] or "").strip()
+            per = str(rec[11] or "").strip()
+            disp = "" if rec[12] is None else str(rec[12])
+            num = rec[13]
+            if num is None or num == "":
+                continue
+            if card_types and ctype not in card_types:
+                continue
+            if fields and fld not in fields:
+                continue
+            rows_out.append([export_ts, ctype, ctitle, up, sym, fld, per, num, disp])
+            if max_append > 0 and len(rows_out) >= max_append:
+                break
+
+        if not rows_out:
+            return {"ok": True, "skipped": True, "reason": "no_rows"}
+
+        meta = self._meta_get()
+        key_next = "dashboard_v5_history_next_row"
+        try:
+            next_row = int(str(meta.get(key_next) or "2").strip() or "2")
+        except Exception:
+            next_row = 2
+        next_row = max(int(next_row), 2)
+
+        # retention：超过 max_rows 时删除最老的数据行（从第 2 行开始）
+        if max_rows > 0:
+            cur_count = max(int(next_row) - 2, 0)
+            new_count = int(cur_count) + int(len(rows_out))
+            extra = int(new_count) - int(max_rows)
+            if extra > 0:
+                sh_id = self._sheet_id_by_title.get(title)
+                if sh_id is None:
+                    self._refresh_sheet_map()
+                    sh_id = self._sheet_id_by_title.get(title)
+                if sh_id is not None:
+                    self._exec(
+                        self._sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=self._spreadsheet_id,
+                            body={
+                                "requests": [
+                                    {
+                                        "deleteDimension": {
+                                            "range": {
+                                                "sheetId": int(sh_id),
+                                                "dimension": "ROWS",
+                                                "startIndex": 1,  # delete from row 2 (0-based)
+                                                "endIndex": 1 + int(extra),
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                        ),
+                        is_write=True,
+                    )
+                    # rows shift up
+                    next_row = max(int(next_row) - int(extra), 2)
+
+        end_row = int(next_row) + int(len(rows_out)) - 1
+        self._ensure_grid_size(title, min_rows=max(end_row + 50, 2000), min_cols=n_cols)
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{title}!A{next_row}:{col_r}{end_row}",
+                valueInputOption="RAW",
+                body={"values": rows_out},
+            ),
+            is_write=True,
+        )
+        try:
+            self._set_sheet_grid_properties(title, col_count=n_cols, frozen_row_count=1)
+        except Exception:
+            pass
+
+        try:
+            self._meta_set({key_next: str(int(end_row) + 1)})
+        except Exception:
+            pass
+
+        return {"ok": True, "sheet": title, "appended": len(rows_out), "next_row": int(end_row) + 1, "export_ts_utc": export_ts}
 
     def _write_v5_field_rows_period_columns_sheet(
         self,
@@ -2841,6 +3355,31 @@ class SaSheetsWriter:
         )
         self._refresh_sheet_map()
 
+    def _set_sheet_hidden(self, title: str, *, hidden: bool) -> None:
+        sheet_id = self._sheet_id_by_title.get(title)
+        if sheet_id is None:
+            self._refresh_sheet_map()
+            sheet_id = self._sheet_id_by_title.get(title)
+        if sheet_id is None:
+            raise RuntimeError(f"missing_sheet:{title}")
+
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "updateSheetProperties": {
+                                "properties": {"sheetId": int(sheet_id), "hidden": bool(hidden)},
+                                "fields": "hidden",
+                            }
+                        }
+                    ]
+                },
+            ),
+            is_write=True,
+        )
+
     def _ensure_header_row(self, sheet: str, headers: list[str]) -> None:
         rng = f"{sheet}!1:1"
         got = self._exec(
@@ -3124,6 +3663,14 @@ class SaSheetsWriter:
         self.ensure_schema()
         self._refresh_sheet_map()
         keep: set[str] = {self._tab_dashboard}
+
+        # v5 数据层/历史层：默认保留（tab 默认隐藏，不影响“最少交互”的阅读体验）
+        keep_data = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_DATA", "1") or "1").strip() != "0"
+        keep_history = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_HISTORY", "1") or "1").strip() != "0"
+        if keep_data:
+            keep.add(self._tab_dashboard_data)
+        if keep_history:
+            keep.add(self._tab_dashboard_history)
 
         # 可选：保留“看板变体 tab”（用于对比不同高密度布局）
         # 默认不保留：避免用户只想保留最小集合时被额外 tab 污染。
