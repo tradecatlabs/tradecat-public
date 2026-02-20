@@ -159,7 +159,8 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     raw_block_start_col_0 = (3 + n_display) if include_raw else None  # 分隔列起始（0-based）
     n_cols = (3 + n_display + 1 + n_display) if include_raw else (3 + n_display)
 
-    # -------------------- 顶部信息块 --------------------
+    # -------------------- 顶部信息块（压缩为 2 行：元信息+说明 / 目录） --------------------
+    # 需求：将原第2行(说明)合并进第1行，将原第3行(目录)上移为第2行。
     values.append(
         pad_row(
             [
@@ -169,11 +170,12 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
                 now,
                 "语言",
                 lang,
+                "说明",
+                "结构化表格（非文本伪表格）",
             ],
             n_cols,
         )
     )
-    values.append(pad_row(["说明", "结构化表格（非文本伪表格）"], n_cols))
     # 目录（writer 会写入 HYPERLINK 公式；这里先预留一行避免覆盖正文）
     values.append(pad_row(["📌 目录（点击跳转）"], n_cols))
 
