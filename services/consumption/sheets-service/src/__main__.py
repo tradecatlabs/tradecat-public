@@ -95,7 +95,9 @@ def _post_with_retry(
 def _extract_volume_sorted_symbols(payloads: list[dict]) -> list[str]:
     """
     统一交易对排序口径：使用“成交量榜单（volume_ranking）”的行顺序作为全局币种顺序。
-    - volume_ranking 的 base_period 默认 15m，且按成交量（base_volume）排序，因此其 rows 顺序即“按交易量排序”。
+    - volume_ranking 的 base_period 默认 15m。
+    - 在 sheets-service 导出侧会默认把 volume_ranking 改为按成交额（quote_volume）降序排序，
+      因此其 rows 顺序即“按交易量(成交额)排序”。
     - 不做数值解析（避免 K/M/B 格式与语言变化引入误差）。
     """
     card_type = (os.environ.get("SHEETS_SYMBOL_SORT_CARD_TYPE", "volume_ranking") or "volume_ranking").strip()

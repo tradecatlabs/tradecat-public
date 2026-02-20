@@ -228,6 +228,24 @@ def _force_enable_all_fields(card: Any, state: dict[str, Any]) -> None:
     state[fields_key] = dict.fromkeys(col_ids, True)
 
 
+def _apply_volume_ranking_export_overrides(state: dict[str, Any]) -> None:
+    """
+    Sheets 的“全局交易对排序”依赖 `volume_ranking` 卡片的行顺序。
+
+    这里提供一个导出侧覆盖开关，避免误把“成交量(base_volume/币本位)”当成“交易量(成交额/quote_volume)”：
+    - 默认按 `quote_volume`（成交额/USDT 口径）降序排序，让 BTC 这类高价币更符合直觉地排在前面。
+    - 可通过 env 覆盖：`SHEETS_SYMBOL_SORT_VOLUME_FIELD=base_volume|quote_volume`
+    """
+    sort_field = (os.environ.get("SHEETS_SYMBOL_SORT_VOLUME_FIELD", "quote_volume") or "quote_volume").strip()
+    if sort_field:
+        # volume_ranking 的排序字段
+        if "volume_sort_field" in state:
+            state["volume_sort_field"] = sort_field
+        # 强制降序（最大在前）
+        if "volume_sort" in state:
+            state["volume_sort"] = "desc"
+
+
 def _merge_multi_period_tables(
     *,
     base: CardTable,
@@ -396,6 +414,12 @@ class TgCardsExporter:
 
         ensure = lambda t, _fallback=None: t  # noqa: E731
         try:
+            # volume_ranking：强制按“成交额/quote_volume”降序排序（可 env 覆盖），用于全局交易对排序口径。
+            if getattr(card, "card_id", "") == "volume_ranking":
+                state0 = dict(handler.user_states)
+                _apply_volume_ranking_export_overrides(state0)
+                handler.user_states = dict(state0)
+
             # Sheets 的“全字段无遗漏”口径：对有字段开关的卡片，强制开启全部可展示字段。
             state0 = dict(handler.user_states)
             _force_enable_all_fields(card, state0)
