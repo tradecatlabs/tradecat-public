@@ -163,8 +163,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     # 需求：
     # - 第 1 行：元信息合并到一个单元格内，逗号分隔
     # - 第 2 行：目录合并到一个单元格内，逗号分隔（writer 会补全条目与跳转链接）
-    meta_text = (
-        f"币种,{sym},导出时间(UTC),{now},语言,{lang},说明,结构化表格（非文本伪表格）,")
+    meta_text = f"币种，{sym}，导出时间(UTC)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格），"
     values.append(pad_row([meta_text], n_cols))
     values.append(pad_row(["📌 目录（点击跳转）"], n_cols))
 

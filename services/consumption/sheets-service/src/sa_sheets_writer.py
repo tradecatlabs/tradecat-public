@@ -864,9 +864,9 @@ class SaSheetsWriter:
                 pos = idx_len(parts[0])
                 item_count = 1
                 for start_0, _end_0_excl, title in panel_blocks:
-                    sep = ","  # 币种查询目录：保持单行；需要换行时用 items_per_line 改成 ",\n"
+                    sep = "，"  # 币种查询目录：保持单行；需要换行时用 items_per_line 改成 "，\n"
                     if item_count % items_per_line == 0:
-                        sep = ",\n"
+                        sep = "，\n"
                     parts.append(sep)
                     pos += idx_len(sep)
 
@@ -890,7 +890,8 @@ class SaSheetsWriter:
                     runs.append({"startIndex": int(end), "format": {}})
                     item_count += 1
 
-                dir_text = "".join(parts) + ("," if not "".join(parts).endswith(",") else "")
+                parts_s = "".join(parts)
+                dir_text = parts_s + ("，" if not parts_s.endswith("，") else "")
                 dir_runs = runs
             except Exception:
                 dir_text, dir_runs = None, None
@@ -2922,7 +2923,7 @@ class SaSheetsWriter:
             item_count = 1  # 已写入 label
 
             for title, row_1 in dir_entries:
-                sep = ",\n" if (item_count % items_per_line == 0) else ","
+                sep = "，\n" if (item_count % items_per_line == 0) else "，"
                 text_parts.append(sep)
                 pos += idx_len(sep)
 
