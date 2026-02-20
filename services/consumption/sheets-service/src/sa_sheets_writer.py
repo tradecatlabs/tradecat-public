@@ -837,8 +837,12 @@ class SaSheetsWriter:
             if end_0_excl > start_0:
                 panel_blocks.append((int(start_0), int(end_0_excl), str(title)))
 
-        # 顶部一行（元信息+目录）横向合并：保证“单行一个单元格”的展示效果
-        if int(n_cols) >= 2:
+        # 顶部一行（元信息+目录）：
+        # - 若开启冻结列，Google Sheets 不允许“冻结分割线切开 merged cell”，否则 updateSheetProperties 会 400，
+        #   导致 frozenColumnCount 无法生效（用户看到“没有冻结条”）。
+        # - 因此：冻结列开启时不做整行横向 merge，靠文本溢出显示即可。
+        frozen_cols = _symbol_query_frozen_cols()
+        if int(n_cols) >= 2 and int(frozen_cols) <= 0:
             merge_ranges.append((0, 1, 0, int(n_cols)))
 
         # 将“面板合并”加入 merge_ranges（与指标组合并共用一套 batch merge）
