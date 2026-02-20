@@ -146,7 +146,9 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
             return row[:n_cols]
         return row + [""] * (n_cols - len(row))
 
-    # 统一列宽：2 个维度列 + 7 个周期列
+    # 统一结构：复用主看板（方案5）的“左侧层级列 + 右侧周期列”思路
+    # - 左侧 3 列：面板 / 指标组 / 指标
+    # - 右侧周期列：7 周期
     # - 为了支持表内排序/阈值/图表，追加一个“raw 镜像区”（默认隐藏）：[分隔列] + raw(7周期)
     n_display = len(periods_all)
     raw_mode = (os.environ.get("SHEETS_SYMBOL_QUERY_RAW_MODE", "hidden") or "hidden").strip().lower()
@@ -154,8 +156,8 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         raw_mode = "hidden"
 
     include_raw = raw_mode != "off"
-    raw_block_start_col_0 = (2 + n_display) if include_raw else None  # 分隔列起始（0-based）
-    n_cols = (2 + n_display + 1 + n_display) if include_raw else (2 + n_display)
+    raw_block_start_col_0 = (3 + n_display) if include_raw else None  # 分隔列起始（0-based）
+    n_cols = (3 + n_display + 1 + n_display) if include_raw else (3 + n_display)
 
     # -------------------- 顶部信息块 --------------------
     values.append(
@@ -172,50 +174,64 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
         )
     )
     values.append(pad_row(["说明", "结构化表格（非文本伪表格）"], n_cols))
+    # 目录（writer 会写入 HYPERLINK 公式；这里先预留一行避免覆盖正文）
+    values.append(pad_row(["📌 目录（点击跳转）"], n_cols))
 
-    # -------------------- 4 个面板 --------------------
+    # 全局表头（只写一次，不在每个面板重复写）
+    if include_raw:
+        values.append(pad_row(["面板", "指标组", "指标", *periods_all, "原始值", *periods_all], n_cols))
+    else:
+        values.append(pad_row(["面板", "指标组", "指标", *periods_all], n_cols))
+
+    # -------------------- 4 个面板（写入同一张大表，面板列由 writer 做纵向 merge） --------------------
     for panel_name in ["basic", "futures", "advanced", "pattern"]:
         config = PANEL_CONFIG.get(panel_name) or {}
         title_key = str(config.get("title_key") or "").strip()
         panel_title = _t(title_key, lang=lang) if title_key else panel_name
-
-        # title row
-        panel_title_rows.append(len(values) + 1)
-        values.append(pad_row([panel_title], n_cols))
+        panel_written = False
 
         if panel_name == "pattern":
-            # 形态面板：竖表（周期为行）
-            panel_header_rows.append(len(values) + 1)
-            values.append(pad_row(["周期", "形态类型", "检测数量", "强度"], n_cols))
-            for p in periods_all:
-                data = exporter._get_data("K线形态扫描器", sym, p)  # noqa: SLF001
-                if data:
-                    pat = data.get("形态类型")
-                    if isinstance(pat, str):
-                        pat = translate_value(pat, lang=lang)
-                    cnt = data.get("检测数量")
-                    stg = data.get("强度")
-                    values.append(
-                        pad_row(
-                            [
-                                str(p),
-                                "-" if pat is None or pat == "" else str(pat),
-                                "-" if cnt is None or cnt == "" else str(cnt),
-                                "-" if stg is None or stg == "" else str(stg),
-                            ],
-                            n_cols,
-                        )
-                    )
-                else:
-                    values.append(pad_row([str(p), "-", "-", "-"], n_cols))
-            continue
+            # 形态面板：也做成“字段纵向 + 周期横向”，与主看板一致（更紧凑、可筛选）
+            table_name = "K线形态扫描器"
+            fields = [
+                ("形态类型", "形态类型", str),
+                ("检测数量", "检测数量", str),
+                ("强度", "强度", str),
+            ]
+            group_row_start_0 = len(values)
+            for field_id, display_key, formatter in fields:
+                display_name = _t(display_key, lang=lang)
+                display_row: list[Any] = [panel_title if not panel_written else "", str(table_name), str(display_name)]
+                raw_row: list[Any] = []
+                for p in periods_all:
+                    data = exporter._get_data(str(table_name), sym, str(p))  # noqa: SLF001
+                    if not data:
+                        display_row.append("-")
+                        if include_raw:
+                            raw_row.append("")
+                        continue
 
-        # 横表：指标组/指标 + 周期列
-        panel_header_rows.append(len(values) + 1)
-        if include_raw:
-            values.append(pad_row(["指标组", "指标", *periods_all, "原始值", *periods_all], n_cols))
-        else:
-            values.append(pad_row(["指标组", "指标", *periods_all], n_cols))
+                    val = data.get(field_id)
+                    if formatter is str and isinstance(val, str):
+                        val = translate_value(val, lang=lang)
+
+                    disp = "-" if val is None or val == "" else str(val)
+                    display_row.append(disp)
+                    if include_raw:
+                        raw = _raw_value(val=val, display=disp)
+                        raw_row.append("" if raw is None else raw)
+
+                if include_raw:
+                    values.append(pad_row([*display_row, "", *raw_row], n_cols))
+                else:
+                    values.append(pad_row(display_row, n_cols))
+                panel_written = True
+
+            group_row_end_0_excl = len(values)
+            if (group_row_end_0_excl - group_row_start_0) > 1:
+                # 指标组列（B 列）纵向合并
+                merge_ranges.append((group_row_start_0, group_row_end_0_excl, 1, 2))
+            continue
 
         # panel periods（期货面板没有 1m）
         cfg_periods = tuple(config.get("periods") or periods_all)
@@ -226,7 +242,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
             group_row_start_0 = len(values)  # 0-based, inclusive
             for field_id, display_key, formatter in fields:
                 display_name = _t(display_key, lang=lang)
-                display_row: list[Any] = [str(table_name), str(display_name)]
+                display_row: list[Any] = [panel_title if not panel_written else "", str(table_name), str(display_name)]
                 raw_row: list[Any] = []
                 for p in periods_all:
                     if str(p) not in cfg_periods_set:
@@ -266,10 +282,11 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
                     values.append(pad_row([*display_row, "", *raw_row], n_cols))
                 else:
                     values.append(pad_row(display_row, n_cols))
+                panel_written = True
             group_row_end_0_excl = len(values)
             # 合并“指标组”列（A 列）：仅对多行组生效
             if (group_row_end_0_excl - group_row_start_0) > 1:
-                merge_ranges.append((group_row_start_0, group_row_end_0_excl, 0, 1))
+                merge_ranges.append((group_row_start_0, group_row_end_0_excl, 1, 2))
 
     return SymbolQuerySheet(
         symbol=sym,

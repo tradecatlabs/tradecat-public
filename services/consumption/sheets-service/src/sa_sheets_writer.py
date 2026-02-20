@@ -781,6 +781,53 @@ class SaSheetsWriter:
             values = [["-", "-", "-", "-", "-", "-", "-", "-", "-"]]
             n_rows, n_cols = 1, len(values[0])
 
+        # -------------------- detect header/panels (v7) --------------------
+        # 结构（默认）：
+        # - Row1: meta
+        # - Row2: 说明
+        # - Row3: 📌 目录（writer 补 HYPERLINK）
+        # - Row4: 全局表头：面板 | 指标组 | 指标 | 1m..1w | (原始值) | 1m..1w
+        header_row_0 = None
+        directory_row_0 = None
+        for ri, row in enumerate(values):
+            if not isinstance(row, list) or len(row) < 3:
+                continue
+            c0 = str(row[0]).strip()
+            c1 = str(row[1]).strip()
+            c2 = str(row[2]).strip()
+            if directory_row_0 is None and c0.startswith("📌"):
+                directory_row_0 = int(ri)
+            if c0 == "面板" and c1 == "指标组" and c2 == "指标":
+                header_row_0 = int(ri)
+                break
+        if header_row_0 is None:
+            header_row_0 = 3  # 向后兼容旧数据时的保底
+
+        panel_starts: list[tuple[int, str]] = []
+        for ri in range(int(header_row_0) + 1, int(n_rows)):
+            row = values[ri]
+            if not isinstance(row, list) or not row:
+                continue
+            title = str(row[0]).strip()
+            if not title:
+                continue
+            # 避免误识别表头/目录
+            if title in {"面板", "币种", "说明"} or title.startswith("📌"):
+                continue
+            panel_starts.append((int(ri), title))
+
+        # 面板列（A）纵向合并：每个面板块从 start 到下一个 start（或结尾）
+        panel_blocks: list[tuple[int, int, str]] = []
+        for idx, (start_0, title) in enumerate(panel_starts):
+            end_0_excl = int(panel_starts[idx + 1][0]) if (idx + 1) < len(panel_starts) else int(n_rows)
+            if end_0_excl > start_0:
+                panel_blocks.append((int(start_0), int(end_0_excl), str(title)))
+
+        # 将“面板合并”加入 merge_ranges（与指标组合并共用一套 batch merge）
+        for start_0, end_0_excl, _title in panel_blocks:
+            if (end_0_excl - start_0) > 1:
+                merge_ranges.append((int(start_0), int(end_0_excl), 0, 1))
+
         # NOTE: 我们会在本函数末尾做“compact grid”（压缩列数/行数），以实现“右侧无单元格”的效果。
         # 因此这里先确保 grid 足够大，避免 values.update 超出当前网格范围而报错。
         self._ensure_grid_size(tab_title, min_rows=n_rows, min_cols=n_cols)
@@ -797,6 +844,38 @@ class SaSheetsWriter:
             ),
             is_write=True,
         )
+
+        # -------------------- directory (HYPERLINK) --------------------
+        # 目录行用公式写入，因此必须用 USER_ENTERED；values.update(RAW) 会把公式当成普通文本。
+        if directory_row_0 is None:
+            directory_row_0 = 2
+        if 0 <= int(directory_row_0) < int(n_rows) and panel_blocks:
+            try:
+                dir_row_1 = int(directory_row_0) + 1
+                formulas: list[str] = []
+                for start_0, _end_0_excl, title in panel_blocks:
+                    target_row_1 = int(start_0) + 1
+                    safe_title = str(title).replace('"', '""')
+                    formulas.append(f'=HYPERLINK("#gid={int(sh_id)}&range=A{target_row_1}","{safe_title}")')
+
+                start_col_1 = 2  # B
+                end_col_1 = start_col_1 + len(formulas) - 1
+                if end_col_1 >= start_col_1:
+                    col_l = _index_to_col(int(start_col_1))
+                    col_r = _index_to_col(int(end_col_1))
+                    self._exec(
+                        self._sheets.spreadsheets()
+                        .values()
+                        .update(
+                            spreadsheetId=self._spreadsheet_id,
+                            range=f"{tab_title}!{col_l}{dir_row_1}:{col_r}{dir_row_1}",
+                            valueInputOption="USER_ENTERED",
+                            body={"values": [formulas]},
+                        ),
+                        is_write=True,
+                    )
+            except Exception:
+                pass
 
         meta = self._meta_get()
         key_rows = f"symtab.{tab_title}.rows"
@@ -832,7 +911,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "symbol_table_v6"
+        style_version = "symbol_table_v7"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -907,7 +986,7 @@ class SaSheetsWriter:
                                 },
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "WRAP",
+                                "wrapStrategy": "CLIP",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
@@ -915,12 +994,12 @@ class SaSheetsWriter:
                 }
             )
 
-            # widths：A,B wider；periods fixed
+            # widths：A,B,C wider；periods fixed
             reqs.append(
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 200},
+                        "properties": {"pixelSize": 140},
                         "fields": "pixelSize",
                     }
                 }
@@ -934,6 +1013,15 @@ class SaSheetsWriter:
                     }
                 }
             )
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
+                        "properties": {"pixelSize": 240},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
 
             raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
             try:
@@ -942,7 +1030,7 @@ class SaSheetsWriter:
                 raw_block_start_col_0 = None
 
             # columns >= C：默认 90；若存在 raw 镜像区，则 display/raw 区域分别设置宽度并可隐藏
-            for ci in range(2, int(target_cols)):
+            for ci in range(3, int(target_cols)):
                 px = 90
                 if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
                     if ci == int(raw_block_start_col_0):
@@ -965,7 +1053,7 @@ class SaSheetsWriter:
                 )
 
             # 周期列右对齐
-            if target_cols > 2:
+            if target_cols > 3:
                 reqs.append(
                     {
                         "repeatCell": {
@@ -973,7 +1061,7 @@ class SaSheetsWriter:
                                 "sheetId": int(sh_id),
                                 "startRowIndex": 0,
                                 "endRowIndex": int(target_rows),
-                                "startColumnIndex": 2,
+                                "startColumnIndex": 3,
                                 "endColumnIndex": int(target_cols),
                             },
                             "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "wrapStrategy": "CLIP"}},
@@ -981,6 +1069,37 @@ class SaSheetsWriter:
                         }
                     }
                 )
+
+            # display 周期列灰白交替（对齐主看板视觉习惯）
+            try:
+                header_row = values[int(header_row_0)] if 0 <= int(header_row_0) < len(values) else []
+                periods: list[str] = []
+                if isinstance(header_row, list) and len(header_row) >= 4:
+                    for cell in header_row[3:]:
+                        s = str(cell).strip()
+                        if not s or s == "原始值":
+                            break
+                        periods.append(s)
+                for pi, _p in enumerate(periods):
+                    if (pi % 2) == 1:  # 给“奇数周期列”上淡灰底
+                        ci = 3 + int(pi)
+                        reqs.append(
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 0,
+                                        "endRowIndex": int(target_rows),
+                                        "startColumnIndex": int(ci),
+                                        "endColumnIndex": int(ci + 1),
+                                    },
+                                    "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.975, 0.98, 0.99)}},
+                                    "fields": "userEnteredFormat(backgroundColor)",
+                                }
+                            }
+                        )
+            except Exception:
+                pass
 
             # raw 镜像区：浅灰底 + 可隐藏（默认隐藏）
             if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
@@ -1047,7 +1166,10 @@ class SaSheetsWriter:
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 2},
+                            "gridProperties": {
+                                "frozenRowCount": int(int(header_row_0) + 1),
+                                "frozenColumnCount": 3,
+                            },
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
                     }
@@ -1075,6 +1197,90 @@ class SaSheetsWriter:
                     }
                 }
             )
+
+            # directory row emphasis
+            if directory_row_0 is not None:
+                rr0 = max(int(directory_row_0), 0)
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(rr0),
+                                "endRowIndex": int(rr0 + 1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(0.96, 0.97, 0.98),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "LEFT",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment)",
+                        }
+                    }
+                )
+
+            # global header row emphasis
+            rrh = max(int(header_row_0), 0)
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(rrh),
+                            "endRowIndex": int(rrh + 1),
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            # panel blocks (A列) 背景交替 + 居中加粗
+            panel_colors = [
+                _rgb(0.90, 0.95, 0.98),
+                _rgb(0.94, 0.92, 0.98),
+            ]
+            for bi, (start_0, end_0_excl, _title) in enumerate(panel_blocks):
+                if end_0_excl <= start_0:
+                    continue
+                bg = panel_colors[int(bi) % len(panel_colors)]
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(start_0),
+                                "endRowIndex": int(end_0_excl),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": bg,
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
 
             # panel title rows
             for r in panel_title_rows:
@@ -1158,8 +1364,8 @@ class SaSheetsWriter:
                     tab_title,
                     row_count=want_rows,
                     col_count=want_cols,
-                    frozen_row_count=2,
-                    frozen_column_count=2,
+                    frozen_row_count=int(int(header_row_0) + 1),
+                    frozen_column_count=3,
                 )
 
         # -------------------- merges（指标组列合并） --------------------
@@ -1220,13 +1426,17 @@ class SaSheetsWriter:
         # 隐藏周期列（默认隐藏 1m）：对“币种查询”子表也生效
         hide_periods = _hidden_periods()
         if hide_periods:
-            # 解析 header 行中的周期顺序：["指标组","指标", 1m..1w, ("原始值"), ...]
+            # 解析 header 行中的周期顺序：["面板","指标组","指标", 1m..1w, ("原始值"), ...]
             periods: list[str] = []
             for row in values:
-                if not isinstance(row, list) or len(row) < 3:
+                if not isinstance(row, list) or len(row) < 4:
                     continue
-                if str(row[0]).strip() == "指标组" and str(row[1]).strip() == "指标":
-                    for cell in row[2:]:
+                if (
+                    str(row[0]).strip() == "面板"
+                    and str(row[1]).strip() == "指标组"
+                    and str(row[2]).strip() == "指标"
+                ):
+                    for cell in row[3:]:
                         s = str(cell).strip()
                         if not s or s == "原始值":
                             break
@@ -1235,7 +1445,7 @@ class SaSheetsWriter:
 
             if periods:
                 reqs_hide: list[dict[str, Any]] = []
-                display_start = 2  # A=指标组, B=指标, C 起为周期列
+                display_start = 3  # A=面板, B=指标组, C=指标, D 起为周期列
 
                 raw_sep = getattr(sheet, "raw_block_start_col_0", None)
                 try:
