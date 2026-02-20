@@ -192,6 +192,34 @@ def _symbol_query_col_widths_px() -> tuple[int, int, int, int]:
     return max(w_panel, 40), max(w_group, 60), max(w_metric, 60), max(w_period, 50)
 
 
+def _polymarket_col_widths_px(*, n_cols: int) -> list[int]:
+    """
+    Polymarket 统计子表列宽（像素）。
+    默认更紧凑，避免 1 列超宽导致整体信息密度过低。
+    """
+    try:
+        w_first = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_FIRST", "360") or "360").strip() or "360")
+    except Exception:
+        w_first = 360
+    try:
+        w_other = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_OTHER", "120") or "120").strip() or "120")
+    except Exception:
+        w_other = 120
+    try:
+        w_min = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MIN", "80") or "80").strip() or "80")
+    except Exception:
+        w_min = 80
+    w_first = max(int(w_first), 200)
+    w_other = max(int(w_other), int(w_min))
+
+    if int(n_cols) <= 0:
+        return [w_first]
+    out = [w_first]
+    for _ in range(1, int(n_cols)):
+        out.append(w_other)
+    return out
+
+
 def _value_type(v: Any) -> str:
     if v is None:
         return "null"
@@ -2005,8 +2033,73 @@ class SaSheetsWriter:
                 is_write=True,
             )
 
+        # -------------------- directory richtext links (single cell, A1) --------------------
+        # 需求：最少交互——在元信息单元格末尾追加“目录（点击跳转）+ 分段标题”，并为每个分段绑定跳转链接。
+        # 注意：A1 通常是横向 merge 的 top-left；updateCells 写入 A1 仍然有效。
+        dir_text: str | None = None
+        dir_runs: list[dict[str, Any]] | None = None
+        if panel_title_rows and values and isinstance(values[0], list) and values[0]:
+            try:
+                def idx_len(s: str) -> int:
+                    return len(str(s))
+
+                def strip_leading_emoji(s: str) -> str:
+                    return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
+
+                base = str(values[0][0] or "").strip()
+                if base and (not base.endswith("，")):
+                    base = base + "，"
+                label = "目录（点击跳转）"
+                prefix = base + label
+
+                parts: list[str] = [prefix]
+                runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+                pos = int(idx_len(prefix))
+                titles = sorted({int(r) for r in panel_title_rows if int(r) >= 2 and int(r) <= int(n_rows)})
+                for r1 in titles:
+                    r0 = int(r1) - 1
+                    title = ""
+                    try:
+                        title = str(values[int(r0)][0] or "")
+                    except Exception:
+                        title = ""
+                    title = strip_leading_emoji(title) or "-"
+
+                    sep = "，"
+                    parts.append(sep)
+                    pos += idx_len(sep)
+
+                    start = int(pos)
+                    parts.append(title)
+                    pos += idx_len(title)
+                    end = int(pos)
+
+                    url = (
+                        f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit"
+                        f"#gid={int(sh_id)}&range=A{int(r1)}"
+                    )
+                    runs.append(
+                        {
+                            "startIndex": int(start),
+                            "format": {
+                                "link": {"uri": str(url)},
+                                "foregroundColor": _rgb(0.1, 0.4, 0.8),
+                                "underline": True,
+                            },
+                        }
+                    )
+                    runs.append({"startIndex": int(end), "format": {}})
+
+                dir_text = "".join(parts)
+                text_len = idx_len(dir_text)
+                while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
+                    runs.pop()
+                dir_runs = runs
+            except Exception:
+                dir_text, dir_runs = None, None
+
         # -------------------- style --------------------
-        style_version = "polymarket_table_v1"
+        style_version = "polymarket_table_v2"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -2087,17 +2180,10 @@ class SaSheetsWriter:
                 }
             )
 
-            # column widths：A 宽一些，B.. 适中
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 520},
-                        "fields": "pixelSize",
-                    }
-                }
-            )
-            for ci in range(1, int(target_cols)):
+            # column widths（更紧凑）
+            widths = _polymarket_col_widths_px(n_cols=int(target_cols))
+            for ci in range(0, int(target_cols)):
+                px = int(widths[int(ci)]) if int(ci) < len(widths) else int(widths[-1])
                 reqs.append(
                     {
                         "updateDimensionProperties": {
@@ -2107,7 +2193,7 @@ class SaSheetsWriter:
                                 "startIndex": int(ci),
                                 "endIndex": int(ci + 1),
                             },
-                            "properties": {"pixelSize": 140},
+                            "properties": {"pixelSize": int(px)},
                             "fields": "pixelSize",
                         }
                     }
@@ -2205,6 +2291,51 @@ class SaSheetsWriter:
                     }
                 )
 
+            # section body stripes（按分段重置奇偶；提升可读性）
+            stripe = (os.environ.get("SHEETS_POLYMARKET_ROW_STRIPE", "1") or "1").strip() != "0"
+            if stripe and panel_title_rows:
+                try:
+                    titles = sorted({int(r) for r in panel_title_rows if int(r) >= 2 and int(r) <= int(n_rows)})
+                    # 末尾哨兵：便于计算每段结束
+                    titles2 = list(titles) + [int(n_rows) + 1]
+                    header_set = {int(r) for r in (panel_header_rows or []) if int(r) >= 2 and int(r) <= int(n_rows)}
+                    for i in range(len(titles2) - 1):
+                        t1 = int(titles2[i])
+                        end_excl_1 = int(titles2[i + 1])
+                        # header 行通常是 title+1；但以 exporter 标记为准
+                        h1 = t1 + 1 if (t1 + 1) in header_set else None
+                        if h1 is None:
+                            # fallback：找该段内第一个 header 标记
+                            for r in sorted(header_set):
+                                if int(r) > int(t1) and int(r) < int(end_excl_1):
+                                    h1 = int(r)
+                                    break
+                        if h1 is None:
+                            continue
+                        data_start0 = int(h1)  # 0-based: header row is h1-1, so data starts at h1
+                        data_end0 = int(end_excl_1) - 1  # 0-based end exclusive
+                        if data_end0 <= data_start0:
+                            continue
+                        for rr0 in range(int(data_start0), int(data_end0)):
+                            if ((rr0 - int(data_start0)) % 2) == 1:
+                                reqs.append(
+                                    {
+                                        "repeatCell": {
+                                            "range": {
+                                                "sheetId": int(sh_id),
+                                                "startRowIndex": int(rr0),
+                                                "endRowIndex": int(rr0 + 1),
+                                                "startColumnIndex": 0,
+                                                "endColumnIndex": int(target_cols),
+                                            },
+                                            "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.985, 0.987, 0.99)}},
+                                            "fields": "userEnteredFormat(backgroundColor)",
+                                        }
+                                    }
+                                )
+                except Exception:
+                    pass
+
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
@@ -2285,6 +2416,44 @@ class SaSheetsWriter:
                     )
                 except Exception:
                     pass
+
+        # directory links（after merges）
+        if dir_text and dir_runs:
+            try:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "updateCells": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": 0,
+                                            "endRowIndex": 1,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": 1,
+                                        },
+                                        "rows": [
+                                            {
+                                                "values": [
+                                                    {
+                                                        "userEnteredValue": {"stringValue": str(dir_text)},
+                                                        "textFormatRuns": dir_runs,
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "fields": "userEnteredValue,textFormatRuns",
+                                    }
+                                }
+                            ]
+                        },
+                    ),
+                    is_write=True,
+                )
+            except Exception as exc:
+                print(f"⚠️ pmtab.dir_links_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
         # meta bump（记录 rows/cols/style）
         self._meta_set(
