@@ -63,12 +63,21 @@
 - `SHEETS_EXPORT_SYMBOLS_UNFILTERED`：`0/1`（`1` 表示导出侧强制关闭币种过滤，等价 `SYMBOLS_GROUPS=auto`）
   - 常见现象：如果你的全局 `config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。
 - 看板源信息：每张卡片的 `标题/更新/排序/提示/最后更新` 会按固定顺序拼接到 **同一单元格**（整行合并），紧贴在表格主体上方。
-- `SHEETS_SYMBOL_TABS`：逗号分隔交易对（默认取 `SYMBOLS_GROUP_main4`，再回退 `BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT`），为每个交易对创建一个中文前缀的子表 `币种查询_<SYMBOL>` 并覆盖写“币种查询完整 TXT”。
+- `SHEETS_SYMBOL_TABS`：逗号分隔交易对（默认取 `SYMBOLS_GROUP_main4`，再回退 `BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT`），为每个交易对创建一个中文前缀的子表 `币种查询_<SYMBOL>` 并覆盖写“币种查询真表格（结构化字段）”。
 - `SHEETS_SYMBOL_TAB_PREFIX`：子表名前缀（默认 `币种查询_`）
 - `SHEETS_SYMBOL_TABS_MODE`：`dashboard|every|none`（默认 `dashboard`；仅在 dashboard 全量重绘时刷新子表；`every` 表示 snapshot 模式也刷新，写入量更大）
 - `SHEETS_SYMBOL_TABS_INTERVAL_SECONDS`：子表刷新最小间隔（默认 900；仅对 `dashboard` 模式下的子表刷新节流生效）
 - `SHEETS_SYNC_INTERVAL_SECONDS`：daemon 模式间隔（默认 60）
 - `SHEETS_IDEMPOTENCY_DB_PATH`：本地幂等键库（默认 `data/idempotency.db`）
+
+### 币种查询子表（真表格）版式说明
+
+当前“币种查询”不再写入整段 TXT，而是写入可筛选/可排序的结构化表格（复用主看板方案5的设计思路）：
+
+- 冻结：前 4 行（元信息/说明/目录/全局表头）+ 左侧 3 列（面板/指标组/指标）
+- 全局表头只出现一次：`面板 | 指标组 | 指标 | 1m..1w | 原始值 | 1m..1w(raw)`
+- 面板列（A）按块纵向合并并交替底色；指标组列（B）按块纵向合并
+- `SHEETS_HIDE_PERIODS` 会同时隐藏 display 区与 raw 镜像区的周期列（默认隐藏 `1m`）
 
 ## 运行
 
