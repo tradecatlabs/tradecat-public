@@ -2849,10 +2849,8 @@ class SaSheetsWriter:
                         "startIndex": int(start),
                         "format": {
                             "link": {"uri": str(url)},
-                            "textFormat": {
-                                "foregroundColor": _rgb(0.1, 0.4, 0.8),
-                                "underline": True,
-                            },
+                            "foregroundColor": _rgb(0.1, 0.4, 0.8),
+                            "underline": True,
                         },
                     }
                 )
