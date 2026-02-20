@@ -2368,11 +2368,10 @@ class SaSheetsWriter:
         data.append({"range": f"{sheet_title}!{col_l}{header_row_1}:{col_r}{header_row_1}", "values": [header_vals]})
 
         y = int(body_start_row_1)  # 1-based
-        info_rows: list[int] = []
         merge_tasks: list[tuple[int, list[dict[str, Any]]]] = []  # (body_start_row_1, body_rows)
         max_y_used = 1
         used_end_row_1 = 1
-        dir_entries: list[tuple[str, int]] = []  # (title, info_row_1)
+        dir_entries: list[tuple[str, int]] = []  # (title, body_start_row_1)
 
         for p in render_payloads:
             header = p.get("header") or {}
@@ -2403,20 +2402,19 @@ class SaSheetsWriter:
                 ]
             )
 
-            # info row（不 merge；冻结列场景禁止整行 merge）
-            data.append({"range": f"{sheet_title}!{col_l}{y}:{col_r}{y}", "values": [pad_row([info_line])]})
-            info_rows.append(int(y))
-            dir_entries.append((one_line(title), int(y)))
-            y_body = y + 1
+            y_body = y
+            dir_entries.append((one_line(title), int(y_body)))
 
             body_vals: list[list[str]] = []
-            for r in rows or []:
+            for row_idx, r in enumerate(rows or []):
                 if not isinstance(r, dict):
                     continue
                 line: list[str] = []
                 for c in columns:
                     if c == card_col:
-                        line.append(one_line(title))
+                        # 元信息：不再使用“分割行”（info row）；改为写入卡片合并单元格的 top-left
+                        # - 只在该卡片块的第一行写入，其它行留空（merge 后以 top-left 为准）
+                        line.append(info_line if row_idx == 0 else "")
                         continue
                     v = r.get(c)
                     line.append("" if v is None else str(v))
@@ -2497,14 +2495,14 @@ class SaSheetsWriter:
         bg_hdr_group = _rgb(0.86, 0.90, 0.96)
         bg_body_even = _rgb(1.0, 1.0, 1.0)
         bg_body_odd = _rgb(0.97, 0.97, 0.97)
-        bg_sym_a = _rgb(0.95, 0.97, 1.0)  # A/B 列：币种行组背景色1（淡蓝）
-        bg_sym_b = _rgb(0.98, 0.98, 0.98)  # A/B 列：币种行组背景色2（淡灰）
+        bg_sym_a = _rgb(0.95, 0.97, 1.0)  # 币种行组背景色1（淡蓝）
+        bg_sym_b = _rgb(0.98, 0.98, 0.98)  # 币种行组背景色2（淡灰）
 
         reqs: list[dict[str, Any]] = []
         # -------------------- 差量样式（只扩不重刷） --------------------
         # 目标：避免每轮对大范围做重复 repeatCell（尤其是长表），减少耗时与配额压力。
         meta = self._meta_get()
-        style_version = "dashboard_v5_style_v4"
+        style_version = "dashboard_v5_style_v5"
         key_style_version = "dashboard_v5_style_version"
         key_styled_rows = "dashboard_v5_styled_rows"
         key_dir_rows = "dashboard_v5_dir_rows"
@@ -2528,6 +2526,18 @@ class SaSheetsWriter:
             )
         except Exception:
             pass
+
+        # 结构变更时：先清掉“受控范围”的旧格式，避免残留（例如旧版 info 行深色背景）
+        if full_style and int(used_end_row_1) > 0:
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=0, r1=int(used_end_row_1), c0=col_l0, c1=col_r1),
+                        "cell": {"userEnteredFormat": {}},
+                        "fields": "userEnteredFormat",
+                    }
+                }
+            )
 
         # 目录区样式（始终覆盖，避免旧格式残留）
         if int(dir_rows) > 0:
@@ -2640,13 +2650,14 @@ class SaSheetsWriter:
                                 "range": rrange(r0=int(r0), r1=int(r1), c0=int(col_l0 + 0), c1=int(col_l0 + 1)),
                                 "cell": {
                                     "userEnteredFormat": {
-                                        "horizontalAlignment": "CENTER",
-                                        "verticalAlignment": "MIDDLE",
+                                        "horizontalAlignment": "LEFT",
+                                        "verticalAlignment": "TOP",
                                         "textFormat": {"bold": True},
                                         "backgroundColor": _rgb(0.95, 0.96, 0.98),
+                                        "wrapStrategy": "CLIP",
                                     }
                                 },
-                                "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold,backgroundColor)",
+                                "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold,backgroundColor,wrapStrategy)",
                             }
                         }
                     )
@@ -2721,29 +2732,6 @@ class SaSheetsWriter:
                     i = j
             except Exception:
                 continue
-
-        # info rows emphasis
-        for y1 in info_rows:
-            r0 = int(y1) - 1
-            reqs.append(
-                {
-                    "repeatCell": {
-                        "range": rrange(r0=r0, r1=r0 + 1, c0=col_l0, c1=col_r1),
-                        "cell": {
-                            "userEnteredFormat": {
-                                "backgroundColor": bg_hdr_info,
-                                "textFormat": {"bold": True, "foregroundColor": _rgb(1.0, 1.0, 1.0)},
-                                # 信息行很长：必须保持单行展示（不自动换行），让文本溢出到右侧空单元格。
-                                # 注意：本行我们只填充第 1 个单元格，其余列为空，OVERFLOW_CELL 会自然“溢出显示”。
-                                "wrapStrategy": "OVERFLOW_CELL",
-                                "horizontalAlignment": "LEFT",
-                                "verticalAlignment": "MIDDLE",
-                            }
-                        },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,wrapStrategy,horizontalAlignment,verticalAlignment)",
-                    }
-                }
-            )
 
         # 清尾巴（格式）：上一轮比本轮更长时，清掉尾部旧样式，避免残留“灰带/分隔线”
         if int(clear_tail_rows_to) > int(used_end_row_1):
