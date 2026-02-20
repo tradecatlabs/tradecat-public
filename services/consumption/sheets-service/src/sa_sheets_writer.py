@@ -1408,6 +1408,50 @@ class SaSheetsWriter:
                 }
             )
 
+        # -------------------- freeze + top-row overflow（每次都对齐） --------------------
+        # frozenColumnCount 变更不会触发 need_style，但会影响“冻结条”是否出现。
+        # 如果仅在 need_style 时设置冻结列，用户会看到“环境变量已改但冻结没生效”。
+        try:
+            self._set_sheet_grid_properties(
+                tab_title,
+                frozen_row_count=int(int(header_row_0) + 1),
+                frozen_column_count=_symbol_query_frozen_cols(),
+            )
+        except Exception:
+            pass
+        try:
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 0,
+                                        "endRowIndex": 1,
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": int(target_cols),
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "LEFT",
+                                            "verticalAlignment": "MIDDLE",
+                                            "wrapStrategy": "OVERFLOW_CELL",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                }
+                            }
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
+
         # -------------------- compact grid（只显示“有用的列”） --------------------
         # 解释：Google Sheets 的“网格”不是按数据自动生成的，默认每个 sheet 有固定 row/col 数。
         # 通过 updateSheetProperties.gridProperties.columnCount/rowCount 可以让列/行在 UI 中“消失”，
