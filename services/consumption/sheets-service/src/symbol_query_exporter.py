@@ -159,13 +159,13 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     raw_block_start_col_0 = (3 + n_display) if include_raw else None  # 分隔列起始（0-based）
     n_cols = (3 + n_display + 1 + n_display) if include_raw else (3 + n_display)
 
-    # -------------------- 顶部信息块（压缩为 2 行；每行单单元格） --------------------
-    # 需求：
-    # - 第 1 行：元信息合并到一个单元格内，逗号分隔
-    # - 第 2 行：目录合并到一个单元格内，逗号分隔（writer 会补全条目与跳转链接）
-    meta_text = f"币种，{sym}，导出时间(UTC)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格），"
+    # -------------------- 顶部信息块（压缩为 1 行；单单元格） --------------------
+    # 需求：币种查询子表只保留 1 行元信息（包含目录占位），用中文逗号分隔。
+    # - 目录的具体条目与跳转链接由 writer 在同一单元格内补齐（RichText links）。
+    meta_text = (
+        f"币种，{sym}，导出时间(UTC)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格），📌 目录（点击跳转），"
+    )
     values.append(pad_row([meta_text], n_cols))
-    values.append(pad_row(["📌 目录（点击跳转）"], n_cols))
 
     # 全局表头（只写一次，不在每个面板重复写）
     if include_raw:

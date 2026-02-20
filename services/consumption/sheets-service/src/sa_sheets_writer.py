@@ -783,20 +783,16 @@ class SaSheetsWriter:
 
         # -------------------- detect header/panels (v7) --------------------
         # 结构（默认）：
-        # - Row1: meta
-        # - Row2: 说明
-        # - Row3: 📌 目录（writer 补 HYPERLINK）
-        # - Row4: 全局表头：面板 | 指标组 | 指标 | 1m..1w | (原始值) | 1m..1w
+        # - Row1: meta + directory（单单元格，writer 补 RichText links）
+        # - Row2: 全局表头：面板 | 指标组 | 指标 | 1m..1w | (原始值) | 1m..1w
         header_row_0 = None
-        directory_row_0 = None
+        directory_row_0 = 0
         for ri, row in enumerate(values):
             if not isinstance(row, list) or len(row) < 3:
                 continue
             c0 = str(row[0]).strip()
             c1 = str(row[1]).strip()
             c2 = str(row[2]).strip()
-            if directory_row_0 is None and c0.startswith("📌"):
-                directory_row_0 = int(ri)
             if c0 == "面板" and c1 == "指标组" and c2 == "指标":
                 header_row_0 = int(ri)
                 break
@@ -823,13 +819,9 @@ class SaSheetsWriter:
             if end_0_excl > start_0:
                 panel_blocks.append((int(start_0), int(end_0_excl), str(title)))
 
-        # 顶部两行（元信息/目录）横向合并：保证“单行一个单元格”的展示效果
-        if directory_row_0 is None:
-            directory_row_0 = 1
+        # 顶部一行（元信息+目录）横向合并：保证“单行一个单元格”的展示效果
         if int(n_cols) >= 2:
             merge_ranges.append((0, 1, 0, int(n_cols)))
-            if 0 <= int(directory_row_0) < int(n_rows):
-                merge_ranges.append((int(directory_row_0), int(directory_row_0) + 1, 0, int(n_cols)))
 
         # 将“面板合并”加入 merge_ranges（与指标组合并共用一套 batch merge）
         for start_0, end_0_excl, _title in panel_blocks:
@@ -854,9 +846,7 @@ class SaSheetsWriter:
         )
 
         # -------------------- directory (single cell, rich links) --------------------
-        # 需求：目录行改成“一个单元格（整行合并）+ 逗号分隔”，仍保留每个条目的点击跳转。
-        if directory_row_0 is None:
-            directory_row_0 = 1
+        # 需求：币种查询子表只保留 1 行元信息；目录条目追加到同一单元格内，用中文逗号分隔并保留跳转。
         dir_text: str | None = None
         dir_runs: list[dict[str, Any]] | None = None
         if 0 <= int(directory_row_0) < int(n_rows) and panel_blocks:
@@ -867,7 +857,17 @@ class SaSheetsWriter:
                     # Sheets API startIndex 使用字符索引计数
                     return len(str(s))
 
-                parts: list[str] = ["📌 目录（点击跳转）"]
+                # 读取 exporter 写入的“元信息基底”，把目录条目拼到后面
+                base = ""
+                try:
+                    base = str((values[int(directory_row_0)][0] if values and values[int(directory_row_0)] else "") or "")
+                except Exception:
+                    base = ""
+                base = str(base).strip()
+                if base and (not base.endswith("，")):
+                    base = base + "，"
+
+                parts: list[str] = [base + "📌 目录（点击跳转）"]
                 runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
                 pos = idx_len(parts[0])
                 item_count = 1
@@ -939,7 +939,7 @@ class SaSheetsWriter:
 
         # -------------------- style --------------------
         # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
-        style_version = "symbol_table_v9"
+        style_version = "symbol_table_v10"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -1227,32 +1227,32 @@ class SaSheetsWriter:
                 }
             )
 
-            # directory row emphasis
-            if directory_row_0 is not None:
-                rr0 = max(int(directory_row_0), 0)
-                reqs.append(
-                    {
-                        "repeatCell": {
-                            "range": {
-                                "sheetId": int(sh_id),
-                                "startRowIndex": int(rr0),
-                                "endRowIndex": int(rr0 + 1),
-                                "startColumnIndex": 0,
-                                "endColumnIndex": int(target_cols),
-                            },
-                            "cell": {
-                                "userEnteredFormat": {
-                                    "backgroundColor": _rgb(0.96, 0.97, 0.98),
-                                    "textFormat": {"bold": True},
-                                    "horizontalAlignment": "LEFT",
-                                }
-                            },
-                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment)",
-                        }
+            # meta+directory row emphasis（第 1 行）
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 0,
+                            "endRowIndex": 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.96, 0.97, 0.98),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "WRAP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
                     }
-                )
+                }
+            )
 
-            # 元信息行（第 1 行）整行合并：提升信息密度与阅读一致性
+            # 顶部行整行合并（与 merge_ranges 互补，避免“样式没刷新时不合并”）
             reqs.append(
                 {
                     "mergeCells": {
@@ -1267,22 +1267,6 @@ class SaSheetsWriter:
                     }
                 }
             )
-            # 目录行整行合并
-            if directory_row_0 is not None:
-                reqs.append(
-                    {
-                        "mergeCells": {
-                            "range": {
-                                "sheetId": int(sh_id),
-                                "startRowIndex": int(directory_row_0),
-                                "endRowIndex": int(directory_row_0) + 1,
-                                "startColumnIndex": 0,
-                                "endColumnIndex": int(n_cols),
-                            },
-                            "mergeType": "MERGE_ALL",
-                        }
-                    }
-                )
 
             # global header row emphasis
             rrh = max(int(header_row_0), 0)
@@ -1488,7 +1472,7 @@ class SaSheetsWriter:
                     print(f"⚠️ symtab.merge_failed tab={tab_title} merges={len(reqs)} {type(exc).__name__}: {exc}")
 
         # -------------------- directory richtext links (after merges) --------------------
-        if dir_text and dir_runs and directory_row_0 is not None:
+        if dir_text and dir_runs:
             try:
                 self._exec(
                     self._sheets.spreadsheets().batchUpdate(
@@ -1499,8 +1483,8 @@ class SaSheetsWriter:
                                     "updateCells": {
                                         "range": {
                                             "sheetId": int(sh_id),
-                                            "startRowIndex": int(directory_row_0),
-                                            "endRowIndex": int(directory_row_0) + 1,
+                                            "startRowIndex": 0,
+                                            "endRowIndex": 1,
                                             "startColumnIndex": 0,
                                             "endColumnIndex": 1,
                                         },
