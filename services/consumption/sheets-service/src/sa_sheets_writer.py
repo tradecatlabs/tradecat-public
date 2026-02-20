@@ -2389,11 +2389,12 @@ class SaSheetsWriter:
 
             def one_line(s: str) -> str:
                 # Google Sheets：值里如果含 '\n' 会强制换行并把整行撑高；这里强制压成单行。
-                return re.sub(r"\\s+", " ", str(s or "").strip()).strip() or "-"
+                return re.sub(r"\s+", " ", str(s or "").strip()).strip() or "-"
 
+            title_display = one_line(title).replace("（去重汇总）", "").strip() or "-"
             info_line = " ".join(
                 [
-                    f"📊 {one_line(title)}",
+                    title_display,
                     f"⏰ 更新 {one_line(update_time)}",
                     f"📊 排序 {one_line(sort_desc)}",
                     f"💡 {one_line(hint_text)}",
@@ -2402,7 +2403,7 @@ class SaSheetsWriter:
             )
 
             y_body = y
-            dir_entries.append((one_line(title), int(y_body)))
+            dir_entries.append((title_display, int(y_body)))
 
             body_vals: list[list[str]] = []
             for row_idx, r in enumerate(rows or []):
