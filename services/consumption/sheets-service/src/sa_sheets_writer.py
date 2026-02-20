@@ -276,6 +276,7 @@ class SaSheetsWriter:
         self._tab_dashboard = _env_text("SHEETS_TAB_DASHBOARD", "看板")
         self._tab_dashboard_data = _env_text("SHEETS_TAB_DASHBOARD_DATA", "看板_数据")
         self._tab_dashboard_history = _env_text("SHEETS_TAB_DASHBOARD_HISTORY", "看板_历史")
+        self._tab_dashboard_meta = _env_text("SHEETS_TAB_DASHBOARD_META", "看板_元信息")
         self._tab_cards_index = _env_text("SHEETS_TAB_CARDS_INDEX", "卡片索引")
         self._tab_card_fields_eav = _env_text("SHEETS_TAB_CARD_FIELDS_EAV", "卡片字段EAV")
         self._tab_card_rows = _env_text("SHEETS_TAB_CARD_ROWS", "卡片明细行")
@@ -449,6 +450,7 @@ class SaSheetsWriter:
             self._tab_dashboard,
             self._tab_dashboard_data,
             self._tab_dashboard_history,
+            self._tab_dashboard_meta,
             self._tab_cards_index,
             self._tab_card_fields_eav,
             self._tab_card_rows,
@@ -481,6 +483,11 @@ class SaSheetsWriter:
             pass
         try:
             self._set_sheet_hidden(self._tab_dashboard_history, hidden=True)
+        except Exception:
+            pass
+        # 元信息层默认隐藏（可自行取消隐藏查看）
+        try:
+            self._set_sheet_hidden(self._tab_dashboard_meta, hidden=True)
         except Exception:
             pass
 
@@ -516,6 +523,16 @@ class SaSheetsWriter:
                 "period",
                 "value_num",
                 "value_display",
+            ],
+        )
+        self._ensure_header_row(
+            self._tab_dashboard_meta,
+            [
+                "title",
+                "update_time",
+                "sort_desc",
+                "hint",
+                "last_update",
             ],
         )
         self._ensure_header_row(
@@ -868,18 +885,18 @@ class SaSheetsWriter:
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
-	                        "cell": {
-	                            "userEnteredFormat": {
-	                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
-	                                "textFormat": {
-	                                    "fontFamily": "Arial",
-	                                    "fontSize": 10,
-	                                },
-	                                "horizontalAlignment": "LEFT",
-	                                "verticalAlignment": "MIDDLE",
-	                                "wrapStrategy": "WRAP",
-	                            }
-	                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
+                                "textFormat": {
+                                    "fontFamily": "Arial",
+                                    "fontSize": 10,
+                                },
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "WRAP",
+                            }
+                        },
                         "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
                     }
                 }
@@ -1035,16 +1052,16 @@ class SaSheetsWriter:
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
-	                        "cell": {
-	                            "userEnteredFormat": {
-	                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
-	                                "textFormat": {"bold": True},
-	                            }
-	                        },
-	                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
-	                    }
-	                }
-	            )
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                "textFormat": {"bold": True},
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
+                    }
+                }
+            )
 
             # panel title rows
             for r in panel_title_rows:
@@ -1059,16 +1076,16 @@ class SaSheetsWriter:
                                 "startColumnIndex": 0,
                                 "endColumnIndex": int(target_cols),
                             },
-	                            "cell": {
-	                                "userEnteredFormat": {
-	                                    "backgroundColor": _rgb(0.86, 0.90, 0.96),
-	                                    "textFormat": {"bold": True},
-	                                }
-	                            },
-	                            "fields": "userEnteredFormat(backgroundColor,textFormat)",
-	                        }
-	                    }
-	                )
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(0.86, 0.90, 0.96),
+                                    "textFormat": {"bold": True},
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat)",
+                        }
+                    }
+                )
 
             # panel header rows
             for r in panel_header_rows:
@@ -1884,6 +1901,11 @@ class SaSheetsWriter:
             hist_res = self.append_dashboard_v5_history_tab(payloads=payloads)
         except Exception as exc:
             hist_res = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+        meta_res: dict[str, Any] | None = None
+        try:
+            meta_res = self.write_dashboard_v5_meta_tab(payloads=payloads)
+        except Exception as exc:
+            meta_res = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
 
         return {
             "ok": True,
@@ -1896,7 +1918,66 @@ class SaSheetsWriter:
             "hard_reset": bool(hard_reset),
             "data_tab": data_res,
             "history": hist_res,
+            "meta_tab": meta_res,
         }
+
+    def write_dashboard_v5_meta_tab(self, *, payloads: list[dict[str, Any]]) -> dict[str, Any]:
+        """
+        写入“看板元信息层”（可隐藏 tab）：
+        - 每张卡一行：title / update_time / sort_desc / hint / last_update
+        - 用途：保留完整元信息，但主看板只展示卡片标题（避免噪声）
+        """
+        enabled = (os.environ.get("SHEETS_DASHBOARD_V5_META_ENABLED", "1") or "1").strip() != "0"
+        if not enabled:
+            return {"ok": True, "skipped": True, "reason": "disabled"}
+
+        title = self._tab_dashboard_meta
+        # 默认隐藏，但无论隐藏与否都允许写入
+        self.ensure_hidden_sheet(title=title)
+
+        headers = ["title", "update_time", "sort_desc", "hint", "last_update"]
+        values: list[list[Any]] = [headers]
+
+        def one_line(s: str) -> str:
+            return re.sub(r"\s+", " ", str(s or "").strip()).strip()
+
+        for p in payloads or []:
+            if not isinstance(p, dict):
+                continue
+            header = p.get("header") or {}
+            hint = p.get("hint") or {}
+            params = p.get("params") or {}
+
+            raw_title = str((header.get("title") if isinstance(header, dict) else "") or "")
+            title_display = one_line(raw_title).replace("（去重汇总）", "").strip() or "-"
+            update_time = one_line(str((header.get("update_time") if isinstance(header, dict) else "") or "")) or "-"
+            sort_desc = one_line(str((header.get("sort_desc") if isinstance(header, dict) else "") or "")) or "-"
+            hint_text = one_line(str((hint.get("text") if isinstance(hint, dict) else "") or "")) or "-"
+            last_update = one_line(str((params.get("last_update") if isinstance(params, dict) else "") or "")) or "-"
+
+            values.append([title_display, update_time, sort_desc, hint_text, last_update])
+
+        n_rows = int(len(values))
+        n_cols = int(len(headers))
+        col_r = _index_to_col(n_cols)
+        self._ensure_grid_size(title, min_rows=max(n_rows + 50, 2000), min_cols=n_cols)
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{title}!A1:{col_r}{n_rows}",
+                valueInputOption="RAW",
+                body={"values": values},
+            ),
+            is_write=True,
+        )
+        try:
+            self._set_sheet_grid_properties(title, col_count=n_cols, frozen_row_count=1)
+        except Exception:
+            pass
+
+        return {"ok": True, "sheet": title, "rows": n_rows - 1}
 
     def _iter_dashboard_v5_long_rows(
         self, *, payloads: list[dict[str, Any]], export_ts_utc: str, periods: list[str]
@@ -2092,18 +2173,18 @@ class SaSheetsWriter:
                                             "startColumnIndex": 0,
                                             "endColumnIndex": int(n_cols),
                                         },
-	                                        "cell": {
-	                                            "userEnteredFormat": {
-	                                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
-	                                                "textFormat": {"bold": True},
-	                                                "horizontalAlignment": "CENTER",
-	                                                "verticalAlignment": "MIDDLE",
-	                                                "wrapStrategy": "CLIP",
-	                                            }
-	                                        },
-	                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
-	                                    }
-	                                },
+                                        "cell": {
+                                            "userEnteredFormat": {
+                                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                                "textFormat": {"bold": True},
+                                                "horizontalAlignment": "CENTER",
+                                                "verticalAlignment": "MIDDLE",
+                                                "wrapStrategy": "CLIP",
+                                            }
+                                        },
+                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                    }
+                                },
                                 # value_num 列右对齐
                                 {
                                     "repeatCell": {
@@ -2374,33 +2455,18 @@ class SaSheetsWriter:
 
         for p in render_payloads:
             header = p.get("header") or {}
-            hint = p.get("hint") or {}
-            params = p.get("params") or {}
             table = p.get("table") or {}
             rows = table.get("rows") or []
             cols = table.get("columns") or []
             cols = ["" if c is None else str(c) for c in (cols or [])]
 
             title = str(header.get("title") or "")
-            update_time = str(header.get("update_time") or "-").strip() or "-"
-            sort_desc = str(header.get("sort_desc") or "-").strip() or "-"
-            hint_text = str(hint.get("text") or "-").strip() or "-"
-            last_update = str(params.get("last_update") or "-").strip() or "-"
 
             def one_line(s: str) -> str:
                 # Google Sheets：值里如果含 '\n' 会强制换行并把整行撑高；这里强制压成单行。
                 return re.sub(r"\s+", " ", str(s or "").strip()).strip() or "-"
 
             title_display = one_line(title).replace("（去重汇总）", "").strip() or "-"
-            info_line = " ".join(
-                [
-                    title_display,
-                    f"⏰ 更新 {one_line(update_time)}",
-                    f"📊 排序 {one_line(sort_desc)}",
-                    f"💡 {one_line(hint_text)}",
-                    f"⏰ 最后更新 {one_line(last_update)}",
-                ]
-            )
 
             y_body = y
             dir_entries.append((title_display, int(y_body)))
@@ -2414,7 +2480,7 @@ class SaSheetsWriter:
                     if c == card_col:
                         # 元信息：不再使用“分割行”（info row）；改为写入卡片合并单元格的 top-left
                         # - 只在该卡片块的第一行写入，其它行留空（merge 后以 top-left 为准）
-                        line.append(info_line if row_idx == 0 else "")
+                        line.append(title_display if row_idx == 0 else "")
                         continue
                     v = r.get(c)
                     line.append("" if v is None else str(v))
@@ -2545,19 +2611,19 @@ class SaSheetsWriter:
                 {
                     "repeatCell": {
                         "range": rrange(r0=0, r1=int(dir_rows), c0=col_l0, c1=col_r1),
-	                        "cell": {
-	                            "userEnteredFormat": {
-	                                "backgroundColor": bg_hdr_info,
-	                                "textFormat": {"bold": True},
-	                                "horizontalAlignment": "LEFT",
-	                                "verticalAlignment": "MIDDLE",
-	                                "wrapStrategy": "CLIP",
-	                            }
-	                        },
-		                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
-		                    }
-		                }
-		            )
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": bg_hdr_info,
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
 
         # header row style（只在 full_style 时重刷）
         if full_style:
@@ -3799,10 +3865,13 @@ class SaSheetsWriter:
         # v5 数据层/历史层：默认保留（tab 默认隐藏，不影响“最少交互”的阅读体验）
         keep_data = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_DATA", "1") or "1").strip() != "0"
         keep_history = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_HISTORY", "1") or "1").strip() != "0"
+        keep_meta = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_META", "1") or "1").strip() != "0"
         if keep_data:
             keep.add(self._tab_dashboard_data)
         if keep_history:
             keep.add(self._tab_dashboard_history)
+        if keep_meta:
+            keep.add(self._tab_dashboard_meta)
 
         # 可选：保留“看板变体 tab”（用于对比不同高密度布局）
         # 默认不保留：避免用户只想保留最小集合时被额外 tab 污染。
