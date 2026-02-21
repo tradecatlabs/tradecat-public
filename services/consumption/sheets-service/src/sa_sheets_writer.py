@@ -3058,6 +3058,7 @@ class SaSheetsWriter:
             prev_used_rows = 0
 
         frozen_cols = _dashboard_v5_frozen_cols()
+        export_ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
         if hard_reset:
             # 破坏性重绘（会闪烁）：用于“样式大改/历史残留严重”场景
@@ -3128,6 +3129,7 @@ class SaSheetsWriter:
             sheet_title=self._tab_dashboard,
             col_l=col_l,
             col_r=col_r,
+            export_ts_utc=export_ts,
             clear_tail_rows_to=prev_used_rows,
         )
 
@@ -3635,6 +3637,7 @@ class SaSheetsWriter:
         sheet_title: str,
         col_l: str,
         col_r: str,
+        export_ts_utc: str,
         clear_tail_rows_to: int = 0,
     ) -> int:
         """
@@ -3783,7 +3786,7 @@ class SaSheetsWriter:
             is_write=True,
         )
 
-        # 目录：写入“逗号分隔 + 换行”的单单元格文本（A1）
+        # 目录：写入“逗号分隔”的单单元格文本（A1）
         # - 保留“点击跳转”：通过 RichText 的 textFormatRuns 为每个条目单独绑定 link
         # - 目录区域无内容时也覆盖写，避免历史残留
         if dir_rows > 0:
@@ -3799,9 +3802,11 @@ class SaSheetsWriter:
                 return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
 
             clean_label = strip_leading_emoji(dir_label)
-            text_parts: list[str] = [clean_label]
+            ts_s = re.sub(r"\s+", " ", str(export_ts_utc or "").strip())
+            prefix = f"导出时间(UTC)，{ts_s}，{clean_label}" if ts_s else clean_label
+            text_parts: list[str] = [prefix]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
-            pos = int(idx_len(clean_label))
+            pos = int(idx_len(prefix))
             item_count = 1  # 已写入 label
 
             for title, row_1 in dir_entries:
