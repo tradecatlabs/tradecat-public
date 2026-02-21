@@ -2661,6 +2661,43 @@ class SaSheetsWriter:
                 }
             )
 
+        # -------------------- lift polymarket exporter logs into meta --------------------
+        # exporter 的 stdout 会带若干“生成 CSV 报告/跳过 API 排行”等日志行，
+        # 这些行被 parser 误识别为一个“Polymarket统计”分段，导致多出一张无意义卡片与多行噪音。
+        # 这里把有效信息提取进 meta_text，然后删除该分段。
+        if sections:
+            idx_noise = None
+            for idx, sec in enumerate(sections):
+                if str(sec.get("title_plain") or "").strip() == "Polymarket统计":
+                    idx_noise = int(idx)
+                    break
+            if idx_noise is not None:
+                sec0 = sections[int(idx_noise)]
+                first = ""
+                try:
+                    first = str((sec0.get("header") or [""])[0] or "").strip()
+                except Exception:
+                    first = ""
+                if "生成 CSV 报告" in first and "滚动24小时" in first:
+                    # 解析窗口起止（不强行标时区，避免误导；原样写入 meta）
+                    m = re.search(r"滚动24小时:\s*([0-9\-:\s]{10,})~\s*([0-9\-:\s]{10,})", first)
+                    if m:
+                        s0 = str(m.group(1)).strip()
+                        s1 = str(m.group(2)).strip()
+                        if s0 and s1:
+                            meta_text = f"{meta_text}，窗口起止，{s0}~{s1}" if meta_text else f"窗口起止，{s0}~{s1}"
+                    # API 排行开关状态
+                    for rr in (sec0.get("rows") or []):
+                        t = ""
+                        try:
+                            t = str((rr or [""])[0] or "").strip()
+                        except Exception:
+                            t = ""
+                        if "已跳过" in t and "API" in t:
+                            meta_text = f"{meta_text}，API排行，关闭" if meta_text else "API排行，关闭"
+                            break
+                    sections.pop(int(idx_noise))
+
         # -------------------- bundle: combine related sections into compact composite tables --------------------
         def _find_section_idx(title_plain: str) -> int | None:
             want = str(title_plain or "").strip()
@@ -2995,7 +3032,8 @@ class SaSheetsWriter:
             gap_cols = 0
 
         card_min_cols = max(env_int("SHEETS_POLYMARKET_CARD_MIN_COLS", 5), 3)
-        card_w = int(max(int(card_min_cols), int(max_sec_cols)))
+        # 单列纵向布局不需要“最小宽度缓冲”：否则会凭空制造空列。
+        card_w = int(max_sec_cols) if int(grid_cols) == 1 else int(max(int(card_min_cols), int(max_sec_cols)))
         col_span = int(card_w + gap_cols)
         target_cols = int(grid_cols * card_w + max(grid_cols - 1, 0) * gap_cols)
         target_cols = max(target_cols, card_w)
@@ -3203,7 +3241,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v6"
+        style_version = "polymarket_grid_v7"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -3379,7 +3417,7 @@ class SaSheetsWriter:
                                 "textFormat": {"bold": True},
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "CLIP",
+                                "wrapStrategy": "OVERFLOW_CELL",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
@@ -3397,7 +3435,7 @@ class SaSheetsWriter:
                                 "textFormat": {"bold": True},
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
-                                "wrapStrategy": "CLIP",
+                                "wrapStrategy": "OVERFLOW_CELL",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
