@@ -370,6 +370,7 @@ class SaSheetsWriter:
         self._tab_blobs_index = _env_text("SHEETS_TAB_BLOBS_INDEX", "大字段索引")
         self._tab_meta = _env_text("SHEETS_TAB_META", "元数据")
         self._tab_polymarket_stats = _env_text("SHEETS_TAB_POLYMARKET_STATS", "Polymarket统计")
+        self._tab_polymarket_events = _env_text("SHEETS_TAB_POLYMARKET_EVENTS", "Polymarket事件")
 
         self._ensured_schema = False
         self._sheet_id_by_title: dict[str, int] = {}
@@ -5288,6 +5289,11 @@ class SaSheetsWriter:
         keep_polymarket = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_STATS", "1") or "1").strip() != "0"
         if keep_polymarket:
             keep.add(self._tab_polymarket_stats)
+
+        # 外部数据旁路：Polymarket facts 事件子表（默认保留）
+        keep_polymarket_events = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_EVENTS", "1") or "1").strip() != "0"
+        if keep_polymarket_events:
+            keep.add(self._tab_polymarket_events)
 
         # 可选：保留“看板变体 tab”（用于对比不同高密度布局）
         # 默认不保留：避免用户只想保留最小集合时被额外 tab 污染。

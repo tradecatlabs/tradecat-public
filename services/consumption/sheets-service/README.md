@@ -89,6 +89,20 @@
 - `SHEETS_POLYMARKET_COMPACT_GRID`：`0/1`（默认 `1`；收缩网格，让右侧无单元格）
 - `SHEETS_PRUNE_KEEP_POLYMARKET_STATS`：`0/1`（默认 `1`；`--prune-tabs` 时保留该 tab）
 
+### Polymarket facts（结构化事实，旁路子表，可选）
+
+在同一工作簿内新增一个子表（默认名：`Polymarket事件`），展示 **最近 24h** 的结构化事实（JSONL），用于审计追溯与快速排障。
+
+- `SHEETS_TAB_POLYMARKET_EVENTS`：子表名称（默认 `Polymarket事件`）
+- `SHEETS_POLYMARKET_FACTS_EVENTS_ENABLE`：`0/1`（默认 `1`）
+- `SHEETS_POLYMARKET_FACTS_EVENTS_INTERVAL_SECONDS`：最小刷新间隔（默认 900）
+- `SHEETS_POLYMARKET_FACTS_MODE`：`auto|local|ssh`（默认 `auto`；优先 ssh）
+- `SHEETS_POLYMARKET_FACTS_DIR`：facts 根目录（默认 `$HOME/.local/state/tradecat/polymarket/facts`）
+- `SHEETS_POLYMARKET_FACTS_EVENTS_LIMIT`：最多展示事件行数（默认 400）
+- `SHEETS_POLYMARKET_FACTS_MAX_MB`：最大读取大小（默认 10；防止误扫超大 jsonl）
+- `SHEETS_POLYMARKET_FACTS_TIMEOUT_SECONDS`：导出超时（默认 20）
+- `SHEETS_PRUNE_KEEP_POLYMARKET_EVENTS`：`0/1`（默认 `1`；`--prune-tabs` 时保留该 tab）
+
 ### 币种查询子表（真表格）版式说明
 
 当前“币种查询”不再写入整段 TXT，而是写入可筛选/可排序的结构化表格（复用主看板方案5的设计思路）：

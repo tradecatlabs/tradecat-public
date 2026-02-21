@@ -17,6 +17,7 @@ from src.dashboard_variants import field_rows_period_columns
 from src.idempotency import IdempotencyStore
 from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
+from src.polymarket_facts_exporter import export_polymarket_facts_events_sheet
 from src.polymarket_exporter import export_polymarket_stats_sheet
 from src.remote_db import RemoteDbSpec, ensure_local_market_db
 from src.repo import find_repo_root
@@ -442,6 +443,34 @@ async def _run_once(
                     {
                         "polymarket_stats_last_epoch": str(now),
                         "polymarket_stats_last_error": (err or "")[:2000],
+                    }
+                )
+
+        # Polymarket facts 事件子表：结构化事实（append-only 的长期源头）抽取为“最近 24h”可审计视图
+        pme_enable = (os.environ.get("SHEETS_POLYMARKET_FACTS_EVENTS_ENABLE", "1") or "1").strip().lower()
+        if pme_enable not in {"0", "off", "false", "no"}:
+            now = int(time.time())
+            meta = sa_writer.meta_get()
+            try:
+                last = int(str(meta.get("polymarket_events_last_epoch") or "0").strip() or "0")
+            except Exception:
+                last = 0
+            interval = int(
+                (os.environ.get("SHEETS_POLYMARKET_FACTS_EVENTS_INTERVAL_SECONDS", "900") or "900").strip() or "900"
+            )
+            should = interval <= 0 or (now - last) >= interval
+            if should:
+                tab_title = (os.environ.get("SHEETS_TAB_POLYMARKET_EVENTS", "Polymarket事件") or "Polymarket事件").strip()
+                err = ""
+                try:
+                    pm_sheet = export_polymarket_facts_events_sheet(lang=lang)
+                    sa_writer.write_polymarket_stats_tab(tab_title=tab_title, sheet=pm_sheet)
+                except Exception as exc:
+                    err = f"{type(exc).__name__}:{exc}"
+                sa_writer.meta_set(
+                    {
+                        "polymarket_events_last_epoch": str(now),
+                        "polymarket_events_last_error": (err or "")[:2000],
                     }
                 )
 
