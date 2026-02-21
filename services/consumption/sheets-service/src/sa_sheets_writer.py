@@ -2610,8 +2610,8 @@ class SaSheetsWriter:
                     continue
                 rows.append(row_trim)
 
-            # 链接列去重：将“链接”融入“市场名称”单元格超链接，并移除显式链接列
-            # 注意：这里只做结构变换；实际超链接公式在写入后用 USER_ENTERED 差量写入，避免 time/string 被解析。
+            # 将“链接”融入“市场名称”单元格超链接（不破坏原表结构；避免链接缺失时丢信息）
+            # 注意：超链接公式在写入后用 USER_ENTERED 差量写入，避免整表 USER_ENTERED 触发时间/数值误解析。
             link_idx = None
             name_idx = None
             for j, c in enumerate(header):
@@ -2622,9 +2622,6 @@ class SaSheetsWriter:
                     name_idx = j
             hyperlinks: list[tuple[int, int, str, str]] = []
             if link_idx is not None and name_idx is not None and int(link_idx) != int(name_idx):
-                new_header = [c for j, c in enumerate(header) if j != int(link_idx)]
-                rows2: list[list[Any]] = []
-                name_idx2 = int(name_idx) - (1 if int(link_idx) < int(name_idx) else 0)
                 for ri, r in enumerate(rows):
                     url = ""
                     try:
@@ -2636,12 +2633,8 @@ class SaSheetsWriter:
                         name = str(r[int(name_idx)] or "").strip()
                     except Exception:
                         name = ""
-                    rr2 = [v for j, v in enumerate(r) if j != int(link_idx)]
-                    if url and (url.startswith("http://") or url.startswith("https://")) and name and 0 <= name_idx2 < len(rr2):
-                        hyperlinks.append((int(ri), int(name_idx2), str(url), str(name)))
-                    rows2.append(rr2)
-                header = new_header
-                rows = rows2
+                    if url and (url.startswith("http://") or url.startswith("https://")) and name:
+                        hyperlinks.append((int(ri), int(name_idx), str(url), str(name)))
 
             n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
             sections.append(
