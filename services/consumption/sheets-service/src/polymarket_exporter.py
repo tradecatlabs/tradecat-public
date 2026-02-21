@@ -335,7 +335,7 @@ def _parse_sectioned_csv(text: str) -> tuple[list[list[Any]], list[int], list[in
     return values, title_rows, header_rows
 
 
-_HOUR_RE = re.compile(r"^\\d{2}:\\d{2}$")
+_HOUR_RE = re.compile(r"^\d{2}:\d{2}$")
 
 
 def _compact_consecutive_rows_if_applicable(*, header: list[str], rows: list[list[Any]]) -> list[list[Any]]:
