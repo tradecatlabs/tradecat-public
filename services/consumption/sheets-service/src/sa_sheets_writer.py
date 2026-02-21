@@ -2908,6 +2908,20 @@ class SaSheetsWriter:
             sheet.merge_ranges = [(0, 1, 0, max(int(sheet.n_cols), 1))]
             return self.write_polymarket_stats_tab(tab_title=tab_title, sheet=sheet)
 
+        # -------------------- drop known-bad/low-value standalone sections --------------------
+        # 用户反馈：这些分段会引入“标题行+表头行”的视觉噪音（对应固定行号问题），且不属于当前看板目标。
+        # 这里直接删除整张卡片（不是合并/隐藏），避免残留空洞与错乱样式。
+        drop_enabled = (os.environ.get("SHEETS_POLYMARKET_DROP_STANDALONE_SECTIONS", "1") or "1").strip() != "0"
+        if drop_enabled:
+            drop_set = {
+                "套利信号 Top 15",
+                "订单簿失衡 Top 15",
+                "套利利润分布",
+                "高频套利市场 (10次以上)",
+                "高频套利市场（10次以上）",
+            }
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
+
         # bundling 后需要重新计算每个 section 的列宽/超链接（尤其是“Top 15 汇总”等复合表）
         def _compute_hyperlinks_for_section(_header: list[Any], _rows: list[list[Any]]) -> list[tuple[int, int, str, str]]:
             header2 = [str(x or "").strip() for x in (_header or [])]
@@ -3155,6 +3169,8 @@ class SaSheetsWriter:
 
         if merge_ranges:
             reqs_merge: list[dict[str, Any]] = []
+            # 先清空旧 merge（否则会与新布局冲突，导致 mergeCells 400）
+            reqs_merge.append({"unmergeCells": {"range": {"sheetId": int(sh_id)}}})
             for r0, r1, c0, c1 in merge_ranges:
                 if r0 < 0 or r1 <= r0:
                     continue
@@ -3187,7 +3203,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v5"
+        style_version = "polymarket_grid_v6"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
