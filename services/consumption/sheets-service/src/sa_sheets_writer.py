@@ -3024,14 +3024,18 @@ class SaSheetsWriter:
             h = 1 + int(header_rows) + int(n_rows)  # title + header rows + data
             max_end_row = max(max_end_row, y0 + h)
 
+            # 单列布局：每张卡片宽度收敛到“自身列宽”，避免右侧大片空列被边框框出来。
+            sec_w = int(sec.get("n_cols") or len(header) or 1)
+            w = int(sec_w) if int(grid_cols) == 1 else int(card_w)
+
             placements.append(
                 {
                     "title": title,
                     "title_plain": str(sec["title_plain"]),
                     "hyperlinks": list(sec.get("hyperlinks") or []),
-                    "x0": x0,
+                    "x0": 0 if int(grid_cols) == 1 else x0,
                     "y0": y0,
-                    "w": int(card_w),
+                    "w": int(w),
                     "h": int(h),
                     "header_rows": int(header_rows),
                     "body_offset": int(body_offset),
