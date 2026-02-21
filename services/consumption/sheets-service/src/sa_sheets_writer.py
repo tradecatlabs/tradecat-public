@@ -1934,7 +1934,8 @@ class SaSheetsWriter:
     def write_polymarket_stats_tab(self, *, tab_title: str, sheet: Any) -> dict[str, Any]:
         """
         覆盖写 Polymarket 统计子表（真表格，分段 CSV）：
-        - 1 行元信息（单单元格，中文逗号分隔）
+        - 第 1 行：元信息（单单元格，中文逗号分隔）
+        - 第 2 行：目录（单单元格，中文逗号分隔，带跳转超链接）
         - 多个分段：标题行（整行合并）+ 表头行 + 数据行
         - 通过 meta 记录上次 rows/cols，仅清理尾部差量，避免整表 clear 带来的闪烁
         """
@@ -1978,11 +1979,99 @@ class SaSheetsWriter:
             if isinstance(row, list) and len(row) < int(n_cols):
                 row.extend([""] * (int(n_cols) - len(row)))
 
+        # -------------------- directory row (row2) --------------------
+        # 需求：目录单独占 1 行，冻结在顶部，避免塞进 A1 导致过长/易混乱。
+        dir_text: str | None = None
+        dir_runs: list[dict[str, Any]] | None = None
+        if panel_title_rows and values and isinstance(values[0], list) and values[0]:
+            try:
+                def idx_len(s: str) -> int:
+                    return len(str(s))
+
+                def strip_leading_emoji(s: str) -> str:
+                    return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
+
+                label = "目录（点击跳转）"
+                prefix = label
+
+                parts: list[str] = [prefix]
+                runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+                pos = int(idx_len(prefix))
+                titles = sorted({int(r) for r in panel_title_rows if int(r) >= 2 and int(r) <= int(n_rows)})
+                for r1 in titles:
+                    r0 = int(r1) - 1
+                    title = ""
+                    try:
+                        title = str(values[int(r0)][0] or "")
+                    except Exception:
+                        title = ""
+                    title = strip_leading_emoji(title) or "-"
+
+                    sep = "，"
+                    parts.append(sep)
+                    pos += idx_len(sep)
+
+                    start = int(pos)
+                    parts.append(title)
+                    pos += idx_len(title)
+                    end = int(pos)
+
+                    # NOTE: 我们会在写入 values 前插入目录行，所以跳转行号需要 +1。
+                    url = (
+                        f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit"
+                        f"#gid={int(sh_id)}&range=A{int(r1 + 1)}"
+                    )
+                    runs.append(
+                        {
+                            "startIndex": int(start),
+                            "format": {
+                                "link": {"uri": str(url)},
+                                "foregroundColor": _rgb(0.1, 0.4, 0.8),
+                                "underline": True,
+                            },
+                        }
+                    )
+                    runs.append({"startIndex": int(end), "format": {}})
+
+                dir_text = "".join(parts)
+                text_len = idx_len(dir_text)
+                while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
+                    runs.pop()
+                dir_runs = runs
+            except Exception:
+                dir_text, dir_runs = None, None
+
+        # 插入目录行到第 2 行（index=1），并同步 shift 行号相关结构
+        values.insert(1, [str(dir_text or "")] + [""] * (int(n_cols) - 1))
+        panel_title_rows = [int(r) + 1 for r in panel_title_rows]
+        panel_header_rows = [int(r) + 1 for r in panel_header_rows]
+        merge_ranges2: list[tuple[int, int, int, int]] = []
+        for rg in merge_ranges:
+            try:
+                r0, r1, c0, c1 = rg
+            except Exception:
+                continue
+            try:
+                r0 = int(r0)
+                r1 = int(r1)
+                c0 = int(c0)
+                c1 = int(c1)
+            except Exception:
+                continue
+            if r0 >= 1:
+                r0 += 1
+                r1 += 1
+            merge_ranges2.append((int(r0), int(r1), int(c0), int(c1)))
+        merge_ranges = merge_ranges2
+
         n_rows = int(len(values))
 
         # 保底：若 exporter 未给 merge_ranges，这里将“第一行元信息”合并
         if not merge_ranges and int(n_cols) > 1:
             merge_ranges.append((0, 1, 0, int(n_cols)))
+        # 目录行整行合并
+        if int(n_cols) > 1:
+            merge_ranges.append((1, 2, 0, int(n_cols)))
 
         # NOTE: 先确保 grid 足够大，避免 values.update 超出当前网格范围而报错。
         self._ensure_grid_size(tab_title, min_rows=n_rows, min_cols=n_cols)
@@ -2034,71 +2123,6 @@ class SaSheetsWriter:
                 is_write=True,
             )
 
-        # -------------------- directory richtext links (single cell, A1) --------------------
-        # 需求：最少交互——在元信息单元格末尾追加“目录（点击跳转）+ 分段标题”，并为每个分段绑定跳转链接。
-        # 注意：A1 通常是横向 merge 的 top-left；updateCells 写入 A1 仍然有效。
-        dir_text: str | None = None
-        dir_runs: list[dict[str, Any]] | None = None
-        if panel_title_rows and values and isinstance(values[0], list) and values[0]:
-            try:
-                def idx_len(s: str) -> int:
-                    return len(str(s))
-
-                def strip_leading_emoji(s: str) -> str:
-                    return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
-
-                base = str(values[0][0] or "").strip()
-                if base and (not base.endswith("，")):
-                    base = base + "，"
-                label = "目录（点击跳转）"
-                prefix = base + label
-
-                parts: list[str] = [prefix]
-                runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
-                pos = int(idx_len(prefix))
-                titles = sorted({int(r) for r in panel_title_rows if int(r) >= 2 and int(r) <= int(n_rows)})
-                for r1 in titles:
-                    r0 = int(r1) - 1
-                    title = ""
-                    try:
-                        title = str(values[int(r0)][0] or "")
-                    except Exception:
-                        title = ""
-                    title = strip_leading_emoji(title) or "-"
-
-                    sep = "，"
-                    parts.append(sep)
-                    pos += idx_len(sep)
-
-                    start = int(pos)
-                    parts.append(title)
-                    pos += idx_len(title)
-                    end = int(pos)
-
-                    url = (
-                        f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit"
-                        f"#gid={int(sh_id)}&range=A{int(r1)}"
-                    )
-                    runs.append(
-                        {
-                            "startIndex": int(start),
-                            "format": {
-                                "link": {"uri": str(url)},
-                                "foregroundColor": _rgb(0.1, 0.4, 0.8),
-                                "underline": True,
-                            },
-                        }
-                    )
-                    runs.append({"startIndex": int(end), "format": {}})
-
-                dir_text = "".join(parts)
-                text_len = idx_len(dir_text)
-                while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
-                    runs.pop()
-                dir_runs = runs
-            except Exception:
-                dir_text, dir_runs = None, None
-
         # -------------------- style --------------------
         style_version = "polymarket_table_v2"
         key_style_version = f"pmtab.{tab_title}.style_version"
@@ -2113,7 +2137,8 @@ class SaSheetsWriter:
         except Exception:
             styled_cols = 0
 
-        target_rows = int(max(n_rows, styled_rows, 800))
+        # NOTE: 不强制扩到 800 行；否则 UI 会出现大量空白网格，影响阅读。
+        target_rows = int(max(n_rows, styled_rows, 1))
         target_cols = int(max(n_cols, 6))
         need_style = (
             (meta.get(key_style_version) or "") != style_version
@@ -2200,13 +2225,13 @@ class SaSheetsWriter:
                     }
                 )
 
-            # freeze meta row
+            # freeze meta row + directory row
             reqs.append(
                 {
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 0},
+                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0},
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
                     }
@@ -2231,6 +2256,31 @@ class SaSheetsWriter:
                                 "horizontalAlignment": "LEFT",
                                 "verticalAlignment": "MIDDLE",
                                 "wrapStrategy": "OVERFLOW_CELL",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            # directory row（第 2 行）
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 1,
+                            "endRowIndex": 2,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.97, 0.98, 1.0),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
@@ -2348,20 +2398,14 @@ class SaSheetsWriter:
         # compact grid：让“无数据区域”在 UI 中消失
         compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
         if compact_grid:
-            try:
-                cur_rows, cur_cols = self._grid_by_title.get(tab_title, (0, 0))
-            except Exception:
-                cur_rows, cur_cols = 0, 0
-            want_rows = max(int(cur_rows or 0), int(target_rows))
-            want_cols = int(target_cols)
-            if int(cur_cols or 0) != int(want_cols) or int(cur_rows or 0) != int(want_rows):
-                self._set_sheet_grid_properties(
-                    tab_title,
-                    row_count=want_rows,
-                    col_count=want_cols,
-                    frozen_row_count=1,
-                    frozen_column_count=0,
-                )
+            # NOTE: 允许收缩 rowCount/colCount（等价 UI 删除多余行/列），以实现“只看到有用网格”。
+            self._set_sheet_grid_properties(
+                tab_title,
+                row_count=int(target_rows),
+                col_count=int(target_cols),
+                frozen_row_count=2,
+                frozen_column_count=0,
+            )
 
         # merges（标题行整行合并）
         if merge_ranges:
@@ -2418,7 +2462,7 @@ class SaSheetsWriter:
                 except Exception:
                     pass
 
-        # directory links（after merges）
+        # directory links（after merges）：写入第 2 行 A2（并替换 textFormatRuns）
         if dir_text and dir_runs:
             try:
                 self._exec(
@@ -2430,8 +2474,8 @@ class SaSheetsWriter:
                                     "updateCells": {
                                         "range": {
                                             "sheetId": int(sh_id),
-                                            "startRowIndex": 0,
-                                            "endRowIndex": 1,
+                                            "startRowIndex": 1,
+                                            "endRowIndex": 2,
                                             "startColumnIndex": 0,
                                             "endColumnIndex": 1,
                                         },
