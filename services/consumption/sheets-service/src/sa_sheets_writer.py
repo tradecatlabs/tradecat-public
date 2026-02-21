@@ -2629,12 +2629,13 @@ class SaSheetsWriter:
             except Exception:
                 return int(default)
 
-        grid_cols = max(env_int("SHEETS_POLYMARKET_GRID_COLS", 2), 1)
+        # ultimate defaults: 3 columns + minimal gaps（信息密度最大化）
+        grid_cols = max(env_int("SHEETS_POLYMARKET_GRID_COLS", 3), 1)
         gap_cols = max(env_int("SHEETS_POLYMARKET_CARD_GAP_COLS", 1), 0)
-        gap_rows = max(env_int("SHEETS_POLYMARKET_CARD_GAP_ROWS", 1), 0)
+        gap_rows = max(env_int("SHEETS_POLYMARKET_CARD_GAP_ROWS", 0), 0)
 
         max_sec_cols = max((int(s["n_cols"]) for s in sections), default=5)
-        card_min_cols = max(env_int("SHEETS_POLYMARKET_CARD_MIN_COLS", 6), 3)
+        card_min_cols = max(env_int("SHEETS_POLYMARKET_CARD_MIN_COLS", 5), 3)
         card_w = int(max(int(card_min_cols), int(max_sec_cols)))
         col_span = int(card_w + gap_cols)
         target_cols = int(grid_cols * card_w + max(grid_cols - 1, 0) * gap_cols)
@@ -2650,7 +2651,12 @@ class SaSheetsWriter:
         placements: list[dict[str, Any]] = []
 
         max_end_row = 2
-        for sec in sections:
+        # 按卡片高度降序放置（更强 masonry，减少底部空洞）；目录仍按原分段顺序输出。
+        sections_sorted = sorted(
+            sections,
+            key=lambda s: (-(2 + len(s.get("rows") or [])), str(s.get("title_plain") or "")),
+        )
+        for sec in sections_sorted:
             # 选择最短列
             col_i = min(range(len(cursors)), key=lambda j: cursors[j])
             y0 = int(cursors[col_i])
@@ -2808,7 +2814,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v1"
+        style_version = "polymarket_grid_v2"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -2821,7 +2827,11 @@ class SaSheetsWriter:
         except Exception:
             styled_cols = 0
 
-        need_style = (meta.get(key_style_version) or "") != style_version or styled_rows != int(target_rows) or styled_cols != int(target_cols)
+        need_style = (
+            (meta.get(key_style_version) or "") != style_version
+            or styled_rows != int(target_rows)
+            or styled_cols != int(target_cols)
+        )
         if need_style:
             # column widths：按“卡片内列位”设置；gap 列更窄
             def col_px(ci: int) -> int:
@@ -2829,10 +2839,10 @@ class SaSheetsWriter:
                     return 24
                 idx = ci % int(col_span)
                 if idx == 0:
-                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W0", "280") or "280").strip() or "280")
+                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W0", "250") or "250").strip() or "250")
                 if idx == int(card_w) - 1:
-                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W_LAST", "170") or "170").strip() or "170")
-                return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W", "110") or "110").strip() or "110")
+                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W_LAST", "140") or "140").strip() or "140")
+                return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W", "98") or "98").strip() or "98")
 
             reqs: list[dict[str, Any]] = []
             reqs.append(
@@ -2884,6 +2894,16 @@ class SaSheetsWriter:
                             "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0},
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                    }
+                }
+            )
+
+            # hide gridlines（更像 BI 看板）
+            reqs.append(
+                {
+                    "updateSheetProperties": {
+                        "properties": {"sheetId": int(sh_id), "hideGridlines": True},
+                        "fields": "hideGridlines",
                     }
                 }
             )
@@ -2976,6 +2996,80 @@ class SaSheetsWriter:
                     }
                 )
 
+                # body alignment（信息密度 + 可读性）
+                # - col0：居中
+                # - col1：左对齐
+                # - col2+：右对齐（数字为主）
+                if y1 > (y0 + 2):
+                    # col0
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": int(y0 + 2),
+                                    "endRowIndex": int(y1),
+                                    "startColumnIndex": int(x0),
+                                    "endColumnIndex": int(min(x0 + 1, x1)),
+                                },
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "horizontalAlignment": "CENTER",
+                                        "verticalAlignment": "MIDDLE",
+                                        "wrapStrategy": "CLIP",
+                                    }
+                                },
+                                "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
+                            }
+                        }
+                    )
+                    # col1
+                    if (x0 + 2) <= x1:
+                        reqs.append(
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": int(y0 + 2),
+                                        "endRowIndex": int(y1),
+                                        "startColumnIndex": int(x0 + 1),
+                                        "endColumnIndex": int(min(x0 + 2, x1)),
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "LEFT",
+                                            "verticalAlignment": "MIDDLE",
+                                            "wrapStrategy": "CLIP",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                }
+                            }
+                        )
+                    # col2+
+                    if (x0 + 2) < x1:
+                        reqs.append(
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": int(y0 + 2),
+                                        "endRowIndex": int(y1),
+                                        "startColumnIndex": int(x0 + 2),
+                                        "endColumnIndex": int(x1),
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "horizontalAlignment": "RIGHT",
+                                            "verticalAlignment": "MIDDLE",
+                                            "wrapStrategy": "CLIP",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                }
+                            }
+                        )
+
                 # border around card
                 reqs.append(
                     {
@@ -3019,17 +3113,24 @@ class SaSheetsWriter:
             parts = [label]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
             pos = int(idx_len(label))
+            # 目录按“原始分段顺序”输出，但跳转坐标按 placements（masonry 排布）生成。
+            pos_by_title: dict[str, tuple[int, int]] = {}
             for p in placements:
+                t = str(p.get("title_plain") or "").strip() or "-"
+                pos_by_title[t] = (int(p["x0"]), int(p["y0"]))
+
+            for sec in sections:
                 sep = "，"
                 parts.append(sep)
                 pos += idx_len(sep)
                 start = int(pos)
-                title_plain = str(p["title_plain"] or "").strip() or "-"
+                title_plain = str(sec.get("title_plain") or "").strip() or "-"
                 parts.append(title_plain)
                 pos += idx_len(title_plain)
                 end = int(pos)
-                col = _index_to_col(int(p["x0"] + 1))
-                row1 = int(p["y0"] + 1)
+                xy = pos_by_title.get(title_plain) or (0, 2)
+                col = _index_to_col(int(xy[0] + 1))
+                row1 = int(xy[1] + 1)
                 url = f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit#gid={int(sh_id)}&range={col}{row1}"
                 runs.append(
                     {
@@ -3075,7 +3176,7 @@ class SaSheetsWriter:
             {
                 key_rows: str(int(target_rows)),
                 key_cols: str(int(target_cols)),
-                key_style_version: "polymarket_grid_v1",
+                key_style_version: style_version,
                 key_style_rows: str(int(target_rows)),
                 key_style_cols: str(int(target_cols)),
             }
