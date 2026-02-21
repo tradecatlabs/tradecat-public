@@ -3187,7 +3187,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v3"
+        style_version = "polymarket_grid_v4"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -3206,16 +3206,87 @@ class SaSheetsWriter:
             or styled_cols != int(target_cols)
         )
         if need_style:
-            # column widths：按“卡片内列位”设置；gap 列更窄
-            def col_px(ci: int) -> int:
-                if gap_cols > 0 and (ci % int(col_span)) >= int(card_w):
-                    return 24
-                idx = ci % int(col_span)
-                if idx == 0:
-                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W0", "250") or "250").strip() or "250")
-                if idx == int(card_w) - 1:
-                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W_LAST", "140") or "140").strip() or "140")
-                return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W", "98") or "98").strip() or "98")
+            # column widths
+            # - 多列 masonry：按“卡片内列位”设置（稳定、紧凑）
+            # - 单列纵向：按“整列内容”自适应（避免排行榜各列同宽导致可读性差）
+            def _clamp(v: int, lo: int, hi: int) -> int:
+                return max(int(lo), min(int(v), int(hi)))
+
+            def _approx_px_from_text_len(n: int) -> int:
+                # 经验值：10pt Arial 约 7px/字符 + padding
+                return int(20 + int(n) * 7)
+
+            def _is_url(s: str) -> bool:
+                x = (s or "").strip().lower()
+                return x.startswith("http://") or x.startswith("https://")
+
+            widths_by_col: list[int] = []
+            if int(grid_cols) == 1:
+                min_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MIN", "56") or "56").strip() or "56")
+                max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MAX", "420") or "420").strip() or "420")
+
+                # 采样整列最大可见文本长度（忽略 URL），得到更合理的列宽
+                for ci in range(0, int(target_cols)):
+                    max_len = 0
+                    has_link_header = False
+                    has_name_header = False
+                    has_rank_header = False
+                    has_hour_header = False
+
+                    for ri in range(0, int(target_rows)):
+                        row = grid[ri] if 0 <= ri < len(grid) else []
+                        if not row or ci >= len(row):
+                            continue
+                        v = row[ci]
+                        if v is None or v == "":
+                            continue
+                        s = str(v).strip()
+                        if not s:
+                            continue
+                        if s in {"链接", "link", "url", "URL"} or ("链接" in s):
+                            has_link_header = True
+                        if s in {"市场名称", "市场", "market", "question", "名称"}:
+                            has_name_header = True
+                        if s == "排名":
+                            has_rank_header = True
+                        if s in {"小时", "hour", "Hour"}:
+                            has_hour_header = True
+
+                        # URL 列永远不按 URL 本体撑宽（主展示是“市场名称”的超链接）
+                        if _is_url(s):
+                            continue
+                        # 过长文本只取前缀估计，避免异常撑爆
+                        max_len = max(max_len, min(len(s), 60))
+
+                    if has_link_header:
+                        px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_LINK", "40") or "40").strip() or "40")
+                    elif has_rank_header or has_hour_header:
+                        px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_KEY", "72") or "72").strip() or "72")
+                    elif has_name_header:
+                        px = _approx_px_from_text_len(max(max_len, 18))
+                    else:
+                        px = _approx_px_from_text_len(max(max_len, 6))
+
+                    widths_by_col.append(_clamp(int(px), int(min_px), int(max_px)))
+
+                def col_px(ci: int) -> int:
+                    if 0 <= int(ci) < len(widths_by_col):
+                        return int(widths_by_col[int(ci)])
+                    return int(min_px)
+
+            else:
+                # 多列 masonry：按“卡片内列位”设置；gap 列更窄
+                def col_px(ci: int) -> int:
+                    if gap_cols > 0 and (ci % int(col_span)) >= int(card_w):
+                        return 24
+                    idx = ci % int(col_span)
+                    if idx == 0:
+                        return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W0", "250") or "250").strip() or "250")
+                    if idx == int(card_w) - 1:
+                        return int(
+                            (os.environ.get("SHEETS_POLYMARKET_CARD_COL_W_LAST", "140") or "140").strip() or "140"
+                        )
+                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W", "98") or "98").strip() or "98")
 
             reqs: list[dict[str, Any]] = []
             reqs.append(
