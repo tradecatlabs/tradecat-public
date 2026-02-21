@@ -2972,6 +2972,14 @@ class SaSheetsWriter:
         gap_rows = max(env_int("SHEETS_POLYMARKET_CARD_GAP_ROWS", 0), 0)
 
         max_sec_cols = max((int(s["n_cols"]) for s in sections), default=5)
+        # 当存在“超宽复合表”（例如 Top15 汇总）时，3 列 masonry 会导致大片空列视觉噪音。
+        # 这里做自适应：超过阈值则强制单列纵向布局（卡片仍保留边框/标题/目录跳转）。
+        wide_threshold = max(env_int("SHEETS_POLYMARKET_WIDE_CARD_THRESHOLD_COLS", 18), 1)
+        force_single = (os.environ.get("SHEETS_POLYMARKET_FORCE_SINGLE_COLUMN", "0") or "0").strip() == "1"
+        if force_single or int(max_sec_cols) >= int(wide_threshold):
+            grid_cols = 1
+            gap_cols = 0
+
         card_min_cols = max(env_int("SHEETS_POLYMARKET_CARD_MIN_COLS", 5), 3)
         card_w = int(max(int(card_min_cols), int(max_sec_cols)))
         col_span = int(card_w + gap_cols)
@@ -2988,14 +2996,18 @@ class SaSheetsWriter:
         placements: list[dict[str, Any]] = []
 
         max_end_row = 2
-        # 按卡片高度降序放置（更强 masonry，减少底部空洞）；目录仍按原分段顺序输出。
-        sections_sorted = sorted(
-            sections,
-            key=lambda s: (
-                -(1 + (2 if s.get("group_header") else 1) + len(s.get("rows") or [])),
-                str(s.get("title_plain") or ""),
-            ),
-        )
+        # masonry：按卡片高度降序放置（减少底部空洞）。
+        # 单列模式：保持原始顺序（更符合“表格/报表”阅读习惯）。
+        if int(grid_cols) == 1:
+            sections_sorted = list(sections)
+        else:
+            sections_sorted = sorted(
+                sections,
+                key=lambda s: (
+                    -(1 + (2 if s.get("group_header") else 1) + len(s.get("rows") or [])),
+                    str(s.get("title_plain") or ""),
+                ),
+            )
         for sec in sections_sorted:
             # 选择最短列
             col_i = min(range(len(cursors)), key=lambda j: cursors[j])
