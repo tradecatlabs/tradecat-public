@@ -2941,8 +2941,8 @@ class SaSheetsWriter:
             reqs.append(
                 {
                     "updateSheetProperties": {
-                        "properties": {"sheetId": int(sh_id), "hideGridlines": True},
-                        "fields": "hideGridlines",
+                        "properties": {"sheetId": int(sh_id), "gridProperties": {"hideGridlines": True}},
+                        "fields": "gridProperties.hideGridlines",
                     }
                 }
             )
@@ -3216,6 +3216,10 @@ class SaSheetsWriter:
         def _escape_formula_str(s: str) -> str:
             return str(s or "").replace('"', '""').replace("\n", " ").replace("\r", " ")
 
+        def _escape_sheet_title_a1(title: str) -> str:
+            # A1 notation: quote sheet title with single quotes; escape inner single quotes by doubling.
+            return "'" + str(title or "").replace("'", "''") + "'"
+
         data_updates: list[dict[str, Any]] = []
         for p in placements:
             x0 = int(p["x0"])
@@ -3228,11 +3232,14 @@ class SaSheetsWriter:
                     continue
                 if cc0 < 0 or cc0 >= int(target_cols):
                     continue
-                cell = f"{tab_title}!{_index_to_col(int(cc0 + 1))}{int(rr0 + 1)}"
+                sheet_a1 = _escape_sheet_title_a1(tab_title)
+                cell = f"{sheet_a1}!{_index_to_col(int(cc0 + 1))}{int(rr0 + 1)}"
                 formula = f'=HYPERLINK("{_escape_formula_str(url)}","{_escape_formula_str(name)}")'
                 data_updates.append({"range": cell, "values": [[formula]]})
 
         if data_updates:
+            ex = data_updates[0].get("range", "")
+            print(f"[DEBUG] pmtab.hyperlinks_prepare tab={tab_title} count={len(data_updates)} example={ex}")
             try:
                 self._exec(
                     self._sheets.spreadsheets()
@@ -3243,8 +3250,9 @@ class SaSheetsWriter:
                     ),
                     is_write=True,
                 )
-            except Exception:
-                pass
+                print(f"[DEBUG] pmtab.hyperlinks_applied tab={tab_title} count={len(data_updates)}")
+            except Exception as exc:
+                print(f"⚠️ pmtab.hyperlinks_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
         # meta bump（记录 rows/cols/style）
         self._meta_set(
