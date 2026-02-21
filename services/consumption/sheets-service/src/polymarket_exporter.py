@@ -123,6 +123,12 @@ def _default_log_path(service_dir: Path) -> Path:
         if p.is_absolute():
             return p
         return (service_dir / p).resolve()
+    # 现实部署中 polymarket 往往由 systemd user service 托管，
+    # stdout/stderr 会落在 $HOME/.local/state/tradecat/polymarket.log（而不是服务目录下 logs/）。
+    # 为了“开箱即用”，优先使用该路径（若存在），否则回退旧日志路径。
+    runtime_log = (Path.home() / ".local" / "state" / "tradecat" / "polymarket.log").resolve()
+    if runtime_log.exists():
+        return runtime_log
     return (service_dir / "logs" / "polymarket_bot.log").resolve()
 
 
@@ -367,7 +373,8 @@ def export_polymarket_stats_sheet(*, lang: str = "zh_CN") -> PolymarketStatsShee
 
             remote_log = (os.environ.get("SHEETS_POLYMARKET_REMOTE_LOG_FILE", "") or "").strip()
             if not remote_log:
-                remote_log = "logs/polymarket_bot.log"
+                # 默认优先读取 systemd user service 的 stdout/stderr 落地日志（更可能是“正在跑”的数据源）
+                remote_log = "$HOME/.local/state/tradecat/polymarket.log"
 
             out = _run_ssh_csv_report(
                 ssh_host=ssh_host,
