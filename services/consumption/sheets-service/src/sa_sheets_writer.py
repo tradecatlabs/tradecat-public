@@ -1979,6 +1979,24 @@ class SaSheetsWriter:
             if isinstance(row, list) and len(row) < int(n_cols):
                 row.extend([""] * (int(n_cols) - len(row)))
 
+        # -------------------- aggressive layout: grid cards (方案A) --------------------
+        # 默认仅对 Polymarket统计 生效；避免影响 Polymarket事件 等“单表明细”子表。
+        layout = (os.environ.get("SHEETS_POLYMARKET_STATS_LAYOUT", "grid") or "grid").strip().lower()
+        want_grid = (
+            tab_title == self._tab_polymarket_stats
+            and layout in {"grid", "masonry"}
+            and bool(panel_title_rows)
+            and bool(panel_header_rows)
+        )
+        if want_grid:
+            return self._write_polymarket_stats_tab_grid(
+                tab_title=tab_title,
+                sh_id=int(sh_id),
+                values=values,
+                panel_title_rows=panel_title_rows,
+                panel_header_rows=panel_header_rows,
+            )
+
         # -------------------- directory row (row2) --------------------
         # 需求：目录单独占 1 行，冻结在顶部，避免塞进 A1 导致过长/易混乱。
         dir_text: str | None = None
@@ -2512,6 +2530,558 @@ class SaSheetsWriter:
         )
 
         return {"ok": True, "tab": tab_title, "rows": n_rows, "cols": n_cols}
+
+    def _write_polymarket_stats_tab_grid(
+        self,
+        *,
+        tab_title: str,
+        sh_id: int,
+        values: list[list[Any]],
+        panel_title_rows: list[int],
+        panel_header_rows: list[int],
+    ) -> dict[str, Any]:
+        """
+        方案A：Polymarket统计「卡片网格」布局（masonry）：
+        - A1 元信息（整行合并，冻结）
+        - A2 目录（整行合并，冻结，富文本超链接）
+        - 正文：每个分段变成一张卡片，按 2~3 列网格自动排布，最大化信息密度
+        """
+        # -------------------- parse sections from exporter output --------------------
+        def strip_leading_emoji(s: str) -> str:
+            return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
+
+        def trim_row(r: list[Any]) -> list[Any]:
+            rr = list(r)
+            while rr and (rr[-1] == "" or rr[-1] is None):
+                rr.pop()
+            return rr
+
+        title_idx = sorted({int(r) - 1 for r in panel_title_rows if int(r) >= 2})
+        header_idx_set = {int(r) - 1 for r in panel_header_rows if int(r) >= 2}
+
+        meta_text = ""
+        try:
+            meta_text = str((values[0] or [""])[0] or "").strip()
+        except Exception:
+            meta_text = ""
+
+        sections: list[dict[str, Any]] = []
+        for i, t0 in enumerate(title_idx):
+            t0 = int(t0)
+            t1 = int(title_idx[i + 1]) if i + 1 < len(title_idx) else int(len(values))
+            if t0 < 1 or t0 >= len(values):
+                continue
+            # header：优先 exporter 标记；否则 title+1
+            h0 = None
+            for cand in sorted(header_idx_set):
+                if int(cand) > int(t0) and int(cand) < int(t1):
+                    h0 = int(cand)
+                    break
+            if h0 is None:
+                cand = t0 + 1
+                if cand < len(values):
+                    h0 = cand
+            if h0 is None or h0 >= len(values):
+                continue
+
+            title = ""
+            try:
+                title = str((values[t0] or [""])[0] or "").strip()
+            except Exception:
+                title = ""
+            header = trim_row([str(x) for x in (values[h0] or [])])
+            rows = []
+            for rr in values[h0 + 1 : t1]:
+                if not isinstance(rr, list):
+                    continue
+                row_trim = trim_row(list(rr))
+                if not row_trim:
+                    continue
+                rows.append(row_trim)
+
+            n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
+            sections.append(
+                {
+                    "title": title or "未命名分段",
+                    "title_plain": strip_leading_emoji(title or "未命名分段") or "未命名分段",
+                    "header": header[:n_sec_cols] + [""] * max(0, n_sec_cols - len(header)),
+                    "rows": [r[:n_sec_cols] + [""] * max(0, n_sec_cols - len(r)) for r in rows],
+                    "n_cols": int(n_sec_cols),
+                }
+            )
+
+        if not sections:
+            # fallback：退回为原始表（不做网格）
+            sheet = type("Tmp", (), {})()
+            sheet.values = values
+            sheet.n_rows = len(values)
+            sheet.n_cols = max((len(r) for r in values if isinstance(r, list)), default=1)
+            # 关键：避免再次触发 grid 分支（防止递归）
+            sheet.panel_title_rows = []
+            sheet.panel_header_rows = []
+            sheet.merge_ranges = [(0, 1, 0, max(int(sheet.n_cols), 1))]
+            return self.write_polymarket_stats_tab(tab_title=tab_title, sheet=sheet)
+
+        # -------------------- layout config --------------------
+        def env_int(key: str, default: int) -> int:
+            try:
+                return int((os.environ.get(key, str(default)) or str(default)).strip() or str(default))
+            except Exception:
+                return int(default)
+
+        grid_cols = max(env_int("SHEETS_POLYMARKET_GRID_COLS", 2), 1)
+        gap_cols = max(env_int("SHEETS_POLYMARKET_CARD_GAP_COLS", 1), 0)
+        gap_rows = max(env_int("SHEETS_POLYMARKET_CARD_GAP_ROWS", 1), 0)
+
+        max_sec_cols = max((int(s["n_cols"]) for s in sections), default=5)
+        card_min_cols = max(env_int("SHEETS_POLYMARKET_CARD_MIN_COLS", 6), 3)
+        card_w = int(max(int(card_min_cols), int(max_sec_cols)))
+        col_span = int(card_w + gap_cols)
+        target_cols = int(grid_cols * card_w + max(grid_cols - 1, 0) * gap_cols)
+        target_cols = max(target_cols, card_w)
+
+        # -------------------- masonry placement --------------------
+        def x_start(col_i: int) -> int:
+            return int(col_i) * int(col_span)
+
+        # 0-based row indices
+        cards_y0 = 2  # row3 (after meta+dir)
+        cursors = [int(cards_y0) for _ in range(int(grid_cols))]
+        placements: list[dict[str, Any]] = []
+
+        max_end_row = 2
+        for sec in sections:
+            # 选择最短列
+            col_i = min(range(len(cursors)), key=lambda j: cursors[j])
+            y0 = int(cursors[col_i])
+            x0 = int(x_start(col_i))
+
+            title = str(sec["title"])
+            header = list(sec["header"])
+            rows = list(sec["rows"])
+            n_rows = len(rows)
+            h = 2 + int(n_rows)  # title + header + data
+            max_end_row = max(max_end_row, y0 + h)
+
+            placements.append(
+                {
+                    "title": title,
+                    "title_plain": str(sec["title_plain"]),
+                    "x0": x0,
+                    "y0": y0,
+                    "w": int(card_w),
+                    "h": int(h),
+                    "header": header,
+                    "rows": rows,
+                }
+            )
+            cursors[col_i] = y0 + h + int(gap_rows)
+
+        target_rows = int(max_end_row)
+
+        # -------------------- build grid values (rect) --------------------
+        grid: list[list[Any]] = [[""] * int(target_cols) for _ in range(int(target_rows))]
+
+        # meta row + directory row
+        if meta_text:
+            grid[0][0] = meta_text
+        # directory placeholder; will be overwritten by updateCells with rich text
+        grid[1][0] = "目录（点击跳转）"
+
+        for p in placements:
+            x0 = int(p["x0"])
+            y0 = int(p["y0"])
+            w = int(p["w"])
+            h = int(p["h"])
+            header = list(p["header"])
+            rows = list(p["rows"])
+
+            if 0 <= y0 < len(grid) and 0 <= x0 < int(target_cols):
+                grid[y0][x0] = str(p["title"])
+            # header row
+            if y0 + 1 < len(grid):
+                for j in range(0, int(w)):
+                    v = header[j] if j < len(header) else ""
+                    if x0 + j < int(target_cols):
+                        grid[y0 + 1][x0 + j] = v
+            # body
+            for i, rr in enumerate(rows):
+                yy = y0 + 2 + i
+                if yy >= len(grid):
+                    break
+                for j in range(0, int(w)):
+                    v = rr[j] if j < len(rr) else ""
+                    if x0 + j < int(target_cols):
+                        grid[yy][x0 + j] = v
+
+        # -------------------- write values --------------------
+        self._ensure_grid_size(tab_title, min_rows=int(target_rows), min_cols=int(target_cols))
+        col_r = _index_to_col(int(target_cols))
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{tab_title}!A1:{col_r}{int(target_rows)}",
+                valueInputOption="RAW",
+                body={"values": grid},
+            ),
+            is_write=True,
+        )
+
+        # tail clear（避免历史残留）
+        meta = self._meta_get()
+        key_rows = f"pmtab.{tab_title}.rows"
+        key_cols = f"pmtab.{tab_title}.cols"
+        try:
+            r_old = int(str(meta.get(key_rows) or "0").strip() or "0")
+        except Exception:
+            r_old = 0
+        try:
+            c_old = int(str(meta.get(key_cols) or "0").strip() or "0")
+        except Exception:
+            c_old = 0
+
+        if int(r_old) > int(target_rows):
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!A{int(target_rows) + 1}:{_index_to_col(max(int(c_old), int(target_cols)))}{int(r_old)}",
+                ),
+                is_write=True,
+            )
+        if int(c_old) > int(target_cols):
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!{_index_to_col(int(target_cols) + 1)}1:{_index_to_col(int(c_old))}{max(int(r_old), int(target_rows))}",
+                ),
+                is_write=True,
+            )
+
+        # -------------------- merges --------------------
+        merge_ranges: list[tuple[int, int, int, int]] = []
+        if int(target_cols) > 1:
+            merge_ranges.append((0, 1, 0, int(target_cols)))  # meta
+            merge_ranges.append((1, 2, 0, int(target_cols)))  # directory
+        for p in placements:
+            y0 = int(p["y0"])
+            x0 = int(p["x0"])
+            w = int(p["w"])
+            merge_ranges.append((int(y0), int(y0 + 1), int(x0), int(min(x0 + w, int(target_cols)))))
+
+        if merge_ranges:
+            reqs_merge: list[dict[str, Any]] = []
+            for r0, r1, c0, c1 in merge_ranges:
+                if r0 < 0 or r1 <= r0:
+                    continue
+                if c0 < 0 or c1 <= c0:
+                    continue
+                reqs_merge.append(
+                    {
+                        "mergeCells": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": int(c0),
+                                "endColumnIndex": int(c1),
+                            },
+                            "mergeType": "MERGE_ALL",
+                        }
+                    }
+                )
+            if reqs_merge:
+                try:
+                    self._exec(
+                        self._sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=self._spreadsheet_id,
+                            body={"requests": reqs_merge},
+                        ),
+                        is_write=True,
+                    )
+                except Exception:
+                    pass
+
+        # -------------------- styles --------------------
+        style_version = "polymarket_grid_v1"
+        key_style_version = f"pmtab.{tab_title}.style_version"
+        key_style_rows = f"pmtab.{tab_title}.style_rows"
+        key_style_cols = f"pmtab.{tab_title}.style_cols"
+        try:
+            styled_rows = int(str(meta.get(key_style_rows) or "0").strip() or "0")
+        except Exception:
+            styled_rows = 0
+        try:
+            styled_cols = int(str(meta.get(key_style_cols) or "0").strip() or "0")
+        except Exception:
+            styled_cols = 0
+
+        need_style = (meta.get(key_style_version) or "") != style_version or styled_rows != int(target_rows) or styled_cols != int(target_cols)
+        if need_style:
+            # column widths：按“卡片内列位”设置；gap 列更窄
+            def col_px(ci: int) -> int:
+                if gap_cols > 0 and (ci % int(col_span)) >= int(card_w):
+                    return 24
+                idx = ci % int(col_span)
+                if idx == 0:
+                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W0", "280") or "280").strip() or "280")
+                if idx == int(card_w) - 1:
+                    return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W_LAST", "170") or "170").strip() or "170")
+                return int((os.environ.get("SHEETS_POLYMARKET_CARD_COL_W", "110") or "110").strip() or "110")
+
+            reqs: list[dict[str, Any]] = []
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": 0,
+                            "endRowIndex": int(target_rows),
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
+                                "textFormat": {"fontFamily": "Arial", "fontSize": 10},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            for ci in range(0, int(target_cols)):
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(ci),
+                                "endIndex": int(ci + 1),
+                            },
+                            "properties": {"pixelSize": int(max(col_px(int(ci)), 50))},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+
+            # freeze 2 rows
+            reqs.append(
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": int(sh_id),
+                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0},
+                        },
+                        "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                    }
+                }
+            )
+
+            # meta row
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {"sheetId": int(sh_id), "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": int(target_cols)},
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            # directory row
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {"sheetId": int(sh_id), "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": int(target_cols)},
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.97, 0.98, 1.0),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            # cards style + borders
+            title_bg = _rgb(0.12, 0.16, 0.23)
+            title_fg = _rgb(1.0, 1.0, 1.0)
+            header_bg = _rgb(0.93, 0.94, 0.96)
+            border = {"style": "SOLID", "width": 1, "color": _rgb(0.80, 0.82, 0.86)}
+
+            for p in placements:
+                x0 = int(p["x0"])
+                y0 = int(p["y0"])
+                w = int(p["w"])
+                h = int(p["h"])
+                x1 = int(min(x0 + w, int(target_cols)))
+                y1 = int(min(y0 + h, int(target_rows)))
+
+                # title row
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(y0), "endRowIndex": int(y0 + 1), "startColumnIndex": int(x0), "endColumnIndex": int(x1)},
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": title_bg,
+                                    "textFormat": {"bold": True, "foregroundColor": title_fg},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+                # header row
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(y0 + 1), "endRowIndex": int(y0 + 2), "startColumnIndex": int(x0), "endColumnIndex": int(x1)},
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": header_bg,
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
+                # border around card
+                reqs.append(
+                    {
+                        "updateBorders": {
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(y0), "endRowIndex": int(y1), "startColumnIndex": int(x0), "endColumnIndex": int(x1)},
+                            "top": border,
+                            "bottom": border,
+                            "left": border,
+                            "right": border,
+                            "innerHorizontal": border,
+                            "innerVertical": border,
+                        }
+                    }
+                )
+
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": reqs},
+                ),
+                is_write=True,
+            )
+
+        # compact grid：让“无数据区域”在 UI 中消失
+        compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
+        if compact_grid:
+            self._set_sheet_grid_properties(
+                tab_title,
+                row_count=int(target_rows),
+                col_count=int(target_cols),
+                frozen_row_count=2,
+                frozen_column_count=0,
+            )
+
+        # -------------------- directory richtext links (A2) --------------------
+        try:
+            def idx_len(s: str) -> int:
+                return len(str(s))
+
+            label = "目录（点击跳转）"
+            parts = [label]
+            runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+            pos = int(idx_len(label))
+            for p in placements:
+                sep = "，"
+                parts.append(sep)
+                pos += idx_len(sep)
+                start = int(pos)
+                title_plain = str(p["title_plain"] or "").strip() or "-"
+                parts.append(title_plain)
+                pos += idx_len(title_plain)
+                end = int(pos)
+                col = _index_to_col(int(p["x0"] + 1))
+                row1 = int(p["y0"] + 1)
+                url = f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit#gid={int(sh_id)}&range={col}{row1}"
+                runs.append(
+                    {
+                        "startIndex": int(start),
+                        "format": {"link": {"uri": str(url)}, "foregroundColor": _rgb(0.1, 0.4, 0.8), "underline": True},
+                    }
+                )
+                runs.append({"startIndex": int(end), "format": {}})
+
+            dir_text = "".join(parts)
+            text_len = idx_len(dir_text)
+            while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
+                runs.pop()
+
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateCells": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 1,
+                                        "endRowIndex": 2,
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": 1,
+                                    },
+                                    "rows": [{"values": [{"userEnteredValue": {"stringValue": str(dir_text)}, "textFormatRuns": runs}]}],
+                                    "fields": "userEnteredValue,textFormatRuns",
+                                }
+                            }
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
+
+        # meta bump（记录 rows/cols/style）
+        self._meta_set(
+            {
+                key_rows: str(int(target_rows)),
+                key_cols: str(int(target_cols)),
+                key_style_version: "polymarket_grid_v1",
+                key_style_rows: str(int(target_rows)),
+                key_style_cols: str(int(target_cols)),
+            }
+        )
+
+        return {"ok": True, "tab": tab_title, "rows": int(target_rows), "cols": int(target_cols)}
 
     def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
         raise RuntimeError("币种查询子表已升级为真表格：请改用 write_symbol_query_tab(tab_title=..., sheet=...)")
