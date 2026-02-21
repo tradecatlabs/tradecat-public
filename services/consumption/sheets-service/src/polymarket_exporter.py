@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -314,11 +315,92 @@ def _parse_sectioned_csv(text: str) -> tuple[list[list[Any]], list[int], list[in
         if header is None:
             # 分段只有标题，没有 CSV 表头（异常输出）
             continue
+
+        # -------------------- compact: merge consecutive identical rows --------------------
+        # 用户需求：把大量“小时=00:00..10:00, 信号数=0, 环比=N/A, 其余空”的行压缩合并成一行：
+        #   00:00–10:00  0  N/A ...
+        # 原则：无损压缩（只在“相邻行除第一列外完全一致”时才合并）
+        enable_compact = (os.environ.get("SHEETS_POLYMARKET_COMPACT_TABLE_ROWS", "1") or "1").strip() != "0"
+        if enable_compact:
+            try:
+                rows = _compact_consecutive_rows_if_applicable(header=header, rows=rows)
+            except Exception:
+                # 压缩是纯展示优化：失败不应影响导出
+                pass
+
         header_rows.append(len(values))
         values.append([str(c) for c in header])
         values.extend(rows)
 
     return values, title_rows, header_rows
+
+
+_HOUR_RE = re.compile(r"^\\d{2}:\\d{2}$")
+
+
+def _compact_consecutive_rows_if_applicable(*, header: list[str], rows: list[list[Any]]) -> list[list[Any]]:
+    """
+    将“相邻行（除第 1 列外）完全相同”的连续区间压缩为一行，首列改为 `start–end`。
+    - 只对“小时分布”这种表启用（避免误伤排名/榜单）。
+    """
+    if not rows or not header:
+        return rows
+
+    h0 = str(header[0] or "").strip()
+    if h0 not in {"小时", "hour", "Hour"}:
+        return rows
+
+    # hour col must look like HH:MM for most rows
+    ok_cnt = 0
+    for r in rows[: min(len(rows), 6)]:
+        if not r:
+            continue
+        v = str(r[0] or "").strip()
+        if _HOUR_RE.match(v):
+            ok_cnt += 1
+    if ok_cnt < max(1, min(len(rows), 6) // 2):
+        return rows
+
+    def norm_cell(x: Any) -> str:
+        if x is None:
+            return ""
+        if isinstance(x, (int, float)):
+            return str(x)
+        s = str(x).strip()
+        return "N/A" if s.upper() == "N/A" else s
+
+    out: list[list[Any]] = []
+    i = 0
+    while i < len(rows):
+        r0 = rows[i]
+        if not r0:
+            i += 1
+            continue
+        base_key = tuple(norm_cell(c) for c in (r0[1:] if len(r0) > 1 else []))
+        j = i + 1
+        while j < len(rows):
+            rj = rows[j]
+            if not rj:
+                break
+            keyj = tuple(norm_cell(c) for c in (rj[1:] if len(rj) > 1 else []))
+            if keyj != base_key:
+                break
+            j += 1
+
+        if j - i >= 2:
+            start = str(r0[0] or "").strip()
+            end = str(rows[j - 1][0] or "").strip()
+            label = f"{start}–{end}" if start and end else str(r0[0] or "")
+            merged = [label]
+            if len(r0) > 1:
+                merged.extend(r0[1:])
+            out.append(merged)
+        else:
+            out.append(r0)
+
+        i = j
+
+    return out
 
 
 def export_polymarket_stats_sheet(*, lang: str = "zh_CN") -> PolymarketStatsSheet:
