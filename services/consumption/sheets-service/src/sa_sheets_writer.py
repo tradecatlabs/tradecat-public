@@ -3803,6 +3803,8 @@ class SaSheetsWriter:
 
             clean_label = strip_leading_emoji(dir_label)
             ts_s = re.sub(r"\s+", " ", str(export_ts_utc or "").strip())
+            if not ts_s:
+                ts_s = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             prefix = f"导出时间(UTC)，{ts_s}，{clean_label}" if ts_s else clean_label
             text_parts: list[str] = [prefix]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
