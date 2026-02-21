@@ -2612,29 +2612,42 @@ class SaSheetsWriter:
 
             # 将“链接”融入“市场名称”单元格超链接（不破坏原表结构；避免链接缺失时丢信息）
             # 注意：超链接公式在写入后用 USER_ENTERED 差量写入，避免整表 USER_ENTERED 触发时间/数值误解析。
-            link_idx = None
-            name_idx = None
+            # 一个 section 可能包含多个“市场名称/链接”对（例如横向拼接多张 Top15 表），这里全部识别并写入。
+            link_indices: list[int] = []
+            name_indices: list[int] = []
             for j, c in enumerate(header):
                 cj = str(c or "").strip()
                 if cj in {"链接", "link", "url", "URL"} or ("链接" in cj):
-                    link_idx = j
+                    link_indices.append(int(j))
                 if cj in {"市场名称", "市场", "market", "question", "名称"}:
-                    name_idx = j
+                    name_indices.append(int(j))
+
+            # pair: each link column binds to its nearest "name" column on the left (stable for repeated groups)
+            pairs: list[tuple[int, int]] = []
+            used_names: set[int] = set()
+            for li in sorted(set(link_indices)):
+                cand = [ni for ni in name_indices if int(ni) < int(li) and int(ni) not in used_names]
+                if not cand:
+                    continue
+                ni = max(cand)
+                used_names.add(int(ni))
+                pairs.append((int(ni), int(li)))
+
             hyperlinks: list[tuple[int, int, str, str]] = []
-            if link_idx is not None and name_idx is not None and int(link_idx) != int(name_idx):
-                for ri, r in enumerate(rows):
+            for ri, r in enumerate(rows):
+                for ni, li in pairs:
                     url = ""
                     try:
-                        url = str(r[int(link_idx)] or "").strip()
+                        url = str(r[int(li)] or "").strip()
                     except Exception:
                         url = ""
                     name = ""
                     try:
-                        name = str(r[int(name_idx)] or "").strip()
+                        name = str(r[int(ni)] or "").strip()
                     except Exception:
                         name = ""
                     if url and (url.startswith("http://") or url.startswith("https://")) and name:
-                        hyperlinks.append((int(ri), int(name_idx), str(url), str(name)))
+                        hyperlinks.append((int(ri), int(ni), str(url), str(name)))
 
             n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
             sections.append(
@@ -2648,6 +2661,241 @@ class SaSheetsWriter:
                 }
             )
 
+        # -------------------- bundle: combine related sections into compact composite tables --------------------
+        def _find_section_idx(title_plain: str) -> int | None:
+            want = str(title_plain or "").strip()
+            if not want:
+                return None
+            for idx, sec in enumerate(sections):
+                if str(sec.get("title_plain") or "").strip() == want:
+                    return int(idx)
+            return None
+
+        def _as_table(sec: dict[str, Any]) -> tuple[list[str], list[list[Any]]]:
+            return list(sec.get("header") or []), list(sec.get("rows") or [])
+
+        def _row_map_by_key(rows: list[list[Any]], *, key_idx: int) -> dict[str, list[Any]]:
+            out: dict[str, list[Any]] = {}
+            for r in rows:
+                if not r or int(key_idx) >= len(r):
+                    continue
+                k = str(r[int(key_idx)] or "").strip()
+                if not k:
+                    continue
+                out[k] = r
+            return out
+
+        def _hour_sort_key(h: str) -> tuple[int, str]:
+            s = str(h or "").strip()
+            m = re.match(r"^(\\d{2}):(\\d{2})$", s)
+            if not m:
+                return (10**9, s)
+            return (int(m.group(1)) * 60 + int(m.group(2)), s)
+
+        # 1) 时段类三张表：合并为 1 张“小时”主键表（无损压缩：只去掉重复 key 列与空白分隔列）
+        idx_trend = _find_section_idx("信号频率趋势 (环比)")
+        idx_type = _find_section_idx("时段-类型分布")
+        idx_active = _find_section_idx("活跃时段分布")
+        if idx_trend is not None and idx_type is not None and idx_active is not None:
+            trend = sections[int(idx_trend)]
+            typ = sections[int(idx_type)]
+            act = sections[int(idx_active)]
+
+            h_trend, r_trend = _as_table(trend)
+            h_type, r_type = _as_table(typ)
+            h_act, r_act = _as_table(act)
+
+            # locate hour col and metric cols
+            def col_idx(cols: list[str], name: str) -> int | None:
+                for j, c in enumerate(cols):
+                    if str(c or "").strip() == name:
+                        return int(j)
+                return None
+
+            k0 = col_idx(h_trend, "小时") or 0
+            k1 = col_idx(h_type, "小时") or 0
+            k2 = col_idx(h_act, "小时") or 0
+
+            m_trend_1 = col_idx(h_trend, "信号数")
+            m_trend_2 = col_idx(h_trend, "环比变化%")
+            if m_trend_1 is None:
+                m_trend_1 = col_idx(h_trend, "信号数量")
+            m_act_1 = col_idx(h_act, "信号数量")
+            m_act_2 = col_idx(h_act, "占比%")
+
+            m_type = {
+                "套利": col_idx(h_type, "套利"),
+                "大额交易": col_idx(h_type, "大额交易"),
+                "订单簿": col_idx(h_type, "订单簿"),
+                "聪明钱": col_idx(h_type, "聪明钱"),
+            }
+
+            map_trend = _row_map_by_key(r_trend, key_idx=int(k0))
+            map_type = _row_map_by_key(r_type, key_idx=int(k1))
+            map_act = _row_map_by_key(r_act, key_idx=int(k2))
+
+            hours = sorted({*map_trend.keys(), *map_type.keys(), *map_act.keys()}, key=_hour_sort_key)
+            new_header = ["小时", "信号数", "环比变化%", "套利", "大额交易", "订单簿", "聪明钱", "信号数量", "占比%"]
+            new_rows: list[list[Any]] = []
+            for h in hours:
+                rt = map_trend.get(h) or []
+                ry = map_type.get(h) or []
+                ra = map_act.get(h) or []
+
+                def pick(row: list[Any], idx: int | None) -> Any:
+                    if idx is None:
+                        return ""
+                    if int(idx) < 0 or int(idx) >= len(row):
+                        return ""
+                    return row[int(idx)]
+
+                new_rows.append(
+                    [
+                        h,
+                        pick(rt, m_trend_1),
+                        pick(rt, m_trend_2),
+                        pick(ry, m_type["套利"]),
+                        pick(ry, m_type["大额交易"]),
+                        pick(ry, m_type["订单簿"]),
+                        pick(ry, m_type["聪明钱"]),
+                        pick(ra, m_act_1),
+                        pick(ra, m_act_2),
+                    ]
+                )
+
+            group_header = ["信号频率趋势 (环比)", "", "", "时段-类型分布", "", "", "", "活跃时段分布", ""]
+            composite = {
+                "title": "时段分布汇总",
+                "title_plain": "时段分布汇总",
+                "group_header": group_header,
+                "header": new_header,
+                "rows": new_rows,
+                "n_cols": int(len(new_header)),
+                "hyperlinks": [],
+            }
+
+            insert_at = int(min(idx_trend, idx_type, idx_active))
+            for rm in sorted([idx_trend, idx_type, idx_active], reverse=True):
+                sections.pop(int(rm))
+            sections.insert(insert_at, composite)
+
+        # 2) Top 15 四表：横向拼接为 1 张复合表（保持每表字段不丢）
+        idx_big = _find_section_idx("大额交易 Top 15")
+        idx_new = _find_section_idx("新市场 Top 15")
+        idx_hot = _find_section_idx("综合热门市场 Top 15")
+        idx_smart = _find_section_idx("聪明钱 Top 15")
+        if idx_big is not None and idx_new is not None and idx_hot is not None and idx_smart is not None:
+            sec_big = sections[int(idx_big)]
+            sec_new = sections[int(idx_new)]
+            sec_hot = sections[int(idx_hot)]
+            sec_smart = sections[int(idx_smart)]
+
+            hb, rb = _as_table(sec_big)
+            hn, rn = _as_table(sec_new)
+            hh, rh = _as_table(sec_hot)
+            hs, rs = _as_table(sec_smart)
+
+            nrb = int(len(rb))
+            nrn = int(len(rn))
+            nrh = int(len(rh))
+            nrs = int(len(rs))
+            max_r = max(nrb, nrn, nrh, nrs, 0)
+
+            def pad_row(row: list[Any], width: int) -> list[Any]:
+                rr = list(row or [])
+                if len(rr) < int(width):
+                    rr.extend([""] * (int(width) - len(rr)))
+                return rr[: int(width)]
+
+            new_header = list(hb) + list(hn) + list(hh) + list(hs)
+            group_header = (
+                ["大额交易 Top 15"] + [""] * (len(hb) - 1)
+                + ["新市场 Top 15"] + [""] * (len(hn) - 1)
+                + ["综合热门市场 Top 15"] + [""] * (len(hh) - 1)
+                + ["聪明钱 Top 15"] + [""] * (len(hs) - 1)
+            )
+            new_rows: list[list[Any]] = []
+            for i in range(0, int(max_r)):
+                new_rows.append(
+                    pad_row(rb[i] if i < nrb else [], len(hb))
+                    + pad_row(rn[i] if i < nrn else [], len(hn))
+                    + pad_row(rh[i] if i < nrh else [], len(hh))
+                    + pad_row(rs[i] if i < nrs else [], len(hs))
+                )
+
+            composite = {
+                "title": "Top 15 汇总",
+                "title_plain": "Top 15 汇总",
+                "group_header": group_header,
+                "header": new_header,
+                "rows": new_rows,
+                "n_cols": int(len(new_header)),
+                # hyperlinks: 复用 writer 的 header 扫描逻辑（后续会重新计算）
+                "hyperlinks": [],
+            }
+
+            insert_at = int(min(idx_big, idx_new, idx_hot, idx_smart))
+            for rm in sorted([idx_big, idx_new, idx_hot, idx_smart], reverse=True):
+                sections.pop(int(rm))
+            sections.insert(insert_at, composite)
+
+        # 3) 类别分布二表：合并为 1 张“类别”主键表
+        idx_cat = _find_section_idx("市场类别分布")
+        idx_pref = _find_section_idx("聪明钱偏好类别")
+        if idx_cat is not None and idx_pref is not None:
+            sec_cat = sections[int(idx_cat)]
+            sec_pref = sections[int(idx_pref)]
+            hc, rc = _as_table(sec_cat)
+            hp, rp = _as_table(sec_pref)
+
+            kc = 0
+            kp = 0
+            map_c = _row_map_by_key(rc, key_idx=kc)
+            map_p = _row_map_by_key(rp, key_idx=kp)
+            cats = sorted({*map_c.keys(), *map_p.keys()})
+
+            def idx(cols: list[str], name: str) -> int | None:
+                for j, c in enumerate(cols):
+                    if str(c or "").strip() == name:
+                        return int(j)
+                return None
+
+            c_n = idx(hc, "信号数量")
+            c_p = idx(hc, "占比%")
+            p_n = idx(hp, "信号数量")
+            p_p = idx(hp, "占比%")
+
+            new_header = ["类别", "信号数量", "占比%", "信号数量", "占比%"]
+            group_header = ["市场类别分布", "", "", "聪明钱偏好类别", ""]
+            new_rows: list[list[Any]] = []
+            for cat in cats:
+                rc0 = map_c.get(cat) or []
+                rp0 = map_p.get(cat) or []
+                new_rows.append(
+                    [
+                        cat,
+                        rc0[int(c_n)] if c_n is not None and int(c_n) < len(rc0) else "",
+                        rc0[int(c_p)] if c_p is not None and int(c_p) < len(rc0) else "",
+                        rp0[int(p_n)] if p_n is not None and int(p_n) < len(rp0) else "",
+                        rp0[int(p_p)] if p_p is not None and int(p_p) < len(rp0) else "",
+                    ]
+                )
+
+            composite = {
+                "title": "类别偏好汇总",
+                "title_plain": "类别偏好汇总",
+                "group_header": group_header,
+                "header": new_header,
+                "rows": new_rows,
+                "n_cols": int(len(new_header)),
+                "hyperlinks": [],
+            }
+
+            insert_at = int(min(idx_cat, idx_pref))
+            for rm in sorted([idx_cat, idx_pref], reverse=True):
+                sections.pop(int(rm))
+            sections.insert(insert_at, composite)
+
         if not sections:
             # fallback：退回为原始表（不做网格）
             sheet = type("Tmp", (), {})()
@@ -2659,6 +2907,57 @@ class SaSheetsWriter:
             sheet.panel_header_rows = []
             sheet.merge_ranges = [(0, 1, 0, max(int(sheet.n_cols), 1))]
             return self.write_polymarket_stats_tab(tab_title=tab_title, sheet=sheet)
+
+        # bundling 后需要重新计算每个 section 的列宽/超链接（尤其是“Top 15 汇总”等复合表）
+        def _compute_hyperlinks_for_section(_header: list[Any], _rows: list[list[Any]]) -> list[tuple[int, int, str, str]]:
+            header2 = [str(x or "").strip() for x in (_header or [])]
+            link_indices: list[int] = []
+            name_indices: list[int] = []
+            for j, c in enumerate(header2):
+                if c in {"链接", "link", "url", "URL"} or ("链接" in c):
+                    link_indices.append(int(j))
+                if c in {"市场名称", "市场", "market", "question", "名称"}:
+                    name_indices.append(int(j))
+
+            pairs: list[tuple[int, int]] = []
+            used_names: set[int] = set()
+            for li in sorted(set(link_indices)):
+                cand = [ni for ni in name_indices if int(ni) < int(li) and int(ni) not in used_names]
+                if not cand:
+                    continue
+                ni = max(cand)
+                used_names.add(int(ni))
+                pairs.append((int(ni), int(li)))
+
+            hyperlinks2: list[tuple[int, int, str, str]] = []
+            for ri, r in enumerate(_rows or []):
+                for ni, li in pairs:
+                    url = ""
+                    try:
+                        url = str(r[int(li)] or "").strip()
+                    except Exception:
+                        url = ""
+                    name = ""
+                    try:
+                        name = str(r[int(ni)] or "").strip()
+                    except Exception:
+                        name = ""
+                    if url and (url.startswith("http://") or url.startswith("https://")) and name:
+                        hyperlinks2.append((int(ri), int(ni), str(url), str(name)))
+            return hyperlinks2
+
+        for sec in sections:
+            header = list(sec.get("header") or [])
+            rows = list(sec.get("rows") or [])
+            group_header = list(sec.get("group_header") or [])
+
+            n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), len(group_header), 1)
+            sec["n_cols"] = int(n_sec_cols)
+            sec["header"] = header[:n_sec_cols] + [""] * max(0, n_sec_cols - len(header))
+            if group_header:
+                sec["group_header"] = group_header[:n_sec_cols] + [""] * max(0, n_sec_cols - len(group_header))
+            sec["rows"] = [r[:n_sec_cols] + [""] * max(0, n_sec_cols - len(r)) for r in rows]
+            sec["hyperlinks"] = _compute_hyperlinks_for_section(sec["header"], sec["rows"])
 
         # -------------------- layout config --------------------
         def env_int(key: str, default: int) -> int:
@@ -2692,7 +2991,10 @@ class SaSheetsWriter:
         # 按卡片高度降序放置（更强 masonry，减少底部空洞）；目录仍按原分段顺序输出。
         sections_sorted = sorted(
             sections,
-            key=lambda s: (-(2 + len(s.get("rows") or [])), str(s.get("title_plain") or "")),
+            key=lambda s: (
+                -(1 + (2 if s.get("group_header") else 1) + len(s.get("rows") or [])),
+                str(s.get("title_plain") or ""),
+            ),
         )
         for sec in sections_sorted:
             # 选择最短列
@@ -2701,10 +3003,13 @@ class SaSheetsWriter:
             x0 = int(x_start(col_i))
 
             title = str(sec["title"])
+            group_header = list(sec.get("group_header") or [])
             header = list(sec["header"])
             rows = list(sec["rows"])
             n_rows = len(rows)
-            h = 2 + int(n_rows)  # title + header + data
+            header_rows = 2 if group_header else 1
+            body_offset = 1 + int(header_rows)  # title + header rows
+            h = 1 + int(header_rows) + int(n_rows)  # title + header rows + data
             max_end_row = max(max_end_row, y0 + h)
 
             placements.append(
@@ -2716,6 +3021,9 @@ class SaSheetsWriter:
                     "y0": y0,
                     "w": int(card_w),
                     "h": int(h),
+                    "header_rows": int(header_rows),
+                    "body_offset": int(body_offset),
+                    "group_header": group_header,
                     "header": header,
                     "rows": rows,
                 }
@@ -2738,20 +3046,30 @@ class SaSheetsWriter:
             y0 = int(p["y0"])
             w = int(p["w"])
             h = int(p["h"])
+            header_rows = int(p.get("header_rows") or 1)
+            body_offset = int(p.get("body_offset") or (1 + header_rows))
+            group_header = list(p.get("group_header") or [])
             header = list(p["header"])
             rows = list(p["rows"])
 
             if 0 <= y0 < len(grid) and 0 <= x0 < int(target_cols):
                 grid[y0][x0] = str(p["title"])
+            # group header row (optional)
+            if group_header and (y0 + 1) < len(grid):
+                for j in range(0, int(w)):
+                    v = group_header[j] if j < len(group_header) else ""
+                    if x0 + j < int(target_cols):
+                        grid[y0 + 1][x0 + j] = v
             # header row
-            if y0 + 1 < len(grid):
+            hdr_y = int(y0 + 1 + (1 if group_header else 0))
+            if hdr_y < len(grid):
                 for j in range(0, int(w)):
                     v = header[j] if j < len(header) else ""
                     if x0 + j < int(target_cols):
-                        grid[y0 + 1][x0 + j] = v
+                        grid[hdr_y][x0 + j] = v
             # body
             for i, rr in enumerate(rows):
-                yy = y0 + 2 + i
+                yy = y0 + int(body_offset) + i
                 if yy >= len(grid):
                     break
                 for j in range(0, int(w)):
@@ -2987,6 +3305,7 @@ class SaSheetsWriter:
             # cards style + borders
             title_bg = _rgb(0.12, 0.16, 0.23)
             title_fg = _rgb(1.0, 1.0, 1.0)
+            group_bg = _rgb(0.86, 0.90, 0.96)
             header_bg = _rgb(0.93, 0.94, 0.96)
             border = {"style": "SOLID", "width": 1, "color": _rgb(0.80, 0.82, 0.86)}
 
@@ -2995,6 +3314,9 @@ class SaSheetsWriter:
                 y0 = int(p["y0"])
                 w = int(p["w"])
                 h = int(p["h"])
+                header_rows = int(p.get("header_rows") or 1)
+                body_offset = int(p.get("body_offset") or (1 + header_rows))
+                has_group = bool(p.get("group_header"))
                 x1 = int(min(x0 + w, int(target_cols)))
                 y1 = int(min(y0 + h, int(target_rows)))
 
@@ -3016,11 +3338,77 @@ class SaSheetsWriter:
                         }
                     }
                 )
+                # group header row (optional)
+                if has_group:
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": int(y0 + 1),
+                                    "endRowIndex": int(y0 + 2),
+                                    "startColumnIndex": int(x0),
+                                    "endColumnIndex": int(x1),
+                                },
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "backgroundColor": group_bg,
+                                        "textFormat": {"bold": True},
+                                        "horizontalAlignment": "CENTER",
+                                        "verticalAlignment": "MIDDLE",
+                                        "wrapStrategy": "CLIP",
+                                    }
+                                },
+                                "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                            }
+                        }
+                    )
+                    # merge contiguous spans in group header row
+                    gh = list(p.get("group_header") or [])
+                    start = 0
+                    while start < int(w):
+                        val = str(gh[start] or "").strip() if start < len(gh) else ""
+                        if not val:
+                            start += 1
+                            continue
+                        end = start + 1
+                        while end < int(w):
+                            nxt = str(gh[end] or "").strip() if end < len(gh) else ""
+                            if nxt:
+                                break
+                            end += 1
+                        # clamp to card boundary
+                        c0 = int(x0 + start)
+                        c1 = int(min(x0 + end, x1))
+                        if c1 - c0 >= 2:
+                            reqs.append(
+                                {
+                                    "mergeCells": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": int(y0 + 1),
+                                            "endRowIndex": int(y0 + 2),
+                                            "startColumnIndex": int(c0),
+                                            "endColumnIndex": int(c1),
+                                        },
+                                        "mergeType": "MERGE_ALL",
+                                    }
+                                }
+                            )
+                        start = end
+
                 # header row
+                hdr_y0 = int(y0 + 1 + (1 if has_group else 0))
                 reqs.append(
                     {
                         "repeatCell": {
-                            "range": {"sheetId": int(sh_id), "startRowIndex": int(y0 + 1), "endRowIndex": int(y0 + 2), "startColumnIndex": int(x0), "endColumnIndex": int(x1)},
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(hdr_y0),
+                                "endRowIndex": int(hdr_y0 + 1),
+                                "startColumnIndex": int(x0),
+                                "endColumnIndex": int(x1),
+                            },
                             "cell": {
                                 "userEnteredFormat": {
                                     "backgroundColor": header_bg,
@@ -3039,14 +3427,14 @@ class SaSheetsWriter:
                 # - col0：居中
                 # - col1：左对齐
                 # - col2+：右对齐（数字为主）
-                if y1 > (y0 + 2):
+                if y1 > (y0 + int(body_offset)):
                     # col0
                     reqs.append(
                         {
                             "repeatCell": {
                                 "range": {
                                     "sheetId": int(sh_id),
-                                    "startRowIndex": int(y0 + 2),
+                                    "startRowIndex": int(y0 + int(body_offset)),
                                     "endRowIndex": int(y1),
                                     "startColumnIndex": int(x0),
                                     "endColumnIndex": int(min(x0 + 1, x1)),
@@ -3069,7 +3457,7 @@ class SaSheetsWriter:
                                 "repeatCell": {
                                     "range": {
                                         "sheetId": int(sh_id),
-                                        "startRowIndex": int(y0 + 2),
+                                        "startRowIndex": int(y0 + int(body_offset)),
                                         "endRowIndex": int(y1),
                                         "startColumnIndex": int(x0 + 1),
                                         "endColumnIndex": int(min(x0 + 2, x1)),
@@ -3092,7 +3480,7 @@ class SaSheetsWriter:
                                 "repeatCell": {
                                     "range": {
                                         "sheetId": int(sh_id),
-                                        "startRowIndex": int(y0 + 2),
+                                        "startRowIndex": int(y0 + int(body_offset)),
                                         "endRowIndex": int(y1),
                                         "startColumnIndex": int(x0 + 2),
                                         "endColumnIndex": int(x1),
@@ -3224,9 +3612,10 @@ class SaSheetsWriter:
         for p in placements:
             x0 = int(p["x0"])
             y0 = int(p["y0"])
+            body_offset = int(p.get("body_offset") or 2)
             links = list(p.get("hyperlinks") or [])
             for ri, ci, url, name in links:
-                rr0 = int(y0 + 2 + int(ri))  # 0-based
+                rr0 = int(y0 + int(body_offset) + int(ri))  # 0-based
                 cc0 = int(x0 + int(ci))      # 0-based
                 if rr0 < 0 or rr0 >= int(target_rows):
                     continue
