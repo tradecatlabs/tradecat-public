@@ -3187,7 +3187,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v4"
+        style_version = "polymarket_grid_v5"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -3425,6 +3425,22 @@ class SaSheetsWriter:
                         }
                     }
                 )
+                # 关键：标题行横向合并（否则标题文字只在第 1 列居中，看起来像“没对齐/有 bug”）
+                if (x1 - x0) >= 2:
+                    reqs.append(
+                        {
+                            "mergeCells": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": int(y0),
+                                    "endRowIndex": int(y0 + 1),
+                                    "startColumnIndex": int(x0),
+                                    "endColumnIndex": int(x1),
+                                },
+                                "mergeType": "MERGE_ALL",
+                            }
+                        }
+                    )
                 # group header row (optional)
                 if has_group:
                     reqs.append(
