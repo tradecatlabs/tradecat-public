@@ -2564,6 +2564,16 @@ class SaSheetsWriter:
             meta_text = str((values[0] or [""])[0] or "").strip()
         except Exception:
             meta_text = ""
+        # 统计口径去重：csv-report.js 固定滚动 24h，这里提升到全局元信息一次表达
+        if meta_text and ("窗口" not in meta_text) and ("24h" not in meta_text.lower()):
+            meta_text = f"{meta_text}，窗口，滚动24h"
+
+        def normalize_title(s: str) -> str:
+            x = str(s or "").strip()
+            for suf in [" (本地时间)", "（本地时间）"]:
+                if x.endswith(suf):
+                    x = x[: -len(suf)].rstrip()
+            return x
 
         sections: list[dict[str, Any]] = []
         for i, t0 in enumerate(title_idx):
@@ -2589,6 +2599,7 @@ class SaSheetsWriter:
                 title = str((values[t0] or [""])[0] or "").strip()
             except Exception:
                 title = ""
+            title = normalize_title(title)
             header = trim_row([str(x) for x in (values[h0] or [])])
             rows = []
             for rr in values[h0 + 1 : t1]:
@@ -2599,6 +2610,39 @@ class SaSheetsWriter:
                     continue
                 rows.append(row_trim)
 
+            # 链接列去重：将“链接”融入“市场名称”单元格超链接，并移除显式链接列
+            # 注意：这里只做结构变换；实际超链接公式在写入后用 USER_ENTERED 差量写入，避免 time/string 被解析。
+            link_idx = None
+            name_idx = None
+            for j, c in enumerate(header):
+                cj = str(c or "").strip()
+                if cj in {"链接", "link", "url", "URL"} or ("链接" in cj):
+                    link_idx = j
+                if cj in {"市场名称", "市场", "market", "question", "名称"}:
+                    name_idx = j
+            hyperlinks: list[tuple[int, int, str, str]] = []
+            if link_idx is not None and name_idx is not None and int(link_idx) != int(name_idx):
+                new_header = [c for j, c in enumerate(header) if j != int(link_idx)]
+                rows2: list[list[Any]] = []
+                name_idx2 = int(name_idx) - (1 if int(link_idx) < int(name_idx) else 0)
+                for ri, r in enumerate(rows):
+                    url = ""
+                    try:
+                        url = str(r[int(link_idx)] or "").strip()
+                    except Exception:
+                        url = ""
+                    name = ""
+                    try:
+                        name = str(r[int(name_idx)] or "").strip()
+                    except Exception:
+                        name = ""
+                    rr2 = [v for j, v in enumerate(r) if j != int(link_idx)]
+                    if url and (url.startswith("http://") or url.startswith("https://")) and name and 0 <= name_idx2 < len(rr2):
+                        hyperlinks.append((int(ri), int(name_idx2), str(url), str(name)))
+                    rows2.append(rr2)
+                header = new_header
+                rows = rows2
+
             n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
             sections.append(
                 {
@@ -2607,6 +2651,7 @@ class SaSheetsWriter:
                     "header": header[:n_sec_cols] + [""] * max(0, n_sec_cols - len(header)),
                     "rows": [r[:n_sec_cols] + [""] * max(0, n_sec_cols - len(r)) for r in rows],
                     "n_cols": int(n_sec_cols),
+                    "hyperlinks": hyperlinks,
                 }
             )
 
@@ -2673,6 +2718,7 @@ class SaSheetsWriter:
                 {
                     "title": title,
                     "title_plain": str(sec["title_plain"]),
+                    "hyperlinks": list(sec.get("hyperlinks") or []),
                     "x0": x0,
                     "y0": y0,
                     "w": int(card_w),
@@ -2814,7 +2860,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v2"
+        style_version = "polymarket_grid_v3"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -3170,6 +3216,42 @@ class SaSheetsWriter:
             )
         except Exception:
             pass
+
+        # -------------------- hyperlinks: apply formulas (diff) --------------------
+        # 用 USER_ENTERED 只写入需要超链接的单元格，避免 RAW 导致公式不生效，
+        # 也避免整表 USER_ENTERED 触发 “01:00” 等被解析为时间值。
+        def _escape_formula_str(s: str) -> str:
+            return str(s or "").replace('"', '""').replace("\n", " ").replace("\r", " ")
+
+        data_updates: list[dict[str, Any]] = []
+        for p in placements:
+            x0 = int(p["x0"])
+            y0 = int(p["y0"])
+            links = list(p.get("hyperlinks") or [])
+            for ri, ci, url, name in links:
+                rr0 = int(y0 + 2 + int(ri))  # 0-based
+                cc0 = int(x0 + int(ci))      # 0-based
+                if rr0 < 0 or rr0 >= int(target_rows):
+                    continue
+                if cc0 < 0 or cc0 >= int(target_cols):
+                    continue
+                cell = f"{tab_title}!{_index_to_col(int(cc0 + 1))}{int(rr0 + 1)}"
+                formula = f'=HYPERLINK("{_escape_formula_str(url)}","{_escape_formula_str(name)}")'
+                data_updates.append({"range": cell, "values": [[formula]]})
+
+        if data_updates:
+            try:
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={"valueInputOption": "USER_ENTERED", "data": data_updates},
+                    ),
+                    is_write=True,
+                )
+            except Exception:
+                pass
 
         # meta bump（记录 rows/cols/style）
         self._meta_set(
