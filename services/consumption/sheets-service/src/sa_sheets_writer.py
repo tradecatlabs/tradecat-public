@@ -2986,6 +2986,8 @@ class SaSheetsWriter:
                 "高频套利市场（10次以上）",
                 "信号密集时段 (5分钟内20+信号)",
                 "信号密集时段（5分钟内20+信号）",
+                "市场重复出现率 (跨信号类型)",
+                "市场重复出现率（跨信号类型）",
             }
             sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
 
@@ -3981,6 +3983,8 @@ class SaSheetsWriter:
                 "高频套利市场（10次以上）",
                 "信号密集时段 (5分钟内20+信号)",
                 "信号密集时段（5分钟内20+信号）",
+                "市场重复出现率 (跨信号类型)",
+                "市场重复出现率（跨信号类型）",
             }
             sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
 
