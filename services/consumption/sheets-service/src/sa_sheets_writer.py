@@ -4035,6 +4035,8 @@ class SaSheetsWriter:
 
         title_idx = sorted({int(r) - 1 for r in panel_title_rows if int(r) >= 2})
         header_idx_set = {int(r) - 1 for r in panel_header_rows if int(r) >= 2}
+        drop_cols_raw = (os.environ.get("SHEETS_POLYMARKET_DROP_COLUMNS", "买卖比例,聪明钱操作类型") or "").strip()
+        drop_names = {s.strip() for s in re.split(r"[,，]", drop_cols_raw) if s.strip()}
 
         meta_text = ""
         try:
