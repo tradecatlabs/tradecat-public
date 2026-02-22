@@ -2099,6 +2099,14 @@ class SaSheetsWriter:
             and bool(panel_header_rows)
         )
         if want_report:
+            split_enabled = (os.environ.get("SHEETS_POLYMARKET_STATS_SPLIT", "1") or "1").strip() != "0"
+            if split_enabled:
+                return self._write_polymarket_stats_tabs_split_report(
+                    tab_title=tab_title,
+                    values=values,
+                    panel_title_rows=panel_title_rows,
+                    panel_header_rows=panel_header_rows,
+                )
             return self._write_polymarket_stats_tab_report(
                 tab_title=tab_title,
                 sh_id=int(sh_id),
@@ -4752,6 +4760,254 @@ class SaSheetsWriter:
 
         self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
         return {"ok": True, "tab": tab_title, "rows": int(n_rows), "cols": int(n_cols)}
+
+    def _write_polymarket_stats_tabs_split_report(
+        self,
+        *,
+        tab_title: str,
+        values: list[list[Any]],
+        panel_title_rows: list[int],
+        panel_header_rows: list[int],
+    ) -> dict[str, Any]:
+        """
+        Polymarket统计 拆分为 3 个表（阅读更聚焦，减少“单页过长+定位困难”）：
+        - Polymarket时段分布：时段相关分布
+        - PolymarketTop15：Top 15（含综合热门）
+        - Polymarket类别偏好：类别分布与聪明钱偏好
+
+        注意：
+        - 这里只拆“统计报表 tab”，不影响 Polymarket事件（facts）明细表。
+        - 原 tab（tab_title，通常为 Polymarket统计）会被隐藏，避免用户看到重复面板。
+        """
+        def strip_leading_emoji(s: str) -> str:
+            return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
+
+        def trim_row(r: list[Any]) -> list[Any]:
+            rr = list(r)
+            while rr and (rr[-1] == "" or rr[-1] is None):
+                rr.pop()
+            return rr
+
+        title_idx = sorted({int(r) - 1 for r in panel_title_rows if int(r) >= 2})
+        header_idx_set = {int(r) - 1 for r in panel_header_rows if int(r) >= 2}
+        drop_cols_raw = (os.environ.get("SHEETS_POLYMARKET_DROP_COLUMNS", "买卖比例,聪明钱操作类型") or "").strip()
+        drop_names = {s.strip() for s in re.split(r"[,，]", drop_cols_raw) if s.strip()}
+
+        meta_text = ""
+        try:
+            meta_text = str((values[0] or [""])[0] or "").strip()
+        except Exception:
+            meta_text = ""
+        if meta_text and ("窗口" not in meta_text) and ("24h" not in meta_text.lower()):
+            meta_text = f"{meta_text}，窗口，滚动24h"
+
+        def normalize_title(s: str) -> str:
+            x = str(s or "").strip()
+            for suf in [" (本地时间)", "（本地时间）"]:
+                if x.endswith(suf):
+                    x = x[: -len(suf)].rstrip()
+            return x
+
+        # -------------------- raw section parse (from exporter markers) --------------------
+        sections: list[dict[str, Any]] = []
+        for i, t0 in enumerate(title_idx):
+            t0 = int(t0)
+            t1 = int(title_idx[i + 1]) if i + 1 < len(title_idx) else int(len(values))
+            if t0 < 1 or t0 >= len(values):
+                continue
+
+            h0 = None
+            for cand in sorted(header_idx_set):
+                if int(cand) > int(t0) and int(cand) < int(t1):
+                    h0 = int(cand)
+                    break
+            if h0 is None:
+                cand = t0 + 1
+                if cand < len(values):
+                    h0 = cand
+            if h0 is None or h0 >= len(values):
+                continue
+
+            header_rows_idx = [int(h0)]
+            if int(h0) in header_idx_set:
+                cur = int(h0) + 1
+                while int(cur) < int(t1) and int(cur) in header_idx_set:
+                    header_rows_idx.append(int(cur))
+                    cur += 1
+            data_start = int(header_rows_idx[-1]) + 1
+
+            title = ""
+            try:
+                title = str((values[t0] or [""])[0] or "").strip()
+            except Exception:
+                title = ""
+            title = normalize_title(title)
+            title_plain = strip_leading_emoji(title or "未命名分段") or "未命名分段"
+
+            headers_raw: list[list[Any]] = []
+            for hi in header_rows_idx:
+                headers_raw.append(trim_row([str(x) for x in (values[int(hi)] or [])]))
+            rows: list[list[Any]] = []
+            for rr in values[int(data_start) : t1]:
+                if not isinstance(rr, list):
+                    continue
+                row_trim = trim_row(list(rr))
+                if not row_trim:
+                    continue
+                rows.append(row_trim)
+
+            n_sec_cols = max(max((len(h) for h in headers_raw), default=0), max((len(r) for r in rows), default=0), 1)
+            headers2 = [h[:n_sec_cols] + [""] * max(0, int(n_sec_cols) - len(h)) for h in headers_raw]
+            rows2 = [r[:n_sec_cols] + [""] * max(0, int(n_sec_cols) - len(r)) for r in rows]
+            headers2, rows2 = _drop_fully_empty_columns(headers2, rows2)
+            headers2, rows2 = _polymarket_drop_columns_by_header(headers2, rows2, drop_names=drop_names)
+            header_last = list(headers2[-1] if headers2 else [])
+
+            sections.append(
+                {
+                    "title_plain": title_plain,
+                    "headers": headers2,
+                    "header": header_last,
+                    "rows": rows2,
+                }
+            )
+
+        # -------------------- lift exporter logs into meta --------------------
+        if sections:
+            idx_noise = None
+            for idx, sec in enumerate(sections):
+                if str(sec.get("title_plain") or "").strip() == "Polymarket统计":
+                    idx_noise = int(idx)
+                    break
+            if idx_noise is not None:
+                sec0 = sections[int(idx_noise)]
+                first = ""
+                try:
+                    first = str((sec0.get("header") or [""])[0] or "").strip()
+                except Exception:
+                    first = ""
+                if "生成 CSV 报告" in first and "滚动24小时" in first:
+                    m = re.search(r"滚动24小时:\s*([0-9\\-:\\s]{10,})~\\s*([0-9\\-:\\s]{10,})", first)
+                    if m:
+                        s0 = str(m.group(1)).strip()
+                        s1 = str(m.group(2)).strip()
+                        if s0 and s1:
+                            meta_text = f"{meta_text}，窗口起止，{s0}~{s1}" if meta_text else f"窗口起止，{s0}~{s1}"
+                    for rr in (sec0.get("rows") or []):
+                        t = ""
+                        try:
+                            t = str((rr or [""])[0] or "").strip()
+                        except Exception:
+                            t = ""
+                        if "已跳过" in t and "API" in t:
+                            meta_text = f"{meta_text}，API排行，关闭" if meta_text else "API排行，关闭"
+                            break
+                    sections.pop(int(idx_noise))
+
+        # -------------------- drop noisy/low-value sections --------------------
+        drop_enabled = (os.environ.get("SHEETS_POLYMARKET_DROP_STANDALONE_SECTIONS", "1") or "1").strip() != "0"
+        if drop_enabled:
+            drop_set = {
+                "套利信号 Top 15",
+                "订单簿失衡 Top 15",
+                "套利利润分布",
+                "高频套利市场 (10次以上)",
+                "高频套利市场（10次以上）",
+                "信号密集时段 (5分钟内20+信号)",
+                "信号密集时段（5分钟内20+信号）",
+                "市场重复出现率 (跨信号类型)",
+                "市场重复出现率（跨信号类型）",
+            }
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
+
+        # -------------------- partition to 3 tabs --------------------
+        top15_set = {"大额交易 Top 15", "新市场 Top 15", "综合热门市场 Top 15", "聪明钱 Top 15"}
+        timeslot_set = {"信号频率趋势 (环比)", "时段-类型分布", "活跃时段分布"}
+        category_set = {"市场类别分布", "聪明钱偏好类别"}
+
+        sec_top15 = [s for s in sections if str(s.get("title_plain") or "").strip() in top15_set]
+        sec_timeslot = [s for s in sections if str(s.get("title_plain") or "").strip() in timeslot_set]
+        sec_category = [s for s in sections if str(s.get("title_plain") or "").strip() in category_set]
+
+        used = top15_set | timeslot_set | category_set
+        sec_other = [s for s in sections if str(s.get("title_plain") or "").strip() not in used]
+        # 其他分段不丢：默认并入“类别偏好”子表尾部（更像“其他统计”）
+        sec_category_all = sec_category + sec_other
+
+        tab_top15 = _env_text("SHEETS_TAB_POLYMARKET_TOP15", "PolymarketTop15")
+        tab_timeslot = _env_text("SHEETS_TAB_POLYMARKET_TIMESLOT", "Polymarket时段分布")
+        tab_category = _env_text("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好")
+
+        def build_values(secs: list[dict[str, Any]], *, tag: str) -> tuple[list[list[Any]], list[int], list[int]]:
+            out: list[list[Any]] = [[f"{meta_text}，子表，{tag}" if meta_text else f"子表，{tag}"]]
+            title_rows: list[int] = []
+            header_rows: list[int] = []
+            r1 = 2  # 1-based
+            for sec in secs:
+                title_plain = str(sec.get("title_plain") or "").strip() or "-"
+                title_rows.append(int(r1))
+                out.append([title_plain])
+                r1 += 1
+                headers = sec.get("headers")
+                if not isinstance(headers, list) or not headers:
+                    headers = [list(sec.get("header") or [])]
+                for hr in headers:
+                    header_rows.append(int(r1))
+                    out.append(list(hr or []))
+                    r1 += 1
+                for rr in (sec.get("rows") or []):
+                    out.append(list(rr or []))
+                    r1 += 1
+            n_cols = max((len(r) for r in out if isinstance(r, list)), default=1)
+            n_cols = max(int(n_cols), 1)
+            for r in out:
+                if len(r) < int(n_cols):
+                    r.extend([""] * (int(n_cols) - len(r)))
+            return out, title_rows, header_rows
+
+        def write_one(*, title: str, secs: list[dict[str, Any]], tag: str) -> dict[str, Any]:
+            self.ensure_sheet(title=title)
+            self._refresh_sheet_map()
+            sh_id = self._sheet_id_by_title.get(title)
+            if sh_id is None:
+                self._refresh_sheet_map()
+                sh_id = self._sheet_id_by_title.get(title)
+            if sh_id is None:
+                raise RuntimeError(f"missing_sheet:{title}")
+            try:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={"requests": [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]},
+                    ),
+                    is_write=True,
+                )
+            except Exception:
+                pass
+            vals, trows, hrows = build_values(secs, tag=tag)
+            if not secs:
+                vals = [[f"{meta_text}，子表，{tag}，无数据" if meta_text else f"子表，{tag}，无数据"]]
+                trows, hrows = [], []
+            return self._write_polymarket_stats_tab_report(
+                tab_title=title,
+                sh_id=int(sh_id),
+                values=vals,
+                panel_title_rows=trows,
+                panel_header_rows=hrows,
+            )
+
+        res = {
+            "top15": write_one(title=tab_top15, secs=sec_top15, tag="Top15"),
+            "timeslot": write_one(title=tab_timeslot, secs=sec_timeslot, tag="时段分布"),
+            "category": write_one(title=tab_category, secs=sec_category_all, tag="类别偏好"),
+        }
+
+        # 隐藏原 tab（避免用户看到“未拆分的旧面板”）
+        try:
+            self._set_sheet_hidden(tab_title, hidden=True)
+        except Exception:
+            pass
+        return {"ok": True, "op": "split", "from": tab_title, "tabs": res}
 
     def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
         raise RuntimeError("币种查询子表已升级为真表格：请改用 write_symbol_query_tab(tab_title=..., sheet=...)")
