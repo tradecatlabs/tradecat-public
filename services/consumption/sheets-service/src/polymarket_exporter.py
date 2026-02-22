@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -153,25 +154,55 @@ def _run_local_csv_report(
     except Exception:
         size = -1
     if max_log_bytes > 0 and size > max_log_bytes:
-        raise RuntimeError(f"log_too_large bytes={size} limit={max_log_bytes} path={log_path}")
+        # 日志过大时不直接失败：裁剪末尾 N 字节生成临时日志用于统计（更稳、更不易“表变空”）。
+        # 默认裁剪长度= max_log_bytes；可用 SHEETS_POLYMARKET_TAIL_BYTES 覆盖。
+        try:
+            tail_bytes = int((os.environ.get("SHEETS_POLYMARKET_TAIL_BYTES", str(max_log_bytes)) or "").strip())
+        except Exception:
+            tail_bytes = int(max_log_bytes)
+        tail_bytes = max(int(tail_bytes), 1)
+
+        tmp = log_path.parent / f".polymarket_tail_{int(time.time())}.log"
+        try:
+            with tmp.open("wb") as f:
+                res_tail = subprocess.run(
+                    ["tail", "-c", str(tail_bytes), str(log_path)],
+                    stdout=f,
+                    stderr=subprocess.PIPE,
+                    timeout=min(int(timeout_seconds), 30),
+                    check=False,
+                )
+        except Exception:
+            res_tail = None
+
+        if (res_tail is None) or int(res_tail.returncode) != 0:
+            raise RuntimeError(f"log_too_large bytes={size} limit={max_log_bytes} path={log_path}")
+        log_path = tmp
 
     env = os.environ.copy()
     env["CSV_TRANSLATE"] = "true" if translate else "false"
     env["CSV_ENABLE_API_RANKINGS"] = "true" if api_rankings else "false"
 
-    res = subprocess.run(
-        ["node", "scripts/csv-report.js", str(log_path)],
-        cwd=str(service_dir),
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=timeout_seconds,
-        check=False,
-    )
-    out = (res.stdout or "") + ("\n" + res.stderr if res.stderr else "")
-    if res.returncode != 0:
-        raise RuntimeError(f"csv_report_failed rc={res.returncode} out={out.strip()[:800]}")
-    return out
+    try:
+        res = subprocess.run(
+            ["node", "scripts/csv-report.js", str(log_path)],
+            cwd=str(service_dir),
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        out = (res.stdout or "") + ("\n" + res.stderr if res.stderr else "")
+        if res.returncode != 0:
+            raise RuntimeError(f"csv_report_failed rc={res.returncode} out={out.strip()[:800]}")
+        return out
+    finally:
+        try:
+            if str(log_path).endswith(".log") and log_path.name.startswith(".polymarket_tail_"):
+                log_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def _run_ssh_csv_report(
@@ -207,6 +238,8 @@ def _run_ssh_csv_report(
         ssh_args += ["-i", key_path, "-o", "IdentitiesOnly=yes"]
 
     # 先检查日志大小，避免误扫 7GB 导致 node 卡死/超时
+    use_tail = False
+    tail_bytes = 0
     if max_log_bytes > 0:
         stat_cmd = "\n".join(
             [
@@ -229,19 +262,37 @@ def _run_ssh_csv_report(
         except Exception:
             size = -1
         if size > max_log_bytes:
-            raise RuntimeError(f"remote_log_too_large bytes={size} limit={max_log_bytes} path={log_path}")
+            use_tail = True
+            try:
+                tail_bytes = int((os.environ.get("SHEETS_POLYMARKET_TAIL_BYTES", str(max_log_bytes)) or "").strip())
+            except Exception:
+                tail_bytes = int(max_log_bytes)
+            tail_bytes = max(int(tail_bytes), 1)
 
     env_pairs = [
         f"CSV_TRANSLATE={'true' if translate else 'false'}",
         f"CSV_ENABLE_API_RANKINGS={'true' if api_rankings else 'false'}",
     ]
-    remote_cmd = "\n".join(
-        [
-            "set -e",
-            f"cd {sh_quote(service_dir)}",
-            " ".join(["env", *env_pairs, "node", "scripts/csv-report.js", sh_quote(log_path), "2>&1"]),
-        ]
-    )
+    if use_tail:
+        remote_cmd = "\n".join(
+            [
+                "set -e",
+                f"cd {sh_quote(service_dir)}",
+                "tmp=$(mktemp /tmp/tradecat_polymarket_tail.XXXXXX.log)",
+                "cleanup(){ rm -f \"$tmp\" 2>/dev/null || true; }",
+                "trap cleanup EXIT",
+                f"tail -c {int(tail_bytes)} {sh_quote(log_path)} > \"$tmp\"",
+                " ".join(["env", *env_pairs, "node", "scripts/csv-report.js", "\"$tmp\"", "2>&1"]),
+            ]
+        )
+    else:
+        remote_cmd = "\n".join(
+            [
+                "set -e",
+                f"cd {sh_quote(service_dir)}",
+                " ".join(["env", *env_pairs, "node", "scripts/csv-report.js", sh_quote(log_path), "2>&1"]),
+            ]
+        )
     res = subprocess.run(
         ["ssh", *ssh_args, uah, remote_cmd],
         text=True,
