@@ -3191,6 +3191,7 @@ class SaSheetsWriter:
         )
 
         # tail clear（避免历史残留）
+        compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
         meta = self._meta_get()
         key_rows = f"pmtab.{tab_title}.rows"
         key_cols = f"pmtab.{tab_title}.cols"
