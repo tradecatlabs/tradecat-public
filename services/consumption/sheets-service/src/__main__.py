@@ -396,7 +396,7 @@ async def _run_once(
             except Exception:
                 last = 0
             interval = int(settings.symbol_tabs_interval_seconds)
-            should = interval <= 0 or (now - last) >= interval
+            should = bool(settings.force_render) or interval <= 0 or (now - last) >= interval
             if should:
                 errors: list[str] = []
                 for sym in settings.symbol_tabs:
@@ -430,7 +430,7 @@ async def _run_once(
             except Exception:
                 last = 0
             interval = int((os.environ.get("SHEETS_POLYMARKET_STATS_INTERVAL_SECONDS", "900") or "900").strip() or "900")
-            should = interval <= 0 or (now - last) >= interval
+            should = bool(settings.force_render) or interval <= 0 or (now - last) >= interval
             if should:
                 tab_title = (os.environ.get("SHEETS_TAB_POLYMARKET_STATS", "Polymarket统计") or "Polymarket统计").strip()
                 err = ""
@@ -458,7 +458,7 @@ async def _run_once(
             interval = int(
                 (os.environ.get("SHEETS_POLYMARKET_FACTS_EVENTS_INTERVAL_SECONDS", "900") or "900").strip() or "900"
             )
-            should = interval <= 0 or (now - last) >= interval
+            should = bool(settings.force_render) or interval <= 0 or (now - last) >= interval
             if should:
                 tab_title = (os.environ.get("SHEETS_TAB_POLYMARKET_EVENTS", "Polymarket事件") or "Polymarket事件").strip()
                 err = ""
