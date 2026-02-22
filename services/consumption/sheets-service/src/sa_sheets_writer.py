@@ -293,6 +293,49 @@ def _drop_fully_empty_columns(headers: list[list[Any]], rows: list[list[Any]]) -
     return headers2, rows2
 
 
+def _polymarket_drop_columns_by_header(
+    headers: list[list[Any]],
+    rows: list[list[Any]],
+    *,
+    drop_names: set[str],
+) -> tuple[list[list[Any]], list[list[Any]]]:
+    """
+    删除指定表头名对应的整列（用于“布局收敛”，不改数据源）。
+
+    规则：
+    - 只要任意一行表头该列命中 drop_names（去空格后完全匹配），就删除该列
+    - drop_names 为空则不处理
+    """
+    if not drop_names:
+        return headers, rows
+    if not headers:
+        return headers, rows
+
+    n_cols0 = max((len(h) for h in headers), default=0)
+    n_cols0 = max(int(n_cols0), max((len(r) for r in rows), default=0))
+    if n_cols0 <= 0:
+        return headers, rows
+
+    drop_cols: set[int] = set()
+    for ci in range(0, int(n_cols0)):
+        for h in headers:
+            v = h[ci] if ci < len(h) else ""
+            name = str(v or "").strip()
+            if name and name in drop_names:
+                drop_cols.add(int(ci))
+                break
+    if not drop_cols:
+        return headers, rows
+
+    keep = [ci for ci in range(0, int(n_cols0)) if int(ci) not in drop_cols]
+    if not keep:
+        return headers, rows
+
+    headers2 = [[(h[ci] if ci < len(h) else "") for ci in keep] for h in headers]
+    rows2 = [[(r[ci] if ci < len(r) else "") for ci in keep] for r in rows]
+    return headers2, rows2
+
+
 def _flatten_eav(prefix: str, val: Any) -> Iterable[tuple[str, str, str]]:
     """
     返回 (field_path, value_type, value_text) 的序列。
@@ -2684,6 +2727,8 @@ class SaSheetsWriter:
 
         title_idx = sorted({int(r) - 1 for r in panel_title_rows if int(r) >= 2})
         header_idx_set = {int(r) - 1 for r in panel_header_rows if int(r) >= 2}
+        drop_cols_raw = (os.environ.get("SHEETS_POLYMARKET_DROP_COLUMNS", "买卖比例,聪明钱操作类型") or "").strip()
+        drop_names = {s.strip() for s in re.split(r"[,，]", drop_cols_raw) if s.strip()}
 
         meta_text = ""
         try:
@@ -2735,6 +2780,15 @@ class SaSheetsWriter:
                 if not row_trim:
                     continue
                 rows.append(row_trim)
+
+            # 先做列裁剪（空列/指定列删除），再生成超链接坐标（避免删列后坐标错位）
+            n_sec_cols0 = max(len(header), max((len(r) for r in rows), default=0), 1)
+            headers2 = [header[:n_sec_cols0] + [""] * max(0, int(n_sec_cols0) - len(header))]
+            rows2 = [r[:n_sec_cols0] + [""] * max(0, int(n_sec_cols0) - len(r)) for r in rows]
+            headers2, rows2 = _drop_fully_empty_columns(headers2, rows2)
+            headers2, rows2 = _polymarket_drop_columns_by_header(headers2, rows2, drop_names=drop_names)
+            header = list((headers2[-1] if headers2 else []) or [])
+            rows = rows2
 
             # 将“链接”融入“市场名称”单元格超链接（不破坏原表结构；避免链接缺失时丢信息）
             # 注意：超链接公式在写入后用 USER_ENTERED 差量写入，避免整表 USER_ENTERED 触发时间/数值误解析。
@@ -4042,6 +4096,8 @@ class SaSheetsWriter:
 
             # 去掉“整列空白”的分隔列（减少空列/间隙，不影响数据字段）
             headers2, rows2 = _drop_fully_empty_columns(headers2, rows2)
+            # 删除用户明确不想展示的列（例如：买卖比例/聪明钱操作类型）
+            headers2, rows2 = _polymarket_drop_columns_by_header(headers2, rows2, drop_names=drop_names)
             header_last = list(headers2[-1] if headers2 else [])
 
             sections.append(
