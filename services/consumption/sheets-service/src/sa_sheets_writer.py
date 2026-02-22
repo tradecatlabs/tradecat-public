@@ -243,6 +243,56 @@ def _value_type(v: Any) -> str:
     return "object"
 
 
+def _is_blank_cell(x: Any) -> bool:
+    if x is None:
+        return True
+    if isinstance(x, str):
+        s = x.strip()
+        return (not s) or (s == "-")
+    return False
+
+
+def _drop_fully_empty_columns(headers: list[list[Any]], rows: list[list[Any]]) -> tuple[list[list[Any]], list[list[Any]]]:
+    """
+    去掉“整列都是空”的分隔列（常见于 exporter 为了视觉分组插入的空列）。
+    - 仅当：所有 header 行该列为空，且所有数据行该列为空，才会删除该列
+    """
+    if not headers:
+        return headers, rows
+    n_cols0 = max((len(h) for h in headers), default=0)
+    n_cols0 = max(int(n_cols0), max((len(r) for r in rows), default=0))
+    if n_cols0 <= 0:
+        return headers, rows
+
+    keep: list[int] = []
+    for ci in range(0, int(n_cols0)):
+        hdr_blank = True
+        for h in headers:
+            v = h[ci] if ci < len(h) else ""
+            if not _is_blank_cell(v):
+                hdr_blank = False
+                break
+        if not hdr_blank:
+            keep.append(int(ci))
+            continue
+
+        data_blank = True
+        for r in rows:
+            v = r[ci] if ci < len(r) else ""
+            if not _is_blank_cell(v):
+                data_blank = False
+                break
+        if not data_blank:
+            keep.append(int(ci))
+
+    if len(keep) == int(n_cols0):
+        return headers, rows
+
+    headers2 = [[(h[ci] if ci < len(h) else "") for ci in keep] for h in headers]
+    rows2 = [[(r[ci] if ci < len(r) else "") for ci in keep] for r in rows]
+    return headers2, rows2
+
+
 def _flatten_eav(prefix: str, val: Any) -> Iterable[tuple[str, str, str]]:
     """
     返回 (field_path, value_type, value_text) 的序列。
