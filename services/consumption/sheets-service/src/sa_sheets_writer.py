@@ -2133,6 +2133,9 @@ class SaSheetsWriter:
         )
 
         # tail clear（避免历史残留）
+        # 注意：当开启 compact grid（默认）时，我们会把 gridProperties 的 rowCount/columnCount
+        # 收敛到 n_rows/n_cols，超出区域会“物理消失”，不需要再 values.clear。
+        compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
         meta = self._meta_get()
         key_rows = f"pmtab.{tab_title}.rows"
         key_cols = f"pmtab.{tab_title}.cols"
@@ -4261,26 +4264,33 @@ class SaSheetsWriter:
             c_old = int(str(meta.get(key_cols) or "0").strip() or "0")
         except Exception:
             c_old = 0
-        if int(r_old) > int(n_rows):
-            self._exec(
-                self._sheets.spreadsheets()
-                .values()
-                .clear(
-                    spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!A{int(n_rows) + 1}:{_index_to_col(max(int(c_old), int(n_cols)))}{int(r_old)}",
-                ),
-                is_write=True,
-            )
-        if int(c_old) > int(n_cols):
-            self._exec(
-                self._sheets.spreadsheets()
-                .values()
-                .clear(
-                    spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!{_index_to_col(int(n_cols) + 1)}1:{_index_to_col(int(c_old))}{max(int(r_old), int(n_rows))}",
-                ),
-                is_write=True,
-            )
+        if not compact_grid:
+            if int(r_old) > int(n_rows):
+                try:
+                    self._exec(
+                        self._sheets.spreadsheets()
+                        .values()
+                        .clear(
+                            spreadsheetId=self._spreadsheet_id,
+                            range=f"{tab_title}!A{int(n_rows) + 1}:{_index_to_col(max(int(c_old), int(n_cols)))}{int(r_old)}",
+                        ),
+                        is_write=True,
+                    )
+                except Exception as exc:
+                    print(f"⚠️ pmtab.report_tail_clear_rows_failed tab={tab_title} {type(exc).__name__}: {exc}")
+            if int(c_old) > int(n_cols):
+                try:
+                    self._exec(
+                        self._sheets.spreadsheets()
+                        .values()
+                        .clear(
+                            spreadsheetId=self._spreadsheet_id,
+                            range=f"{tab_title}!{_index_to_col(int(n_cols) + 1)}1:{_index_to_col(int(c_old))}{max(int(r_old), int(n_rows))}",
+                        ),
+                        is_write=True,
+                    )
+                except Exception as exc:
+                    print(f"⚠️ pmtab.report_tail_clear_cols_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
         # -------------------- merges --------------------
         merge_ranges: list[tuple[int, int, int, int]] = []
@@ -4442,7 +4452,6 @@ class SaSheetsWriter:
             self._meta_set({key_style_version: style_version, key_style_rows: str(n_rows), key_style_cols: str(n_cols)})
 
         # compact grid：让“无数据区域”在 UI 中消失
-        compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
         if compact_grid:
             self._set_sheet_grid_properties(tab_title, row_count=int(n_rows), col_count=int(n_cols), frozen_row_count=2, frozen_column_count=0)
 
