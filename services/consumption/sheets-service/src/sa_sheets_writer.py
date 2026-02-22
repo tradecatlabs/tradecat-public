@@ -4448,23 +4448,26 @@ class SaSheetsWriter:
 
         # directory richtext links (A2)
         try:
+            def idx_len(s: str) -> int:
+                return _utf16_len(str(s))
+
             label = "目录（点击跳转）"
             parts = [label]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
-            pos = len(label)
+            pos = int(idx_len(label))
             for title_plain, r1 in anchors:
                 sep = "，"
                 parts.append(sep)
-                pos += len(sep)
+                pos += int(idx_len(sep))
                 start = int(pos)
                 parts.append(title_plain)
-                pos += len(title_plain)
+                pos += int(idx_len(title_plain))
                 end = int(pos)
                 url = f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit#gid={int(sh_id)}&range=A{int(r1)}"
                 runs.append({"startIndex": int(start), "format": {"link": {"uri": str(url)}, "foregroundColor": _rgb(0.1, 0.4, 0.8), "underline": True}})
                 runs.append({"startIndex": int(end), "format": {}})
             dir_text = "".join(parts)
-            text_len = len(dir_text)
+            text_len = int(idx_len(dir_text))
             while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
                 runs.pop()
             self._exec(
@@ -4484,8 +4487,8 @@ class SaSheetsWriter:
                 ),
                 is_write=True,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"⚠️ pmtab.report_dir_links_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
         # hyperlinks: apply formulas (diff)
         def _escape_formula_str(s: str) -> str:
