@@ -4279,7 +4279,9 @@ class SaSheetsWriter:
             top15_long_secs.sort(key=lambda s: wanted.get(str(s.get("title_plain") or "").strip(), 10**9))
             sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in set(top15_long_names)]
 
-            long_header = ["类型", "排名", "市场名称", "次数", "指标", "数值"]
+            # 长表只保留“单指标 Top 15”，结构固定为：类型/排名/市场名称/指标/数值
+            # 这样避免出现“次数”和“数值”重复两列导致的视觉冗余。
+            long_header = ["类型", "排名", "市场名称", "指标", "数值"]
             long_rows: list[list[Any]] = []
             long_links: list[tuple[int, int, str, str]] = []
             for sec in top15_long_secs:
@@ -4307,7 +4309,7 @@ class SaSheetsWriter:
                         metric_cols = [("次数", -1)]
                     for metric_name, ci in metric_cols:
                         val = r[int(ci)] if (int(ci) >= 0 and int(ci) < len(r)) else ""
-                        long_rows.append([tname, rank, name, val, metric_name, val])
+                        long_rows.append([tname, rank, name, metric_name, val])
                         if url and isinstance(url, str) and url.startswith("http") and name:
                             long_links.append((len(long_rows) - 1, 2, str(url), str(name)))
 
