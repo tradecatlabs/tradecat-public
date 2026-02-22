@@ -4216,18 +4216,23 @@ class SaSheetsWriter:
             sections.insert(min(int(idx_cat), int(idx_pref)), composite)
 
         # -------------------- bundle: Top15 -> long table --------------------
-        top15_names = ["大额交易 Top 15", "新市场 Top 15", "综合热门市场 Top 15", "聪明钱 Top 15"]
-        top15_secs = [s for s in sections if str(s.get("title_plain") or "").strip() in set(top15_names)]
-        if top15_secs:
-            # remove originals (keep order from `top15_names`)
-            wanted = {n: i for i, n in enumerate(top15_names)}
-            top15_secs.sort(key=lambda s: wanted.get(str(s.get("title_plain") or "").strip(), 10**9))
-            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in set(top15_names)]
+        # 说明：综合热门市场 Top 15 自带多指标（套利/大额/订单簿/聪明钱/总计），如果强行“长表化”
+        # 会造成同一市场重复出现 5 次，阅读上被认为“重复”。因此这里只把“单指标 Top 15”转为长表，
+        # 综合热门保持原表形态（但会被提到更靠前的位置）。
+        top15_long_names = ["大额交易 Top 15", "新市场 Top 15", "聪明钱 Top 15"]
+        top15_hot_name = "综合热门市场 Top 15"
+
+        top15_long_secs = [s for s in sections if str(s.get("title_plain") or "").strip() in set(top15_long_names)]
+        if top15_long_secs:
+            # remove originals (keep order from `top15_long_names`)
+            wanted = {n: i for i, n in enumerate(top15_long_names)}
+            top15_long_secs.sort(key=lambda s: wanted.get(str(s.get("title_plain") or "").strip(), 10**9))
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in set(top15_long_names)]
 
             long_header = ["类型", "排名", "市场名称", "次数", "指标", "数值"]
             long_rows: list[list[Any]] = []
             long_links: list[tuple[int, int, str, str]] = []
-            for sec in top15_secs:
+            for sec in top15_long_secs:
                 tname = str(sec.get("title_plain") or "").strip()
                 hdr = [str(x or "").strip() for x in (sec.get("header") or [])]
                 rows = list(sec.get("rows") or [])
@@ -4238,17 +4243,11 @@ class SaSheetsWriter:
                 c_link = _col_idx(hdr, "链接")
 
                 metric_cols: list[tuple[str, int]] = []
-                if tname == "综合热门市场 Top 15":
-                    for mn in ["套利", "大额", "订单簿", "聪明钱", "总计"]:
-                        ci = _col_idx(hdr, mn)
-                        if ci is not None:
-                            metric_cols.append((mn, int(ci)))
-                else:
-                    for mn in ["交易次数", "出现次数", "信号次数", "信号数量"]:
-                        ci = _col_idx(hdr, mn)
-                        if ci is not None:
-                            metric_cols = [(mn, int(ci))]
-                            break
+                for mn in ["交易次数", "出现次数", "信号次数", "信号数量"]:
+                    ci = _col_idx(hdr, mn)
+                    if ci is not None:
+                        metric_cols = [(mn, int(ci))]
+                        break
 
                 for r in rows:
                     rank = r[int(c_rank)] if int(c_rank) < len(r) else ""
@@ -4272,6 +4271,16 @@ class SaSheetsWriter:
                     "hyperlinks": long_links,
                 },
             )
+
+            # 把“综合热门市场 Top 15”提到更靠前（紧跟长表后面），保持原表结构不重复。
+            idx_hot = None
+            for idx, sec in enumerate(sections):
+                if str(sec.get("title_plain") or "").strip() == top15_hot_name:
+                    idx_hot = int(idx)
+                    break
+            if idx_hot is not None:
+                hot_sec = sections.pop(int(idx_hot))
+                sections.insert(1, hot_sec)
 
         # -------------------- build report rows --------------------
         out: list[list[Any]] = []
