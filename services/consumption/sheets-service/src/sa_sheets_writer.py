@@ -4212,6 +4212,7 @@ class SaSheetsWriter:
 
         anchors: list[tuple[str, int]] = []  # (title, row1-based)
         hyperlink_cells: list[tuple[int, int, str, str]] = []  # (abs_row0, abs_col0, url, label)
+        extra_merge_ranges: list[tuple[int, int, int, int]] = []  # (r0,r1,c0,c1) end exclusive
 
         for sec in sections:
             title_plain = str(sec.get("title_plain") or "").strip() or "-"
@@ -4220,7 +4221,8 @@ class SaSheetsWriter:
             out.append([title_plain])
             out.append([str(x) for x in (sec.get("header") or [])])
             data_start_row0 = len(out)
-            for r in (sec.get("rows") or []):
+            sec_rows = list(sec.get("rows") or [])
+            for r in sec_rows:
                 out.append(list(r))
             # hyperlinks: relative to data rows
             for li in (sec.get("hyperlinks") or []):
@@ -4229,6 +4231,35 @@ class SaSheetsWriter:
                 except Exception:
                     continue
                 hyperlink_cells.append((int(data_start_row0 + int(ri)), int(ci), str(url), str(label)))
+
+            # Top 15：合并“类型”列的连续块（提升可读性；不影响数据内容/超链接）
+            merge_type_col = (
+                (os.environ.get("SHEETS_POLYMARKET_REPORT_MERGE_TYPE_COL", "1") or "1").strip() != "0"
+            )
+            if merge_type_col and title_plain == "Top 15" and sec_rows:
+                cur = None
+                cur_s = 0
+                for i, r in enumerate(sec_rows):
+                    v = ""
+                    try:
+                        v = str((r[0] if r else "") or "").strip()
+                    except Exception:
+                        v = ""
+                    if cur is None:
+                        cur = v
+                        cur_s = int(i)
+                        continue
+                    if v != cur:
+                        if int(i) - int(cur_s) >= 2:
+                            r0 = int(data_start_row0 + int(cur_s))
+                            r1 = int(data_start_row0 + int(i))
+                            extra_merge_ranges.append((int(r0), int(r1), 0, 1))
+                        cur = v
+                        cur_s = int(i)
+                if cur is not None and int(len(sec_rows)) - int(cur_s) >= 2:
+                    r0 = int(data_start_row0 + int(cur_s))
+                    r1 = int(data_start_row0 + int(len(sec_rows)))
+                    extra_merge_ranges.append((int(r0), int(r1), 0, 1))
 
         # normalize to rect
         n_rows = len(out)
@@ -4303,6 +4334,7 @@ class SaSheetsWriter:
             r0 = int(r1) - 1
             if int(n_cols) > 1:
                 merge_ranges.append((int(r0), int(r0 + 1), 0, int(n_cols)))
+        merge_ranges.extend(extra_merge_ranges)
 
         if merge_ranges:
             reqs_merge: list[dict[str, Any]] = [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]
