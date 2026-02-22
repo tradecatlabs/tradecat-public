@@ -1979,15 +1979,31 @@ class SaSheetsWriter:
             if isinstance(row, list) and len(row) < int(n_cols):
                 row.extend([""] * (int(n_cols) - len(row)))
 
-        # -------------------- aggressive layout: grid cards (方案A) --------------------
+        # -------------------- layout: report partitions / grid cards --------------------
         # 默认仅对 Polymarket统计 生效；避免影响 Polymarket事件 等“单表明细”子表。
-        layout = (os.environ.get("SHEETS_POLYMARKET_STATS_LAYOUT", "grid") or "grid").strip().lower()
+        # - report：纵向报表分区（推荐，信息密度高、观感更像 BI）
+        # - grid/masonry：卡片网格（历史方案）
+        layout = (os.environ.get("SHEETS_POLYMARKET_STATS_LAYOUT", "report") or "report").strip().lower()
+        want_report = (
+            tab_title == self._tab_polymarket_stats
+            and layout in {"report", "report_v2", "partition", "sections"}
+            and bool(panel_title_rows)
+            and bool(panel_header_rows)
+        )
         want_grid = (
             tab_title == self._tab_polymarket_stats
             and layout in {"grid", "masonry"}
             and bool(panel_title_rows)
             and bool(panel_header_rows)
         )
+        if want_report:
+            return self._write_polymarket_stats_tab_report(
+                tab_title=tab_title,
+                sh_id=int(sh_id),
+                values=values,
+                panel_title_rows=panel_title_rows,
+                panel_header_rows=panel_header_rows,
+            )
         if want_grid:
             return self._write_polymarket_stats_tab_grid(
                 tab_title=tab_title,
@@ -2724,7 +2740,7 @@ class SaSheetsWriter:
 
         def _hour_sort_key(h: str) -> tuple[int, str]:
             s = str(h or "").strip()
-            m = re.match(r"^(\\d{2}):(\\d{2})$", s)
+            m = re.match(r"^(\d{2}):(\d{2})$", s)
             if not m:
                 return (10**9, s)
             return (int(m.group(1)) * 60 + int(m.group(2)), s)
@@ -3814,6 +3830,682 @@ class SaSheetsWriter:
         )
 
         return {"ok": True, "tab": tab_title, "rows": int(target_rows), "cols": int(target_cols)}
+
+    def _write_polymarket_stats_tab_report(
+        self,
+        *,
+        tab_title: str,
+        sh_id: int,
+        values: list[list[Any]],
+        panel_title_rows: list[int],
+        panel_header_rows: list[int],
+    ) -> dict[str, Any]:
+        """
+        方案B：Polymarket统计「纵向报表分区」布局：
+        - A1 元信息（整行合并，冻结，不换行）
+        - A2 目录（整行合并，冻结，富文本超链接，不换行）
+        - 正文：各分段依次纵向排列：分区标题（整行合并）+ 表头 + 数据
+          - Top 15：合并为“长表”（类型列 + 指标列），避免超宽表
+          - 时段分布/类别偏好：使用现有无损合并逻辑（保持字段）
+        """
+        # -------------------- parse sections from exporter output --------------------
+        def strip_leading_emoji(s: str) -> str:
+            return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
+
+        def trim_row(r: list[Any]) -> list[Any]:
+            rr = list(r)
+            while rr and (rr[-1] == "" or rr[-1] is None):
+                rr.pop()
+            return rr
+
+        title_idx = sorted({int(r) - 1 for r in panel_title_rows if int(r) >= 2})
+        header_idx_set = {int(r) - 1 for r in panel_header_rows if int(r) >= 2}
+
+        meta_text = ""
+        try:
+            meta_text = str((values[0] or [""])[0] or "").strip()
+        except Exception:
+            meta_text = ""
+        if meta_text and ("窗口" not in meta_text) and ("24h" not in meta_text.lower()):
+            meta_text = f"{meta_text}，窗口，滚动24h"
+
+        def normalize_title(s: str) -> str:
+            x = str(s or "").strip()
+            for suf in [" (本地时间)", "（本地时间）"]:
+                if x.endswith(suf):
+                    x = x[: -len(suf)].rstrip()
+            return x
+
+        sections: list[dict[str, Any]] = []
+        for i, t0 in enumerate(title_idx):
+            t0 = int(t0)
+            t1 = int(title_idx[i + 1]) if i + 1 < len(title_idx) else int(len(values))
+            if t0 < 1 or t0 >= len(values):
+                continue
+            # header：优先 exporter 标记；否则 title+1
+            h0 = None
+            for cand in sorted(header_idx_set):
+                if int(cand) > int(t0) and int(cand) < int(t1):
+                    h0 = int(cand)
+                    break
+            if h0 is None:
+                cand = t0 + 1
+                if cand < len(values):
+                    h0 = cand
+            if h0 is None or h0 >= len(values):
+                continue
+
+            title = ""
+            try:
+                title = str((values[t0] or [""])[0] or "").strip()
+            except Exception:
+                title = ""
+            title = normalize_title(title)
+
+            header = trim_row([str(x) for x in (values[h0] or [])])
+            rows: list[list[Any]] = []
+            for rr in values[h0 + 1 : t1]:
+                if not isinstance(rr, list):
+                    continue
+                row_trim = trim_row(list(rr))
+                if not row_trim:
+                    continue
+                rows.append(row_trim)
+
+            n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
+            header2 = header[:n_sec_cols] + [""] * max(0, n_sec_cols - len(header))
+            rows2 = [r[:n_sec_cols] + [""] * max(0, n_sec_cols - len(r)) for r in rows]
+
+            sections.append(
+                {
+                    "title_plain": strip_leading_emoji(title or "未命名分段") or "未命名分段",
+                    "header": header2,
+                    "rows": rows2,
+                    "n_cols": int(n_sec_cols),
+                }
+            )
+
+        # -------------------- lift exporter logs into meta --------------------
+        if sections:
+            idx_noise = None
+            for idx, sec in enumerate(sections):
+                if str(sec.get("title_plain") or "").strip() == "Polymarket统计":
+                    idx_noise = int(idx)
+                    break
+            if idx_noise is not None:
+                sec0 = sections[int(idx_noise)]
+                first = ""
+                try:
+                    first = str((sec0.get("header") or [""])[0] or "").strip()
+                except Exception:
+                    first = ""
+                if "生成 CSV 报告" in first and "滚动24小时" in first:
+                    m = re.search(r"滚动24小时:\s*([0-9\-:\s]{10,})~\s*([0-9\-:\s]{10,})", first)
+                    if m:
+                        s0 = str(m.group(1)).strip()
+                        s1 = str(m.group(2)).strip()
+                        if s0 and s1:
+                            meta_text = f"{meta_text}，窗口起止，{s0}~{s1}" if meta_text else f"窗口起止，{s0}~{s1}"
+                    for rr in (sec0.get("rows") or []):
+                        t = ""
+                        try:
+                            t = str((rr or [""])[0] or "").strip()
+                        except Exception:
+                            t = ""
+                        if "已跳过" in t and "API" in t:
+                            meta_text = f"{meta_text}，API排行，关闭" if meta_text else "API排行，关闭"
+                            break
+                    sections.pop(int(idx_noise))
+
+        # -------------------- drop noisy/low-value sections --------------------
+        drop_enabled = (os.environ.get("SHEETS_POLYMARKET_DROP_STANDALONE_SECTIONS", "1") or "1").strip() != "0"
+        if drop_enabled:
+            drop_set = {
+                "套利信号 Top 15",
+                "订单簿失衡 Top 15",
+                "套利利润分布",
+                "高频套利市场 (10次以上)",
+                "高频套利市场（10次以上）",
+                "信号密集时段 (5分钟内20+信号)",
+                "信号密集时段（5分钟内20+信号）",
+            }
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
+
+        if not sections:
+            self._ensure_grid_size(tab_title, min_rows=1, min_cols=1)
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .update(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!A1:A1",
+                    valueInputOption="RAW",
+                    body={"values": [[meta_text or "Polymarket统计，错误，导出为空"]]},
+                ),
+                is_write=True,
+            )
+            return {"ok": True, "tab": tab_title, "rows": 1, "cols": 1}
+
+        # -------------------- helpers --------------------
+        def _col_idx(cols: list[str], name: str) -> int | None:
+            for j, c in enumerate(cols or []):
+                if str(c or "").strip() == name:
+                    return int(j)
+            return None
+
+        def _find_idx(title_plain: str) -> int | None:
+            for idx, sec in enumerate(sections):
+                if str(sec.get("title_plain") or "").strip() == title_plain:
+                    return int(idx)
+            return None
+
+        def _row_map_by_key(rows: list[list[Any]], *, key_idx: int) -> dict[str, list[Any]]:
+            out: dict[str, list[Any]] = {}
+            for r in rows:
+                if not r or int(key_idx) >= len(r):
+                    continue
+                k = str(r[int(key_idx)] or "").strip()
+                if not k:
+                    continue
+                out[k] = r
+            return out
+
+        def _hour_sort_key(h: str) -> tuple[int, str]:
+            s = str(h or "").strip()
+            m = re.match(r"^(\d{2}):(\d{2})$", s)
+            if not m:
+                return (10**9, s)
+            return (int(m.group(1)) * 60 + int(m.group(2)), s)
+
+        # -------------------- bundle: timeslot composite --------------------
+        idx_trend = _find_idx("信号频率趋势 (环比)")
+        idx_type = _find_idx("时段-类型分布")
+        idx_active = _find_idx("活跃时段分布")
+        if idx_trend is not None and idx_type is not None and idx_active is not None:
+            trend = sections[int(idx_trend)]
+            typ = sections[int(idx_type)]
+            act = sections[int(idx_active)]
+
+            h_trend = [str(x or "").strip() for x in (trend.get("header") or [])]
+            h_type = [str(x or "").strip() for x in (typ.get("header") or [])]
+            h_act = [str(x or "").strip() for x in (act.get("header") or [])]
+            r_trend = list(trend.get("rows") or [])
+            r_type = list(typ.get("rows") or [])
+            r_act = list(act.get("rows") or [])
+
+            def col_idx(cols: list[str], name: str) -> int | None:
+                for j, c in enumerate(cols):
+                    if str(c or "").strip() == name:
+                        return int(j)
+                return None
+
+            k0 = col_idx(h_trend, "小时") or 0
+            k1 = col_idx(h_type, "小时") or 0
+            k2 = col_idx(h_act, "小时") or 0
+
+            m_trend_1 = col_idx(h_trend, "信号数")
+            m_trend_2 = col_idx(h_trend, "环比变化%")
+            if m_trend_1 is None:
+                m_trend_1 = col_idx(h_trend, "信号数量")
+            m_act_1 = col_idx(h_act, "信号数量")
+            m_act_2 = col_idx(h_act, "占比%")
+            m_type = {
+                "套利": col_idx(h_type, "套利"),
+                "大额交易": col_idx(h_type, "大额交易"),
+                "订单簿": col_idx(h_type, "订单簿"),
+                "聪明钱": col_idx(h_type, "聪明钱"),
+            }
+
+            map_trend = _row_map_by_key(r_trend, key_idx=int(k0))
+            map_type = _row_map_by_key(r_type, key_idx=int(k1))
+            map_act = _row_map_by_key(r_act, key_idx=int(k2))
+            hours = sorted({*map_trend.keys(), *map_type.keys(), *map_act.keys()}, key=_hour_sort_key)
+
+            new_header = ["小时", "信号数", "环比变化%", "套利", "大额交易", "订单簿", "聪明钱", "信号数量", "占比%"]
+            new_rows: list[list[Any]] = []
+            for h in hours:
+                rt = map_trend.get(h) or []
+                rty = map_type.get(h) or []
+                ra = map_act.get(h) or []
+                new_rows.append(
+                    [
+                        h,
+                        rt[int(m_trend_1)] if m_trend_1 is not None and int(m_trend_1) < len(rt) else "",
+                        rt[int(m_trend_2)] if m_trend_2 is not None and int(m_trend_2) < len(rt) else "",
+                        rty[int(m_type["套利"])] if m_type["套利"] is not None and int(m_type["套利"]) < len(rty) else "",
+                        rty[int(m_type["大额交易"])] if m_type["大额交易"] is not None and int(m_type["大额交易"]) < len(rty) else "",
+                        rty[int(m_type["订单簿"])] if m_type["订单簿"] is not None and int(m_type["订单簿"]) < len(rty) else "",
+                        rty[int(m_type["聪明钱"])] if m_type["聪明钱"] is not None and int(m_type["聪明钱"]) < len(rty) else "",
+                        ra[int(m_act_1)] if m_act_1 is not None and int(m_act_1) < len(ra) else "",
+                        ra[int(m_act_2)] if m_act_2 is not None and int(m_act_2) < len(ra) else "",
+                    ]
+                )
+
+            composite = {"title_plain": "时段分布汇总", "header": new_header, "rows": new_rows, "n_cols": len(new_header)}
+            for rm in sorted([idx_trend, idx_type, idx_active], reverse=True):
+                sections.pop(int(rm))
+            sections.insert(min(int(idx_trend), int(idx_type), int(idx_active)), composite)
+
+        # -------------------- bundle: category composite --------------------
+        idx_cat = _find_idx("市场类别分布")
+        idx_pref = _find_idx("聪明钱偏好类别")
+        if idx_cat is not None and idx_pref is not None:
+            cat = sections[int(idx_cat)]
+            pref = sections[int(idx_pref)]
+            hc = [str(x or "").strip() for x in (cat.get("header") or [])]
+            hp = [str(x or "").strip() for x in (pref.get("header") or [])]
+            rc = list(cat.get("rows") or [])
+            rp = list(pref.get("rows") or [])
+
+            def idx(cols: list[str], name: str) -> int | None:
+                for j, c in enumerate(cols):
+                    if str(c or "").strip() == name:
+                        return int(j)
+                return None
+
+            c_cat = idx(hc, "类别") or 0
+            p_cat = idx(hp, "类别") or 0
+            map_c = _row_map_by_key(rc, key_idx=int(c_cat))
+            map_p = _row_map_by_key(rp, key_idx=int(p_cat))
+            cats = sorted({*map_c.keys(), *map_p.keys()})
+
+            c_n = idx(hc, "信号数量")
+            c_p = idx(hc, "占比%")
+            p_n = idx(hp, "信号数量")
+            p_p = idx(hp, "占比%")
+
+            new_header = ["类别", "信号数量", "占比%", "聪明钱信号数量", "聪明钱占比%"]
+            new_rows: list[list[Any]] = []
+            for c0 in cats:
+                rc0 = map_c.get(c0) or []
+                rp0 = map_p.get(c0) or []
+                new_rows.append(
+                    [
+                        c0,
+                        rc0[int(c_n)] if c_n is not None and int(c_n) < len(rc0) else "",
+                        rc0[int(c_p)] if c_p is not None and int(c_p) < len(rc0) else "",
+                        rp0[int(p_n)] if p_n is not None and int(p_n) < len(rp0) else "",
+                        rp0[int(p_p)] if p_p is not None and int(p_p) < len(rp0) else "",
+                    ]
+                )
+
+            composite = {"title_plain": "类别偏好汇总", "header": new_header, "rows": new_rows, "n_cols": len(new_header)}
+            for rm in sorted([idx_cat, idx_pref], reverse=True):
+                sections.pop(int(rm))
+            sections.insert(min(int(idx_cat), int(idx_pref)), composite)
+
+        # -------------------- bundle: Top15 -> long table --------------------
+        top15_names = ["大额交易 Top 15", "新市场 Top 15", "综合热门市场 Top 15", "聪明钱 Top 15"]
+        top15_secs = [s for s in sections if str(s.get("title_plain") or "").strip() in set(top15_names)]
+        if top15_secs:
+            # remove originals (keep order from `top15_names`)
+            wanted = {n: i for i, n in enumerate(top15_names)}
+            top15_secs.sort(key=lambda s: wanted.get(str(s.get("title_plain") or "").strip(), 10**9))
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in set(top15_names)]
+
+            long_header = ["类型", "排名", "市场名称", "次数", "指标", "数值"]
+            long_rows: list[list[Any]] = []
+            long_links: list[tuple[int, int, str, str]] = []
+            for sec in top15_secs:
+                tname = str(sec.get("title_plain") or "").strip()
+                hdr = [str(x or "").strip() for x in (sec.get("header") or [])]
+                rows = list(sec.get("rows") or [])
+                c_rank = _col_idx(hdr, "排名") or 0
+                c_name = _col_idx(hdr, "市场名称")
+                if c_name is None:
+                    c_name = _col_idx(hdr, "市场") or 1
+                c_link = _col_idx(hdr, "链接")
+
+                metric_cols: list[tuple[str, int]] = []
+                if tname == "综合热门市场 Top 15":
+                    for mn in ["套利", "大额", "订单簿", "聪明钱", "总计"]:
+                        ci = _col_idx(hdr, mn)
+                        if ci is not None:
+                            metric_cols.append((mn, int(ci)))
+                else:
+                    for mn in ["交易次数", "出现次数", "信号次数", "信号数量"]:
+                        ci = _col_idx(hdr, mn)
+                        if ci is not None:
+                            metric_cols = [(mn, int(ci))]
+                            break
+
+                for r in rows:
+                    rank = r[int(c_rank)] if int(c_rank) < len(r) else ""
+                    name = r[int(c_name)] if int(c_name) < len(r) else ""
+                    url = r[int(c_link)] if (c_link is not None and int(c_link) < len(r)) else ""
+                    if not metric_cols:
+                        metric_cols = [("次数", -1)]
+                    for metric_name, ci in metric_cols:
+                        val = r[int(ci)] if (int(ci) >= 0 and int(ci) < len(r)) else ""
+                        long_rows.append([tname, rank, name, val, metric_name, val])
+                        if url and isinstance(url, str) and url.startswith("http") and name:
+                            long_links.append((len(long_rows) - 1, 2, str(url), str(name)))
+
+            sections.insert(
+                0,
+                {
+                    "title_plain": "Top 15",
+                    "header": long_header,
+                    "rows": long_rows,
+                    "n_cols": len(long_header),
+                    "hyperlinks": long_links,
+                },
+            )
+
+        # -------------------- build report rows --------------------
+        out: list[list[Any]] = []
+        out.append([meta_text])
+        out.append(["目录（点击跳转）"])
+
+        anchors: list[tuple[str, int]] = []  # (title, row1-based)
+        hyperlink_cells: list[tuple[int, int, str, str]] = []  # (abs_row0, abs_col0, url, label)
+
+        for sec in sections:
+            title_plain = str(sec.get("title_plain") or "").strip() or "-"
+            title_row0 = len(out)
+            anchors.append((title_plain, int(title_row0 + 1)))
+            out.append([title_plain])
+            out.append([str(x) for x in (sec.get("header") or [])])
+            data_start_row0 = len(out)
+            for r in (sec.get("rows") or []):
+                out.append(list(r))
+            # hyperlinks: relative to data rows
+            for li in (sec.get("hyperlinks") or []):
+                try:
+                    ri, ci, url, label = li
+                except Exception:
+                    continue
+                hyperlink_cells.append((int(data_start_row0 + int(ri)), int(ci), str(url), str(label)))
+
+        # normalize to rect
+        n_rows = len(out)
+        n_cols = max((len(r) for r in out if isinstance(r, list)), default=1)
+        n_cols = max(int(n_cols), 1)
+        for r in out:
+            if len(r) < n_cols:
+                r.extend([""] * (n_cols - len(r)))
+
+        # -------------------- write values --------------------
+        self._ensure_grid_size(tab_title, min_rows=int(n_rows), min_cols=int(n_cols))
+        col_r = _index_to_col(int(n_cols))
+        self._exec(
+            self._sheets.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=self._spreadsheet_id,
+                range=f"{tab_title}!A1:{col_r}{int(n_rows)}",
+                valueInputOption="RAW",
+                body={"values": out},
+            ),
+            is_write=True,
+        )
+
+        # tail clear（避免历史残留）
+        meta = self._meta_get()
+        key_rows = f"pmtab.{tab_title}.rows"
+        key_cols = f"pmtab.{tab_title}.cols"
+        try:
+            r_old = int(str(meta.get(key_rows) or "0").strip() or "0")
+        except Exception:
+            r_old = 0
+        try:
+            c_old = int(str(meta.get(key_cols) or "0").strip() or "0")
+        except Exception:
+            c_old = 0
+        if int(r_old) > int(n_rows):
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!A{int(n_rows) + 1}:{_index_to_col(max(int(c_old), int(n_cols)))}{int(r_old)}",
+                ),
+                is_write=True,
+            )
+        if int(c_old) > int(n_cols):
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .clear(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=f"{tab_title}!{_index_to_col(int(n_cols) + 1)}1:{_index_to_col(int(c_old))}{max(int(r_old), int(n_rows))}",
+                ),
+                is_write=True,
+            )
+
+        # -------------------- merges --------------------
+        merge_ranges: list[tuple[int, int, int, int]] = []
+        if int(n_cols) > 1:
+            merge_ranges.append((0, 1, 0, int(n_cols)))  # meta
+            merge_ranges.append((1, 2, 0, int(n_cols)))  # directory
+        for _t, r1 in anchors:
+            r0 = int(r1) - 1
+            if int(n_cols) > 1:
+                merge_ranges.append((int(r0), int(r0 + 1), 0, int(n_cols)))
+
+        if merge_ranges:
+            reqs_merge: list[dict[str, Any]] = [{"unmergeCells": {"range": {"sheetId": int(sh_id)}}}]
+            for r0, r1, c0, c1 in merge_ranges:
+                if r0 < 0 or r1 <= r0 or c0 < 0 or c1 <= c0:
+                    continue
+                reqs_merge.append(
+                    {
+                        "mergeCells": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": int(c0),
+                                "endColumnIndex": int(c1),
+                            },
+                            "mergeType": "MERGE_ALL",
+                        }
+                    }
+                )
+            try:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(spreadsheetId=self._spreadsheet_id, body={"requests": reqs_merge}),
+                    is_write=True,
+                )
+            except Exception:
+                pass
+
+        # -------------------- styles --------------------
+        style_version = "polymarket_report_v1"
+        key_style_version = f"pmtab.{tab_title}.style_version"
+        key_style_rows = f"pmtab.{tab_title}.style_rows"
+        key_style_cols = f"pmtab.{tab_title}.style_cols"
+        try:
+            styled_rows = int(str(meta.get(key_style_rows) or "0").strip() or "0")
+        except Exception:
+            styled_rows = 0
+        try:
+            styled_cols = int(str(meta.get(key_style_cols) or "0").strip() or "0")
+        except Exception:
+            styled_cols = 0
+        need_style = (meta.get(key_style_version) or "") != style_version or styled_rows != int(n_rows) or styled_cols != int(n_cols)
+        if need_style:
+            def _clamp(v: int, lo: int, hi: int) -> int:
+                return max(int(lo), min(int(v), int(hi)))
+
+            def _approx_px_from_text_len(n: int) -> int:
+                return int(20 + int(n) * 7)
+
+            min_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MIN", "56") or "56").strip() or "56")
+            max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MAX", "420") or "420").strip() or "420")
+            widths_by_col: list[int] = []
+            for ci in range(0, int(n_cols)):
+                max_len = 0
+                for ri in range(0, min(int(n_rows), 600)):
+                    s = ""
+                    try:
+                        s = str(out[ri][ci] if ci < len(out[ri]) else "")
+                    except Exception:
+                        s = ""
+                    if not s or s.startswith("http"):
+                        continue
+                    max_len = max(max_len, len(s))
+                widths_by_col.append(_clamp(_approx_px_from_text_len(max_len), min_px, max_px))
+
+            reqs: list[dict[str, Any]] = []
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {"sheetId": int(sh_id), "startRowIndex": 0, "endRowIndex": int(n_rows), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(1.0, 1.0, 1.0),
+                                "textFormat": {"fontFamily": "Arial", "fontSize": 10},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            for ci, px in enumerate(widths_by_col):
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(ci), "endIndex": int(ci + 1)},
+                            "properties": {"pixelSize": int(px)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+            reqs.append(
+                {
+                    "updateSheetProperties": {
+                        "properties": {
+                            "sheetId": int(sh_id),
+                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0, "hideGridlines": True},
+                        },
+                        "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.hideGridlines",
+                    }
+                }
+            )
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {"sheetId": int(sh_id), "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                        "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.93, 0.94, 0.96), "textFormat": {"bold": True}, "horizontalAlignment": "LEFT", "wrapStrategy": "OVERFLOW_CELL"}},
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": {"sheetId": int(sh_id), "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                        "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.97, 0.98, 1.0), "textFormat": {"bold": True}, "horizontalAlignment": "LEFT", "wrapStrategy": "OVERFLOW_CELL"}},
+                        "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+
+            title_bg = _rgb(0.12, 0.16, 0.23)
+            title_fg = _rgb(1.0, 1.0, 1.0)
+            header_bg = _rgb(0.93, 0.94, 0.96)
+            for _t, r1 in anchors:
+                r0 = int(r1) - 1
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0), "endRowIndex": int(r0 + 1), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                            "cell": {"userEnteredFormat": {"backgroundColor": title_bg, "textFormat": {"bold": True, "foregroundColor": title_fg}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0 + 1), "endRowIndex": int(r0 + 2), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                            "cell": {"userEnteredFormat": {"backgroundColor": header_bg, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
+            self._exec(self._sheets.spreadsheets().batchUpdate(spreadsheetId=self._spreadsheet_id, body={"requests": reqs}), is_write=True)
+            self._meta_set({key_style_version: style_version, key_style_rows: str(n_rows), key_style_cols: str(n_cols)})
+
+        # compact grid：让“无数据区域”在 UI 中消失
+        compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
+        if compact_grid:
+            self._set_sheet_grid_properties(tab_title, row_count=int(n_rows), col_count=int(n_cols), frozen_row_count=2, frozen_column_count=0)
+
+        # directory richtext links (A2)
+        try:
+            label = "目录（点击跳转）"
+            parts = [label]
+            runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+            pos = len(label)
+            for title_plain, r1 in anchors:
+                sep = "，"
+                parts.append(sep)
+                pos += len(sep)
+                start = int(pos)
+                parts.append(title_plain)
+                pos += len(title_plain)
+                end = int(pos)
+                url = f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit#gid={int(sh_id)}&range=A{int(r1)}"
+                runs.append({"startIndex": int(start), "format": {"link": {"uri": str(url)}, "foregroundColor": _rgb(0.1, 0.4, 0.8), "underline": True}})
+                runs.append({"startIndex": int(end), "format": {}})
+            dir_text = "".join(parts)
+            text_len = len(dir_text)
+            while runs and int(runs[-1].get("startIndex", 0) or 0) >= int(text_len):
+                runs.pop()
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateCells": {
+                                    "range": {"sheetId": int(sh_id), "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": 1},
+                                    "rows": [{"values": [{"userEnteredValue": {"stringValue": str(dir_text)}, "textFormatRuns": runs}]}],
+                                    "fields": "userEnteredValue,textFormatRuns",
+                                }
+                            }
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
+
+        # hyperlinks: apply formulas (diff)
+        def _escape_formula_str(s: str) -> str:
+            return str(s or "").replace('"', '""').replace("\n", " ").replace("\r", " ")
+
+        data_updates: list[dict[str, Any]] = []
+        for rr0, cc0, url, label in hyperlink_cells:
+            if not url or not str(url).startswith("http"):
+                continue
+            cell = f"{tab_title}!{_index_to_col(int(cc0) + 1)}{int(rr0 + 1)}"
+            formula = f'=HYPERLINK("{_escape_formula_str(url)}","{_escape_formula_str(label)}")'
+            data_updates.append({"range": cell, "values": [[formula]]})
+        if data_updates:
+            try:
+                print(f"[DEBUG] pmtab.report_hyperlinks_prepare tab={tab_title} count={len(data_updates)}")
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={"valueInputOption": "USER_ENTERED", "data": data_updates},
+                    ),
+                    is_write=True,
+                )
+            except Exception:
+                pass
+
+        self._meta_set({key_rows: str(n_rows), key_cols: str(n_cols)})
+        return {"ok": True, "tab": tab_title, "rows": int(n_rows), "cols": int(n_cols)}
 
     def write_symbol_txt_tab(self, *, tab_title: str, text: str) -> dict[str, Any]:
         raise RuntimeError("币种查询子表已升级为真表格：请改用 write_symbol_query_tab(tab_title=..., sheet=...)")
