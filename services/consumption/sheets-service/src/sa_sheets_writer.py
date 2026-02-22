@@ -2584,6 +2584,54 @@ class SaSheetsWriter:
                 rr.pop()
             return rr
 
+        def _is_blank_cell(x: Any) -> bool:
+            if x is None:
+                return True
+            if isinstance(x, str):
+                s = x.strip()
+                return (not s) or (s == "-")
+            return False
+
+        def _drop_fully_empty_columns(headers: list[list[Any]], rows: list[list[Any]]) -> tuple[list[list[Any]], list[list[Any]]]:
+            """
+            去掉“整列都是空”的分隔列（常见于 exporter 为了视觉分组插入的空列）。
+            - 仅当：所有 header 行该列为空，且所有数据行该列为空，才会删除该列
+            """
+            if not headers:
+                return headers, rows
+            n_cols0 = max((len(h) for h in headers), default=0)
+            n_cols0 = max(int(n_cols0), max((len(r) for r in rows), default=0))
+            if n_cols0 <= 0:
+                return headers, rows
+
+            keep: list[int] = []
+            for ci in range(0, int(n_cols0)):
+                hdr_blank = True
+                for h in headers:
+                    v = h[ci] if ci < len(h) else ""
+                    if not _is_blank_cell(v):
+                        hdr_blank = False
+                        break
+                if not hdr_blank:
+                    keep.append(int(ci))
+                    continue
+
+                data_blank = True
+                for r in rows:
+                    v = r[ci] if ci < len(r) else ""
+                    if not _is_blank_cell(v):
+                        data_blank = False
+                        break
+                if not data_blank:
+                    keep.append(int(ci))
+
+            if len(keep) == int(n_cols0):
+                return headers, rows
+
+            headers2 = [[(h[ci] if ci < len(h) else "") for ci in keep] for h in headers]
+            rows2 = [[(r[ci] if ci < len(r) else "") for ci in keep] for r in rows]
+            return headers2, rows2
+
         title_idx = sorted({int(r) - 1 for r in panel_title_rows if int(r) >= 2})
         header_idx_set = {int(r) - 1 for r in panel_header_rows if int(r) >= 2}
 
@@ -3910,6 +3958,15 @@ class SaSheetsWriter:
             if h0 is None or h0 >= len(values):
                 continue
 
+            # 允许“多行表头”（例如：分组表头 + 列名表头），只取连续的 header 行
+            header_rows_idx = [int(h0)]
+            if int(h0) in header_idx_set:
+                cur = int(h0) + 1
+                while int(cur) < int(t1) and int(cur) in header_idx_set:
+                    header_rows_idx.append(int(cur))
+                    cur += 1
+            data_start = int(header_rows_idx[-1]) + 1
+
             title = ""
             try:
                 title = str((values[t0] or [""])[0] or "").strip()
@@ -3917,9 +3974,11 @@ class SaSheetsWriter:
                 title = ""
             title = normalize_title(title)
 
-            header = trim_row([str(x) for x in (values[h0] or [])])
+            headers_raw: list[list[Any]] = []
+            for hi in header_rows_idx:
+                headers_raw.append(trim_row([str(x) for x in (values[int(hi)] or [])]))
             rows: list[list[Any]] = []
-            for rr in values[h0 + 1 : t1]:
+            for rr in values[int(data_start) : t1]:
                 if not isinstance(rr, list):
                     continue
                 row_trim = trim_row(list(rr))
@@ -3927,16 +3986,21 @@ class SaSheetsWriter:
                     continue
                 rows.append(row_trim)
 
-            n_sec_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
-            header2 = header[:n_sec_cols] + [""] * max(0, n_sec_cols - len(header))
-            rows2 = [r[:n_sec_cols] + [""] * max(0, n_sec_cols - len(r)) for r in rows]
+            n_sec_cols = max(max((len(h) for h in headers_raw), default=0), max((len(r) for r in rows), default=0), 1)
+            headers2 = [h[:n_sec_cols] + [""] * max(0, int(n_sec_cols) - len(h)) for h in headers_raw]
+            rows2 = [r[:n_sec_cols] + [""] * max(0, int(n_sec_cols) - len(r)) for r in rows]
+
+            # 去掉“整列空白”的分隔列（减少空列/间隙，不影响数据字段）
+            headers2, rows2 = _drop_fully_empty_columns(headers2, rows2)
+            header_last = list(headers2[-1] if headers2 else [])
 
             sections.append(
                 {
                     "title_plain": strip_leading_emoji(title or "未命名分段") or "未命名分段",
-                    "header": header2,
+                    "headers": headers2,
+                    "header": header_last,
                     "rows": rows2,
-                    "n_cols": int(n_sec_cols),
+                    "n_cols": int(max(len(header_last), max((len(r) for r in rows2), default=0), 1)),
                 }
             )
 
@@ -4214,16 +4278,21 @@ class SaSheetsWriter:
         out.append([meta_text])
         out.append(["目录（点击跳转）"])
 
-        anchors: list[tuple[str, int]] = []  # (title, row1-based)
+        anchors: list[tuple[str, int, int]] = []  # (title, row1-based, header_rows_count)
         hyperlink_cells: list[tuple[int, int, str, str]] = []  # (abs_row0, abs_col0, url, label)
         extra_merge_ranges: list[tuple[int, int, int, int]] = []  # (r0,r1,c0,c1) end exclusive
 
         for sec in sections:
             title_plain = str(sec.get("title_plain") or "").strip() or "-"
             title_row0 = len(out)
-            anchors.append((title_plain, int(title_row0 + 1)))
+            headers = sec.get("headers")
+            if not isinstance(headers, list) or not headers:
+                headers = [list(sec.get("header") or [])]
+            hdr_n = max(int(len(headers)), 1)
+            anchors.append((title_plain, int(title_row0 + 1), int(hdr_n)))
             out.append([title_plain])
-            out.append([str(x) for x in (sec.get("header") or [])])
+            for hr in headers:
+                out.append([str(x) for x in (hr or [])])
             data_start_row0 = len(out)
             sec_rows = list(sec.get("rows") or [])
             for r in sec_rows:
@@ -4334,7 +4403,7 @@ class SaSheetsWriter:
         if int(n_cols) > 1:
             merge_ranges.append((0, 1, 0, int(n_cols)))  # meta
             merge_ranges.append((1, 2, 0, int(n_cols)))  # directory
-        for _t, r1 in anchors:
+        for _t, r1, _hn in anchors:
             r0 = int(r1) - 1
             if int(n_cols) > 1:
                 merge_ranges.append((int(r0), int(r0 + 1), 0, int(n_cols)))
@@ -4465,7 +4534,7 @@ class SaSheetsWriter:
             title_bg = _rgb(0.12, 0.16, 0.23)
             title_fg = _rgb(1.0, 1.0, 1.0)
             header_bg = _rgb(0.93, 0.94, 0.96)
-            for _t, r1 in anchors:
+            for _t, r1, hn in anchors:
                 r0 = int(r1) - 1
                 reqs.append(
                     {
@@ -4476,10 +4545,11 @@ class SaSheetsWriter:
                         }
                     }
                 )
+                hn = max(int(hn), 1)
                 reqs.append(
                     {
                         "repeatCell": {
-                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0 + 1), "endRowIndex": int(r0 + 2), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0 + 1), "endRowIndex": int(r0 + 1 + hn), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
                             "cell": {"userEnteredFormat": {"backgroundColor": header_bg, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
                             "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
                         }
@@ -4502,7 +4572,7 @@ class SaSheetsWriter:
             parts = [label]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
             pos = int(idx_len(label))
-            for title_plain, r1 in anchors:
+            for title_plain, r1, _hn in anchors:
                 sep = "，"
                 parts.append(sep)
                 pos += int(idx_len(sep))
