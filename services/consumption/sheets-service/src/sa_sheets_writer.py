@@ -51,6 +51,15 @@ def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _utf16_len(text: str) -> int:
+    """
+    Google Sheets RichText 的 TextFormatRun.startIndex 以 UTF-16 code units 计数：
+    - ASCII/中文：1 个字符=1
+    - emoji/部分扩展字符：1 个“可见字符”可能是 2（代理对）
+    """
+    return len(str(text or "").encode("utf-16-le")) // 2
+
+
 _NUM_SUFFIX = {
     "K": 1_000.0,
     "M": 1_000_000.0,
@@ -994,8 +1003,8 @@ class SaSheetsWriter:
         if 0 <= int(directory_row_0) < int(n_rows) and panel_blocks:
             try:
                 def idx_len(s: str) -> int:
-                    # Sheets API startIndex 使用字符索引计数
-                    return len(str(s))
+                    # Sheets API startIndex 使用 UTF-16 code units（emoji 会占 2）
+                    return _utf16_len(str(s))
 
                 # 读取 exporter 写入的“元信息基底”，把目录条目拼到后面
                 base = ""
@@ -2020,7 +2029,7 @@ class SaSheetsWriter:
         if panel_title_rows and values and isinstance(values[0], list) and values[0]:
             try:
                 def idx_len(s: str) -> int:
-                    return len(str(s))
+                    return _utf16_len(str(s))
 
                 def strip_leading_emoji(s: str) -> str:
                     return re.sub(r"^[^0-9A-Za-z\u4e00-\u9fff]+\s*", "", str(s or "")).strip()
@@ -3709,7 +3718,7 @@ class SaSheetsWriter:
         # -------------------- directory richtext links (A2) --------------------
         try:
             def idx_len(s: str) -> int:
-                return len(str(s))
+                return _utf16_len(str(s))
 
             label = "目录（点击跳转）"
             parts = [label]
@@ -5832,9 +5841,8 @@ class SaSheetsWriter:
             col_l0 = int(col_l_idx) - 1
 
             def idx_len(s: str) -> int:
-                # Sheets API 的 startIndex 以“字符索引”计数（按 Python 的 Unicode 字符长度即可）。
-                # 之前按 UTF-16 code units 计数会导致 startIndex 超界（400）。
-                return len(str(s))
+                # Sheets API 的 startIndex 使用 UTF-16 code units（emoji 会占 2）。
+                return _utf16_len(str(s))
 
             def strip_leading_emoji(s: str) -> str:
                 # 仅用于“目录/元信息”行：去掉前缀图标/emoji（含不可见变体选择符/空白）
