@@ -7830,6 +7830,13 @@ class SaSheetsWriter:
         keep_polymarket = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_STATS", "1") or "1").strip() != "0"
         if keep_polymarket:
             keep.add(self._tab_polymarket_stats)
+            # Polymarket统计拆分为 3 个阅读表时，也必须保留拆分后的子表，
+            # 否则 minimal schema 每轮 prune 会把它们删掉，导致用户“看不到子表”。
+            split_enabled = (os.environ.get("SHEETS_POLYMARKET_STATS_SPLIT", "1") or "1").strip() != "0"
+            if split_enabled:
+                keep.add(_env_text("SHEETS_TAB_POLYMARKET_TOP15", "PolymarketTop15"))
+                keep.add(_env_text("SHEETS_TAB_POLYMARKET_TIMESLOT", "Polymarket时段分布"))
+                keep.add(_env_text("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好"))
 
         # 外部数据旁路：Polymarket facts 事件子表（默认保留）
         keep_polymarket_events = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_EVENTS", "1") or "1").strip() != "0"
