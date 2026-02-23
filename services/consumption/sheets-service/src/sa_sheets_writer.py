@@ -4456,19 +4456,32 @@ class SaSheetsWriter:
         extra_merge_ranges: list[tuple[int, int, int, int]] = []  # (r0,r1,c0,c1) end exclusive
         panel_value_ranges: list[tuple[int, int]] = []  # (r0,r1) for column A data blocks (end exclusive)
 
+        # 某些“附加统计小表”不需要重复表头（会造成视觉噪声与行号浪费）。
+        # 用户要求：Polymarket类别偏好 删除第 10、14 行（对应：买卖比例/聪明钱操作类型 的表头行）。
+        # 这里通过“跳过该两段的分段表头”实现：保留数据行，但不再插入额外表头行。
+        tab_category = _env_text("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好")
+        drop_section_headers = set()
+        if str(tab_title).strip() == str(tab_category).strip():
+            drop_section_headers = {"买卖比例", "聪明钱操作类型"}
+
         for sec in sections:
             title_plain = str(sec.get("title_plain") or "").strip() or "-"
             headers = sec.get("headers")
             if not isinstance(headers, list) or not headers:
                 headers = [list(sec.get("header") or [])]
-            hdr_n = max(int(len(headers)), 1)
-            header_row0 = len(out)
-            anchors.append((title_plain, int(header_row0 + 1), int(hdr_n)))
+            emit_headers = title_plain not in drop_section_headers
 
-            # 表头：新增第一列“面板”
-            for hi, hr in enumerate(headers):
-                prefix = panel_col_name if hi == int(len(headers)) - 1 else ""
-                out.append([prefix] + [str(x) for x in (hr or [])])
+            # anchor：目录跳转目标
+            anchor_row0 = len(out)
+            hdr_n = int(len(headers)) if emit_headers else 0
+            anchors.append((title_plain, int(anchor_row0 + 1), int(hdr_n)))
+
+            # 分段表头（可选）：新增第一列“面板”
+            if emit_headers:
+                for hi, hr in enumerate(headers):
+                    prefix = panel_col_name if hi == int(len(headers)) - 1 else ""
+                    out.append([prefix] + [str(x) for x in (hr or [])])
+
             data_start_row0 = len(out)
             sec_rows = list(sec.get("rows") or [])
             for r in sec_rows:
@@ -4619,7 +4632,7 @@ class SaSheetsWriter:
                 pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_report_v3"
+        style_version = "polymarket_report_v4"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -4716,18 +4729,32 @@ class SaSheetsWriter:
             header_bg = _rgb(0.93, 0.94, 0.96)
             for _t, r1, hn in anchors:
                 r0 = int(r1) - 1
-                hn = max(int(hn), 1)
-                reqs.append(
-                    {
-                        "repeatCell": {
-                            # 结构调整：不再写“分区标题行”，改为新增第一列“面板”承载分区名。
-                            # 因此 anchor 行本身就是表头起始行，直接对 hn 行表头做样式。
-                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0), "endRowIndex": int(r0 + hn), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
-                            "cell": {"userEnteredFormat": {"backgroundColor": header_bg, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
-                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
+                hn = int(hn)
+                if hn > 0:
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                # 结构调整：不再写“分区标题行”，改为新增第一列“面板”承载分区名。
+                                # 因此 anchor 行本身就是表头起始行，直接对 hn 行表头做样式。
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": int(r0),
+                                    "endRowIndex": int(r0 + hn),
+                                    "startColumnIndex": 0,
+                                    "endColumnIndex": int(n_cols),
+                                },
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "backgroundColor": header_bg,
+                                        "textFormat": {"bold": True},
+                                        "horizontalAlignment": "CENTER",
+                                        "wrapStrategy": "CLIP",
+                                    }
+                                },
+                                "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
+                            }
                         }
-                    }
-                )
+                    )
 
             # 面板列（A）：同一面板的合并块居中加粗（既像“行组标题”，又不牺牲筛选能力）
             for r0, r1 in panel_value_ranges:
