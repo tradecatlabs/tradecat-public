@@ -4815,17 +4815,29 @@ class SaSheetsWriter:
                             "cell": {
                                 "userEnteredFormat": {
                                     "verticalAlignment": "MIDDLE",
+                                    "horizontalAlignment": "CENTER",
                                     "textFormat": {"bold": True},
                                     "wrapStrategy": "CLIP",
                                 }
                             },
-                            "fields": "userEnteredFormat(verticalAlignment,textFormat.bold,wrapStrategy)",
+                            "fields": "userEnteredFormat(verticalAlignment,horizontalAlignment,textFormat.bold,wrapStrategy)",
                         }
                     }
                 )
 
             # 用户要求：这 3 个 Polymarket 表的数据全部右对齐（不影响元信息/目录/表头行）
             # - 仅对数据块范围生效，避免把“表头行”改成右对齐
+            # - 同时：A 列“面板”属于列表头/分段标签，应居中；因此右对齐从 B 列开始。
+            pm_has_panel_col = False
+            try:
+                for ri in range(0, min(int(n_rows), 16)):
+                    row = out[ri] if 0 <= ri < len(out) else []
+                    if row and str(row[0] or "").strip() == "面板":
+                        pm_has_panel_col = True
+                        break
+            except Exception:
+                pm_has_panel_col = False
+            data_c0 = 1 if pm_has_panel_col else 0
             for r0, r1 in data_value_ranges:
                 if int(r1) <= int(r0):
                     continue
@@ -4836,7 +4848,7 @@ class SaSheetsWriter:
                                 "sheetId": int(sh_id),
                                 "startRowIndex": int(r0),
                                 "endRowIndex": int(r1),
-                                "startColumnIndex": 0,
+                                "startColumnIndex": int(data_c0),
                                 "endColumnIndex": int(n_cols),
                             },
                             "cell": {
