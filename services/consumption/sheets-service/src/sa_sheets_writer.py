@@ -4450,32 +4450,37 @@ class SaSheetsWriter:
         out.append([meta_text])
         out.append(["目录（点击跳转）"])
 
-        anchors: list[tuple[str, int, int]] = []  # (title, row1-based, header_rows_count)
+        panel_col_name = "面板"
+        anchors: list[tuple[str, int, int]] = []  # (panel_title, header_row1-based, header_rows_count)
         hyperlink_cells: list[tuple[int, int, str, str]] = []  # (abs_row0, abs_col0, url, label)
         extra_merge_ranges: list[tuple[int, int, int, int]] = []  # (r0,r1,c0,c1) end exclusive
 
         for sec in sections:
             title_plain = str(sec.get("title_plain") or "").strip() or "-"
-            title_row0 = len(out)
             headers = sec.get("headers")
             if not isinstance(headers, list) or not headers:
                 headers = [list(sec.get("header") or [])]
             hdr_n = max(int(len(headers)), 1)
-            anchors.append((title_plain, int(title_row0 + 1), int(hdr_n)))
-            out.append([title_plain])
-            for hr in headers:
-                out.append([str(x) for x in (hr or [])])
+            header_row0 = len(out)
+            anchors.append((title_plain, int(header_row0 + 1), int(hdr_n)))
+
+            # 表头：新增第一列“面板”
+            for hi, hr in enumerate(headers):
+                prefix = panel_col_name if hi == int(len(headers)) - 1 else ""
+                out.append([prefix] + [str(x) for x in (hr or [])])
             data_start_row0 = len(out)
             sec_rows = list(sec.get("rows") or [])
             for r in sec_rows:
-                out.append(list(r))
+                # 数据行：第一列填入“面板”值（原来整行分区标题）
+                out.append([title_plain] + list(r))
             # hyperlinks: relative to data rows
             for li in (sec.get("hyperlinks") or []):
                 try:
                     ri, ci, url, label = li
                 except Exception:
                     continue
-                hyperlink_cells.append((int(data_start_row0 + int(ri)), int(ci), str(url), str(label)))
+                # 由于新增了“面板”列，超链接列索引整体右移 +1
+                hyperlink_cells.append((int(data_start_row0 + int(ri)), int(ci) + 1, str(url), str(label)))
 
             # Top 15：合并“类型”列的连续块（提升可读性；不影响数据内容/超链接）
             merge_type_col = (
@@ -4498,13 +4503,14 @@ class SaSheetsWriter:
                         if int(i) - int(cur_s) >= 2:
                             r0 = int(data_start_row0 + int(cur_s))
                             r1 = int(data_start_row0 + int(i))
-                            extra_merge_ranges.append((int(r0), int(r1), 0, 1))
+                            # 新增了“面板”列，因此“类型”列变为第 2 列（B）
+                            extra_merge_ranges.append((int(r0), int(r1), 1, 2))
                         cur = v
                         cur_s = int(i)
                 if cur is not None and int(len(sec_rows)) - int(cur_s) >= 2:
                     r0 = int(data_start_row0 + int(cur_s))
                     r1 = int(data_start_row0 + int(len(sec_rows)))
-                    extra_merge_ranges.append((int(r0), int(r1), 0, 1))
+                    extra_merge_ranges.append((int(r0), int(r1), 1, 2))
 
         # normalize to rect
         n_rows = len(out)
@@ -4609,7 +4615,7 @@ class SaSheetsWriter:
                 pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_report_v1"
+        style_version = "polymarket_report_v2"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -4703,25 +4709,16 @@ class SaSheetsWriter:
                 }
             )
 
-            title_bg = _rgb(0.12, 0.16, 0.23)
-            title_fg = _rgb(1.0, 1.0, 1.0)
             header_bg = _rgb(0.93, 0.94, 0.96)
             for _t, r1, hn in anchors:
                 r0 = int(r1) - 1
-                reqs.append(
-                    {
-                        "repeatCell": {
-                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0), "endRowIndex": int(r0 + 1), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
-                            "cell": {"userEnteredFormat": {"backgroundColor": title_bg, "textFormat": {"bold": True, "foregroundColor": title_fg}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
-                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,textFormat.foregroundColor,horizontalAlignment,wrapStrategy)",
-                        }
-                    }
-                )
                 hn = max(int(hn), 1)
                 reqs.append(
                     {
                         "repeatCell": {
-                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0 + 1), "endRowIndex": int(r0 + 1 + hn), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
+                            # 结构调整：不再写“分区标题行”，改为新增第一列“面板”承载分区名。
+                            # 因此 anchor 行本身就是表头起始行，直接对 hn 行表头做样式。
+                            "range": {"sheetId": int(sh_id), "startRowIndex": int(r0), "endRowIndex": int(r0 + hn), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
                             "cell": {"userEnteredFormat": {"backgroundColor": header_bg, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
                             "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
                         }
