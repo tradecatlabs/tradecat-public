@@ -194,6 +194,32 @@ def _hidden_periods() -> set[str]:
     return {s.strip() for s in raw.split(",") if s.strip()}
 
 
+def _empty_cell_placeholder() -> str:
+    """
+    空行/无数据单元格的“斜线占位符”。
+
+    说明（Google Sheets 约束）：
+    - Sheets API 不支持 Excel 那种“对角线边框”，因此用字符占位最稳（RAW 写入、跨客户端一致）。
+
+    - env: `SHEETS_EMPTY_PLACEHOLDER`
+      - 默认：`／`（全角斜线）
+      - 禁用：`0|off|none`
+    """
+    raw = (os.environ.get("SHEETS_EMPTY_PLACEHOLDER", "／") or "／").strip()
+    if raw.lower() in {"0", "off", "none"}:
+        return ""
+    return raw or "／"
+
+
+def _is_no_data_cell(v: Any) -> bool:
+    if _is_blank_cell(v):
+        return True
+    if isinstance(v, str):
+        s = v.strip().lower()
+        return s in {"n/a", "na"}
+    return False
+
+
 def _dashboard_v5_frozen_cols() -> int:
     # v5 主表列：卡片/币种/字段/周期...；默认冻结前三列（卡片+币种+字段）
     try:
@@ -1309,6 +1335,40 @@ class SaSheetsWriter:
             if end_0_excl > start_0:
                 panel_blocks.append((int(start_0), int(end_0_excl), str(title)))
 
+        # -------------------- empty placeholder（斜线占位） --------------------
+        # 仅对“数据区”的周期列生效：避免污染面板标题行/表头/元信息行。
+        # - 目的：把空值/无数据用 `／`（或配置值）占位，视觉上更紧凑，也更容易辨识缺失。
+        placeholder = _empty_cell_placeholder()
+        if placeholder:
+            try:
+                header_row = values[int(header_row_0)] if 0 <= int(header_row_0) < len(values) else []
+                period_set = set(PERIODS_DEFAULT)
+                period_cols: list[int] = []
+                if isinstance(header_row, list):
+                    for ci, cell in enumerate(header_row):
+                        if str(cell).strip() in period_set:
+                            period_cols.append(int(ci))
+
+                skip_rows = {int(directory_row_0), int(header_row_0)}
+                skip_rows.update(int(r) for r in (panel_title_rows or []))
+                skip_rows.update(int(r) for r in (panel_header_rows or []))
+
+                data_r0 = int(header_row_0) + 1
+                for ri in range(int(data_r0), int(n_rows)):
+                    if int(ri) in skip_rows:
+                        continue
+                    row = values[int(ri)]
+                    if not isinstance(row, list):
+                        continue
+                    for ci in period_cols:
+                        if not (0 <= int(ci) < len(row)):
+                            continue
+                        v = row[int(ci)]
+                        if _is_no_data_cell(v):
+                            row[int(ci)] = placeholder
+            except Exception:
+                pass
+
         # 顶部一行（元信息+目录）：
         # - 若开启冻结列，Google Sheets 不允许“冻结分割线切开 merged cell”，否则 updateSheetProperties 会 400，
         #   导致 frozenColumnCount 无法生效（用户看到“没有冻结条”）。
@@ -1447,10 +1507,12 @@ class SaSheetsWriter:
 
         # -------------------- style --------------------
         # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
-        style_version = "symbol_table_v11"
+        style_version = "symbol_table_v12"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
+        key_style_placeholder = f"symtab.{tab_title}.style_placeholder"
+        placeholder = _empty_cell_placeholder()
         try:
             styled_rows = int(str(meta.get(key_style_rows) or "0").strip() or "0")
         except Exception:
@@ -1466,6 +1528,7 @@ class SaSheetsWriter:
         target_cols = int(max(n_cols, styled_cols, 6))
         need_style = (
             (meta.get(key_style_version) or "") != style_version
+            or (meta.get(key_style_placeholder) or "") != placeholder
             or target_rows > styled_rows
             or target_cols != styled_cols
         )
@@ -1942,6 +2005,40 @@ class SaSheetsWriter:
                     }
                 )
 
+            # 空值占位符（斜线）样式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
+            if placeholder and int(target_cols) > 3:
+                start_r0 = int(header_row_0) + 1
+                if start_r0 < int(target_rows):
+                    reqs.append(
+                        {
+                            "addConditionalFormatRule": {
+                                "rule": {
+                                    "ranges": [
+                                        {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": int(start_r0),
+                                            "endRowIndex": int(target_rows),
+                                            "startColumnIndex": 3,
+                                            "endColumnIndex": int(target_cols),
+                                        }
+                                    ],
+                                    "booleanRule": {
+                                        "condition": {
+                                            "type": "TEXT_EQ",
+                                            "values": [{"userEnteredValue": str(placeholder)}],
+                                        },
+                                        "format": {
+                                            "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
+                                            "horizontalAlignment": "CENTER",
+                                            "verticalAlignment": "MIDDLE",
+                                        },
+                                    },
+                                },
+                                "index": 0,
+                            }
+                        }
+                    )
+
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
@@ -1954,6 +2051,7 @@ class SaSheetsWriter:
                     key_style_version: style_version,
                     key_style_rows: str(target_rows),
                     key_style_cols: str(target_cols),
+                    key_style_placeholder: placeholder,
                 }
             )
 
@@ -7316,6 +7414,8 @@ class SaSheetsWriter:
         max_y_used = 1
         used_end_row_1 = 1
         dir_entries: list[tuple[str, int]] = []  # (title, body_start_row_1)
+        placeholder = _empty_cell_placeholder()
+        period_set = set(PERIODS_DEFAULT)
 
         for p in render_payloads:
             header = p.get("header") or {}
@@ -7347,7 +7447,10 @@ class SaSheetsWriter:
                         line.append(title_display if row_idx == 0 else "")
                         continue
                     v = r.get(c)
-                    line.append("" if v is None else str(v))
+                    if placeholder and (str(c).strip() in period_set) and _is_no_data_cell(v):
+                        line.append(placeholder)
+                    else:
+                        line.append("" if v is None else str(v))
                 body_vals.append(pad_row(line))
 
             if body_vals:
@@ -7510,11 +7613,13 @@ class SaSheetsWriter:
         # -------------------- 差量样式（只扩不重刷） --------------------
         # 目标：避免每轮对大范围做重复 repeatCell（尤其是长表），减少耗时与配额压力。
         meta = self._meta_get()
-        style_version = "dashboard_v5_style_v7"
+        style_version = "dashboard_v5_style_v8"
         key_style_version = "dashboard_v5_style_version"
         key_styled_rows = "dashboard_v5_styled_rows"
         key_dir_rows = "dashboard_v5_dir_rows"
         key_banner_rows = "dashboard_v5_banner_rows"
+        key_style_placeholder = "dashboard_v5_style_placeholder"
+        placeholder_text = _empty_cell_placeholder()
         try:
             prev_styled_rows = int(str(meta.get(key_styled_rows) or "0").strip() or "0")
         except Exception:
@@ -7530,10 +7635,43 @@ class SaSheetsWriter:
 
         full_style = (
             (meta.get(key_style_version) or "") != style_version
+            or (meta.get(key_style_placeholder) or "") != placeholder_text
             or int(prev_dir_rows) != int(dir_rows)
             or int(prev_banner_rows) != int(banner_rows)
             or prev_styled_rows <= 0
         )
+
+        # 清除旧 conditional formatting（避免历史规则残留/占位符变更后不生效）
+        if full_style:
+            try:
+                ss = self._exec(
+                    self._sheets.spreadsheets().get(
+                        spreadsheetId=self._spreadsheet_id,
+                        fields="sheets(properties(sheetId,title),conditionalFormats)",
+                    ),
+                    is_write=False,
+                )
+                cond_cnt = 0
+                for sh in ss.get("sheets", []):
+                    props = sh.get("properties") or {}
+                    if int(props.get("sheetId") or 0) != int(sh_id):
+                        continue
+                    cond = sh.get("conditionalFormats") or []
+                    cond_cnt = len(cond)
+                    break
+                if cond_cnt > 0:
+                    reqs_del = [
+                        {"deleteConditionalFormatRule": {"sheetId": int(sh_id), "index": 0}} for _ in range(cond_cnt)
+                    ]
+                    self._exec(
+                        self._sheets.spreadsheets().batchUpdate(
+                            spreadsheetId=self._spreadsheet_id,
+                            body={"requests": reqs_del},
+                        ),
+                        is_write=True,
+                    )
+            except Exception:
+                pass
 
         # freeze rows：目录 + 1 行表头；列：A..C（卡片/币种/字段）
         try:
@@ -7762,6 +7900,41 @@ class SaSheetsWriter:
                             ),
                             "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "wrapStrategy": "CLIP"}},
                             "fields": "userEnteredFormat(horizontalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
+        # 空值占位符（斜线）样式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
+        if full_style and placeholder_text and (col_l0 + 3) < int(col_r1):
+            start_r0 = int(body_start_row_1) - 1
+            end_r1 = int(used_rows)
+            if start_r0 < end_r1:
+                reqs.append(
+                    {
+                        "addConditionalFormatRule": {
+                            "rule": {
+                                "ranges": [
+                                    {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": int(start_r0),
+                                        "endRowIndex": int(end_r1),
+                                        "startColumnIndex": int(col_l0 + 3),
+                                        "endColumnIndex": int(col_r1),
+                                    }
+                                ],
+                                "booleanRule": {
+                                    "condition": {
+                                        "type": "TEXT_EQ",
+                                        "values": [{"userEnteredValue": str(placeholder_text)}],
+                                    },
+                                    "format": {
+                                        "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
+                                        "horizontalAlignment": "CENTER",
+                                        "verticalAlignment": "MIDDLE",
+                                    },
+                                },
+                            },
+                            "index": 0,
                         }
                     }
                 )
@@ -7996,6 +8169,7 @@ class SaSheetsWriter:
                 self._meta_set(
                     {
                         key_style_version: style_version,
+                        key_style_placeholder: placeholder_text,
                         key_styled_rows: str(int(used_end_row_1)),
                         key_dir_rows: str(int(dir_rows)),
                         key_banner_rows: str(int(banner_rows)),
