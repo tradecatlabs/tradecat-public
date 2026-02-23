@@ -51,6 +51,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="SA 模式：仅生成看板变体（不重绘主看板；用于避免写入配额压力）",
     )
+    p.add_argument(
+        "--snapshot-polymarket-col-widths",
+        action="store_true",
+        help="SA 模式：读取 Polymarket 三表当前列宽并输出 env 配置行（只读，不写入）",
+    )
     p.add_argument("--rebuild-max-cards", type=int, default=200, help="重建：只取最后 N 张卡片（默认 200）")
     p.add_argument("--cards", default="", help="逗号分隔 card_id 白名单；空=全部")
     p.add_argument("--lang", default="", help="导出语言（默认 zh_CN）")
@@ -684,6 +689,39 @@ def main() -> None:
         except Exception as exc:
             print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
             sys.exit(3)
+
+    if args.snapshot_polymarket_col_widths:
+        if settings.write_mode != "sa":
+            print("❌ --snapshot-polymarket-col-widths 仅支持 SA 模式：设置 SHEETS_WRITE_MODE=sa 或 --write-mode sa")
+            sys.exit(2)
+        writer = SaSheetsWriter(
+            spreadsheet_id=settings.spreadsheet_id,
+            credentials_path=settings.sa_credentials_path,
+            dashboard_col_l=settings.dashboard_col_l,
+            dashboard_col_r=settings.dashboard_col_r,
+            dashboard_mode=settings.dashboard_mode,
+            dashboard_slot_height=settings.dashboard_slot_height,
+            facts_mode=settings.facts_mode,
+            share_email=settings.share_email,
+            public_read=settings.public_read,
+            drive_folder_id=settings.drive_folder_id,
+            blob_threshold_chars=settings.blob_threshold_chars,
+            timeout_seconds=settings.webhook_timeout_seconds,
+            schema_mode=settings.schema_mode,
+            local_meta_path=settings.local_meta_path,
+        )
+        tab_top15 = (os.environ.get("SHEETS_TAB_POLYMARKET_TOP15", "PolymarketTop15") or "PolymarketTop15").strip()
+        tab_timeslot = (os.environ.get("SHEETS_TAB_POLYMARKET_TIMESLOT", "Polymarket时段分布") or "Polymarket时段分布").strip()
+        tab_category = (os.environ.get("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好") or "Polymarket类别偏好").strip()
+
+        w_top15 = writer.snapshot_column_widths(tab_top15)
+        w_timeslot = writer.snapshot_column_widths(tab_timeslot)
+        w_category = writer.snapshot_column_widths(tab_category)
+
+        print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15={','.join(str(x) for x in w_top15)}")
+        print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TIMESLOT={','.join(str(x) for x in w_timeslot)}")
+        print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_CATEGORY={','.join(str(x) for x in w_category)}")
+        sys.exit(0)
 
     if args.dry_run:
         settings = replace(settings, dry_run=True)

@@ -142,6 +142,45 @@ def _env_text(key: str, default: str) -> str:
     return v or default
 
 
+def _env_int_list(key: str) -> list[int]:
+    """
+    读取环境变量里的整数列表。
+    - 支持：逗号 `,` / 中文逗号 `，` 分隔
+    - 支持：JSON 列表（例如 `[80,120,60]`）
+    - 空/解析失败：返回空 list
+    """
+    raw = (os.environ.get(key, "") or "").strip()
+    if not raw:
+        return []
+
+    try:
+        if raw.startswith("[") and raw.endswith("]"):
+            v = json.loads(raw)
+            if isinstance(v, list):
+                out: list[int] = []
+                for x in v:
+                    try:
+                        out.append(int(x))
+                    except Exception:
+                        continue
+                return out
+    except Exception:
+        # fallthrough to split parsing
+        pass
+
+    raw = raw.replace("，", ",")
+    out2: list[int] = []
+    for part in raw.split(","):
+        s = (part or "").strip()
+        if not s:
+            continue
+        try:
+            out2.append(int(s))
+        except Exception:
+            continue
+    return out2
+
+
 def _hidden_periods() -> set[str]:
     """
     需要在 Google Sheets 里“移除（删除列）”的周期列（仅展示层，不影响数据生成）。
@@ -4846,7 +4885,35 @@ class SaSheetsWriter:
             except Exception:
                 panel_max_px = 160
 
+            # 固化列宽（优先级最高）：用于“你手工在表格里调好列宽后，希望后续刷新不再覆盖”。
+            # - 仅对 3 个 Polymarket 拆分报表生效
+            tab_top15 = _env_text("SHEETS_TAB_POLYMARKET_TOP15", "PolymarketTop15")
+            tab_timeslot = _env_text("SHEETS_TAB_POLYMARKET_TIMESLOT", "Polymarket时段分布")
+            tab_category = _env_text("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好")
+            fixed_key = ""
+            if tab_title == tab_top15:
+                fixed_key = "SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15"
+            elif tab_title == tab_timeslot:
+                fixed_key = "SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TIMESLOT"
+            elif tab_title == tab_category:
+                fixed_key = "SHEETS_POLYMARKET_FIXED_COL_WIDTHS_CATEGORY"
+
+            fixed_widths = _env_int_list(fixed_key) if fixed_key else []
             widths: list[int] = []
+            if fixed_widths:
+                for x in fixed_widths:
+                    try:
+                        v = int(x)
+                    except Exception:
+                        continue
+                    if v <= 0:
+                        continue
+                    widths.append(max(v, 20))
+                if widths and len(widths) < int(n_cols):
+                    widths.extend([int(widths[-1])] * (int(n_cols) - len(widths)))
+                if widths and len(widths) > int(n_cols):
+                    widths = widths[: int(n_cols)]
+
             scan_rows = min(int(n_rows), 600)
             # 跳过前两行（元信息/目录）：它们通常是超长文本，会把 A 列撑到 max_px，导致数据区难读。
             scan_r0 = 2 if int(scan_rows) > 2 else 0
@@ -4862,68 +4929,69 @@ class SaSheetsWriter:
             except Exception:
                 has_panel_col = False
 
-            panel_px = None
-            if has_panel_col:
-                # 仅看“面板列”真实值（跳过表头），估计一个合理列宽
-                panel_max_len = 0
-                for ri in range(int(scan_r0), int(scan_rows)):
-                    row = out[ri] if 0 <= ri < len(out) else []
-                    if not row:
-                        continue
-                    s = str(row[0] or "").strip()
-                    if not s or s == "面板":
-                        continue
-                    # 合并后的“空白占位”也跳过（有些行可能在后续 merge 后显示为空）
-                    if s in {"-", "—"}:
-                        continue
-                    panel_max_len = max(int(panel_max_len), min(len(s), 48))
-                if int(panel_max_len) > 0:
-                    # 关键：只看“面板列字段值”的最长长度。
-                    # 面板列通常是短标签：用更激进的压缩系数（6px/字符）提升信息密度。
-                    px = int(16 + int(panel_max_len) * 6)
-                    panel_px = _clamp(int(px), int(panel_min_px), int(panel_max_px))
-            for ci in range(0, int(n_cols)):
-                max_len = 0
-                has_link_header = False
-                has_name_header = False
-                has_rank_header = False
-                has_hour_header = False
-                for ri in range(int(scan_r0), int(scan_rows)):
-                    s = ""
-                    try:
-                        s = str(out[ri][ci] if ci < len(out[ri]) else "")
-                    except Exception:
+            if not widths:
+                panel_px = None
+                if has_panel_col:
+                    # 仅看“面板列”真实值（跳过表头），估计一个合理列宽
+                    panel_max_len = 0
+                    for ri in range(int(scan_r0), int(scan_rows)):
+                        row = out[ri] if 0 <= ri < len(out) else []
+                        if not row:
+                            continue
+                        s = str(row[0] or "").strip()
+                        if not s or s == "面板":
+                            continue
+                        # 合并后的“空白占位”也跳过（有些行可能在后续 merge 后显示为空）
+                        if s in {"-", "—"}:
+                            continue
+                        panel_max_len = max(int(panel_max_len), min(len(s), 48))
+                    if int(panel_max_len) > 0:
+                        # 关键：只看“面板列字段值”的最长长度。
+                        # 面板列通常是短标签：用更激进的压缩系数（6px/字符）提升信息密度。
+                        px = int(16 + int(panel_max_len) * 6)
+                        panel_px = _clamp(int(px), int(panel_min_px), int(panel_max_px))
+                for ci in range(0, int(n_cols)):
+                    max_len = 0
+                    has_link_header = False
+                    has_name_header = False
+                    has_rank_header = False
+                    has_hour_header = False
+                    for ri in range(int(scan_r0), int(scan_rows)):
                         s = ""
-                    s = str(s or "").strip()
-                    if not s:
-                        continue
-                    if s in {"链接", "link", "url", "URL"} or ("链接" in s):
-                        has_link_header = True
-                    if s in {"市场名称", "市场", "market", "question", "名称"}:
-                        has_name_header = True
-                    if s == "排名":
-                        has_rank_header = True
-                    if s in {"小时", "hour", "Hour"}:
-                        has_hour_header = True
-                    if _is_url(s):
-                        continue
-                    max_len = max(max_len, min(len(s), 60))
+                        try:
+                            s = str(out[ri][ci] if ci < len(out[ri]) else "")
+                        except Exception:
+                            s = ""
+                        s = str(s or "").strip()
+                        if not s:
+                            continue
+                        if s in {"链接", "link", "url", "URL"} or ("链接" in s):
+                            has_link_header = True
+                        if s in {"市场名称", "市场", "market", "question", "名称"}:
+                            has_name_header = True
+                        if s == "排名":
+                            has_rank_header = True
+                        if s in {"小时", "hour", "Hour"}:
+                            has_hour_header = True
+                        if _is_url(s):
+                            continue
+                        max_len = max(max_len, min(len(s), 60))
 
-                if has_panel_col and int(ci) == 0:
-                    px = (
-                        int(panel_px)
-                        if panel_px is not None
-                        else _clamp(_approx_px_from_text_len(8), int(panel_min_px), int(panel_max_px))
-                    )
-                elif has_link_header:
-                    px = int(w_link)
-                elif has_rank_header or has_hour_header:
-                    px = int(w_key)
-                elif has_name_header:
-                    px = _approx_px_from_text_len(max(max_len, 18))
-                else:
-                    px = _approx_px_from_text_len(max(max_len, 6))
-                widths.append(_clamp(int(px), int(min_px), int(max_px)))
+                    if has_panel_col and int(ci) == 0:
+                        px = (
+                            int(panel_px)
+                            if panel_px is not None
+                            else _clamp(_approx_px_from_text_len(8), int(panel_min_px), int(panel_max_px))
+                        )
+                    elif has_link_header:
+                        px = int(w_link)
+                    elif has_rank_header or has_hour_header:
+                        px = int(w_key)
+                    elif has_name_header:
+                        px = _approx_px_from_text_len(max(max_len, 18))
+                    else:
+                        px = _approx_px_from_text_len(max(max_len, 6))
+                    widths.append(_clamp(int(px), int(min_px), int(max_px)))
 
             if widths:
                 reqs_w = []
@@ -7720,6 +7788,63 @@ class SaSheetsWriter:
             grid[title] = (rc, cc)
         self._sheet_id_by_title = out
         self._grid_by_title = grid
+
+    def snapshot_column_widths(self, title: str, *, n_cols: int | None = None, max_cols: int = 120) -> list[int]:
+        """
+        读取指定 tab 的列宽（pixelSize），用于“人工在 UI 调整好后固化为配置”。
+
+        - 只读：不会写入任何数据/样式
+        - 默认读取当前 sheet 的 gridProperties.columnCount（若 compact grid 生效，列数会很小）
+        """
+        self._refresh_sheet_map()
+        if title not in self._sheet_id_by_title:
+            raise RuntimeError(f"missing_sheet:{title}")
+
+        _rc, cc = self._grid_by_title.get(title, (0, 0))
+        if n_cols is None:
+            n_cols = int(cc or 0)
+        n_cols = max(int(n_cols or 0), 1)
+        n_cols = min(int(n_cols), max(int(max_cols), 1))
+
+        col_r = _index_to_col(int(n_cols))
+        ss = self._exec(
+            self._sheets.spreadsheets().get(
+                spreadsheetId=self._spreadsheet_id,
+                ranges=[f"{title}!A1:{col_r}1"],
+                includeGridData=True,
+                fields="sheets(properties(title),data(columnMetadata(pixelSize)))",
+            ),
+            is_write=False,
+        )
+
+        # 可能返回多个 sheet（理论上 ranges 已限定）；这里仍按 title 精确匹配
+        target = None
+        for sh in ss.get("sheets", []) or []:
+            props = sh.get("properties") or {}
+            if str(props.get("title") or "").strip() == str(title).strip():
+                target = sh
+                break
+        if target is None and (ss.get("sheets") or []):
+            target = (ss.get("sheets") or [])[0]
+        if target is None:
+            raise RuntimeError(f"missing_sheet_data:{title}")
+
+        md = ((target.get("data") or [{}])[0] or {}).get("columnMetadata") or []
+        out: list[int] = []
+        for i in range(0, int(n_cols)):
+            px = None
+            try:
+                px = (md[i] or {}).get("pixelSize")
+            except Exception:
+                px = None
+            if px is None:
+                out.append(100)
+            else:
+                try:
+                    out.append(int(px))
+                except Exception:
+                    out.append(100)
+        return out
 
     def _ensure_grid_size(self, title: str, *, min_rows: int, min_cols: int) -> None:
         if min_rows <= 0 and min_cols <= 0:
