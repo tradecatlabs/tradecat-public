@@ -4802,9 +4802,16 @@ class SaSheetsWriter:
             max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MAX", "420") or "420").strip() or "420")
             w_link = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_LINK", "40") or "40").strip() or "40")
             w_key = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_KEY", "72") or "72").strip() or "72")
-            # 新增“面板”列后，A 列应更窄；同时避免被第 1/2 行超长元信息撑爆。
-            # 默认更窄：A 列仅承载“面板”短标签，不应抢占横向空间
-            w_panel = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL", "96") or "96").strip() or "96")
+            # 新增“面板”列后，A 列应按“面板值长度”自适应（而不是被第 1/2 行超长元信息撑爆）。
+            # - 仍保留 env 可覆盖上下限，避免极端面板名导致列宽失控
+            try:
+                panel_min_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MIN", "72") or "72").strip() or "72")
+            except Exception:
+                panel_min_px = 72
+            try:
+                panel_max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MAX", "180") or "180").strip() or "180")
+            except Exception:
+                panel_max_px = 180
 
             widths: list[int] = []
             scan_rows = min(int(n_rows), 600)
@@ -4821,6 +4828,24 @@ class SaSheetsWriter:
                         break
             except Exception:
                 has_panel_col = False
+
+            panel_px = None
+            if has_panel_col:
+                # 仅看“面板列”真实值（跳过表头），估计一个合理列宽
+                panel_max_len = 0
+                for ri in range(int(scan_r0), int(scan_rows)):
+                    row = out[ri] if 0 <= ri < len(out) else []
+                    if not row:
+                        continue
+                    s = str(row[0] or "").strip()
+                    if not s or s == "面板":
+                        continue
+                    # 合并后的“空白占位”也跳过（有些行可能在后续 merge 后显示为空）
+                    if s in {"-", "—"}:
+                        continue
+                    panel_max_len = max(int(panel_max_len), min(len(s), 32))
+                if int(panel_max_len) > 0:
+                    panel_px = _clamp(_approx_px_from_text_len(max(int(panel_max_len), 6)), int(panel_min_px), int(panel_max_px))
             for ci in range(0, int(n_cols)):
                 max_len = 0
                 has_link_header = False
@@ -4849,7 +4874,7 @@ class SaSheetsWriter:
                     max_len = max(max_len, min(len(s), 60))
 
                 if has_panel_col and int(ci) == 0:
-                    px = int(w_panel)
+                    px = int(panel_px) if panel_px is not None else _clamp(_approx_px_from_text_len(10), int(panel_min_px), int(panel_max_px))
                 elif has_link_header:
                     px = int(w_link)
                 elif has_rank_header or has_hour_header:
