@@ -7235,6 +7235,16 @@ class SaSheetsWriter:
                     }
                 }
             )
+            # banner 行：保持冻结列（A..C）的前提下，Sheets 不允许真 merge A..I。
+            # 这里用“内竖线边框涂色”为背景色，视觉上等价于合并单元格（内部网格线消失）。
+            reqs.append(
+                {
+                    "updateBorders": {
+                        "range": rrange(r0=0, r1=1, c0=col_l0, c1=col_r1),
+                        "innerVertical": {"style": "SOLID", "width": 1, "color": _rgb(1.0, 0.97, 0.86)},
+                    }
+                }
+            )
 
         # 目录区样式（始终覆盖，避免旧格式残留）
         if int(dir_rows) > 0:
