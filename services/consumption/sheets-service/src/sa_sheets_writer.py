@@ -4803,7 +4803,8 @@ class SaSheetsWriter:
             w_link = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_LINK", "40") or "40").strip() or "40")
             w_key = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_KEY", "72") or "72").strip() or "72")
             # 新增“面板”列后，A 列应更窄；同时避免被第 1/2 行超长元信息撑爆。
-            w_panel = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL", "160") or "160").strip() or "160")
+            # 默认更窄：A 列仅承载“面板”短标签，不应抢占横向空间
+            w_panel = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL", "96") or "96").strip() or "96")
 
             widths: list[int] = []
             scan_rows = min(int(n_rows), 600)
