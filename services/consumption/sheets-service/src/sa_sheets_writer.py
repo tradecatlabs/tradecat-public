@@ -1207,8 +1207,10 @@ class SaSheetsWriter:
         except Exception:
             styled_cols = 0
 
-        target_rows = int(max(n_rows, styled_rows, 800))
-        target_cols = int(max(n_cols, 9))
+        # 样式覆盖范围：只保证不小于“当前数据行列”与“历史样式范围”，不再强制扩到 800 行。
+        # 底部/右侧空白会在 compact grid 阶段被裁剪掉。
+        target_rows = int(max(n_rows, styled_rows, 1))
+        target_cols = int(max(n_cols, styled_cols, 6))
         need_style = (
             (meta.get(key_style_version) or "") != style_version
             or target_rows > styled_rows
@@ -1920,8 +1922,8 @@ class SaSheetsWriter:
                 cur_rows, cur_cols = 0, 0
 
             # 收缩列数 + 行数：币种查询子表是“完全托管展示面”，允许把底部/右侧空白网格彻底裁剪掉。
-            want_rows = int(target_rows)
-            want_cols = int(target_cols)
+            want_rows = int(n_rows)
+            want_cols = int(n_cols)
             if int(cur_cols or 0) != int(want_cols) or int(cur_rows or 0) != int(want_rows):
                 self._set_sheet_grid_properties(
                     tab_title,
@@ -4698,6 +4700,27 @@ class SaSheetsWriter:
         # compact grid：让“无数据区域”在 UI 中消失
         if compact_grid:
             self._set_sheet_grid_properties(tab_title, row_count=int(n_rows), col_count=int(n_cols), frozen_row_count=2, frozen_column_count=0)
+
+        # gridlines：强制不隐藏（历史版本可能设置为隐藏；这里确保后续写入不会“又变成纯底色”）
+        try:
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {"sheetId": int(sh_id), "gridProperties": {"hideGridlines": False}},
+                                    "fields": "gridProperties.hideGridlines",
+                                }
+                            }
+                        ]
+                    },
+                ),
+                is_write=True,
+            )
+        except Exception:
+            pass
 
         # directory richtext links (A2)
         try:
