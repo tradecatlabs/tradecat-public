@@ -39,6 +39,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--bootstrap-title", default="TradeCat TG Cards Dashboard", help="SA 模式：新建工作簿标题")
     p.add_argument("--reset-dashboard", action="store_true", help="SA 模式：清空看板并重置 y 指针/列区间")
     p.add_argument("--rebuild-dashboard", action="store_true", help="SA 模式：从事实表重建看板（可能较慢）")
+    p.add_argument("--delete-tab", default="", help="SA 模式：删除指定 tab（精确匹配 title）")
     p.add_argument(
         "--prune-tabs",
         action="store_true",
@@ -447,7 +448,8 @@ async def _run_once(
                 )
 
         # Polymarket facts 事件子表：结构化事实（append-only 的长期源头）抽取为“最近 24h”可审计视图
-        pme_enable = (os.environ.get("SHEETS_POLYMARKET_FACTS_EVENTS_ENABLE", "1") or "1").strip().lower()
+        # 默认关闭：这是高频明细表，会造成表格负担与额外噪声；需要时再显式开启。
+        pme_enable = (os.environ.get("SHEETS_POLYMARKET_FACTS_EVENTS_ENABLE", "0") or "0").strip().lower()
         if pme_enable not in {"0", "off", "false", "no"}:
             now = int(time.time())
             meta = sa_writer.meta_get()
@@ -612,6 +614,35 @@ def main() -> None:
             )
         )
         sys.exit(0)
+
+    if args.delete_tab.strip():
+        if settings.write_mode != "sa":
+            print("❌ --delete-tab 仅支持 SA 模式：设置 SHEETS_WRITE_MODE=sa 或 --write-mode sa")
+            sys.exit(2)
+        writer = SaSheetsWriter(
+            spreadsheet_id=settings.spreadsheet_id,
+            credentials_path=settings.sa_credentials_path,
+            dashboard_col_l=settings.dashboard_col_l,
+            dashboard_col_r=settings.dashboard_col_r,
+            dashboard_mode=settings.dashboard_mode,
+            dashboard_slot_height=settings.dashboard_slot_height,
+            facts_mode=settings.facts_mode,
+            share_email=settings.share_email,
+            public_read=settings.public_read,
+            drive_folder_id=settings.drive_folder_id,
+            blob_threshold_chars=settings.blob_threshold_chars,
+            timeout_seconds=settings.webhook_timeout_seconds,
+            schema_mode=settings.schema_mode,
+            local_meta_path=settings.local_meta_path,
+        )
+        try:
+            title = args.delete_tab.strip()
+            res = writer.delete_tab_if_exists(title=title)
+            print(json.dumps({"ok": True, "op": "delete_tab", **res}, ensure_ascii=False))
+            sys.exit(0)
+        except Exception as exc:
+            print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False))
+            sys.exit(3)
 
     if args.reset_dashboard or args.rebuild_dashboard or args.prune_tabs:
         if settings.write_mode != "sa":

@@ -7838,8 +7838,9 @@ class SaSheetsWriter:
                 keep.add(_env_text("SHEETS_TAB_POLYMARKET_TIMESLOT", "Polymarket时段分布"))
                 keep.add(_env_text("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好"))
 
-        # 外部数据旁路：Polymarket facts 事件子表（默认保留）
-        keep_polymarket_events = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_EVENTS", "1") or "1").strip() != "0"
+        # 外部数据旁路：Polymarket facts 事件子表（默认不保留）
+        # 说明：该表是高频明细/审计视图，默认不进入“最少交互”的看板集合；需要时显式开启保留。
+        keep_polymarket_events = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_EVENTS", "0") or "0").strip() != "0"
         if keep_polymarket_events:
             keep.add(self._tab_polymarket_events)
 
@@ -7879,6 +7880,42 @@ class SaSheetsWriter:
         )
         self._refresh_sheet_map()
         return {"deleted": len(delete_ids), "kept": sorted(keep)}
+
+    def delete_tab_if_exists(self, *, title: str) -> dict[str, Any]:
+        """
+        精确删除一个 tab（按 title 精确匹配）。
+
+        设计目的：
+        - 避免用户只想删一个 tab，却不得不执行 prune_tabs 导致其他 tab 也被删除。
+        - 用于运维“即时清理”：例如删除 Polymarket事件（高频明细）后不再重建。
+        """
+        t = (title or "").strip()
+        if not t:
+            raise RuntimeError("missing_title")
+
+        # 防呆：禁止误删核心 tab
+        if t in {
+            self._tab_dashboard,
+            self._tab_dashboard_data,
+            self._tab_dashboard_history,
+            self._tab_dashboard_meta,
+        }:
+            raise RuntimeError(f"refuse_delete_core_tab:{t}")
+
+        self._refresh_sheet_map()
+        sid = self._sheet_id_by_title.get(t)
+        if sid is None:
+            return {"deleted": 0, "title": t}
+
+        self._exec(
+            self._sheets.spreadsheets().batchUpdate(
+                spreadsheetId=self._spreadsheet_id,
+                body={"requests": [{"deleteSheet": {"sheetId": int(sid)}}]},
+            ),
+            is_write=True,
+        )
+        self._refresh_sheet_map()
+        return {"deleted": 1, "title": t}
 
     def _dashboard_insert_rows(self, *, y: int, reserved_height: int, delta: int, meta: dict[str, str]) -> None:
         """
