@@ -1919,8 +1919,8 @@ class SaSheetsWriter:
             except Exception:
                 cur_rows, cur_cols = 0, 0
 
-            # 只收缩列数；行数只保证不小于 target_rows（避免后续样式/写入越界）。
-            want_rows = max(int(cur_rows or 0), int(target_rows))
+            # 收缩列数 + 行数：币种查询子表是“完全托管展示面”，允许把底部/右侧空白网格彻底裁剪掉。
+            want_rows = int(target_rows)
             want_cols = int(target_cols)
             if int(cur_cols or 0) != int(want_cols) or int(cur_rows or 0) != int(want_rows):
                 self._set_sheet_grid_properties(
@@ -3589,11 +3589,11 @@ class SaSheetsWriter:
                 }
             )
 
-            # hide gridlines（更像 BI 看板）
+            # gridlines：默认不隐藏（保持 Google Sheets 默认网格线展示）
             reqs.append(
                 {
                     "updateSheetProperties": {
-                        "properties": {"sheetId": int(sh_id), "gridProperties": {"hideGridlines": True}},
+                        "properties": {"sheetId": int(sh_id), "gridProperties": {"hideGridlines": False}},
                         "fields": "gridProperties.hideGridlines",
                     }
                 }
@@ -4642,7 +4642,7 @@ class SaSheetsWriter:
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0, "hideGridlines": True},
+                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0, "hideGridlines": False},
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.hideGridlines",
                     }
@@ -5499,6 +5499,7 @@ class SaSheetsWriter:
                     sheet_title=title,
                     col_l=col_l,
                     col_r=col_r,
+                    export_ts_utc=_now_utc_iso(),
                 )
                 results["variants"].append({"sheet": title, "mode": mode, "col_r": col_r, "cards": len(transformed)})
                 continue
@@ -5618,6 +5619,10 @@ class SaSheetsWriter:
             prev_used_rows = int(str(meta.get("dashboard_v5_used_rows") or "0").strip() or "0")
         except Exception:
             prev_used_rows = 0
+        try:
+            prev_used_cols = int(str(meta.get("dashboard_v5_used_cols") or "0").strip() or "0")
+        except Exception:
+            prev_used_cols = 0
 
         frozen_cols = _dashboard_v5_frozen_cols()
         export_ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -5643,10 +5648,12 @@ class SaSheetsWriter:
                 raise RuntimeError("missing_dashboard_sheet")
 
             cur_rows, cur_cols = self._grid_by_title.get(self._tab_dashboard, (0, 0))
-            want_rows = max(int(cur_rows or 0), 2000)
-            # v5 主看板是“完全托管展示面”：默认允许收缩列数，保持“右侧无单元格”的紧凑体验。
-            want_cols = int(_col_to_index(col_r))
-            unmerge_end_rows = max(int(prev_used_rows or 0), 2000)
+            # v5 主看板是“完全托管展示面”：允许裁剪 row/col。
+            # 这里避免每轮扩到 2000 行/BS 列导致空白网格复活；只按“上次使用区域”作为容量基线，
+            # 实际写入需要的更大尺寸会在 _write_v5_field_rows_period_columns_sheet 内部按需扩容。
+            want_rows = max(int(cur_rows or 0), int(prev_used_rows or 0), 50)
+            want_cols = max(int(cur_cols or 0), int(prev_used_cols or 0), int(required_cols))
+            unmerge_end_rows = max(int(prev_used_rows or 0), int(want_rows))
             unmerge_end_cols = max(int(cur_cols or 0), int(want_cols))
 
             self._exec(
@@ -5686,7 +5693,7 @@ class SaSheetsWriter:
             )
             self._refresh_sheet_map()
 
-        used_end_row_1 = self._write_v5_field_rows_period_columns_sheet(
+        used_end_row_1, used_cols = self._write_v5_field_rows_period_columns_sheet(
             payloads=payloads,
             sheet_title=self._tab_dashboard,
             col_l=col_l,
@@ -5713,8 +5720,20 @@ class SaSheetsWriter:
                 pass
 
         # 记录本轮使用区域（用于下轮“清尾巴”）
+        # v5 主看板：裁剪网格到“实际使用区域”，避免底部/右侧残留大量空白网格。
         try:
-            self._meta_set({"dashboard_v5_used_rows": str(int(used_end_row_1)), "dashboard_v5_used_cols": str(int(_col_to_index(col_r)))})
+            self._set_sheet_grid_properties(
+                self._tab_dashboard,
+                row_count=int(used_end_row_1),
+                col_count=int(used_cols),
+                frozen_row_count=1,
+                frozen_column_count=int(frozen_cols),
+            )
+        except Exception:
+            pass
+
+        try:
+            self._meta_set({"dashboard_v5_used_rows": str(int(used_end_row_1)), "dashboard_v5_used_cols": str(int(used_cols))})
         except Exception:
             pass
 
@@ -5787,7 +5806,7 @@ class SaSheetsWriter:
         n_rows = int(len(values))
         n_cols = int(len(headers))
         col_r = _index_to_col(n_cols)
-        self._ensure_grid_size(title, min_rows=max(n_rows + 50, 2000), min_cols=n_cols)
+        self._ensure_grid_size(title, min_rows=n_rows, min_cols=n_cols)
         self._exec(
             self._sheets.spreadsheets()
             .values()
@@ -5800,7 +5819,7 @@ class SaSheetsWriter:
             is_write=True,
         )
         try:
-            self._set_sheet_grid_properties(title, col_count=n_cols, frozen_row_count=1)
+            self._set_sheet_grid_properties(title, row_count=n_rows, col_count=n_cols, frozen_row_count=1)
         except Exception:
             pass
 
@@ -5922,7 +5941,7 @@ class SaSheetsWriter:
         col_r = _index_to_col(n_cols)
 
         # 确保网格足够大（避免 update 越界），然后覆盖写
-        self._ensure_grid_size(title, min_rows=max(n_rows + 50, 2000), min_cols=n_cols)
+        self._ensure_grid_size(title, min_rows=n_rows, min_cols=n_cols)
         self._exec(
             self._sheets.spreadsheets()
             .values()
@@ -5975,7 +5994,7 @@ class SaSheetsWriter:
 
         # 版式：压缩 grid + 冻结 header
         try:
-            self._set_sheet_grid_properties(title, row_count=max(n_rows + 50, 2000), col_count=n_cols, frozen_row_count=1)
+            self._set_sheet_grid_properties(title, row_count=n_rows, col_count=n_cols, frozen_row_count=1)
         except Exception:
             pass
 
@@ -6168,7 +6187,7 @@ class SaSheetsWriter:
                     next_row = max(int(next_row) - int(extra), 2)
 
         end_row = int(next_row) + int(len(rows_out)) - 1
-        self._ensure_grid_size(title, min_rows=max(end_row + 50, 2000), min_cols=n_cols)
+        self._ensure_grid_size(title, min_rows=end_row, min_cols=n_cols)
         self._exec(
             self._sheets.spreadsheets()
             .values()
@@ -6181,7 +6200,7 @@ class SaSheetsWriter:
             is_write=True,
         )
         try:
-            self._set_sheet_grid_properties(title, col_count=n_cols, frozen_row_count=1)
+            self._set_sheet_grid_properties(title, row_count=end_row, col_count=n_cols, frozen_row_count=1)
         except Exception:
             pass
 
@@ -6201,7 +6220,7 @@ class SaSheetsWriter:
         col_r: str,
         export_ts_utc: str,
         clear_tail_rows_to: int = 0,
-    ) -> int:
+    ) -> tuple[int, int]:
         """
         v5 专用渲染：
         - 全局表头只写 1 次：`币种 | 字段 | 1m..1w`，并冻结 top header（frozenRowCount=1）
@@ -6337,7 +6356,9 @@ class SaSheetsWriter:
                 y = int(y) + 1
             used_end_row_1 = max(int(used_end_row_1), int(y) - 1)
 
-        self._ensure_grid_size(sheet_title, min_rows=max(int(max_y_used) + 50, 2000), min_cols=_col_to_index(col_r_eff))
+        used_cols = int(_col_to_index(col_r_eff))
+        used_rows = max(int(used_end_row_1), int(header_row_1))
+        self._ensure_grid_size(sheet_title, min_rows=int(used_rows), min_cols=int(used_cols))
         self._exec(
             self._sheets.spreadsheets()
             .values()
@@ -6850,7 +6871,20 @@ class SaSheetsWriter:
                 )
             except Exception:
                 pass
-        return int(used_end_row_1)
+        # compact grid：主看板/看板变体均为“完全托管展示面”，允许裁剪底部/右侧空白网格。
+        try:
+            frozen_cols = _dashboard_v5_frozen_cols()
+            self._set_sheet_grid_properties(
+                sheet_title,
+                row_count=int(used_rows),
+                col_count=int(used_cols),
+                frozen_row_count=1,
+                frozen_column_count=int(frozen_cols),
+            )
+        except Exception:
+            pass
+
+        return int(used_rows), int(used_cols)
 
     def _merge_symbol_column_groups_on_sheet(
         self,
