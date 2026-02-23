@@ -4581,10 +4581,8 @@ class SaSheetsWriter:
         if int(n_cols) > 1:
             merge_ranges.append((0, 1, 0, int(n_cols)))  # meta
             merge_ranges.append((1, 2, 0, int(n_cols)))  # directory
-        for _t, r1, _hn in anchors:
-            r0 = int(r1) - 1
-            if int(n_cols) > 1:
-                merge_ranges.append((int(r0), int(r0 + 1), 0, int(n_cols)))
+        # 结构调整：不再存在“分区标题行整行合并”，改为新增第一列“面板”承载分区名。
+        # 因此 anchors 行是“表头行”，严禁整行 merge（否则表头只剩第一个单元格可见）。
         merge_ranges.extend(extra_merge_ranges)
 
         if merge_ranges:
