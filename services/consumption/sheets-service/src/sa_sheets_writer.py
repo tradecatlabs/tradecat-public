@@ -862,7 +862,10 @@ class SaSheetsWriter:
             target_cols = max(_col_to_index(col_r_u), 1)
         except Exception:
             target_cols = 26
-        target_rows = 2000 if compact else max(int(self._grid_by_title.get(title, (2000, 0))[0] or 2000), 1)
+        cur_rows, cur_cols = self._grid_by_title.get(title, (1000, 26))
+        clear_rows = max(int(cur_rows or 0), 1)
+        clear_cols = max(int(cur_cols or 0), int(target_cols), 1)
+        self._ensure_grid_size(title, min_rows=int(clear_rows), min_cols=int(clear_cols))
         self._exec(
             self._sheets.spreadsheets().batchUpdate(
                 spreadsheetId=self._spreadsheet_id,
@@ -873,9 +876,9 @@ class SaSheetsWriter:
                                 "range": {
                                     "sheetId": int(sh_id),
                                     "startRowIndex": 0,
-                                    "endRowIndex": int(target_rows),
+                                    "endRowIndex": int(clear_rows),
                                     "startColumnIndex": 0,
-                                    "endColumnIndex": int(target_cols),
+                                    "endColumnIndex": int(clear_cols),
                                 },
                                 "cell": {"userEnteredFormat": {}},
                                 "fields": "userEnteredFormat",
@@ -888,8 +891,8 @@ class SaSheetsWriter:
         )
 
         if compact:
-            target_rows = 2000
-            target_cols = max(_col_to_index(col_r_u), 1)
+            target_rows = max(int(frozen_row_count) + 1, 2)
+            target_cols = max(int(_col_to_index(col_r_u)), int(frozen_column_count), 1)
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
@@ -904,9 +907,10 @@ class SaSheetsWriter:
                                             "columnCount": int(target_cols),
                                             "frozenRowCount": int(frozen_row_count),
                                             "frozenColumnCount": int(frozen_column_count),
+                                            "hideGridlines": False,
                                         },
                                     },
-                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
+                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.hideGridlines",
                                 }
                             }
                         ]
@@ -7115,7 +7119,7 @@ class SaSheetsWriter:
                 self._refresh_sheet_map()
                 sh_id = self._sheet_id_by_title[self._tab_dashboard]
 
-            target_rows = 2000
+            target_rows = 2
             target_cols = max(_col_to_index(col_r_u), 1)
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
@@ -7132,9 +7136,10 @@ class SaSheetsWriter:
                                             # 看板会大量 mergeCells（title/update/sort/hint/last 全行合并）；
                                             # Sheets 禁止跨“冻结列边界”合并，因此这里强制关闭冻结列。
                                             "frozenColumnCount": 0,
+                                            "hideGridlines": False,
                                         },
                                     },
-                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenColumnCount",
+                                    "fields": "gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenColumnCount,gridProperties.hideGridlines",
                                 }
                             }
                         ]
