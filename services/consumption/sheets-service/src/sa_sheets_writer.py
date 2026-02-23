@@ -4674,7 +4674,9 @@ class SaSheetsWriter:
                 pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_report_v5"
+        # 版式版本号：用于强制重刷样式（避免历史残留/手工拖拽后的漂移）。
+        # v6：面板列（列表头）强制居中；数据右对齐从 B 列开始（不覆盖面板列）。
+        style_version = "polymarket_report_v6"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
