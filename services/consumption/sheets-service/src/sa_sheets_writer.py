@@ -4889,7 +4889,7 @@ class SaSheetsWriter:
                 except Exception:
                     first = ""
                 if "生成 CSV 报告" in first and "滚动24小时" in first:
-                    m = re.search(r"滚动24小时:\s*([0-9\\-:\\s]{10,})~\\s*([0-9\\-:\\s]{10,})", first)
+                    m = re.search(r"滚动24小时:\s*([0-9\-:\s]{10,})~\s*([0-9\-:\s]{10,})", first)
                     if m:
                         s0 = str(m.group(1)).strip()
                         s1 = str(m.group(2)).strip()
@@ -4923,7 +4923,17 @@ class SaSheetsWriter:
             sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
 
         # -------------------- partition to 3 tabs --------------------
-        top15_set = {"大额交易 Top 15", "新市场 Top 15", "综合热门市场 Top 15", "聪明钱 Top 15"}
+        # 用户交互口径：Top15 子表默认只保留“综合热门市场 Top 15”，其余 3 组（大额/新市场/聪明钱）
+        # 会占用大量空间且阅读价值低（可通过 env 反向开启全量）。
+        top15_hot_name = "综合热门市场 Top 15"
+        top15_other_names = {"大额交易 Top 15", "新市场 Top 15", "聪明钱 Top 15"}
+        top15_hot_only = (os.environ.get("SHEETS_POLYMARKET_TOP15_HOT_ONLY", "1") or "1").strip() != "0"
+        if top15_hot_only:
+            # 彻底删除 3 组：不在 Top15 表展示，也不回收进其他子表（避免“删了又跑到别处”）。
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in top15_other_names]
+            top15_set = {top15_hot_name}
+        else:
+            top15_set = {top15_hot_name} | set(top15_other_names)
         timeslot_set = {"信号频率趋势 (环比)", "时段-类型分布", "活跃时段分布"}
         category_set = {"市场类别分布", "聪明钱偏好类别"}
 
