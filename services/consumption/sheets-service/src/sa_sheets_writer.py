@@ -330,9 +330,9 @@ def _polymarket_frozen_cols() -> int:
     - env: `SHEETS_POLYMARKET_FROZEN_COLS`
     """
     try:
-        v = int((os.environ.get("SHEETS_POLYMARKET_FROZEN_COLS", "1") or "1").strip() or "1")
+        v = int((os.environ.get("SHEETS_POLYMARKET_FROZEN_COLS", "2") or "2").strip() or "2")
     except Exception:
-        v = 1
+        v = 2
     return max(int(v), 0)
 
 
