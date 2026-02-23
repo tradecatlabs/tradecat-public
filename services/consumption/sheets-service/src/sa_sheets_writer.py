@@ -6181,37 +6181,45 @@ class SaSheetsWriter:
                 self._refresh_sheet_map()
                 sh_id = self._sheet_id_by_title.get(title)
             if sh_id is not None:
-                self._exec(
-                    self._sheets.spreadsheets().batchUpdate(
-                        spreadsheetId=self._spreadsheet_id,
-                        body={
-                            "requests": [
-                                {
-                                    "repeatCell": {
-                                        "range": {
-                                            "sheetId": int(sh_id),
-                                            "startRowIndex": 0,
-                                            "endRowIndex": 1,
-                                            "startColumnIndex": 0,
-                                            "endColumnIndex": int(n_cols),
-                                        },
-                                        "cell": {
-                                            "userEnteredFormat": {
-                                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
-                                                "textFormat": {"bold": True},
-                                                "horizontalAlignment": "CENTER",
-                                                "verticalAlignment": "MIDDLE",
-                                                "wrapStrategy": "CLIP",
-                                            }
-                                        },
-                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
-                                    }
+                req = self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": 0,
+                                        "endRowIndex": 1,
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": int(n_cols),
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                            "textFormat": {"bold": True},
+                                            "horizontalAlignment": "CENTER",
+                                            "verticalAlignment": "MIDDLE",
+                                            "wrapStrategy": "CLIP",
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
                                 }
-                            ]
-                        },
-                    ),
-                    is_write=True,
+                            }
+                        ]
+                    },
                 )
+                # repeatCell 是幂等写：允许对 5xx 做小次数重试，避免偶发 502 导致“表头样式不落地”
+                for attempt in range(0, 4):
+                    try:
+                        self._exec(req, is_write=True)
+                        break
+                    except Exception as exc:
+                        status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
+                        if status and (500 <= status <= 599) and attempt < 3:
+                            time.sleep(min(1.0 * (2**attempt), 6.0))
+                            continue
+                        break
         except Exception:
             pass
 
