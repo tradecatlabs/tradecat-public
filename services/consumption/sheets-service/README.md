@@ -59,6 +59,9 @@
 - `SHEETS_HIDE_PERIODS`：隐藏指定周期列（仅影响展示，不删除数据；默认 `1m`）
   - 示例：`SHEETS_HIDE_PERIODS=1m` / `SHEETS_HIDE_PERIODS=1m,1w`
   - 禁用：`SHEETS_HIDE_PERIODS=off`
+- 固定列宽（可选，优先级最高）：用于“你在表格 UI 手工拖拽调整好列宽后，希望后续刷新不再覆盖”
+  - `SHEETS_DASHBOARD_FIXED_COL_WIDTHS`：看板每列像素宽度列表（从 `SHEETS_DASHBOARD_COL_L` 起），逗号/中文逗号分隔；长度不足会用最后一个值补齐，超出会截断
+  - `SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS`：币种查询表每列像素宽度列表（从 A 列起），规则同上
 - `SHEETS_EXPORT_SYMBOLS_GROUPS`：导出侧覆盖 `SYMBOLS_GROUPS`（例如 `main4`），避免继承全局配置导致看板币种不全
 - `SHEETS_EXPORT_SYMBOLS_UNFILTERED`：`0/1`（`1` 表示导出侧强制关闭币种过滤，等价 `SYMBOLS_GROUPS=auto`）
   - 常见现象：如果你的全局 `config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。
@@ -88,6 +91,10 @@
 - `SHEETS_POLYMARKET_REMOTE_SERVICE_DIR` / `SHEETS_POLYMARKET_REMOTE_LOG_FILE`：ssh 模式下覆盖远端路径（可选；默认优先 `$HOME/.local/state/tradecat/polymarket.log`）
 - `SHEETS_POLYMARKET_COMPACT_GRID`：`0/1`（默认 `1`；收缩网格，让右侧无单元格）
 - `SHEETS_PRUNE_KEEP_POLYMARKET_STATS`：`0/1`（默认 `1`；`--prune-tabs` 时保留该 tab）
+- 固定列宽（可选，优先级最高）：
+  - `SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15`
+  - `SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TIMESLOT`
+  - `SHEETS_POLYMARKET_FIXED_COL_WIDTHS_CATEGORY`
 
 ### Polymarket facts（结构化事实，旁路子表，可选）
 

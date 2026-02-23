@@ -231,6 +231,34 @@ def _dashboard_v5_col_widths_px() -> tuple[int, int, int, int]:
     return max(w_card, 80), max(w_symbol, 50), max(w_field, 80), max(w_period, 60)
 
 
+def _normalize_fixed_widths(widths: list[int], *, n_cols: int) -> list[int]:
+    """
+    将“固定列宽列表”规范化到指定列数：
+    - 丢弃无效值（<=0 / 非 int）
+    - 每个宽度最小 20px（允许比默认 clamp 更窄，例如 36px）
+    - 不足列数：用最后一个宽度补齐
+    - 超出列数：截断
+    """
+    if int(n_cols) <= 0:
+        return []
+    out: list[int] = []
+    for x in widths:
+        try:
+            v = int(x)
+        except Exception:
+            continue
+        if v <= 0:
+            continue
+        out.append(max(int(v), 20))
+    if not out:
+        return []
+    if len(out) < int(n_cols):
+        out.extend([int(out[-1])] * (int(n_cols) - len(out)))
+    if len(out) > int(n_cols):
+        out = out[: int(n_cols)]
+    return out
+
+
 def _symbol_query_frozen_cols() -> int:
     # 币种查询列：面板/指标组/指标/周期...；默认冻结前三列
     try:
@@ -1351,34 +1379,55 @@ class SaSheetsWriter:
             )
 
             # widths：更紧凑（提升信息密度）
-            w_panel, w_group, w_metric, w_period = _symbol_query_col_widths_px()
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": int(w_panel)},
-                        "fields": "pixelSize",
-                    }
-                }
+            fixed_widths = _normalize_fixed_widths(
+                _env_int_list("SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS"),
+                n_cols=int(target_cols),
             )
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-                        "properties": {"pixelSize": int(w_group)},
-                        "fields": "pixelSize",
+            if fixed_widths:
+                for ci, px in enumerate(fixed_widths):
+                    reqs.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": int(ci),
+                                    "endIndex": int(ci + 1),
+                                },
+                                "properties": {"pixelSize": int(px)},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
+            else:
+                w_panel, w_group, w_metric, w_period = _symbol_query_col_widths_px()
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                            "properties": {"pixelSize": int(w_panel)},
+                            "fields": "pixelSize",
+                        }
                     }
-                }
-            )
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-                        "properties": {"pixelSize": int(w_metric)},
-                        "fields": "pixelSize",
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+                            "properties": {"pixelSize": int(w_group)},
+                            "fields": "pixelSize",
+                        }
                     }
-                }
-            )
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
+                            "properties": {"pixelSize": int(w_metric)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
 
             raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
             try:
@@ -1386,28 +1435,29 @@ class SaSheetsWriter:
             except Exception:
                 raw_block_start_col_0 = None
 
-            # columns >= C：周期列更窄；若存在 raw 镜像区，则 display/raw 区域分别设置宽度并可隐藏
-            for ci in range(3, int(target_cols)):
-                px = int(w_period)
-                if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
-                    if ci == int(raw_block_start_col_0):
-                        px = 26  # 分隔列
-                    elif int(raw_block_start_col_0) < ci < int(n_cols):
-                        px = max(int(w_period) - 6, 60)  # raw 周期列更窄
-                reqs.append(
-                    {
-                        "updateDimensionProperties": {
-                            "range": {
-                                "sheetId": int(sh_id),
-                                "dimension": "COLUMNS",
-                                "startIndex": ci,
-                                "endIndex": ci + 1,
-                            },
-                            "properties": {"pixelSize": int(px)},
-                            "fields": "pixelSize",
+            if not fixed_widths:
+                # columns >= C：周期列更窄；若存在 raw 镜像区，则 display/raw 区域分别设置宽度并可隐藏
+                for ci in range(3, int(target_cols)):
+                    px = int(w_period)
+                    if raw_block_start_col_0 is not None and 0 <= raw_block_start_col_0 < int(n_cols):
+                        if ci == int(raw_block_start_col_0):
+                            px = 26  # 分隔列
+                        elif int(raw_block_start_col_0) < ci < int(n_cols):
+                            px = max(int(w_period) - 6, 60)  # raw 周期列更窄
+                    reqs.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": ci,
+                                    "endIndex": ci + 1,
+                                },
+                                "properties": {"pixelSize": int(px)},
+                                "fields": "pixelSize",
+                            }
                         }
-                    }
-                )
+                    )
 
             # 周期列右对齐
             if target_cols > 3:
@@ -1716,112 +1766,133 @@ class SaSheetsWriter:
 
         # 列宽：每次都对齐，避免“不同币种 tab 的列宽漂移”（手动拖拽/旧版样式遗留会导致不一致）
         try:
-            w_panel, w_group, w_metric, w_period = _symbol_query_col_widths_px()
-            raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
-            try:
-                raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
-            except Exception:
-                raw_block_start_col_0 = None
-
             col_end = int(max(n_cols, 4))
             reqs_w: list[dict[str, Any]] = []
-            # A/B/C 固定宽度（层级列）
-            reqs_w.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": int(w_panel)},
-                        "fields": "pixelSize",
-                    }
-                }
+            fixed_widths = _normalize_fixed_widths(
+                _env_int_list("SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS"),
+                n_cols=int(col_end),
             )
-            reqs_w.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-                        "properties": {"pixelSize": int(w_group)},
-                        "fields": "pixelSize",
-                    }
-                }
-            )
-            reqs_w.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-                        "properties": {"pixelSize": int(w_metric)},
-                        "fields": "pixelSize",
-                    }
-                }
-            )
-
-            # 其余列统一宽度（按 raw 镜像区分段）
-            if raw_block_start_col_0 is not None and 0 <= int(raw_block_start_col_0) < int(col_end):
-                raw_sep = int(raw_block_start_col_0)
-                # display 周期列
-                if raw_sep > 3:
+            if fixed_widths:
+                for ci, px in enumerate(fixed_widths):
                     reqs_w.append(
                         {
                             "updateDimensionProperties": {
                                 "range": {
                                     "sheetId": int(sh_id),
                                     "dimension": "COLUMNS",
-                                    "startIndex": 3,
-                                    "endIndex": int(raw_sep),
+                                    "startIndex": int(ci),
+                                    "endIndex": int(ci + 1),
                                 },
-                                "properties": {"pixelSize": int(w_period)},
-                                "fields": "pixelSize",
-                            }
-                        }
-                    )
-                # 分隔列
-                reqs_w.append(
-                    {
-                        "updateDimensionProperties": {
-                            "range": {
-                                "sheetId": int(sh_id),
-                                "dimension": "COLUMNS",
-                                "startIndex": int(raw_sep),
-                                "endIndex": int(min(raw_sep + 1, col_end)),
-                            },
-                            "properties": {"pixelSize": 26},
-                            "fields": "pixelSize",
-                        }
-                    }
-                )
-                # raw 周期列
-                if col_end > raw_sep + 1:
-                    raw_w = max(int(w_period) - 8, 60)
-                    reqs_w.append(
-                        {
-                            "updateDimensionProperties": {
-                                "range": {
-                                    "sheetId": int(sh_id),
-                                    "dimension": "COLUMNS",
-                                    "startIndex": int(raw_sep + 1),
-                                    "endIndex": int(col_end),
-                                },
-                                "properties": {"pixelSize": int(raw_w)},
+                                "properties": {"pixelSize": int(px)},
                                 "fields": "pixelSize",
                             }
                         }
                     )
             else:
-                # 无 raw 区：周期列统一 w_period
-                if col_end > 3:
+                w_panel, w_group, w_metric, w_period = _symbol_query_col_widths_px()
+                raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
+                try:
+                    raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
+                except Exception:
+                    raw_block_start_col_0 = None
+
+                # A/B/C 固定宽度（层级列）
+                reqs_w.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                            "properties": {"pixelSize": int(w_panel)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                reqs_w.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+                            "properties": {"pixelSize": int(w_group)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                reqs_w.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
+                            "properties": {"pixelSize": int(w_metric)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+
+                # 其余列统一宽度（按 raw 镜像区分段）
+                if raw_block_start_col_0 is not None and 0 <= int(raw_block_start_col_0) < int(col_end):
+                    raw_sep = int(raw_block_start_col_0)
+                    # display 周期列
+                    if raw_sep > 3:
+                        reqs_w.append(
+                            {
+                                "updateDimensionProperties": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "dimension": "COLUMNS",
+                                        "startIndex": 3,
+                                        "endIndex": int(raw_sep),
+                                    },
+                                    "properties": {"pixelSize": int(w_period)},
+                                    "fields": "pixelSize",
+                                }
+                            }
+                        )
+                    # 分隔列
                     reqs_w.append(
                         {
                             "updateDimensionProperties": {
                                 "range": {
                                     "sheetId": int(sh_id),
                                     "dimension": "COLUMNS",
-                                    "startIndex": 3,
-                                    "endIndex": int(col_end),
+                                    "startIndex": int(raw_sep),
+                                    "endIndex": int(min(raw_sep + 1, col_end)),
                                 },
-                                "properties": {"pixelSize": int(w_period)},
+                                "properties": {"pixelSize": 26},
                                 "fields": "pixelSize",
                             }
                         }
                     )
+                    # raw 周期列
+                    if col_end > raw_sep + 1:
+                        raw_w = max(int(w_period) - 8, 60)
+                        reqs_w.append(
+                            {
+                                "updateDimensionProperties": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "dimension": "COLUMNS",
+                                        "startIndex": int(raw_sep + 1),
+                                        "endIndex": int(col_end),
+                                    },
+                                    "properties": {"pixelSize": int(raw_w)},
+                                    "fields": "pixelSize",
+                                }
+                            }
+                        )
+                else:
+                    # 无 raw 区：周期列统一 w_period
+                    if col_end > 3:
+                        reqs_w.append(
+                            {
+                                "updateDimensionProperties": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "dimension": "COLUMNS",
+                                        "startIndex": 3,
+                                        "endIndex": int(col_end),
+                                    },
+                                    "properties": {"pixelSize": int(w_period)},
+                                    "fields": "pixelSize",
+                                }
+                            }
+                        )
 
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
@@ -7258,45 +7329,86 @@ class SaSheetsWriter:
 
         # 列宽（美化）：A=卡片，B=币种，C=字段，D..=周期列
         try:
-            w_card, w_symbol, w_field, w_period = _dashboard_v5_col_widths_px()
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
-                        "properties": {"pixelSize": int(w_card)},
-                        "fields": "pixelSize",
-                    }
-                }
+            fixed_widths = _normalize_fixed_widths(
+                _env_int_list("SHEETS_DASHBOARD_FIXED_COL_WIDTHS"),
+                n_cols=max(int(col_r1) - int(col_l0), 0),
             )
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
-                        "properties": {"pixelSize": int(w_symbol)},
-                        "fields": "pixelSize",
-                    }
-                }
-            )
-            reqs.append(
-                {
-                    "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_l0 + 3)},
-                        "properties": {"pixelSize": int(w_field)},
-                        "fields": "pixelSize",
-                    }
-                }
-            )
-            # 周期列统一宽度
-            if int(col_r1) > int(col_l0 + 3):
+            if fixed_widths:
+                for i, px in enumerate(fixed_widths):
+                    reqs.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": int(col_l0 + i),
+                                    "endIndex": int(col_l0 + i + 1),
+                                },
+                                "properties": {"pixelSize": int(px)},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
+            else:
+                w_card, w_symbol, w_field, w_period = _dashboard_v5_col_widths_px()
                 reqs.append(
                     {
                         "updateDimensionProperties": {
-                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 3), "endIndex": int(col_r1)},
-                            "properties": {"pixelSize": int(w_period)},
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(col_l0),
+                                "endIndex": int(col_l0 + 1),
+                            },
+                            "properties": {"pixelSize": int(w_card)},
                             "fields": "pixelSize",
                         }
                     }
                 )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(col_l0 + 1),
+                                "endIndex": int(col_l0 + 2),
+                            },
+                            "properties": {"pixelSize": int(w_symbol)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "dimension": "COLUMNS",
+                                "startIndex": int(col_l0 + 2),
+                                "endIndex": int(col_l0 + 3),
+                            },
+                            "properties": {"pixelSize": int(w_field)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                # 周期列统一宽度
+                if int(col_r1) > int(col_l0 + 3):
+                    reqs.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "dimension": "COLUMNS",
+                                    "startIndex": int(col_l0 + 3),
+                                    "endIndex": int(col_r1),
+                                },
+                                "properties": {"pixelSize": int(w_period)},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
         except Exception:
             pass
 
