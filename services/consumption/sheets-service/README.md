@@ -90,6 +90,9 @@
 - `SHEETS_POLYMARKET_SSH_HOST/SHEETS_POLYMARKET_SSH_USER/SHEETS_POLYMARKET_SSH_KEY_PATH`：ssh 参数（默认复用 `SHEETS_REMOTE_DB_SSH_*`）
 - `SHEETS_POLYMARKET_REMOTE_SERVICE_DIR` / `SHEETS_POLYMARKET_REMOTE_LOG_FILE`：ssh 模式下覆盖远端路径（可选；默认优先 `$HOME/.local/state/tradecat/polymarket.log`）
 - `SHEETS_POLYMARKET_COMPACT_GRID`：`0/1`（默认 `1`；收缩网格，让右侧无单元格）
+- 冻结（阅读体验）：
+  - `SHEETS_POLYMARKET_FROZEN_COLS`：冻结左侧列数（默认 `1`，冻结“面板列”）
+  - `SHEETS_POLYMARKET_FROZEN_ROWS`：冻结顶部行数（留空=自动冻结到首个分段表头；也可显式指定整数）
 - `SHEETS_PRUNE_KEEP_POLYMARKET_STATS`：`0/1`（默认 `1`；`--prune-tabs` 时保留该 tab）
 - 固定列宽（可选，优先级最高）：
   - `SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15`

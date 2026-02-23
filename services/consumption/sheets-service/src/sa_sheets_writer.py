@@ -324,6 +324,50 @@ def _polymarket_col_widths_px(*, n_cols: int) -> list[int]:
     return out
 
 
+def _polymarket_frozen_cols() -> int:
+    """
+    Polymarket 统计子表“冻结列”数量（默认冻结第 1 列：面板列）。
+    - env: `SHEETS_POLYMARKET_FROZEN_COLS`
+    """
+    try:
+        v = int((os.environ.get("SHEETS_POLYMARKET_FROZEN_COLS", "1") or "1").strip() or "1")
+    except Exception:
+        v = 1
+    return max(int(v), 0)
+
+
+def _polymarket_frozen_rows(*, anchors: list[tuple[str, int, int]]) -> int:
+    """
+    Polymarket 统计子表“冻结行”数量。
+
+    默认策略（无 env 显式覆盖时）：
+    - 冻结：元信息行 + 目录行 + 首个分段的全部表头行
+      - 这样滚动时“字段含义”不会立刻丢失
+
+    - env: `SHEETS_POLYMARKET_FROZEN_ROWS`（显式指定冻结行数，优先级最高）
+    """
+    raw = (os.environ.get("SHEETS_POLYMARKET_FROZEN_ROWS", "") or "").strip()
+    if raw:
+        try:
+            return max(int(raw), 0)
+        except Exception:
+            pass
+
+    # meta(1) + dir(1) = 2 行；再加上首个分段 header 行数
+    if anchors:
+        try:
+            _title, header_row_1, header_rows_n = anchors[0]
+            header_row_1 = int(header_row_1)
+            header_rows_n = int(header_rows_n)
+            if header_row_1 > 0 and header_rows_n > 0:
+                last_header_row_1 = header_row_1 + header_rows_n - 1
+                return max(int(last_header_row_1), 2)
+        except Exception:
+            pass
+
+    return 2
+
+
 def _value_type(v: Any) -> str:
     if v is None:
         return "null"
@@ -4664,10 +4708,13 @@ class SaSheetsWriter:
                             extra_merge_ranges.append((int(r0), int(r1), 1, 2))
                         cur = v
                         cur_s = int(i)
-                if cur is not None and int(len(sec_rows)) - int(cur_s) >= 2:
-                    r0 = int(data_start_row0 + int(cur_s))
-                    r1 = int(data_start_row0 + int(len(sec_rows)))
-                    extra_merge_ranges.append((int(r0), int(r1), 1, 2))
+            if cur is not None and int(len(sec_rows)) - int(cur_s) >= 2:
+                r0 = int(data_start_row0 + int(cur_s))
+                r1 = int(data_start_row0 + int(len(sec_rows)))
+                extra_merge_ranges.append((int(r0), int(r1), 1, 2))
+
+        frozen_cols = _polymarket_frozen_cols()
+        frozen_rows = _polymarket_frozen_rows(anchors=anchors)
 
         # normalize to rect
         n_rows = len(out)
@@ -4735,7 +4782,9 @@ class SaSheetsWriter:
 
         # -------------------- merges --------------------
         merge_ranges: list[tuple[int, int, int, int]] = []
-        if int(n_cols) > 1:
+        # 注意：Google Sheets 不允许跨“冻结列分割线”做横向 merge。
+        # - 当启用冻结列时（默认冻结面板列），这里禁用 A1/A2 的整行合并，改为单单元格溢出显示。
+        if int(n_cols) > 1 and int(frozen_cols) <= 0:
             merge_ranges.append((0, 1, 0, int(n_cols)))  # meta
             merge_ranges.append((1, 2, 0, int(n_cols)))  # directory
         # 结构调整：不再存在“分区标题行整行合并”，改为新增第一列“面板”承载分区名。
@@ -4841,7 +4890,11 @@ class SaSheetsWriter:
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0, "hideGridlines": False},
+                            "gridProperties": {
+                                "frozenRowCount": int(frozen_rows),
+                                "frozenColumnCount": int(frozen_cols),
+                                "hideGridlines": False,
+                            },
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount,gridProperties.hideGridlines",
                     }
@@ -5124,7 +5177,13 @@ class SaSheetsWriter:
 
         # compact grid：让“无数据区域”在 UI 中消失
         if compact_grid:
-            self._set_sheet_grid_properties(tab_title, row_count=int(n_rows), col_count=int(n_cols), frozen_row_count=2, frozen_column_count=0)
+            self._set_sheet_grid_properties(
+                tab_title,
+                row_count=int(n_rows),
+                col_count=int(n_cols),
+                frozen_row_count=int(frozen_rows),
+                frozen_column_count=int(frozen_cols),
+            )
 
         # gridlines：强制不隐藏（历史版本可能设置为隐藏；这里确保后续写入不会“又变成纯底色”）
         try:
