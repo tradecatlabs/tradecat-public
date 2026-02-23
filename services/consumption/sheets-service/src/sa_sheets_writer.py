@@ -4454,6 +4454,7 @@ class SaSheetsWriter:
         anchors: list[tuple[str, int, int]] = []  # (panel_title, header_row1-based, header_rows_count)
         hyperlink_cells: list[tuple[int, int, str, str]] = []  # (abs_row0, abs_col0, url, label)
         extra_merge_ranges: list[tuple[int, int, int, int]] = []  # (r0,r1,c0,c1) end exclusive
+        panel_value_ranges: list[tuple[int, int]] = []  # (r0,r1) for column A data blocks (end exclusive)
 
         for sec in sections:
             title_plain = str(sec.get("title_plain") or "").strip() or "-"
@@ -4473,6 +4474,11 @@ class SaSheetsWriter:
             for r in sec_rows:
                 # 数据行：第一列填入“面板”值（原来整行分区标题）
                 out.append([title_plain] + list(r))
+            if len(sec_rows) >= 2:
+                # “面板”列纵向合并：同一分段的数据行块合并，提升可读性
+                # - 不影响数据字段；仅展示优化
+                panel_value_ranges.append((int(data_start_row0), int(data_start_row0 + len(sec_rows))))
+                extra_merge_ranges.append((int(data_start_row0), int(data_start_row0 + len(sec_rows)), 0, 1))
             # hyperlinks: relative to data rows
             for li in (sec.get("hyperlinks") or []):
                 try:
@@ -4613,7 +4619,7 @@ class SaSheetsWriter:
                 pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_report_v2"
+        style_version = "polymarket_report_v3"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -4719,6 +4725,33 @@ class SaSheetsWriter:
                             "range": {"sheetId": int(sh_id), "startRowIndex": int(r0), "endRowIndex": int(r0 + hn), "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
                             "cell": {"userEnteredFormat": {"backgroundColor": header_bg, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER", "wrapStrategy": "CLIP"}},
                             "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+
+            # 面板列（A）：同一面板的合并块居中加粗（既像“行组标题”，又不牺牲筛选能力）
+            for r0, r1 in panel_value_ranges:
+                if int(r1) <= int(r0):
+                    continue
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "horizontalAlignment": "CENTER",
+                                    "verticalAlignment": "MIDDLE",
+                                    "textFormat": {"bold": True},
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold,wrapStrategy)",
                         }
                     }
                 )
