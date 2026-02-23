@@ -4708,10 +4708,10 @@ class SaSheetsWriter:
                             extra_merge_ranges.append((int(r0), int(r1), 1, 2))
                         cur = v
                         cur_s = int(i)
-            if cur is not None and int(len(sec_rows)) - int(cur_s) >= 2:
-                r0 = int(data_start_row0 + int(cur_s))
-                r1 = int(data_start_row0 + int(len(sec_rows)))
-                extra_merge_ranges.append((int(r0), int(r1), 1, 2))
+                if cur is not None and int(len(sec_rows)) - int(cur_s) >= 2:
+                    r0 = int(data_start_row0 + int(cur_s))
+                    r1 = int(data_start_row0 + int(len(sec_rows)))
+                    extra_merge_ranges.append((int(r0), int(r1), 1, 2))
 
         frozen_cols = _polymarket_frozen_cols()
         frozen_rows = _polymarket_frozen_rows(anchors=anchors)
