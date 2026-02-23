@@ -4812,10 +4812,10 @@ class SaSheetsWriter:
                 panel_min_px = 40
             try:
                 panel_max_px = int(
-                    (os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MAX", "220") or "220").strip() or "220"
+                    (os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MAX", "160") or "160").strip() or "160"
                 )
             except Exception:
-                panel_max_px = 220
+                panel_max_px = 160
 
             widths: list[int] = []
             scan_rows = min(int(n_rows), 600)
@@ -4849,8 +4849,10 @@ class SaSheetsWriter:
                         continue
                     panel_max_len = max(int(panel_max_len), min(len(s), 48))
                 if int(panel_max_len) > 0:
-                    # 关键：按“面板列实际最大长度”估算，不强行把短标签扩到固定最小字符数。
-                    panel_px = _clamp(_approx_px_from_text_len(int(panel_max_len)), int(panel_min_px), int(panel_max_px))
+                    # 关键：只看“面板列字段值”的最长长度。
+                    # 面板列通常是短标签：用更激进的压缩系数（6px/字符）提升信息密度。
+                    px = int(16 + int(panel_max_len) * 6)
+                    panel_px = _clamp(int(px), int(panel_min_px), int(panel_max_px))
             for ci in range(0, int(n_cols)):
                 max_len = 0
                 has_link_header = False
