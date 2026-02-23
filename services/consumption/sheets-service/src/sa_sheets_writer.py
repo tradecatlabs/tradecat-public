@@ -1898,6 +1898,31 @@ class SaSheetsWriter:
                     }
                 }
             )
+            # 需求：行表头/列表头也要规范（面板/指标组/指标 这三列）
+            # - 从全局表头行开始，强制 A..C 上下左右居中 + 加粗
+            # - 不影响周期列的数据格式（数值/右对齐等）
+            reqs_align.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(rrh),
+                            "endRowIndex": int(n_rows),
+                            "startColumnIndex": 0,
+                            "endColumnIndex": 3,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "CLIP",
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
             for r in (panel_title_rows or []):
                 rr0 = max(int(r) - 1, 0)
                 reqs_align.append(
@@ -7038,8 +7063,29 @@ class SaSheetsWriter:
             }
         )
 
-        # period columns shading（差量）
+        # 需求：行表头/列表头也要规范（币种/字段等“索引列”）
+        # - 主看板索引列：A=卡片，B=币种，C=字段
+        # - 仅覆盖 对齐+加粗，不碰背景色（避免影响卡片/币种交替底色）
         body_r0 = int(header_row_1)  # 0-based: row after header
+        body_r1 = int(used_end_row_1)  # 0-based end
+        if body_r1 > body_r0:
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=body_r0, r1=body_r1, c0=col_l0, c1=int(col_l0 + 3)),
+                        "cell": {
+                            "userEnteredFormat": {
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "CENTER",
+                                "verticalAlignment": "MIDDLE",
+                            }
+                        },
+                        "fields": "userEnteredFormat(textFormat.bold,horizontalAlignment,verticalAlignment)",
+                    }
+                }
+            )
+
+        # period columns shading（差量）
         shade_r0 = int(body_r0 if full_style else max(int(prev_styled_rows), int(body_r0)))
         shade_r1 = int(used_end_row_1)
         if shade_r1 > shade_r0:
