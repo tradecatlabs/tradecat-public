@@ -4805,13 +4805,17 @@ class SaSheetsWriter:
             # 新增“面板”列后，A 列应按“面板值长度”自适应（而不是被第 1/2 行超长元信息撑爆）。
             # - 仍保留 env 可覆盖上下限，避免极端面板名导致列宽失控
             try:
-                panel_min_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MIN", "72") or "72").strip() or "72")
+                panel_min_px = int(
+                    (os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MIN", "40") or "40").strip() or "40"
+                )
             except Exception:
-                panel_min_px = 72
+                panel_min_px = 40
             try:
-                panel_max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MAX", "180") or "180").strip() or "180")
+                panel_max_px = int(
+                    (os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL_MAX", "220") or "220").strip() or "220"
+                )
             except Exception:
-                panel_max_px = 180
+                panel_max_px = 220
 
             widths: list[int] = []
             scan_rows = min(int(n_rows), 600)
@@ -4843,9 +4847,10 @@ class SaSheetsWriter:
                     # 合并后的“空白占位”也跳过（有些行可能在后续 merge 后显示为空）
                     if s in {"-", "—"}:
                         continue
-                    panel_max_len = max(int(panel_max_len), min(len(s), 32))
+                    panel_max_len = max(int(panel_max_len), min(len(s), 48))
                 if int(panel_max_len) > 0:
-                    panel_px = _clamp(_approx_px_from_text_len(max(int(panel_max_len), 6)), int(panel_min_px), int(panel_max_px))
+                    # 关键：按“面板列实际最大长度”估算，不强行把短标签扩到固定最小字符数。
+                    panel_px = _clamp(_approx_px_from_text_len(int(panel_max_len)), int(panel_min_px), int(panel_max_px))
             for ci in range(0, int(n_cols)):
                 max_len = 0
                 has_link_header = False
@@ -4874,7 +4879,11 @@ class SaSheetsWriter:
                     max_len = max(max_len, min(len(s), 60))
 
                 if has_panel_col and int(ci) == 0:
-                    px = int(panel_px) if panel_px is not None else _clamp(_approx_px_from_text_len(10), int(panel_min_px), int(panel_max_px))
+                    px = (
+                        int(panel_px)
+                        if panel_px is not None
+                        else _clamp(_approx_px_from_text_len(8), int(panel_min_px), int(panel_max_px))
+                    )
                 elif has_link_header:
                     px = int(w_link)
                 elif has_rank_header or has_hour_header:
