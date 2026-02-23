@@ -6174,6 +6174,46 @@ class SaSheetsWriter:
             self._set_sheet_grid_properties(title, row_count=n_rows, col_count=n_cols, frozen_row_count=1)
         except Exception:
             pass
+        # 表头规范：上下左右居中 + 加粗（只作用于 header 行）
+        try:
+            sh_id = self._sheet_id_by_title.get(title)
+            if sh_id is None:
+                self._refresh_sheet_map()
+                sh_id = self._sheet_id_by_title.get(title)
+            if sh_id is not None:
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(
+                        spreadsheetId=self._spreadsheet_id,
+                        body={
+                            "requests": [
+                                {
+                                    "repeatCell": {
+                                        "range": {
+                                            "sheetId": int(sh_id),
+                                            "startRowIndex": 0,
+                                            "endRowIndex": 1,
+                                            "startColumnIndex": 0,
+                                            "endColumnIndex": int(n_cols),
+                                        },
+                                        "cell": {
+                                            "userEnteredFormat": {
+                                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                                "textFormat": {"bold": True},
+                                                "horizontalAlignment": "CENTER",
+                                                "verticalAlignment": "MIDDLE",
+                                                "wrapStrategy": "CLIP",
+                                            }
+                                        },
+                                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                                    }
+                                }
+                            ]
+                        },
+                    ),
+                    is_write=True,
+                )
+        except Exception:
+            pass
 
         return {"ok": True, "sheet": title, "rows": n_rows - 1}
 
