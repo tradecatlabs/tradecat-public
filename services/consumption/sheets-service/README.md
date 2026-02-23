@@ -62,6 +62,9 @@
 - 固定列宽（可选，优先级最高）：用于“你在表格 UI 手工拖拽调整好列宽后，希望后续刷新不再覆盖”
   - `SHEETS_DASHBOARD_FIXED_COL_WIDTHS`：看板每列像素宽度列表（从 `SHEETS_DASHBOARD_COL_L` 起），逗号/中文逗号分隔；长度不足会用最后一个值补齐，超出会截断
   - `SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS`：币种查询表每列像素宽度列表（从 A 列起），规则同上
+- 顶部广告/赞助商栏（可选）：在看板顶部新增首行（A1）用于放置赞助商/返佣信息
+  - `SHEETS_DASHBOARD_BANNER_TEXT`：看板广告栏文本（优先）
+  - `SHEETS_TOP_BANNER_TEXT`：全局广告栏文本（当 `SHEETS_DASHBOARD_BANNER_TEXT` 为空时回退使用）
 - `SHEETS_EXPORT_SYMBOLS_GROUPS`：导出侧覆盖 `SYMBOLS_GROUPS`（例如 `main4`），避免继承全局配置导致看板币种不全
 - `SHEETS_EXPORT_SYMBOLS_UNFILTERED`：`0/1`（`1` 表示导出侧强制关闭币种过滤，等价 `SYMBOLS_GROUPS=auto`）
   - 常见现象：如果你的全局 `config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。

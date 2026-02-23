@@ -6852,12 +6852,25 @@ class SaSheetsWriter:
 
         # 目录行尽量不放 emoji：降低富文本链接索引/渲染复杂度（不同客户端兼容更稳）
         dir_label = "目录（点击跳转）"
+        banner_raw = (os.environ.get("SHEETS_DASHBOARD_BANNER_TEXT", "") or "").strip()
+        if not banner_raw:
+            banner_raw = (os.environ.get("SHEETS_TOP_BANNER_TEXT", "") or "").strip()
+        banner_text = re.sub(r"\s+", " ", str(banner_raw or "").replace("\n", " ").replace("\r", " ")).strip()
+        banner_rows = 1 if banner_text else 0
         # 固定为 1 行：目录文本放入单单元格（A1），避免“铺满一行超链接”挤压主表宽度
         dir_rows = 1
-        header_row_1 = int(dir_rows) + 1  # 1-based
+        dir_row_1 = int(banner_rows) + 1  # 1-based
+        header_row_1 = int(banner_rows) + int(dir_rows) + 1  # 1-based
         body_start_row_1 = int(header_row_1) + 1
 
         data: list[dict[str, Any]] = []
+        if banner_rows > 0:
+            data.append(
+                {
+                    "range": f"{sheet_title}!{col_l}1:{col_r_eff}1",
+                    "values": [pad_row([banner_text])],
+                }
+            )
         header_vals = pad_row(columns)
         data.append({"range": f"{sheet_title}!{col_l}{header_row_1}:{col_r_eff}{header_row_1}", "values": [header_vals]})
 
@@ -6987,7 +7000,7 @@ class SaSheetsWriter:
             # 先写入纯文本（RAW），再注入 RichText links（避免公式拼接导致链接丢失）
             grid = [[""] * width for _ in range(int(dir_rows))]
             grid[0][0] = dir_text
-            dir_rng = f"{sheet_title}!{col_l}1:{col_r_eff}{int(dir_rows)}"
+            dir_rng = f"{sheet_title}!{col_l}{int(dir_row_1)}:{col_r_eff}{int(dir_row_1) + int(dir_rows) - 1}"
             self._exec(
                 self._sheets.spreadsheets()
                 .values()
@@ -7010,8 +7023,8 @@ class SaSheetsWriter:
                                     "updateCells": {
                                         "range": {
                                             "sheetId": int(sh_id),
-                                            "startRowIndex": 0,
-                                            "endRowIndex": 1,
+                                            "startRowIndex": int(dir_row_1) - 1,
+                                            "endRowIndex": int(dir_row_1),
                                             "startColumnIndex": int(col_l0),
                                             "endColumnIndex": int(col_l0 + 1),
                                         },
@@ -7064,6 +7077,7 @@ class SaSheetsWriter:
         key_style_version = "dashboard_v5_style_version"
         key_styled_rows = "dashboard_v5_styled_rows"
         key_dir_rows = "dashboard_v5_dir_rows"
+        key_banner_rows = "dashboard_v5_banner_rows"
         try:
             prev_styled_rows = int(str(meta.get(key_styled_rows) or "0").strip() or "0")
         except Exception:
@@ -7072,14 +7086,23 @@ class SaSheetsWriter:
             prev_dir_rows = int(str(meta.get(key_dir_rows) or "0").strip() or "0")
         except Exception:
             prev_dir_rows = 0
+        try:
+            prev_banner_rows = int(str(meta.get(key_banner_rows) or "0").strip() or "0")
+        except Exception:
+            prev_banner_rows = 0
 
-        full_style = (meta.get(key_style_version) or "") != style_version or int(prev_dir_rows) != int(dir_rows) or prev_styled_rows <= 0
+        full_style = (
+            (meta.get(key_style_version) or "") != style_version
+            or int(prev_dir_rows) != int(dir_rows)
+            or int(prev_banner_rows) != int(banner_rows)
+            or prev_styled_rows <= 0
+        )
 
         # freeze rows：目录 + 1 行表头；列：A..C（卡片/币种/字段）
         try:
             self._set_sheet_grid_properties(
                 sheet_title,
-                frozen_row_count=int(dir_rows) + 1,
+                frozen_row_count=int(banner_rows) + int(dir_rows) + 1,
                 frozen_column_count=_dashboard_v5_frozen_cols(),
             )
         except Exception:
@@ -7125,12 +7148,43 @@ class SaSheetsWriter:
                 }
             )
 
-        # 目录区样式（始终覆盖，避免旧格式残留）
-        if int(dir_rows) > 0:
+        # banner 栏（可选）：广告位/赞助商信息
+        if banner_rows > 0:
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": rrange(r0=0, r1=int(dir_rows), c0=col_l0, c1=col_r1),
+                        "range": rrange(r0=0, r1=1, c0=col_l0, c1=col_r1),
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(1.0, 0.97, 0.86),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "verticalAlignment": "MIDDLE",
+                                "wrapStrategy": "OVERFLOW_CELL",
+                            }
+                        },
+                        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                        "properties": {"pixelSize": 21},
+                        "fields": "pixelSize",
+                    }
+                }
+            )
+
+        # 目录区样式（始终覆盖，避免旧格式残留）
+        if int(dir_rows) > 0:
+            dir_r0 = int(banner_rows)
+            dir_r1 = int(banner_rows) + int(dir_rows)
+            reqs.append(
+                {
+                    "repeatCell": {
+                        "range": rrange(r0=int(dir_r0), r1=int(dir_r1), c0=col_l0, c1=col_r1),
                         "cell": {
                             "userEnteredFormat": {
                                 "backgroundColor": bg_hdr_info,
@@ -7148,7 +7202,12 @@ class SaSheetsWriter:
             reqs.append(
                 {
                     "updateDimensionProperties": {
-                        "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "dimension": "ROWS",
+                            "startIndex": int(dir_r0),
+                            "endIndex": int(dir_r0) + 1,
+                        },
                         # Google Sheets 默认行高通常为 21px
                         "properties": {"pixelSize": 21},
                         "fields": "pixelSize",
@@ -7485,6 +7544,7 @@ class SaSheetsWriter:
                         key_style_version: style_version,
                         key_styled_rows: str(int(used_end_row_1)),
                         key_dir_rows: str(int(dir_rows)),
+                        key_banner_rows: str(int(banner_rows)),
                     }
                 )
             except Exception:
@@ -7496,7 +7556,7 @@ class SaSheetsWriter:
                 sheet_title,
                 row_count=int(used_rows),
                 col_count=int(used_cols),
-                frozen_row_count=1,
+                frozen_row_count=int(banner_rows) + int(dir_rows) + 1,
                 frozen_column_count=int(frozen_cols),
             )
         except Exception:
