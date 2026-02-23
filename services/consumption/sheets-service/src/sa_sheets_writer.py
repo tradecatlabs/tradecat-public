@@ -6229,11 +6229,16 @@ class SaSheetsWriter:
         # 记录本轮使用区域（用于下轮“清尾巴”）
         # v5 主看板：裁剪网格到“实际使用区域”，避免底部/右侧残留大量空白网格。
         try:
+            banner_raw = (os.environ.get("SHEETS_DASHBOARD_BANNER_TEXT", "") or "").strip()
+            if not banner_raw:
+                banner_raw = (os.environ.get("SHEETS_TOP_BANNER_TEXT", "") or "").strip()
+            banner_rows = 1 if banner_raw else 0
+            frozen_rows = int(banner_rows) + 2  # 目录 + 表头 + (可选 banner)
             self._set_sheet_grid_properties(
                 self._tab_dashboard,
                 row_count=int(used_end_row_1),
                 col_count=int(used_cols),
-                frozen_row_count=1,
+                frozen_row_count=int(frozen_rows),
                 frozen_column_count=int(frozen_cols),
             )
         except Exception:
