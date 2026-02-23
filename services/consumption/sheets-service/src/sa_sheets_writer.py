@@ -7556,6 +7556,12 @@ class SaSheetsWriter:
         gp: dict[str, int] = {}
         fields: list[str] = []
 
+        # 需求硬约束：不隐藏网格线（保持默认网格线可见）。
+        # - 这里采用“强制纠偏”策略：凡是调用本函数修改 gridProperties，就顺手把 hideGridlines 置为 False，
+        #   以修复历史遗留（旧版写入过 hideGridlines=True）并确保全部托管 tab 观感一致。
+        gp["hideGridlines"] = False
+        fields.append("gridProperties.hideGridlines")
+
         if row_count is not None:
             gp["rowCount"] = max(int(row_count), 1)
             fields.append("gridProperties.rowCount")
