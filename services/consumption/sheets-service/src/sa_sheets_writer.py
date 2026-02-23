@@ -231,6 +231,53 @@ def _dashboard_v5_col_widths_px() -> tuple[int, int, int, int]:
     return max(w_card, 80), max(w_symbol, 50), max(w_field, 80), max(w_period, 60)
 
 
+def _format_dashboard_banner_text(raw: str) -> tuple[str, int]:
+    """
+    将看板 banner 文案规范化为“单单元格多行文本”。
+
+    支持：
+    - 显式换行：环境变量里可用 `\\n` 表示换行（会转为 `\\n` 实际换行）
+      - 说明：systemd 的 EnvironmentFile 不便直接写多行值，因此用转义序列更稳
+    - 兼容旧格式：`广告位（交易猫CA：...，币安40%...；https://...）` 会被拆成 3 行：
+      - 广告位
+      - 交易猫CA：...
+      - 币安40%...；https://...
+    """
+
+    def norm_line(s: str) -> str:
+        return re.sub(r"\s+", " ", str(s or "").strip()).strip()
+
+    s = str(raw or "").strip()
+    if not s:
+        return "", 0
+
+    # 允许用 `\n` 作为“换行占位符”
+    s = s.replace("\\n", "\n")
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+
+    if "\n" in s:
+        lines = [norm_line(x) for x in s.split("\n")]
+        lines = [x for x in lines if x]
+        text = "\n".join(lines)
+        return text, len(lines) if text else 0
+
+    # 兼容旧的“单行括号格式”：标题（line2，line3）
+    m = re.match(r"^(?P<title>[^（(]+)[（(](?P<body>.+)[）)]$", s)
+    if m:
+        title = norm_line(m.group("title"))
+        body = str(m.group("body") or "")
+        parts = re.split(r"[，,]\s*", body, maxsplit=1)
+        if len(parts) == 2:
+            line2 = norm_line(parts[0])
+            line3 = norm_line(parts[1])
+            lines2 = [x for x in [title, line2, line3] if x]
+            text2 = "\n".join(lines2)
+            return text2, len(lines2) if text2 else 0
+
+    text = norm_line(s)
+    return text, 1 if text else 0
+
+
 def _normalize_fixed_widths(widths: list[int], *, n_cols: int) -> list[int]:
     """
     将“固定列宽列表”规范化到指定列数：
@@ -6860,7 +6907,7 @@ class SaSheetsWriter:
         banner_raw = (os.environ.get("SHEETS_DASHBOARD_BANNER_TEXT", "") or "").strip()
         if not banner_raw:
             banner_raw = (os.environ.get("SHEETS_TOP_BANNER_TEXT", "") or "").strip()
-        banner_text = re.sub(r"\s+", " ", str(banner_raw or "").replace("\n", " ").replace("\r", " ")).strip()
+        banner_text, banner_line_count = _format_dashboard_banner_text(str(banner_raw or ""))
         banner_rows = 1 if banner_text else 0
         # 固定为 1 行：目录文本放入单单元格（A1），避免“铺满一行超链接”挤压主表宽度
         dir_rows = 1
@@ -7155,6 +7202,13 @@ class SaSheetsWriter:
 
         # banner 栏（可选）：广告位/赞助商信息
         if banner_rows > 0:
+            try:
+                banner_lines = int(banner_line_count or 1)
+            except Exception:
+                banner_lines = 1
+            banner_lines = max(1, min(int(banner_lines), 6))
+            banner_row_px = int(21 * int(banner_lines))
+
             reqs.append(
                 {
                     "repeatCell": {
@@ -7176,7 +7230,7 @@ class SaSheetsWriter:
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 21},
+                        "properties": {"pixelSize": int(banner_row_px)},
                         "fields": "pixelSize",
                     }
                 }
