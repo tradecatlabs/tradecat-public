@@ -4455,6 +4455,7 @@ class SaSheetsWriter:
         hyperlink_cells: list[tuple[int, int, str, str]] = []  # (abs_row0, abs_col0, url, label)
         extra_merge_ranges: list[tuple[int, int, int, int]] = []  # (r0,r1,c0,c1) end exclusive
         panel_value_ranges: list[tuple[int, int]] = []  # (r0,r1) for column A data blocks (end exclusive)
+        data_value_ranges: list[tuple[int, int]] = []  # (r0,r1) for full-row data blocks (end exclusive)
 
         # 某些“附加统计小表”不需要重复表头（会造成视觉噪声与行号浪费）。
         # 用户要求：Polymarket类别偏好 删除第 10、14 行（对应：买卖比例/聪明钱操作类型 的表头行）。
@@ -4487,6 +4488,8 @@ class SaSheetsWriter:
             for r in sec_rows:
                 # 数据行：第一列填入“面板”值（原来整行分区标题）
                 out.append([title_plain] + list(r))
+            if sec_rows:
+                data_value_ranges.append((int(data_start_row0), int(data_start_row0 + len(sec_rows))))
             if len(sec_rows) >= 2:
                 # “面板”列纵向合并：同一分段的数据行块合并，提升可读性
                 # - 不影响数据字段；仅展示优化
@@ -4632,7 +4635,7 @@ class SaSheetsWriter:
                 pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_report_v4"
+        style_version = "polymarket_report_v5"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -4756,7 +4759,7 @@ class SaSheetsWriter:
                         }
                     )
 
-            # 面板列（A）：同一面板的合并块居中加粗（既像“行组标题”，又不牺牲筛选能力）
+            # 面板列（A）：同一面板的合并块加粗（对齐“数据区全右对齐”的需求，不再强制居中）
             for r0, r1 in panel_value_ranges:
                 if int(r1) <= int(r0):
                     continue
@@ -4772,13 +4775,39 @@ class SaSheetsWriter:
                             },
                             "cell": {
                                 "userEnteredFormat": {
-                                    "horizontalAlignment": "CENTER",
                                     "verticalAlignment": "MIDDLE",
                                     "textFormat": {"bold": True},
                                     "wrapStrategy": "CLIP",
                                 }
                             },
-                            "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold,wrapStrategy)",
+                            "fields": "userEnteredFormat(verticalAlignment,textFormat.bold,wrapStrategy)",
+                        }
+                    }
+                )
+
+            # 用户要求：这 3 个 Polymarket 表的数据全部右对齐（不影响元信息/目录/表头行）
+            # - 仅对数据块范围生效，避免把“表头行”改成右对齐
+            for r0, r1 in data_value_ranges:
+                if int(r1) <= int(r0):
+                    continue
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": int(r0),
+                                "endRowIndex": int(r1),
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(n_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "horizontalAlignment": "RIGHT",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "CLIP",
+                                }
+                            },
+                            "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)",
                         }
                     }
                 )
