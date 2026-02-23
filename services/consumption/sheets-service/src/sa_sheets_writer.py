@@ -164,6 +164,34 @@ def _dashboard_v5_frozen_cols() -> int:
     return max(v, 0)
 
 
+def _dashboard_v5_col_widths_px() -> tuple[int, int, int, int]:
+    """
+    v5 主看板列宽（像素）：
+    - A: 卡片
+    - B: 币种
+    - C: 字段
+    - 周期列：5m..1w（已按 SHEETS_HIDE_PERIODS 删除 1m）
+    """
+    try:
+        w_card = int((os.environ.get("SHEETS_DASHBOARD_COL_WIDTH_CARD", "120") or "120").strip() or "120")
+    except Exception:
+        w_card = 120
+    try:
+        w_symbol = int((os.environ.get("SHEETS_DASHBOARD_COL_WIDTH_SYMBOL", "64") or "64").strip() or "64")
+    except Exception:
+        w_symbol = 64
+    try:
+        w_field = int((os.environ.get("SHEETS_DASHBOARD_COL_WIDTH_FIELD", "110") or "110").strip() or "110")
+    except Exception:
+        w_field = 110
+    try:
+        w_period = int((os.environ.get("SHEETS_DASHBOARD_COL_WIDTH_PERIOD", "86") or "86").strip() or "86")
+    except Exception:
+        w_period = 86
+
+    return max(w_card, 80), max(w_symbol, 50), max(w_field, 80), max(w_period, 60)
+
+
 def _symbol_query_frozen_cols() -> int:
     # 币种查询列：面板/指标组/指标/周期...；默认冻结前三列
     try:
@@ -1649,6 +1677,7 @@ class SaSheetsWriter:
 
         # 列宽：每次都对齐，避免“不同币种 tab 的列宽漂移”（手动拖拽/旧版样式遗留会导致不一致）
         try:
+            w_panel, w_group, w_metric, w_period = _symbol_query_col_widths_px()
             raw_block_start_col_0 = getattr(sheet, "raw_block_start_col_0", None)
             try:
                 raw_block_start_col_0 = int(raw_block_start_col_0) if raw_block_start_col_0 is not None else None
@@ -1662,7 +1691,7 @@ class SaSheetsWriter:
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                        "properties": {"pixelSize": 140},
+                        "properties": {"pixelSize": int(w_panel)},
                         "fields": "pixelSize",
                     }
                 }
@@ -1671,7 +1700,7 @@ class SaSheetsWriter:
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-                        "properties": {"pixelSize": 220},
+                        "properties": {"pixelSize": int(w_group)},
                         "fields": "pixelSize",
                     }
                 }
@@ -1680,7 +1709,7 @@ class SaSheetsWriter:
                 {
                     "updateDimensionProperties": {
                         "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3},
-                        "properties": {"pixelSize": 240},
+                        "properties": {"pixelSize": int(w_metric)},
                         "fields": "pixelSize",
                     }
                 }
@@ -1700,7 +1729,7 @@ class SaSheetsWriter:
                                     "startIndex": 3,
                                     "endIndex": int(raw_sep),
                                 },
-                                "properties": {"pixelSize": 90},
+                                "properties": {"pixelSize": int(w_period)},
                                 "fields": "pixelSize",
                             }
                         }
@@ -1722,6 +1751,7 @@ class SaSheetsWriter:
                 )
                 # raw 周期列
                 if col_end > raw_sep + 1:
+                    raw_w = max(int(w_period) - 8, 60)
                     reqs_w.append(
                         {
                             "updateDimensionProperties": {
@@ -1731,13 +1761,13 @@ class SaSheetsWriter:
                                     "startIndex": int(raw_sep + 1),
                                     "endIndex": int(col_end),
                                 },
-                                "properties": {"pixelSize": 80},
+                                "properties": {"pixelSize": int(raw_w)},
                                 "fields": "pixelSize",
                             }
                         }
                     )
             else:
-                # 无 raw 区：周期列统一 90
+                # 无 raw 区：周期列统一 w_period
                 if col_end > 3:
                     reqs_w.append(
                         {
@@ -1748,7 +1778,7 @@ class SaSheetsWriter:
                                     "startIndex": 3,
                                     "endIndex": int(col_end),
                                 },
-                                "properties": {"pixelSize": 90},
+                                "properties": {"pixelSize": int(w_period)},
                                 "fields": "pixelSize",
                             }
                         }
@@ -4701,6 +4731,81 @@ class SaSheetsWriter:
             self._exec(self._sheets.spreadsheets().batchUpdate(spreadsheetId=self._spreadsheet_id, body={"requests": reqs}), is_write=True)
             self._meta_set({key_style_version: style_version, key_style_rows: str(n_rows), key_style_cols: str(n_cols)})
 
+        # 列宽：每次都对齐（用户可能手工拖拽导致漂移；这里按内容采样恢复合理宽度）
+        try:
+            def _clamp(v: int, lo: int, hi: int) -> int:
+                return max(int(lo), min(int(v), int(hi)))
+
+            def _approx_px_from_text_len(n: int) -> int:
+                return int(20 + int(n) * 7)
+
+            def _is_url(s: str) -> bool:
+                x = (s or "").strip().lower()
+                return x.startswith("http://") or x.startswith("https://")
+
+            min_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MIN", "56") or "56").strip() or "56")
+            max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MAX", "420") or "420").strip() or "420")
+            w_link = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_LINK", "40") or "40").strip() or "40")
+            w_key = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_KEY", "72") or "72").strip() or "72")
+
+            widths: list[int] = []
+            scan_rows = min(int(n_rows), 600)
+            for ci in range(0, int(n_cols)):
+                max_len = 0
+                has_link_header = False
+                has_name_header = False
+                has_rank_header = False
+                has_hour_header = False
+                for ri in range(0, int(scan_rows)):
+                    s = ""
+                    try:
+                        s = str(out[ri][ci] if ci < len(out[ri]) else "")
+                    except Exception:
+                        s = ""
+                    s = str(s or "").strip()
+                    if not s:
+                        continue
+                    if s in {"链接", "link", "url", "URL"} or ("链接" in s):
+                        has_link_header = True
+                    if s in {"市场名称", "市场", "market", "question", "名称"}:
+                        has_name_header = True
+                    if s == "排名":
+                        has_rank_header = True
+                    if s in {"小时", "hour", "Hour"}:
+                        has_hour_header = True
+                    if _is_url(s):
+                        continue
+                    max_len = max(max_len, min(len(s), 60))
+
+                if has_link_header:
+                    px = int(w_link)
+                elif has_rank_header or has_hour_header:
+                    px = int(w_key)
+                elif has_name_header:
+                    px = _approx_px_from_text_len(max(max_len, 18))
+                else:
+                    px = _approx_px_from_text_len(max(max_len, 6))
+                widths.append(_clamp(int(px), int(min_px), int(max_px)))
+
+            if widths:
+                reqs_w = []
+                for ci, px in enumerate(widths):
+                    reqs_w.append(
+                        {
+                            "updateDimensionProperties": {
+                                "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(ci), "endIndex": int(ci + 1)},
+                                "properties": {"pixelSize": int(px)},
+                                "fields": "pixelSize",
+                            }
+                        }
+                    )
+                self._exec(
+                    self._sheets.spreadsheets().batchUpdate(spreadsheetId=self._spreadsheet_id, body={"requests": reqs_w}),
+                    is_write=True,
+                )
+        except Exception:
+            pass
+
         # compact grid：让“无数据区域”在 UI 中消失
         if compact_grid:
             self._set_sheet_grid_properties(tab_title, row_count=int(n_rows), col_count=int(n_cols), frozen_row_count=2, frozen_column_count=0)
@@ -6838,47 +6943,48 @@ class SaSheetsWriter:
             )
 
         # 列宽（美化）：A=卡片，B=币种，C=字段，D..=周期列
-        if full_style:
-            try:
-                reqs.append(
-                    {
-                        "updateDimensionProperties": {
-                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
-                            "properties": {"pixelSize": 120},
-                            "fields": "pixelSize",
-                        }
+        try:
+            w_card, w_symbol, w_field, w_period = _dashboard_v5_col_widths_px()
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0), "endIndex": int(col_l0 + 1)},
+                        "properties": {"pixelSize": int(w_card)},
+                        "fields": "pixelSize",
                     }
-                )
-                reqs.append(
-                    {
-                        "updateDimensionProperties": {
-                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
-                            "properties": {"pixelSize": 64},
-                            "fields": "pixelSize",
-                        }
+                }
+            )
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 1), "endIndex": int(col_l0 + 2)},
+                        "properties": {"pixelSize": int(w_symbol)},
+                        "fields": "pixelSize",
                     }
-                )
-                reqs.append(
-                    {
-                        "updateDimensionProperties": {
-                            "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_l0 + 3)},
-                            "properties": {"pixelSize": 110},
-                            "fields": "pixelSize",
-                        }
+                }
+            )
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 2), "endIndex": int(col_l0 + 3)},
+                        "properties": {"pixelSize": int(w_field)},
+                        "fields": "pixelSize",
                     }
-                )
-                # 周期列统一宽度
+                }
+            )
+            # 周期列统一宽度
+            if int(col_r1) > int(col_l0 + 3):
                 reqs.append(
                     {
                         "updateDimensionProperties": {
                             "range": {"sheetId": int(sh_id), "dimension": "COLUMNS", "startIndex": int(col_l0 + 3), "endIndex": int(col_r1)},
-                            "properties": {"pixelSize": 86},
+                            "properties": {"pixelSize": int(w_period)},
                             "fields": "pixelSize",
                         }
                     }
                 )
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         if reqs:
             self._exec(
