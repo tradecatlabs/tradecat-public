@@ -278,6 +278,26 @@ def _format_dashboard_banner_text(raw: str) -> tuple[str, int]:
     return text, 1 if text else 0
 
 
+def _read_top_banner_raw(*, prefer_dashboard: bool) -> str:
+    """
+    读取“全表首行广告位”文案。
+
+    约定：
+    - `SHEETS_TOP_BANNER_TEXT`：推荐的全局 banner 文案（对所有 tab 生效）
+    - `SHEETS_DASHBOARD_BANNER_TEXT`：历史变量（原先仅看板）；作为兼容兜底
+    """
+    if prefer_dashboard:
+        raw = (os.environ.get("SHEETS_DASHBOARD_BANNER_TEXT", "") or "").strip()
+        if raw:
+            return raw
+        return (os.environ.get("SHEETS_TOP_BANNER_TEXT", "") or "").strip()
+
+    raw = (os.environ.get("SHEETS_TOP_BANNER_TEXT", "") or "").strip()
+    if raw:
+        return raw
+    return (os.environ.get("SHEETS_DASHBOARD_BANNER_TEXT", "") or "").strip()
+
+
 def _normalize_fixed_widths(widths: list[int], *, n_cols: int) -> list[int]:
     """
     将“固定列宽列表”规范化到指定列数：
@@ -1148,12 +1168,52 @@ class SaSheetsWriter:
             values = [["-", "-", "-", "-", "-", "-", "-", "-", "-"]]
             n_rows, n_cols = 1, len(values[0])
 
+        # -------------------- top banner（全表首行广告位） --------------------
+        # 要求：每个表都“强制”有一个首行广告位（单单元格多行文本）。
+        # - 这里不依赖 exporter；由 writer 统一注入，确保后续结构升级不会漏掉
+        # - 注：冻结列开启时不做真 merge；用“遮蔽内竖线”实现视觉合并（见样式段）
+        banner_raw = _read_top_banner_raw(prefer_dashboard=False)
+        banner_text, banner_line_count = _format_dashboard_banner_text(str(banner_raw or ""))
+        banner_rows = 1 if banner_text else 0
+        if banner_rows > 0:
+            try:
+                max_cols0 = max((len(r) for r in values if isinstance(r, list)), default=int(n_cols or 1))
+            except Exception:
+                max_cols0 = int(n_cols or 1)
+            max_cols0 = max(int(max_cols0), int(n_cols or 1), 1)
+            values = [[banner_text] + [""] * (int(max_cols0) - 1)] + list(values)
+
+            # shift exporter-provided row indices / merge ranges（整表下移 1 行）
+            try:
+                panel_title_rows = [int(r) + 1 for r in panel_title_rows]
+            except Exception:
+                panel_title_rows = []
+            try:
+                panel_header_rows = [int(r) + 1 for r in panel_header_rows]
+            except Exception:
+                panel_header_rows = []
+            merge_ranges2: list[tuple[int, int, int, int]] = []
+            for rg in merge_ranges:
+                try:
+                    r0, r1, c0, c1 = rg
+                except Exception:
+                    continue
+                try:
+                    merge_ranges2.append((int(r0) + 1, int(r1) + 1, int(c0), int(c1)))
+                except Exception:
+                    continue
+            merge_ranges = merge_ranges2
+
+            n_rows = int(len(values))
+            n_cols = int(max(int(n_cols), int(max_cols0)))
+
         # -------------------- detect header/panels (v7) --------------------
         # 结构（默认）：
-        # - Row1: meta + directory（单单元格，writer 补 RichText links）
-        # - Row2: 全局表头：面板 | 指标组 | 指标 | 1m..1w | (原始值) | 1m..1w
+        # - Row1: banner（可选，全表首行广告位）
+        # - Row2: meta + directory（单单元格，writer 补 RichText links）
+        # - Row3: 全局表头：面板 | 指标组 | 指标 | 1m..1w | (原始值) | 1m..1w
         header_row_0 = None
-        directory_row_0 = 0
+        directory_row_0 = int(banner_rows)  # meta+directory 行（0-based）
         for ri, row in enumerate(values):
             if not isinstance(row, list) or len(row) < 3:
                 continue
@@ -1255,7 +1315,10 @@ class SaSheetsWriter:
         # - 因此：冻结列开启时不做整行横向 merge，靠文本溢出显示即可。
         frozen_cols = _symbol_query_frozen_cols()
         if int(n_cols) >= 2 and int(frozen_cols) <= 0:
-            merge_ranges.append((0, 1, 0, int(n_cols)))
+            # banner 行（可选）+ 元信息行：整行横向合并（不冻结列时允许）
+            if int(banner_rows) > 0:
+                merge_ranges.append((0, 1, 0, int(n_cols)))
+            merge_ranges.append((int(directory_row_0), int(directory_row_0) + 1, 0, int(n_cols)))
 
         # 将“面板合并”加入 merge_ranges（与指标组合并共用一套 batch merge）
         for start_0, end_0_excl, _title in panel_blocks:
@@ -1384,7 +1447,7 @@ class SaSheetsWriter:
 
         # -------------------- style --------------------
         # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
-        style_version = "symbol_table_v10"
+        style_version = "symbol_table_v11"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
@@ -1674,36 +1737,72 @@ class SaSheetsWriter:
                 }
             )
 
-            # top info row emphasis
-            reqs.append(
-                {
-                    "repeatCell": {
-                        "range": {
-                            "sheetId": int(sh_id),
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
-                            "startColumnIndex": 0,
-                            "endColumnIndex": int(target_cols),
-                        },
-                        "cell": {
-                            "userEnteredFormat": {
-                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
-                                "textFormat": {"bold": True},
-                            }
-                        },
-                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
-                    }
-                }
-            )
+            # banner 行（可选）：全表首行广告位
+            if int(banner_rows) > 0:
+                try:
+                    banner_lines = int(banner_line_count or 1)
+                except Exception:
+                    banner_lines = 1
+                banner_lines = max(1, min(int(banner_lines), 6))
+                banner_row_px = int(21 * int(banner_lines))
 
-            # meta+directory row emphasis（第 1 行）
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(1.0, 0.97, 0.86),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "LEFT",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "OVERFLOW_CELL",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                            "properties": {"pixelSize": int(banner_row_px)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                # 视觉合并：遮蔽 banner 行内部竖线（冻结列开启时无法真 merge）
+                reqs.append(
+                    {
+                        "updateBorders": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "innerVertical": {"style": "SOLID", "width": 1, "color": _rgb(1.0, 0.97, 0.86)},
+                        }
+                    }
+                )
+
+            # meta+directory 行强调（始终 1 行；目录追加到同一单元格）
+            meta_r0 = int(directory_row_0)
             reqs.append(
                 {
                     "repeatCell": {
                         "range": {
                             "sheetId": int(sh_id),
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
+                            "startRowIndex": int(meta_r0),
+                            "endRowIndex": int(meta_r0) + 1,
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
@@ -1717,6 +1816,21 @@ class SaSheetsWriter:
                             }
                         },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                    }
+                }
+            )
+            # meta 行行高：固定默认，避免被 banner 多行撑高后“连带影响”
+            reqs.append(
+                {
+                    "updateDimensionProperties": {
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "dimension": "ROWS",
+                            "startIndex": int(meta_r0),
+                            "endIndex": int(meta_r0) + 1,
+                        },
+                        "properties": {"pixelSize": 21},
+                        "fields": "pixelSize",
                     }
                 }
             )
@@ -2263,8 +2377,8 @@ class SaSheetsWriter:
                                     "updateCells": {
                                         "range": {
                                             "sheetId": int(sh_id),
-                                            "startRowIndex": 0,
-                                            "endRowIndex": 1,
+                                            "startRowIndex": int(directory_row_0),
+                                            "endRowIndex": int(directory_row_0) + 1,
                                             "startColumnIndex": 0,
                                             "endColumnIndex": 1,
                                         },
@@ -2385,6 +2499,31 @@ class SaSheetsWriter:
                 panel_header_rows=panel_header_rows,
             )
 
+        # -------------------- top banner（全表首行广告位） --------------------
+        banner_raw = _read_top_banner_raw(prefer_dashboard=False)
+        banner_text, banner_line_count = _format_dashboard_banner_text(str(banner_raw or ""))
+        banner_rows = 1 if banner_text else 0
+        if int(banner_rows) > 0:
+            # 注入到第 1 行：整表下移 1 行（row index / merge ranges 同步 shift）
+            values.insert(0, [banner_text] + [""] * (int(n_cols) - 1))
+            panel_title_rows = [int(r) + 1 for r in panel_title_rows]
+            panel_header_rows = [int(r) + 1 for r in panel_header_rows]
+            merge_ranges2: list[tuple[int, int, int, int]] = []
+            for rg in merge_ranges:
+                try:
+                    r0, r1, c0, c1 = rg
+                except Exception:
+                    continue
+                try:
+                    merge_ranges2.append((int(r0) + 1, int(r1) + 1, int(c0), int(c1)))
+                except Exception:
+                    continue
+            merge_ranges = merge_ranges2
+            n_rows = int(len(values))
+
+        # directory 行（0-based；会在写入前插入该行）
+        directory_row_0 = int(banner_rows) + 1
+
         # -------------------- directory row (row2) --------------------
         # 需求：目录单独占 1 行，冻结在顶部，避免塞进 A1 导致过长/易混乱。
         dir_text: str | None = None
@@ -2447,8 +2586,8 @@ class SaSheetsWriter:
             except Exception:
                 dir_text, dir_runs = None, None
 
-        # 插入目录行到第 2 行（index=1），并同步 shift 行号相关结构
-        values.insert(1, [str(dir_text or "")] + [""] * (int(n_cols) - 1))
+        # 插入目录行到 meta 行之后（并同步 shift 行号相关结构）
+        values.insert(int(directory_row_0), [str(dir_text or "")] + [""] * (int(n_cols) - 1))
         panel_title_rows = [int(r) + 1 for r in panel_title_rows]
         panel_header_rows = [int(r) + 1 for r in panel_header_rows]
         merge_ranges2: list[tuple[int, int, int, int]] = []
@@ -2464,7 +2603,7 @@ class SaSheetsWriter:
                 c1 = int(c1)
             except Exception:
                 continue
-            if r0 >= 1:
+            if r0 >= int(directory_row_0):
                 r0 += 1
                 r1 += 1
             merge_ranges2.append((int(r0), int(r1), int(c0), int(c1)))
@@ -2474,10 +2613,12 @@ class SaSheetsWriter:
 
         # 保底：若 exporter 未给 merge_ranges，这里将“第一行元信息”合并
         if not merge_ranges and int(n_cols) > 1:
-            merge_ranges.append((0, 1, 0, int(n_cols)))
+            if int(banner_rows) > 0:
+                merge_ranges.append((0, 1, 0, int(n_cols)))  # banner
+            merge_ranges.append((int(banner_rows), int(banner_rows) + 1, 0, int(n_cols)))  # meta
         # 目录行整行合并
         if int(n_cols) > 1:
-            merge_ranges.append((1, 2, 0, int(n_cols)))
+            merge_ranges.append((int(directory_row_0), int(directory_row_0) + 1, 0, int(n_cols)))
 
         # NOTE: 先确保 grid 足够大，避免 values.update 超出当前网格范围而报错。
         self._ensure_grid_size(tab_title, min_rows=n_rows, min_cols=n_cols)
@@ -2533,7 +2674,7 @@ class SaSheetsWriter:
             )
 
         # -------------------- style --------------------
-        style_version = "polymarket_table_v2"
+        style_version = "polymarket_table_v3"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -2640,21 +2781,77 @@ class SaSheetsWriter:
                     "updateSheetProperties": {
                         "properties": {
                             "sheetId": int(sh_id),
-                            "gridProperties": {"frozenRowCount": 2, "frozenColumnCount": 0},
+                            "gridProperties": {"frozenRowCount": int(2 + int(banner_rows)), "frozenColumnCount": 0},
                         },
                         "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount",
                     }
                 }
             )
 
-            # meta row emphasis（第 1 行）
+            # banner 行（可选）
+            if int(banner_rows) > 0:
+                try:
+                    banner_lines = int(banner_line_count or 1)
+                except Exception:
+                    banner_lines = 1
+                banner_lines = max(1, min(int(banner_lines), 6))
+                banner_row_px = int(21 * int(banner_lines))
+
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(1.0, 0.97, 0.86),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "LEFT",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "OVERFLOW_CELL",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                            "properties": {"pixelSize": int(banner_row_px)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateBorders": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "innerVertical": {"style": "SOLID", "width": 1, "color": _rgb(1.0, 0.97, 0.86)},
+                        }
+                    }
+                )
+
+            # meta row emphasis（始终 1 行）
             reqs.append(
                 {
                     "repeatCell": {
                         "range": {
                             "sheetId": int(sh_id),
-                            "startRowIndex": 0,
-                            "endRowIndex": 1,
+                            "startRowIndex": int(banner_rows),
+                            "endRowIndex": int(banner_rows) + 1,
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
@@ -2672,14 +2869,14 @@ class SaSheetsWriter:
                 }
             )
 
-            # directory row（第 2 行）
+            # directory row（单单元格溢出，不换行）
             reqs.append(
                 {
                     "repeatCell": {
                         "range": {
                             "sheetId": int(sh_id),
-                            "startRowIndex": 1,
-                            "endRowIndex": 2,
+                            "startRowIndex": int(directory_row_0),
+                            "endRowIndex": int(directory_row_0) + 1,
                             "startColumnIndex": 0,
                             "endColumnIndex": int(target_cols),
                         },
@@ -2812,7 +3009,7 @@ class SaSheetsWriter:
                 tab_title,
                 row_count=int(target_rows),
                 col_count=int(target_cols),
-                frozen_row_count=2,
+                frozen_row_count=int(2 + int(banner_rows)),
                 frozen_column_count=0,
             )
 
@@ -2871,7 +3068,7 @@ class SaSheetsWriter:
                 except Exception:
                     pass
 
-        # directory links（after merges）：写入第 2 行 A2（并替换 textFormatRuns）
+        # directory links（after merges）：写入目录行（并替换 textFormatRuns）
         if dir_text and dir_runs:
             try:
                 self._exec(
@@ -2883,8 +3080,8 @@ class SaSheetsWriter:
                                     "updateCells": {
                                         "range": {
                                             "sheetId": int(sh_id),
-                                            "startRowIndex": 1,
-                                            "endRowIndex": 2,
+                                            "startRowIndex": int(directory_row_0),
+                                            "endRowIndex": int(directory_row_0) + 1,
                                             "startColumnIndex": 0,
                                             "endColumnIndex": 1,
                                         },
@@ -3008,6 +3205,13 @@ class SaSheetsWriter:
         # 统计口径去重：csv-report.js 固定滚动 24h，这里提升到全局元信息一次表达
         if meta_text and ("窗口" not in meta_text) and ("24h" not in meta_text.lower()):
             meta_text = f"{meta_text}，窗口，滚动24h"
+
+        # -------------------- top banner（全表首行广告位） --------------------
+        banner_raw = _read_top_banner_raw(prefer_dashboard=False)
+        banner_text, banner_line_count = _format_dashboard_banner_text(str(banner_raw or ""))
+        banner_rows = 1 if banner_text else 0
+        meta_row_0 = int(banner_rows)
+        dir_row_0 = int(banner_rows) + 1
 
         def normalize_title(s: str) -> str:
             x = str(s or "").strip()
@@ -3497,11 +3701,11 @@ class SaSheetsWriter:
             return int(col_i) * int(col_span)
 
         # 0-based row indices
-        cards_y0 = 2  # row3 (after meta+dir)
+        cards_y0 = int(dir_row_0) + 1  # after (optional banner) + meta + dir
         cursors = [int(cards_y0) for _ in range(int(grid_cols))]
         placements: list[dict[str, Any]] = []
 
-        max_end_row = 2
+        max_end_row = int(cards_y0)
         # masonry：按卡片高度降序放置（减少底部空洞）。
         # 单列模式：保持原始顺序（更符合“表格/报表”阅读习惯）。
         if int(grid_cols) == 1:
@@ -3557,11 +3761,14 @@ class SaSheetsWriter:
         # -------------------- build grid values (rect) --------------------
         grid: list[list[Any]] = [[""] * int(target_cols) for _ in range(int(target_rows))]
 
-        # meta row + directory row
-        if meta_text:
-            grid[0][0] = meta_text
+        # banner/meta/dir rows
+        if int(banner_rows) > 0 and banner_text:
+            grid[0][0] = banner_text
+        if meta_text and 0 <= int(meta_row_0) < len(grid):
+            grid[int(meta_row_0)][0] = meta_text
         # directory placeholder; will be overwritten by updateCells with rich text
-        grid[1][0] = "目录（点击跳转）"
+        if 0 <= int(dir_row_0) < len(grid):
+            grid[int(dir_row_0)][0] = "目录（点击跳转）"
 
         for p in placements:
             x0 = int(p["x0"])
@@ -3652,8 +3859,11 @@ class SaSheetsWriter:
         # -------------------- merges --------------------
         merge_ranges: list[tuple[int, int, int, int]] = []
         if int(target_cols) > 1:
-            merge_ranges.append((0, 1, 0, int(target_cols)))  # meta
-            merge_ranges.append((1, 2, 0, int(target_cols)))  # directory
+            # banner（可选）+ meta + directory：整行合并
+            if int(banner_rows) > 0:
+                merge_ranges.append((0, 1, 0, int(target_cols)))  # banner
+            merge_ranges.append((int(meta_row_0), int(meta_row_0) + 1, 0, int(target_cols)))  # meta
+            merge_ranges.append((int(dir_row_0), int(dir_row_0) + 1, 0, int(target_cols)))  # directory
         for p in placements:
             y0 = int(p["y0"])
             x0 = int(p["x0"])
@@ -3696,7 +3906,7 @@ class SaSheetsWriter:
                     pass
 
         # -------------------- styles --------------------
-        style_version = "polymarket_grid_v7"
+        style_version = "polymarket_grid_v8"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -3861,11 +4071,73 @@ class SaSheetsWriter:
                 }
             )
 
+            # banner 行（可选）
+            if int(banner_rows) > 0:
+                try:
+                    banner_lines = int(banner_line_count or 1)
+                except Exception:
+                    banner_lines = 1
+                banner_lines = max(1, min(int(banner_lines), 6))
+                banner_row_px = int(21 * int(banner_lines))
+
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(1.0, 0.97, 0.86),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "LEFT",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "OVERFLOW_CELL",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                            "properties": {"pixelSize": int(banner_row_px)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateBorders": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(target_cols),
+                            },
+                            "innerVertical": {"style": "SOLID", "width": 1, "color": _rgb(1.0, 0.97, 0.86)},
+                        }
+                    }
+                )
+
             # meta row
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": {"sheetId": int(sh_id), "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": int(target_cols)},
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(meta_row_0),
+                            "endRowIndex": int(meta_row_0) + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
                         "cell": {
                             "userEnteredFormat": {
                                 "backgroundColor": _rgb(0.93, 0.94, 0.96),
@@ -3883,7 +4155,13 @@ class SaSheetsWriter:
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": {"sheetId": int(sh_id), "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": int(target_cols)},
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(dir_row_0),
+                            "endRowIndex": int(dir_row_0) + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(target_cols),
+                        },
                         "cell": {
                             "userEnteredFormat": {
                                 "backgroundColor": _rgb(0.97, 0.98, 1.0),
@@ -4139,7 +4417,7 @@ class SaSheetsWriter:
                 tab_title,
                 row_count=int(target_rows),
                 col_count=int(target_cols),
-                frozen_row_count=2,
+                frozen_row_count=int(2 + int(banner_rows)),
                 frozen_column_count=0,
             )
 
@@ -4167,7 +4445,7 @@ class SaSheetsWriter:
                 parts.append(title_plain)
                 pos += idx_len(title_plain)
                 end = int(pos)
-                xy = pos_by_title.get(title_plain) or (0, 2)
+                xy = pos_by_title.get(title_plain) or (0, int(cards_y0))
                 col = _index_to_col(int(xy[0] + 1))
                 row1 = int(xy[1] + 1)
                 url = f"https://docs.google.com/spreadsheets/d/{self._spreadsheet_id}/edit#gid={int(sh_id)}&range={col}{row1}"
@@ -4193,8 +4471,8 @@ class SaSheetsWriter:
                                 "updateCells": {
                                     "range": {
                                         "sheetId": int(sh_id),
-                                        "startRowIndex": 1,
-                                        "endRowIndex": 2,
+                                        "startRowIndex": int(dir_row_0),
+                                        "endRowIndex": int(dir_row_0) + 1,
                                         "startColumnIndex": 0,
                                         "endColumnIndex": 1,
                                     },
@@ -4307,6 +4585,13 @@ class SaSheetsWriter:
             meta_text = ""
         if meta_text and ("窗口" not in meta_text) and ("24h" not in meta_text.lower()):
             meta_text = f"{meta_text}，窗口，滚动24h"
+
+        # -------------------- top banner（全表首行广告位） --------------------
+        banner_raw = _read_top_banner_raw(prefer_dashboard=False)
+        banner_text, banner_line_count = _format_dashboard_banner_text(str(banner_raw or ""))
+        banner_rows = 1 if banner_text else 0
+        meta_row_0 = int(banner_rows)
+        dir_row_0 = int(banner_rows) + 1
 
         def normalize_title(s: str) -> str:
             x = str(s or "").strip()
@@ -4431,19 +4716,25 @@ class SaSheetsWriter:
             sections = [s for s in sections if str(s.get("title_plain") or "").strip() not in drop_set]
 
         if not sections:
-            self._ensure_grid_size(tab_title, min_rows=1, min_cols=1)
+            err_rows: list[list[Any]] = []
+            if int(banner_rows) > 0 and banner_text:
+                err_rows.append([banner_text])
+            err_rows.append([meta_text or "Polymarket统计，错误，导出为空"])
+            n_err = max(int(len(err_rows)), 1)
+
+            self._ensure_grid_size(tab_title, min_rows=int(n_err), min_cols=1)
             self._exec(
                 self._sheets.spreadsheets()
                 .values()
                 .update(
                     spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!A1:A1",
+                    range=f"{tab_title}!A1:A{int(n_err)}",
                     valueInputOption="RAW",
-                    body={"values": [[meta_text or "Polymarket统计，错误，导出为空"]]},
+                    body={"values": err_rows},
                 ),
                 is_write=True,
             )
-            return {"ok": True, "tab": tab_title, "rows": 1, "cols": 1}
+            return {"ok": True, "tab": tab_title, "rows": int(n_err), "cols": 1}
 
         # -------------------- helpers --------------------
         def _col_idx(cols: list[str], name: str) -> int | None:
@@ -4673,6 +4964,8 @@ class SaSheetsWriter:
 
         # -------------------- build report rows --------------------
         out: list[list[Any]] = []
+        if int(banner_rows) > 0 and banner_text:
+            out.append([banner_text])
         out.append([meta_text])
         out.append(["目录（点击跳转）"])
 
@@ -4762,6 +5055,8 @@ class SaSheetsWriter:
 
         frozen_cols = _polymarket_frozen_cols()
         frozen_rows = _polymarket_frozen_rows(anchors=anchors)
+        if int(banner_rows) > 0:
+            frozen_rows = max(int(frozen_rows), 2 + int(banner_rows))
 
         # normalize to rect
         n_rows = len(out)
@@ -4832,8 +5127,11 @@ class SaSheetsWriter:
         # 注意：Google Sheets 不允许跨“冻结列分割线”做横向 merge。
         # - 当启用冻结列时（默认冻结面板列），这里禁用 A1/A2 的整行合并，改为单单元格溢出显示。
         if int(n_cols) > 1 and int(frozen_cols) <= 0:
-            merge_ranges.append((0, 1, 0, int(n_cols)))  # meta
-            merge_ranges.append((1, 2, 0, int(n_cols)))  # directory
+            # banner（可选）+ meta + directory：整行横向合并（不冻结列时允许）
+            if int(banner_rows) > 0:
+                merge_ranges.append((0, 1, 0, int(n_cols)))  # banner
+            merge_ranges.append((int(meta_row_0), int(meta_row_0) + 1, 0, int(n_cols)))  # meta
+            merge_ranges.append((int(dir_row_0), int(dir_row_0) + 1, 0, int(n_cols)))  # directory
         # 结构调整：不再存在“分区标题行整行合并”，改为新增第一列“面板”承载分区名。
         # 因此 anchors 行是“表头行”，严禁整行 merge（否则表头只剩第一个单元格可见）。
         merge_ranges.extend(extra_merge_ranges)
@@ -4868,7 +5166,7 @@ class SaSheetsWriter:
         # -------------------- styles --------------------
         # 版式版本号：用于强制重刷样式（避免历史残留/手工拖拽后的漂移）。
         # v6：面板列（列表头）强制居中；数据右对齐从 B 列开始（不覆盖面板列）。
-        style_version = "polymarket_report_v6"
+        style_version = "polymarket_report_v7"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
@@ -4947,20 +5245,107 @@ class SaSheetsWriter:
                     }
                 }
             )
+
+            # banner 行（可选）：全表首行广告位
+            if int(banner_rows) > 0:
+                try:
+                    banner_lines = int(banner_line_count or 1)
+                except Exception:
+                    banner_lines = 1
+                banner_lines = max(1, min(int(banner_lines), 6))
+                banner_row_px = int(21 * int(banner_lines))
+
+                reqs.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(n_cols),
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": _rgb(1.0, 0.97, 0.86),
+                                    "textFormat": {"bold": True},
+                                    "horizontalAlignment": "LEFT",
+                                    "verticalAlignment": "MIDDLE",
+                                    "wrapStrategy": "OVERFLOW_CELL",
+                                }
+                            },
+                            "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,verticalAlignment,wrapStrategy)",
+                        }
+                    }
+                )
+                reqs.append(
+                    {
+                        "updateDimensionProperties": {
+                            "range": {"sheetId": int(sh_id), "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                            "properties": {"pixelSize": int(banner_row_px)},
+                            "fields": "pixelSize",
+                        }
+                    }
+                )
+                # 视觉合并：遮蔽 banner 行内部竖线（冻结列开启时无法真 merge）
+                reqs.append(
+                    {
+                        "updateBorders": {
+                            "range": {
+                                "sheetId": int(sh_id),
+                                "startRowIndex": 0,
+                                "endRowIndex": 1,
+                                "startColumnIndex": 0,
+                                "endColumnIndex": int(n_cols),
+                            },
+                            "innerVertical": {"style": "SOLID", "width": 1, "color": _rgb(1.0, 0.97, 0.86)},
+                        }
+                    }
+                )
+
+            # meta 行（单单元格溢出，不换行）
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": {"sheetId": int(sh_id), "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
-                        "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.93, 0.94, 0.96), "textFormat": {"bold": True}, "horizontalAlignment": "LEFT", "wrapStrategy": "OVERFLOW_CELL"}},
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(meta_row_0),
+                            "endRowIndex": int(meta_row_0) + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(n_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.93, 0.94, 0.96),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "wrapStrategy": "OVERFLOW_CELL",
+                            }
+                        },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
                     }
                 }
             )
+
+            # directory 行（富文本超链接）
             reqs.append(
                 {
                     "repeatCell": {
-                        "range": {"sheetId": int(sh_id), "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": int(n_cols)},
-                        "cell": {"userEnteredFormat": {"backgroundColor": _rgb(0.97, 0.98, 1.0), "textFormat": {"bold": True}, "horizontalAlignment": "LEFT", "wrapStrategy": "OVERFLOW_CELL"}},
+                        "range": {
+                            "sheetId": int(sh_id),
+                            "startRowIndex": int(dir_row_0),
+                            "endRowIndex": int(dir_row_0) + 1,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": int(n_cols),
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": _rgb(0.97, 0.98, 1.0),
+                                "textFormat": {"bold": True},
+                                "horizontalAlignment": "LEFT",
+                                "wrapStrategy": "OVERFLOW_CELL",
+                            }
+                        },
                         "fields": "userEnteredFormat(backgroundColor,textFormat.bold,horizontalAlignment,wrapStrategy)",
                     }
                 }
@@ -5253,7 +5638,7 @@ class SaSheetsWriter:
         except Exception:
             pass
 
-        # directory richtext links (A2)
+        # directory richtext links（目录行）
         try:
             def idx_len(s: str) -> int:
                 return _utf16_len(str(s))
@@ -5284,7 +5669,7 @@ class SaSheetsWriter:
                         "requests": [
                             {
                                 "updateCells": {
-                                    "range": {"sheetId": int(sh_id), "startRowIndex": 1, "endRowIndex": 2, "startColumnIndex": 0, "endColumnIndex": 1},
+                                    "range": {"sheetId": int(sh_id), "startRowIndex": int(dir_row_0), "endRowIndex": int(dir_row_0) + 1, "startColumnIndex": 0, "endColumnIndex": 1},
                                     "rows": [{"values": [{"userEnteredValue": {"stringValue": str(dir_text)}, "textFormatRuns": runs}]}],
                                     "fields": "userEnteredValue,textFormatRuns",
                                 }
