@@ -4331,6 +4331,15 @@ class SaSheetsWriter:
                 sections.pop(int(rm))
             sections.insert(min(int(idx_cat), int(idx_pref)), composite)
 
+        # -------------------- enforce: Top15 hot-only (child tab) --------------------
+        # 用户要求：PolymarketTop15 子表只保留“综合热门市场 Top 15”。
+        # 注意：即使上游 split 已过滤，这里仍做一次兜底，避免“Top 15 长表”在报表整形阶段被重建。
+        tab_top15 = _env_text("SHEETS_TAB_POLYMARKET_TOP15", "PolymarketTop15")
+        top15_hot_only = (os.environ.get("SHEETS_POLYMARKET_TOP15_HOT_ONLY", "1") or "1").strip() != "0"
+        if top15_hot_only and str(tab_title).strip() == tab_top15:
+            keep_titles = {"综合热门市场 Top 15"}
+            sections = [s for s in sections if str(s.get("title_plain") or "").strip() in keep_titles]
+
         # -------------------- bundle: Top15 -> long table --------------------
         # 说明：综合热门市场 Top 15 自带多指标（套利/大额/订单簿/聪明钱/总计），如果强行“长表化”
         # 会造成同一市场重复出现 5 次，阅读上被认为“重复”。因此这里只把“单指标 Top 15”转为长表，
