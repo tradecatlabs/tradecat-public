@@ -4802,16 +4802,31 @@ class SaSheetsWriter:
             max_px = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_MAX", "420") or "420").strip() or "420")
             w_link = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_LINK", "40") or "40").strip() or "40")
             w_key = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_KEY", "72") or "72").strip() or "72")
+            # 新增“面板”列后，A 列应更窄；同时避免被第 1/2 行超长元信息撑爆。
+            w_panel = int((os.environ.get("SHEETS_POLYMARKET_COL_WIDTH_PANEL", "160") or "160").strip() or "160")
 
             widths: list[int] = []
             scan_rows = min(int(n_rows), 600)
+            # 跳过前两行（元信息/目录）：它们通常是超长文本，会把 A 列撑到 max_px，导致数据区难读。
+            scan_r0 = 2 if int(scan_rows) > 2 else 0
+
+            # 判断是否存在“面板”列（避免对其他 Polymarket tab 误判）
+            has_panel_col = False
+            try:
+                for ri in range(2, min(int(scan_rows), 12)):
+                    row = out[ri] if 0 <= ri < len(out) else []
+                    if row and str(row[0] or "").strip() == "面板":
+                        has_panel_col = True
+                        break
+            except Exception:
+                has_panel_col = False
             for ci in range(0, int(n_cols)):
                 max_len = 0
                 has_link_header = False
                 has_name_header = False
                 has_rank_header = False
                 has_hour_header = False
-                for ri in range(0, int(scan_rows)):
+                for ri in range(int(scan_r0), int(scan_rows)):
                     s = ""
                     try:
                         s = str(out[ri][ci] if ci < len(out[ri]) else "")
@@ -4832,7 +4847,9 @@ class SaSheetsWriter:
                         continue
                     max_len = max(max_len, min(len(s), 60))
 
-                if has_link_header:
+                if has_panel_col and int(ci) == 0:
+                    px = int(w_panel)
+                elif has_link_header:
                     px = int(w_link)
                 elif has_rank_header or has_hour_header:
                     px = int(w_key)
