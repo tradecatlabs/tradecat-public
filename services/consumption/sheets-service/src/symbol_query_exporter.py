@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +130,8 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
             n_cols=len(values[0]),
         )
 
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    tz8 = timezone(timedelta(hours=8))
+    now = datetime.now(timezone.utc).astimezone(tz8).replace(microsecond=0).isoformat()
 
     periods_all = tuple(ALL_PERIODS)
     exporter = SingleTokenTxtExporter()
@@ -169,7 +170,7 @@ def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuer
     # NOTE:
     # - 目录标题与跳转链接由 writer 在同一单元格内补齐（RichText links），这里不要写入“目录（点击跳转）”
     # - 避免出现 “……，目录（点击跳转），，基础指标……” 这种重复分隔符
-    meta_text = f"币种，{sym}，导出时间(UTC)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格）"
+    meta_text = f"币种，{sym}，导出时间(UTC+8)，{now}，语言，{lang}，说明，结构化表格（非文本伪表格）"
     values.append(pad_row([meta_text], n_cols))
 
     # 全局表头（只写一次，不在每个面板重复写）

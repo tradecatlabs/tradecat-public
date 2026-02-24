@@ -9,7 +9,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +49,11 @@ def _sha256_hex(text: str) -> str:
 
 def _now_utc_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _now_utc8_iso() -> str:
+    tz8 = timezone(timedelta(hours=8))
+    return datetime.now(timezone.utc).astimezone(tz8).replace(microsecond=0).isoformat()
 
 
 def _utf16_len(text: str) -> int:
@@ -6695,7 +6700,7 @@ class SaSheetsWriter:
                     sheet_title=title,
                     col_l=col_l,
                     col_r=col_r,
-                    export_ts_utc=_now_utc_iso(),
+                    export_ts_utc=_now_utc8_iso(),
                 )
                 results["variants"].append({"sheet": title, "mode": mode, "col_r": col_r, "cards": len(transformed)})
                 continue
@@ -6821,7 +6826,7 @@ class SaSheetsWriter:
             prev_used_cols = 0
 
         frozen_cols = _dashboard_v5_frozen_cols()
-        export_ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        export_ts = _now_utc8_iso()
 
         if hard_reset:
             # 破坏性重绘（会闪烁）：用于“样式大改/历史残留严重”场景
@@ -7670,8 +7675,8 @@ class SaSheetsWriter:
             clean_label = strip_leading_emoji(dir_label)
             ts_s = re.sub(r"\s+", " ", str(export_ts_utc or "").strip())
             if not ts_s:
-                ts_s = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-            prefix = f"导出时间(UTC)，{ts_s}，{clean_label}" if ts_s else clean_label
+                ts_s = _now_utc8_iso()
+            prefix = f"导出时间(UTC+8)，{ts_s}，{clean_label}" if ts_s else clean_label
             text_parts: list[str] = [prefix]
             runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
             pos = int(idx_len(prefix))

@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -383,7 +383,8 @@ def export_polymarket_stats_sheet(*, lang: str = "zh_CN") -> PolymarketStatsShee
     if mode not in {"auto", "local", "ssh"}:
         mode = "auto"
 
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    tz8 = timezone(timedelta(hours=8))
+    now = datetime.now(timezone.utc).astimezone(tz8).replace(microsecond=0).isoformat()
 
     translate = (os.environ.get("SHEETS_POLYMARKET_TRANSLATE", "0") or "0").strip() == "1"
     api_rankings = (os.environ.get("SHEETS_POLYMARKET_ENABLE_API_RANKINGS", "0") or "0").strip() == "1"
@@ -457,7 +458,7 @@ def export_polymarket_stats_sheet(*, lang: str = "zh_CN") -> PolymarketStatsShee
             source_desc = "local"
             path_desc = f"服务目录，{service_dir}，日志，{log_path}"
     except Exception as exc:
-        meta_text = f"数据源，Polymarket，导出时间(UTC)，{now}，语言，{lang}，错误，{type(exc).__name__}:{exc}"
+        meta_text = f"数据源，Polymarket，导出时间(UTC+8)，{now}，语言，{lang}，错误，{type(exc).__name__}:{exc}"
         values = [[meta_text]]
         return PolymarketStatsSheet(
             values=values,
@@ -470,7 +471,7 @@ def export_polymarket_stats_sheet(*, lang: str = "zh_CN") -> PolymarketStatsShee
 
     values0, title_rows0, header_rows0 = _parse_sectioned_csv(out)
 
-    meta_text = f"数据源，Polymarket，导出时间(UTC)，{now}，语言，{lang}，模式，{source_desc}，{path_desc}"
+    meta_text = f"数据源，Polymarket，导出时间(UTC+8)，{now}，语言，{lang}，模式，{source_desc}，{path_desc}"
     values: list[list[Any]] = [[meta_text]]
     values.extend(values0)
 

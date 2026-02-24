@@ -128,7 +128,8 @@ def export_polymarket_facts_events_sheet(*, lang: str = "zh_CN") -> PolymarketSt
         mode = "auto"
 
     now_dt = datetime.now(timezone.utc).replace(microsecond=0)
-    now = now_dt.isoformat().replace("+00:00", "Z")
+    tz8 = timezone(timedelta(hours=8))
+    now = now_dt.astimezone(tz8).isoformat()
     since_dt = now_dt - timedelta(hours=24)
 
     timeout_seconds = int((os.environ.get("SHEETS_POLYMARKET_FACTS_TIMEOUT_SECONDS", "20") or "20").strip() or "20")
@@ -195,7 +196,7 @@ def export_polymarket_facts_events_sheet(*, lang: str = "zh_CN") -> PolymarketSt
             source_desc = "local"
             path_desc = f"facts，{p_dir}，events，{day1}/{day0}"
     except Exception as exc:
-        meta_text = f"数据源，PolymarketFacts，导出时间(UTC)，{now}，语言，{lang}，错误，{type(exc).__name__}:{exc}"
+        meta_text = f"数据源，PolymarketFacts，导出时间(UTC+8)，{now}，语言，{lang}，错误，{type(exc).__name__}:{exc}"
         return PolymarketStatsSheet(
             values=[[meta_text]],
             panel_title_rows=[],
@@ -226,7 +227,7 @@ def export_polymarket_facts_events_sheet(*, lang: str = "zh_CN") -> PolymarketSt
         rows = rows[: int(limit)]
 
     meta_text = (
-        f"数据源，PolymarketFacts，导出时间(UTC)，{now}，语言，{lang}，模式，{source_desc}，{path_desc}，"
+        f"数据源，PolymarketFacts，导出时间(UTC+8)，{now}，语言，{lang}，模式，{source_desc}，{path_desc}，"
         f"窗口，24h，事件数，{len(rows)}"
     )
     values: list[list[Any]] = [[meta_text]]
