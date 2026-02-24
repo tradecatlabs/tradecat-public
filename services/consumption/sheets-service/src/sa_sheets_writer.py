@@ -8278,8 +8278,12 @@ class SaSheetsWriter:
                 }
             )
 
-        # period columns shading（差量）
-        shade_r0 = int(body_r0 if full_style else max(int(prev_styled_rows), int(body_r0)))
+        # period columns shading（每轮覆盖）
+        # 关键点：
+        # - bull/bear（红/绿）只对“方向/信号”行生效
+        # - 但如果历史版本曾误上色/或手工改过背景色，在“差量样式”模式下会残留
+        # - 因此周期列的灰白底色必须每轮覆盖一遍，保证像“成交额/净流”这类数值行不会残留红绿
+        shade_r0 = int(body_r0)
         shade_r1 = int(used_end_row_1)
         if shade_r1 > shade_r0:
             period_index = {p: i for i, p in enumerate(effective_periods)}
@@ -8298,7 +8302,7 @@ class SaSheetsWriter:
                     }
                 )
 
-            # 数值列（周期列）统一右对齐 + CLIP（差量）
+            # 数值列（周期列）统一右对齐 + CLIP（每轮覆盖，避免样式漂移）
             if (col_l0 + 3) < int(col_r1):
                 reqs.append(
                     {
