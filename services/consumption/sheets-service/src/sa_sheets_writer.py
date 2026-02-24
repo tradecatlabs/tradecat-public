@@ -5672,6 +5672,37 @@ class SaSheetsWriter:
                     }
                 )
 
+            # 行标题列/索引列（B）：强制居中 + 加粗（覆盖上面的“全右对齐”）。
+            # - Top15: 排名
+            # - 时段分布: 小时
+            # - 类别偏好: 类别/子类目
+            if pm_has_panel_col and int(n_cols) >= 2:
+                for r0, r1 in data_value_ranges:
+                    if int(r1) <= int(r0):
+                        continue
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                "range": {
+                                    "sheetId": int(sh_id),
+                                    "startRowIndex": int(r0),
+                                    "endRowIndex": int(r1),
+                                    "startColumnIndex": 1,
+                                    "endColumnIndex": 2,
+                                },
+                                "cell": {
+                                    "userEnteredFormat": {
+                                        "horizontalAlignment": "CENTER",
+                                        "verticalAlignment": "MIDDLE",
+                                        "textFormat": {"bold": True},
+                                        "wrapStrategy": "CLIP",
+                                    }
+                                },
+                                "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment,textFormat.bold,wrapStrategy)",
+                            }
+                        }
+                    )
+
             self._exec(self._sheets.spreadsheets().batchUpdate(spreadsheetId=self._spreadsheet_id, body={"requests": reqs}), is_write=True)
             self._meta_set({key_style_version: style_version, key_style_rows: str(n_rows), key_style_cols: str(n_cols)})
 
