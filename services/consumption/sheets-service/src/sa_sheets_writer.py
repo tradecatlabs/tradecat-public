@@ -199,6 +199,77 @@ def _hidden_periods() -> set[str]:
     return {s.strip() for s in raw.split(",") if s.strip()}
 
 
+def _classify_bull_bear(v: Any) -> int:
+    """
+    将“方向/信号”类离散值归一为 bull/bear/neutral：
+    - 返回：1=bull(偏多)、-1=bear(偏空)、0=neutral/unknown
+
+    说明：
+    - 该函数只用于“明确是方向/信号”的字段行（由 (card_type, field_name) 精确限定），
+      避免把其它字段（例如 成交额/振幅/百分比）误判上色。
+    """
+    if v is None:
+        return 0
+
+    s = str(v).strip()
+    if not s or s == "-":
+        return 0
+    if s.lower() in {"n/a", "na"}:
+        return 0
+
+    # 1) 数值符号优先（例如 翻转信号：-1/0/+1）
+    n = _coerce_number(s)
+    if isinstance(n, (int, float)):
+        if n > 0:
+            return 1
+        if n < 0:
+            return -1
+        return 0
+
+    s2 = re.sub(r"\s+", "", s)
+
+    # 2) 先处理会同时包含“多/空”的短语，避免互相覆盖
+    if "空转多" in s2:
+        return 1
+    if "多转空" in s2:
+        return -1
+
+    # 3) 明确词
+    if s2 in {"多", "偏多", "看多"}:
+        return 1
+    if s2 in {"空", "偏空", "看空"}:
+        return -1
+
+    if "金叉" in s2:
+        return 1
+    if "死叉" in s2:
+        return -1
+
+    if "多头排列" in s2:
+        return 1
+    if "空头排列" in s2:
+        return -1
+
+    if "支撑" in s2 or "突破" in s2 or "上破" in s2:
+        return 1
+    if "阻力" in s2 or "跌破" in s2 or "下破" in s2:
+        return -1
+
+    # 成交量“方向”常用词：放量/缩量
+    if "缩量" in s2:
+        return -1
+    if "放量" in s2:
+        return 1
+
+    # 兜底：包含“偏多/多头”视为 bull；包含“偏空/空头”视为 bear
+    if "偏多" in s2 or "多头" in s2:
+        return 1
+    if "偏空" in s2 or "空头" in s2:
+        return -1
+
+    return 0
+
+
 def _empty_placeholder_mode() -> str:
     """
     空行/无数据单元格的占位渲染模式。
@@ -7582,8 +7653,24 @@ class SaSheetsWriter:
         placeholder_char = _empty_placeholder_char() if placeholder_mode == "char" else ""
         sparkline_cells: list[tuple[int, int]] = []  # (row_1, col_1)
         period_set = set(PERIODS_DEFAULT)
+        effective_periods = [p for p in PERIODS_DEFAULT if p not in drop_periods]
+
+        # 离散信号（多/空）上色目标：必须用 (card_type, field_name) 精确限定，避免字段名复用误伤。
+        direction_targets: set[tuple[str, str]] = {
+            ("super_trend_ranking", "方向"),
+            ("trendline_ranking", "趋势方向"),
+            ("macd_ranking", "方向"),
+            ("volume_ratio_ranking", "方向"),
+            ("futures_flip_radar", "翻转信号"),
+            ("sr_ranking", "信号"),
+            ("kdj_ranking", "信号概述"),
+            ("kdj_ranking", "信号"),  # 兼容历史/别名
+            ("ema_ranking", "趋势"),
+        }
+        direction_marks: list[dict[str, Any]] = []
 
         for p in render_payloads:
+            card_type = str(p.get("card_type") or "").strip()
             header = p.get("header") or {}
             table = p.get("table") or {}
             rows = table.get("rows") or []
@@ -7605,6 +7692,18 @@ class SaSheetsWriter:
             for row_idx, r in enumerate(rows or []):
                 if not isinstance(r, dict):
                     continue
+
+                # 记录“方向/信号”行的每周期值：用于后续红/绿离散上色
+                try:
+                    field_name = str(r.get(payload_col1_name) or "").strip()
+                except Exception:
+                    field_name = ""
+                if card_type and field_name and (card_type, field_name) in direction_targets:
+                    pv: dict[str, Any] = {}
+                    for per in effective_periods:
+                        pv[per] = r.get(per)
+                    direction_marks.append({"row_1": int(y_body) + int(row_idx), "period_values": pv})
+
                 line: list[str] = []
                 for ci, c in enumerate(columns):
                     if c == card_col:
@@ -7789,6 +7888,8 @@ class SaSheetsWriter:
         bg_body_odd = _rgb(0.97, 0.97, 0.97)
         bg_sym_a = _rgb(0.95, 0.97, 1.0)  # 币种行组背景色1（淡蓝）
         bg_sym_b = _rgb(0.98, 0.98, 0.98)  # 币种行组背景色2（淡灰）
+        bg_bull = _rgb(0.776, 0.937, 0.808)  # Excel-like light green (#C6EFCE)
+        bg_bear = _rgb(1.0, 0.780, 0.808)  # Excel-like light red (#FFC7CE)
 
         reqs: list[dict[str, Any]] = []
         # -------------------- 差量样式（只扩不重刷） --------------------
@@ -8056,7 +8157,6 @@ class SaSheetsWriter:
         shade_r0 = int(body_r0 if full_style else max(int(prev_styled_rows), int(body_r0)))
         shade_r1 = int(used_end_row_1)
         if shade_r1 > shade_r0:
-            effective_periods = [p for p in PERIODS_DEFAULT if p not in _hidden_periods()]
             period_index = {p: i for i, p in enumerate(effective_periods)}
             for idx, c in enumerate(columns):
                 name = str(c or "").strip()
@@ -8089,6 +8189,85 @@ class SaSheetsWriter:
                         }
                     }
                 )
+
+        # 离散信号上色：多/空 -> 绿/红（每轮都覆盖，避免残留）
+        if direction_marks:
+            period_index2 = {p: i for i, p in enumerate(effective_periods)}
+            period_col_idx: dict[str, int] = {}
+            for idx, c in enumerate(columns):
+                name = str(c or "").strip()
+                if name in period_index2:
+                    period_col_idx[name] = int(idx)
+
+            for item in direction_marks:
+                try:
+                    row_1 = int(item.get("row_1") or 0)
+                except Exception:
+                    row_1 = 0
+                if row_1 <= 0:
+                    continue
+                row0 = int(row_1) - 1
+                pv2 = item.get("period_values") or {}
+                if not isinstance(pv2, dict):
+                    pv2 = {}
+
+                # 收集该行各周期单元格的目标底色（含 neutral 的“恢复默认底色”）
+                cells: list[tuple[int, dict[str, float]]] = []
+                for per in effective_periods:
+                    ci = period_col_idx.get(per)
+                    if ci is None:
+                        continue
+                    base_bg = bg_body_even if (int(period_index2.get(per) or 0) % 2 == 0) else bg_body_odd
+                    cls = _classify_bull_bear(pv2.get(per))
+                    if cls > 0:
+                        bg = bg_bull
+                    elif cls < 0:
+                        bg = bg_bear
+                    else:
+                        bg = base_bg
+                    col0 = int(col_l0) + int(ci)
+                    cells.append((int(col0), bg))
+
+                if not cells:
+                    continue
+
+                cells.sort(key=lambda t: int(t[0]))
+                seg_c0: int | None = None
+                seg_bg: dict[str, float] | None = None
+                prev_c0: int | None = None
+
+                def flush_seg() -> None:
+                    nonlocal seg_c0, seg_bg, prev_c0
+                    if seg_c0 is None or seg_bg is None or prev_c0 is None:
+                        return
+                    reqs.append(
+                        {
+                            "repeatCell": {
+                                "range": rrange(r0=int(row0), r1=int(row0 + 1), c0=int(seg_c0), c1=int(prev_c0 + 1)),
+                                "cell": {"userEnteredFormat": {"backgroundColor": seg_bg}},
+                                "fields": "userEnteredFormat.backgroundColor",
+                            }
+                        }
+                    )
+                    seg_c0 = None
+                    seg_bg = None
+                    prev_c0 = None
+
+                for c0, bg in cells:
+                    if seg_c0 is None:
+                        seg_c0 = int(c0)
+                        seg_bg = bg
+                        prev_c0 = int(c0)
+                        continue
+                    if prev_c0 is not None and int(c0) == int(prev_c0) + 1 and bg == seg_bg:
+                        prev_c0 = int(c0)
+                        continue
+                    flush_seg()
+                    seg_c0 = int(c0)
+                    seg_bg = bg
+                    prev_c0 = int(c0)
+
+                flush_seg()
 
         # card merges + symbol merges + row-group shading：按层级合并（卡片 -> 币种），提升阅读性
         for body_start_row_1, body_rows in merge_tasks:
