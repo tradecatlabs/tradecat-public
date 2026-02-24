@@ -2133,42 +2133,6 @@ class SaSheetsWriter:
                     }
                 )
 
-            # 空值占位符样式：
-            # - char 模式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
-            placeholder_char2 = _empty_placeholder_char() if placeholder_mode == "char" else ""
-            if placeholder_char2 and int(target_cols) > 3:
-                start_r0 = int(header_row_0) + 1
-                if start_r0 < int(target_rows):
-                    reqs.append(
-                        {
-                            "addConditionalFormatRule": {
-                                "rule": {
-                                    "ranges": [
-                                        {
-                                            "sheetId": int(sh_id),
-                                            "startRowIndex": int(start_r0),
-                                            "endRowIndex": int(target_rows),
-                                            "startColumnIndex": 3,
-                                            "endColumnIndex": int(target_cols),
-                                        }
-                                    ],
-                                    "booleanRule": {
-                                        "condition": {
-                                            "type": "TEXT_EQ",
-                                            "values": [{"userEnteredValue": str(placeholder_char2)}],
-                                        },
-                                        "format": {
-                                            # ConditionalFormatRule.format 仅支持 textFormat(bold/italic/strikethrough)
-                                            # + foreground/background color；不支持 alignment。
-                                            "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
-                                        },
-                                    },
-                                },
-                                "index": 0,
-                            }
-                        }
-                    )
-
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
                     spreadsheetId=self._spreadsheet_id,
@@ -8052,43 +8016,6 @@ class SaSheetsWriter:
                             ),
                             "cell": {"userEnteredFormat": {"horizontalAlignment": "RIGHT", "wrapStrategy": "CLIP"}},
                             "fields": "userEnteredFormat(horizontalAlignment,wrapStrategy)",
-                        }
-                    }
-                )
-
-        # 空值占位符样式：
-        # - char 模式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
-        placeholder_char3 = _empty_placeholder_char() if placeholder_mode2 == "char" else ""
-        if full_style and placeholder_char3 and (col_l0 + 3) < int(col_r1):
-            start_r0 = int(body_start_row_1) - 1
-            end_r1 = int(used_rows)
-            if start_r0 < end_r1:
-                reqs.append(
-                    {
-                        "addConditionalFormatRule": {
-                            "rule": {
-                                "ranges": [
-                                    {
-                                        "sheetId": int(sh_id),
-                                        "startRowIndex": int(start_r0),
-                                        "endRowIndex": int(end_r1),
-                                        "startColumnIndex": int(col_l0 + 3),
-                                        "endColumnIndex": int(col_r1),
-                                    }
-                                ],
-                                "booleanRule": {
-                                    "condition": {
-                                        "type": "TEXT_EQ",
-                                        "values": [{"userEnteredValue": str(placeholder_char3)}],
-                                    },
-                                    "format": {
-                                        # ConditionalFormatRule.format 仅支持 textFormat(bold/italic/strikethrough)
-                                        # + foreground/background color；不支持 alignment。
-                                        "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
-                                    },
-                                },
-                            },
-                            "index": 0,
                         }
                     }
                 )
