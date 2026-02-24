@@ -2599,6 +2599,34 @@ class SaSheetsWriter:
                         }
                     )
 
+            # 周期列灰白底色（每轮覆盖，避免历史残留红/绿/手工样式漂移）
+            # 注意：
+            # - bull/bear（红/绿）只会覆盖“方向/信号/翻转信号”行
+            # - 因此必须先把周期列统一刷回灰白底色，保证其它数值行（如 量比/MACD柱/带宽评分）不会残留颜色
+            if period_cols:
+                bg_period_even = _rgb(1.0, 1.0, 1.0)
+                bg_period_odd = _rgb(0.975, 0.98, 0.99)  # 与币种查询表默认灰白交替一致
+                body_r0 = int(header_row_0) + 1
+                body_r1 = int(n_rows)
+                if body_r1 > body_r0:
+                    for pi, (_p, ci) in enumerate(period_cols):
+                        bg = bg_period_odd if (int(pi) % 2 == 1) else bg_period_even
+                        reqs_align.append(
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": int(body_r0),
+                                        "endRowIndex": int(body_r1),
+                                        "startColumnIndex": int(ci),
+                                        "endColumnIndex": int(ci) + 1,
+                                    },
+                                    "cell": {"userEnteredFormat": {"backgroundColor": bg}},
+                                    "fields": "userEnteredFormat.backgroundColor",
+                                }
+                            }
+                        )
+
             # 离散信号上色：多/空 -> 绿/红（每轮覆盖，避免残留）
             if direction_marks and period_cols:
                 bg_period_even = _rgb(1.0, 1.0, 1.0)
