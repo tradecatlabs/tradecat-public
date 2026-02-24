@@ -9809,8 +9809,44 @@ class SaSheetsWriter:
         - 看板（SHEETS_TAB_DASHBOARD）
         - 交易对子表（默认：title 以 symbol_tab_prefix 开头；可选：仅保留 keep_symbol_tabs）
         """
-        self.ensure_schema()
-        self._refresh_sheet_map()
+        # daemon 场景下 prune_tabs 可能每分钟触发一次；如果网络/代理偶发抖动，会导致日志刷屏。
+        # 这里加“节流”：minimal schema 下默认每小时最多尝试一次（可通过 env 调整/关闭）。
+        # - env: SHEETS_PRUNE_TABS_INTERVAL_SECONDS（默认 3600；<=0 表示每次都尝试）
+        # - 记录：写入 local_meta（minimal 模式的单一真相源）
+        minimal_throttle = self._schema_mode == "minimal"
+        if minimal_throttle:
+            try:
+                interval = int((os.environ.get("SHEETS_PRUNE_TABS_INTERVAL_SECONDS", "3600") or "3600").strip() or "3600")
+            except Exception:
+                interval = 3600
+            if interval > 0:
+                try:
+                    meta = self._local_meta_get()
+                    last = int(str(meta.get("prune_tabs_last_epoch") or "0").strip() or "0")
+                except Exception:
+                    last = 0
+                now = int(time.time())
+                if int(last) > 0 and (now - int(last)) < int(interval):
+                    return {"deleted": 0, "kept": [], "skipped": 1, "reason": "throttled"}
+
+        # 先落盘“本次尝试时间”，确保即便后续网络/代理抖动失败，也不会每分钟刷屏
+        if minimal_throttle:
+            try:
+                self._local_meta_set({"prune_tabs_last_epoch": str(int(time.time()))})
+            except Exception:
+                pass
+
+        try:
+            self.ensure_schema()
+            self._refresh_sheet_map()
+        except Exception as exc:
+            if minimal_throttle:
+                try:
+                    self._local_meta_set({"prune_tabs_last_error": f"{type(exc).__name__}:{exc}"[:2000]})
+                except Exception:
+                    pass
+                return {"deleted": 0, "kept": [], "ok": False, "error": f"{type(exc).__name__}:{exc}"}
+            raise
         keep: set[str] = {self._tab_dashboard}
 
         # v5 数据层/历史层：默认保留（tab 默认隐藏，不影响“最少交互”的阅读体验）
@@ -9866,18 +9902,37 @@ class SaSheetsWriter:
                 delete_ids.append(int(sid))
 
         if not delete_ids:
+            if minimal_throttle:
+                try:
+                    self._local_meta_set({"prune_tabs_last_error": ""})
+                except Exception:
+                    pass
             return {"deleted": 0, "kept": sorted(keep)}
 
         reqs = [{"deleteSheet": {"sheetId": int(sid)}} for sid in delete_ids]
-        self._exec(
-            self._sheets.spreadsheets().batchUpdate(
-                spreadsheetId=self._spreadsheet_id,
-                body={"requests": reqs},
-            ),
-            is_write=True,
-        )
-        self._refresh_sheet_map()
-        return {"deleted": len(delete_ids), "kept": sorted(keep)}
+        try:
+            self._exec(
+                self._sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={"requests": reqs},
+                ),
+                is_write=True,
+            )
+            self._refresh_sheet_map()
+            if minimal_throttle:
+                try:
+                    self._local_meta_set({"prune_tabs_last_error": ""})
+                except Exception:
+                    pass
+            return {"deleted": len(delete_ids), "kept": sorted(keep)}
+        except Exception as exc:
+            if minimal_throttle:
+                try:
+                    self._local_meta_set({"prune_tabs_last_error": f"{type(exc).__name__}:{exc}"[:2000]})
+                except Exception:
+                    pass
+                return {"deleted": 0, "kept": sorted(keep), "ok": False, "error": f"{type(exc).__name__}:{exc}"}
+            raise
 
     def delete_tab_if_exists(self, *, title: str) -> dict[str, Any]:
         """
