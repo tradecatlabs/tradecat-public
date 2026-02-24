@@ -5258,6 +5258,32 @@ class SaSheetsWriter:
             if len(r) < n_cols:
                 r.extend([""] * (n_cols - len(r)))
 
+        # -------------------- empty placeholders（纯函数绘制对角线） --------------------
+        # 需求：对“分段数据行”末尾无数据列（例如 Polymarket类别偏好 E11:F16）用反斜线占位。
+        # - 仅填充每行的“尾部空白列”，避免破坏面板列的纵向合并（A 列空白属于合并块，不应写入）
+        # - 只对数据区生效（data_value_ranges），不影响 banner/meta/目录/表头
+        placeholder_mode = _empty_placeholder_mode()
+        placeholder_char = _empty_placeholder_char() if placeholder_mode == "char" else ""
+        sparkline_cells: list[tuple[int, int]] = []  # (row_1, col_1)
+        if placeholder_mode in {"sparkline", "char"} and data_value_ranges:
+            for r0, r1 in data_value_ranges:
+                rr0 = max(int(r0), 0)
+                rr1 = min(int(r1), int(n_rows))
+                for ri in range(int(rr0), int(rr1)):
+                    row = out[int(ri)] if 0 <= int(ri) < len(out) else []
+                    last_nonblank = -1
+                    for ci in range(int(n_cols) - 1, -1, -1):
+                        v = row[int(ci)] if int(ci) < len(row) else ""
+                        if not _is_blank_cell(v):
+                            last_nonblank = int(ci)
+                            break
+                    for ci in range(int(last_nonblank) + 1, int(n_cols)):
+                        if placeholder_mode == "char":
+                            if int(ci) < len(row):
+                                row[int(ci)] = placeholder_char
+                        else:
+                            sparkline_cells.append((int(ri) + 1, int(ci) + 1))
+
         # -------------------- write values --------------------
         self._ensure_grid_size(tab_title, min_rows=int(n_rows), min_cols=int(n_cols))
         col_r = _index_to_col(int(n_cols))
@@ -5272,6 +5298,14 @@ class SaSheetsWriter:
             ),
             is_write=True,
         )
+
+        # SPARKLINE 占位必须在 values.update(RAW) 之后执行：RAW 会把公式当文本写入。
+        if placeholder_mode == "sparkline" and sparkline_cells:
+            try:
+                formula = _sparkline_backslash_formula(locale=getattr(self, "_spreadsheet_locale", None))
+                self._apply_cell_formulas(sheet_title=tab_title, cells=sparkline_cells, formula=formula)
+            except Exception:
+                pass
 
         # tail clear（避免历史残留）
         compact_grid = (os.environ.get("SHEETS_POLYMARKET_COMPACT_GRID", "1") or "1").strip() != "0"
