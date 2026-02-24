@@ -5391,8 +5391,8 @@ class SaSheetsWriter:
 
         # -------------------- styles --------------------
         # 版式版本号：用于强制重刷样式（避免历史残留/手工拖拽后的漂移）。
-        # v6：面板列（列表头）强制居中；数据右对齐从 B 列开始（不覆盖面板列）。
-        style_version = "polymarket_report_v7"
+        # v8：B 列（行标题/索引列）强制居中+加粗（覆盖数据区右对齐）。
+        style_version = "polymarket_report_v8"
         key_style_version = f"pmtab.{tab_title}.style_version"
         key_style_rows = f"pmtab.{tab_title}.style_rows"
         key_style_cols = f"pmtab.{tab_title}.style_cols"
