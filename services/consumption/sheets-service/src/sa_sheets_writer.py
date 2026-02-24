@@ -2158,9 +2158,9 @@ class SaSheetsWriter:
                                             "values": [{"userEnteredValue": str(placeholder_char2)}],
                                         },
                                         "format": {
+                                            # ConditionalFormatRule.format 仅支持 textFormat(bold/italic/strikethrough)
+                                            # + foreground/background color；不支持 alignment。
                                             "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
-                                            "horizontalAlignment": "CENTER",
-                                            "verticalAlignment": "MIDDLE",
                                         },
                                     },
                                 },
@@ -8082,9 +8082,9 @@ class SaSheetsWriter:
                                         "values": [{"userEnteredValue": str(placeholder_char3)}],
                                     },
                                     "format": {
+                                        # ConditionalFormatRule.format 仅支持 textFormat(bold/italic/strikethrough)
+                                        # + foreground/background color；不支持 alignment。
                                         "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
-                                        "horizontalAlignment": "CENTER",
-                                        "verticalAlignment": "MIDDLE",
                                     },
                                 },
                             },
