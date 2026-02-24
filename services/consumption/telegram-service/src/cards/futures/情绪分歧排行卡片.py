@@ -12,7 +12,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cards.base import RankingCard
 from cards.data_provider import get_ranking_provider, format_symbol
-from cards.i18n import gettext as _t, btn as _btn, resolve_lang, btn_auto as _btn_auto, format_sort_field
+from cards.i18n import (
+    btn as _btn,
+    btn_auto as _btn_auto,
+    format_sort_field,
+    gettext as _t,
+    resolve_lang,
+    translate_field,
+)
 
 
 class FuturesDivergenceCard(RankingCard):
