@@ -194,21 +194,115 @@ def _hidden_periods() -> set[str]:
     return {s.strip() for s in raw.split(",") if s.strip()}
 
 
-def _empty_cell_placeholder() -> str:
+def _empty_placeholder_mode() -> str:
     """
-    空行/无数据单元格的“斜线占位符”。
+    空行/无数据单元格的占位渲染模式。
 
-    说明（Google Sheets 约束）：
-    - Sheets API 不支持 Excel 那种“对角线边框”，因此用字符占位最稳（RAW 写入、跨客户端一致）。
+    - `sparkline`（默认，纯函数绘制）：用 `SPARKLINE` 画对角线（反斜线：左上→右下）
+    - `char`：写入字符占位（默认字符见 `SHEETS_EMPTY_PLACEHOLDER`）
+    - `off`：不做占位
 
-    - env: `SHEETS_EMPTY_PLACEHOLDER`
-      - 默认：`／`（全角斜线）
-      - 禁用：`0|off|none`
+    env: `SHEETS_EMPTY_PLACEHOLDER_MODE`
+    """
+    raw = (os.environ.get("SHEETS_EMPTY_PLACEHOLDER_MODE", "sparkline") or "sparkline").strip().lower()
+    if raw in {"0", "off", "none"}:
+        return "off"
+    if raw in {"sparkline", "formula", "diag", "diagonal", "line"}:
+        return "sparkline"
+    return "char"
+
+
+def _empty_placeholder_char() -> str:
+    """
+    `char` 模式下用于占位的字符。
+
+    env: `SHEETS_EMPTY_PLACEHOLDER`
+    - 默认：`／`（全角斜线）
+    - 禁用：`0|off|none`
     """
     raw = (os.environ.get("SHEETS_EMPTY_PLACEHOLDER", "／") or "／").strip()
     if raw.lower() in {"0", "off", "none"}:
         return ""
     return raw or "／"
+
+
+_SEMICOLON_LOCALE_LANGS = {
+    # 经验集合：这些语言在 Sheets 中常用 `;` 作为函数参数分隔符，数组列分隔符用 `\`
+    "de",
+    "fr",
+    "es",
+    "it",
+    "pt",
+    "ru",
+    "nl",
+    "pl",
+    "tr",
+    "da",
+    "sv",
+    "no",
+    "fi",
+    "cs",
+    "sk",
+    "hu",
+    "ro",
+    "bg",
+    "el",
+    "uk",
+    "sr",
+    "hr",
+    "sl",
+    "lt",
+    "lv",
+    "et",
+}
+
+
+def _sparkline_backslash_formula(*, locale: str | None) -> str:
+    """
+    纯函数绘制“反斜线”对角线（左上→右下）。
+
+    约束：
+    - Sheets 没有“单元格对角线边框”，只能用 SPARKLINE 画线，视觉上近似。
+    - 公式分隔符依赖 spreadsheet locale；这里按 locale 做最常见的两套语法。
+    """
+    # 允许强制覆盖（用于排障）：`comma` / `semicolon`
+    force = (os.environ.get("SHEETS_FORMULA_SEPARATORS", "") or "").strip().lower()
+    if force in {"comma", ","}:
+        arg_sep, col_sep = ",", ","
+    elif force in {"semicolon", ";"}:
+        arg_sep, col_sep = ";", "\\"
+    else:
+        lang = str(locale or "").split("_", 1)[0].strip().lower()
+        if lang in _SEMICOLON_LOCALE_LANGS:
+            arg_sep, col_sep = ";", "\\"
+        else:
+            arg_sep, col_sep = ",", ","
+
+    data = "{1" + col_sep + "0}"
+    opts = (
+        "{"
+        + "\"charttype\""
+        + col_sep
+        + "\"line\""
+        + ";"
+        + "\"color\""
+        + col_sep
+        + "\"#C8C8C8\""
+        + ";"
+        + "\"linewidth\""
+        + col_sep
+        + "2"
+        + ";"
+        + "\"ymin\""
+        + col_sep
+        + "0"
+        + ";"
+        + "\"ymax\""
+        + col_sep
+        + "1"
+        + "}"
+    )
+    return "=SPARKLINE(" + data + arg_sep + opts + ")"
 
 
 def _is_no_data_cell(v: Any) -> bool:
@@ -714,6 +808,20 @@ class SaSheetsWriter:
         # Google Sheets 默认配额很低（常见为 60 write req/min/user），不做节流会稳定触发 429。
         write_rpm = int((os.environ.get("SHEETS_SA_WRITE_RPM", "55") or "55").strip())
         self._write_limiter = _WriteRateLimiter(write_rpm)
+
+        # Spreadsheet locale（用于生成 locale-sensitive 的公式文本，例如 SPARKLINE 的分隔符）
+        self._spreadsheet_locale: str | None = None
+        try:
+            ss = self._exec(
+                self._sheets.spreadsheets().get(
+                    spreadsheetId=self._spreadsheet_id,
+                    fields="properties.locale",
+                ),
+                is_write=False,
+            )
+            self._spreadsheet_locale = str(((ss.get("properties") or {}) or {}).get("locale") or "").strip() or None
+        except Exception:
+            self._spreadsheet_locale = None
 
     def _exec(self, req: Any, *, is_write: bool) -> Any:
         if is_write:
@@ -1337,9 +1445,11 @@ class SaSheetsWriter:
 
         # -------------------- empty placeholder（斜线占位） --------------------
         # 仅对“数据区”的周期列生效：避免污染面板标题行/表头/元信息行。
-        # - 目的：把空值/无数据用 `／`（或配置值）占位，视觉上更紧凑，也更容易辨识缺失。
-        placeholder = _empty_cell_placeholder()
-        if placeholder:
+        # - 目的：把空值/无数据“画成对角线占位”（纯函数 SPARKLINE）或写入字符占位。
+        placeholder_mode = _empty_placeholder_mode()
+        placeholder_char = _empty_placeholder_char() if placeholder_mode == "char" else ""
+        sparkline_cells: list[tuple[int, int]] = []  # (row_1, col_1)
+        if placeholder_mode != "off":
             try:
                 header_row = values[int(header_row_0)] if 0 <= int(header_row_0) < len(values) else []
                 period_set = set(PERIODS_DEFAULT)
@@ -1365,7 +1475,11 @@ class SaSheetsWriter:
                             continue
                         v = row[int(ci)]
                         if _is_no_data_cell(v):
-                            row[int(ci)] = placeholder
+                            if placeholder_mode == "sparkline":
+                                row[int(ci)] = ""
+                                sparkline_cells.append((int(ri) + 1, int(ci) + 1))
+                            elif placeholder_char:
+                                row[int(ci)] = placeholder_char
             except Exception:
                 pass
 
@@ -1401,6 +1515,15 @@ class SaSheetsWriter:
             ),
             is_write=True,
         )
+
+        # -------------------- sparkline placeholders（纯函数绘制对角线） --------------------
+        # 必须在 values.update(RAW) 之后执行：RAW 会把公式当文本写入。
+        if placeholder_mode == "sparkline" and sparkline_cells:
+            try:
+                formula = _sparkline_backslash_formula(locale=getattr(self, "_spreadsheet_locale", None))
+                self._apply_cell_formulas(sheet_title=tab_title, cells=sparkline_cells, formula=formula)
+            except Exception:
+                pass
 
         # -------------------- directory (single cell, rich links) --------------------
         # 需求：币种查询子表只保留 1 行元信息；目录条目追加到同一单元格内，用中文逗号分隔并保留跳转。
@@ -1507,12 +1630,17 @@ class SaSheetsWriter:
 
         # -------------------- style --------------------
         # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
-        style_version = "symbol_table_v12"
+        style_version = "symbol_table_v13"
         key_style_version = f"symtab.{tab_title}.style_version"
         key_style_rows = f"symtab.{tab_title}.style_rows"
         key_style_cols = f"symtab.{tab_title}.style_cols"
         key_style_placeholder = f"symtab.{tab_title}.style_placeholder"
-        placeholder = _empty_cell_placeholder()
+        placeholder_mode = _empty_placeholder_mode()
+        placeholder_style = (
+            f"char:{_empty_placeholder_char()}"
+            if placeholder_mode == "char"
+            else ("sparkline" if placeholder_mode == "sparkline" else "off")
+        )
         try:
             styled_rows = int(str(meta.get(key_style_rows) or "0").strip() or "0")
         except Exception:
@@ -1528,7 +1656,7 @@ class SaSheetsWriter:
         target_cols = int(max(n_cols, styled_cols, 6))
         need_style = (
             (meta.get(key_style_version) or "") != style_version
-            or (meta.get(key_style_placeholder) or "") != placeholder
+            or (meta.get(key_style_placeholder) or "") != placeholder_style
             or target_rows > styled_rows
             or target_cols != styled_cols
         )
@@ -2005,8 +2133,10 @@ class SaSheetsWriter:
                     }
                 )
 
-            # 空值占位符（斜线）样式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
-            if placeholder and int(target_cols) > 3:
+            # 空值占位符样式：
+            # - char 模式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
+            placeholder_char2 = _empty_placeholder_char() if placeholder_mode == "char" else ""
+            if placeholder_char2 and int(target_cols) > 3:
                 start_r0 = int(header_row_0) + 1
                 if start_r0 < int(target_rows):
                     reqs.append(
@@ -2025,7 +2155,7 @@ class SaSheetsWriter:
                                     "booleanRule": {
                                         "condition": {
                                             "type": "TEXT_EQ",
-                                            "values": [{"userEnteredValue": str(placeholder)}],
+                                            "values": [{"userEnteredValue": str(placeholder_char2)}],
                                         },
                                         "format": {
                                             "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
@@ -2051,7 +2181,7 @@ class SaSheetsWriter:
                     key_style_version: style_version,
                     key_style_rows: str(target_rows),
                     key_style_cols: str(target_cols),
-                    key_style_placeholder: placeholder,
+                    key_style_placeholder: placeholder_style,
                 }
             )
 
@@ -7414,7 +7544,9 @@ class SaSheetsWriter:
         max_y_used = 1
         used_end_row_1 = 1
         dir_entries: list[tuple[str, int]] = []  # (title, body_start_row_1)
-        placeholder = _empty_cell_placeholder()
+        placeholder_mode = _empty_placeholder_mode()
+        placeholder_char = _empty_placeholder_char() if placeholder_mode == "char" else ""
+        sparkline_cells: list[tuple[int, int]] = []  # (row_1, col_1)
         period_set = set(PERIODS_DEFAULT)
 
         for p in render_payloads:
@@ -7440,15 +7572,22 @@ class SaSheetsWriter:
                 if not isinstance(r, dict):
                     continue
                 line: list[str] = []
-                for c in columns:
+                for ci, c in enumerate(columns):
                     if c == card_col:
                         # 元信息：不再使用“分割行”（info row）；改为写入卡片合并单元格的 top-left
                         # - 只在该卡片块的第一行写入，其它行留空（merge 后以 top-left 为准）
                         line.append(title_display if row_idx == 0 else "")
                         continue
                     v = r.get(c)
-                    if placeholder and (str(c).strip() in period_set) and _is_no_data_cell(v):
-                        line.append(placeholder)
+                    if (str(c).strip() in period_set) and _is_no_data_cell(v):
+                        if placeholder_mode == "sparkline":
+                            line.append("")
+                            # 1-based 坐标：col_l_idx 是 1-based
+                            sparkline_cells.append((int(y_body) + int(row_idx), int(col_l_idx) + int(ci)))
+                        elif placeholder_char:
+                            line.append(placeholder_char)
+                        else:
+                            line.append("" if v is None else str(v))
                     else:
                         line.append("" if v is None else str(v))
                 body_vals.append(pad_row(line))
@@ -7476,6 +7615,14 @@ class SaSheetsWriter:
                 ),
             is_write=True,
         )
+
+        # 纯函数占位：空值单元格用 SPARKLINE 画“反斜线”对角线
+        if placeholder_mode == "sparkline" and sparkline_cells:
+            try:
+                formula = _sparkline_backslash_formula(locale=getattr(self, "_spreadsheet_locale", None))
+                self._apply_cell_formulas(sheet_title=sheet_title, cells=sparkline_cells, formula=formula)
+            except Exception:
+                pass
 
         # 目录：写入“逗号分隔”的单单元格文本（A1）
         # - 保留“点击跳转”：通过 RichText 的 textFormatRuns 为每个条目单独绑定 link
@@ -7619,7 +7766,12 @@ class SaSheetsWriter:
         key_dir_rows = "dashboard_v5_dir_rows"
         key_banner_rows = "dashboard_v5_banner_rows"
         key_style_placeholder = "dashboard_v5_style_placeholder"
-        placeholder_text = _empty_cell_placeholder()
+        placeholder_mode2 = _empty_placeholder_mode()
+        placeholder_style = (
+            f"char:{_empty_placeholder_char()}"
+            if placeholder_mode2 == "char"
+            else ("sparkline" if placeholder_mode2 == "sparkline" else "off")
+        )
         try:
             prev_styled_rows = int(str(meta.get(key_styled_rows) or "0").strip() or "0")
         except Exception:
@@ -7635,7 +7787,7 @@ class SaSheetsWriter:
 
         full_style = (
             (meta.get(key_style_version) or "") != style_version
-            or (meta.get(key_style_placeholder) or "") != placeholder_text
+            or (meta.get(key_style_placeholder) or "") != placeholder_style
             or int(prev_dir_rows) != int(dir_rows)
             or int(prev_banner_rows) != int(banner_rows)
             or prev_styled_rows <= 0
@@ -7904,8 +8056,10 @@ class SaSheetsWriter:
                     }
                 )
 
-        # 空值占位符（斜线）样式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
-        if full_style and placeholder_text and (col_l0 + 3) < int(col_r1):
+        # 空值占位符样式：
+        # - char 模式：命中占位字符时改为浅灰 + 居中（覆盖周期列默认右对齐）
+        placeholder_char3 = _empty_placeholder_char() if placeholder_mode2 == "char" else ""
+        if full_style and placeholder_char3 and (col_l0 + 3) < int(col_r1):
             start_r0 = int(body_start_row_1) - 1
             end_r1 = int(used_rows)
             if start_r0 < end_r1:
@@ -7925,7 +8079,7 @@ class SaSheetsWriter:
                                 "booleanRule": {
                                     "condition": {
                                         "type": "TEXT_EQ",
-                                        "values": [{"userEnteredValue": str(placeholder_text)}],
+                                        "values": [{"userEnteredValue": str(placeholder_char3)}],
                                     },
                                     "format": {
                                         "textFormat": {"foregroundColor": _rgb(0.62, 0.62, 0.62)},
@@ -8169,7 +8323,7 @@ class SaSheetsWriter:
                 self._meta_set(
                     {
                         key_style_version: style_version,
-                        key_style_placeholder: placeholder_text,
+                        key_style_placeholder: placeholder_style,
                         key_styled_rows: str(int(used_end_row_1)),
                         key_dir_rows: str(int(dir_rows)),
                         key_banner_rows: str(int(banner_rows)),
@@ -8862,6 +9016,94 @@ class SaSheetsWriter:
         )
         # refresh cache
         self._refresh_sheet_map()
+
+    def _apply_cell_formulas(self, *, sheet_title: str, cells: list[tuple[int, int]], formula: str) -> None:
+        """
+        在指定单元格写入同一个公式（USER_ENTERED），用于“纯函数占位”。
+
+        输入：
+        - cells: (row_1, col_1) 1-based 坐标
+
+        设计目标：
+        - 避免把整块 range 改成 USER_ENTERED（会把 `+2.89M` 之类误当公式导致报错）
+        - 只对需要的空单元格写公式，保持其它值 RAW 写入不变
+        """
+        if not cells or not formula:
+            return
+
+        coords: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        for r1, c1 in cells:
+            try:
+                rr = int(r1)
+                cc = int(c1)
+            except Exception:
+                continue
+            if rr <= 0 or cc <= 0:
+                continue
+            key = (rr, cc)
+            if key in seen:
+                continue
+            seen.add(key)
+            coords.append(key)
+
+        if not coords:
+            return
+
+        coords.sort()
+
+        # 将同一行的连续列合并成一个 range，减少 batchUpdate data entries 数量
+        data_entries: list[dict[str, Any]] = []
+        i = 0
+        while i < len(coords):
+            row_1 = int(coords[i][0])
+            cols: list[int] = []
+            while i < len(coords) and int(coords[i][0]) == int(row_1):
+                cols.append(int(coords[i][1]))
+                i += 1
+            if not cols:
+                continue
+            cols.sort()
+
+            start = int(cols[0])
+            prev = int(cols[0])
+            for c in cols[1:] + [-1]:
+                if c == (prev + 1):
+                    prev = int(c)
+                    continue
+
+                col_l = _index_to_col(int(start))
+                col_r = _index_to_col(int(prev))
+                rng = f"{sheet_title}!{col_l}{int(row_1)}:{col_r}{int(row_1)}"
+                width = int(prev) - int(start) + 1
+                data_entries.append({"range": rng, "values": [[str(formula)] * int(width)]})
+
+                start = int(c)
+                prev = int(c)
+
+        if not data_entries:
+            return
+
+        try:
+            chunk_size = int((os.environ.get("SHEETS_PLACEHOLDER_FORMULA_RANGES_PER_WRITE", "400") or "400").strip())
+        except Exception:
+            chunk_size = 400
+        chunk_size = max(int(chunk_size), 50)
+
+        for off in range(0, len(data_entries), int(chunk_size)):
+            chunk = data_entries[int(off) : int(off) + int(chunk_size)]
+            self._exec(
+                self._sheets.spreadsheets()
+                .values()
+                .batchUpdate(
+                    spreadsheetId=self._spreadsheet_id,
+                    body={
+                        "valueInputOption": "USER_ENTERED",
+                        "data": chunk,
+                    },
+                ),
+                is_write=True,
+            )
 
     def _set_sheet_grid_properties(
         self,
