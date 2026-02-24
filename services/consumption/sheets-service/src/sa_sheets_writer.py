@@ -1559,6 +1559,37 @@ class SaSheetsWriter:
             except Exception:
                 pass
 
+        # -------------------- 离散信号（多/空）上色：仅标记范围，不在此处写样式 --------------------
+        # 目标：把“方向/信号/翻转信号”等离散字段，在周期列内按 bull/bear 上色（红/绿），并且每轮刷新可恢复底色。
+        # 注意：绝不能对数值字段（例如 成交额/净流/涨跌幅）做“正负号上色”，否则会产生误导。
+        direction_metrics = {"方向", "信号", "翻转信号"}
+        direction_marks: list[tuple[int, list[tuple[int, int, Any]]]] = []  # (row0, [(col0, pi, value)])
+        period_cols: list[tuple[str, int]] = []  # (period_name, col0)
+        try:
+            header_row = values[int(header_row_0)] if 0 <= int(header_row_0) < len(values) else []
+            if isinstance(header_row, list) and len(header_row) >= 4:
+                for pi, cell in enumerate(header_row[3:]):
+                    s = str(cell).strip()
+                    if not s or s == "原始值":
+                        break
+                    period_cols.append((s, 3 + int(pi)))
+        except Exception:
+            period_cols = []
+        if period_cols:
+            for ri in range(int(header_row_0) + 1, int(n_rows)):
+                row = values[int(ri)]
+                if not isinstance(row, list) or len(row) < 4:
+                    continue
+                metric = str(row[2]).strip()
+                if metric not in direction_metrics:
+                    continue
+                cells: list[tuple[int, int, Any]] = []
+                for pi, (_p, ci) in enumerate(period_cols):
+                    if 0 <= int(ci) < len(row):
+                        cells.append((int(ci), int(pi), row[int(ci)]))
+                if cells:
+                    direction_marks.append((int(ri), cells))
+
         # 顶部一行（元信息+目录）：
         # - 若开启冻结列，Google Sheets 不允许“冻结分割线切开 merged cell”，否则 updateSheetProperties 会 400，
         #   导致 frozenColumnCount 无法生效（用户看到“没有冻结条”）。
@@ -1683,26 +1714,52 @@ class SaSheetsWriter:
         except Exception:
             c_old = 0
 
-        if r_old > n_rows:
-            self._exec(
-                self._sheets.spreadsheets()
-                .values()
-                .clear(
-                    spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!A{n_rows + 1}:{_index_to_col(max(c_old, n_cols))}{r_old}",
-                ),
-                is_write=True,
-            )
-        if c_old > n_cols:
-            self._exec(
-                self._sheets.spreadsheets()
-                .values()
-                .clear(
-                    spreadsheetId=self._spreadsheet_id,
-                    range=f"{tab_title}!{_index_to_col(n_cols + 1)}1:{_index_to_col(c_old)}{max(r_old, n_rows)}",
-                ),
-                is_write=True,
-            )
+        # 清理尾部差量：避免旧版残留（比如历史 raw 镜像区、旧结构多余列）。
+        # 注意：
+        # - 该表默认启用 compact grid（把网格裁剪到 n_rows/n_cols），因此“超出网格的 clear”会直接 400。
+        # - 当网格已被裁剪时，超出部分本来就不存在，无需 clear。
+        try:
+            cur_rows, cur_cols = self._grid_by_title.get(tab_title, (0, 0))
+            cur_rows = int(cur_rows or 0)
+            cur_cols = int(cur_cols or 0)
+        except Exception:
+            cur_rows, cur_cols = 0, 0
+        if cur_rows <= 0:
+            cur_rows = int(n_rows)
+        if cur_cols <= 0:
+            cur_cols = int(n_cols)
+
+        # 1) 清除“多余行”（仅在当前网格确实大于 n_rows 时执行）
+        if int(r_old) > int(n_rows) and int(cur_rows) > int(n_rows):
+            end_row = min(int(r_old), int(cur_rows))
+            end_col = min(int(max(c_old, n_cols)), int(cur_cols))
+            if end_row >= int(n_rows) + 1 and end_col >= 1:
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .clear(
+                        spreadsheetId=self._spreadsheet_id,
+                        range=f"{tab_title}!A{int(n_rows) + 1}:{_index_to_col(int(end_col))}{int(end_row)}",
+                    ),
+                    is_write=True,
+                )
+
+        # 2) 清除“多余列”（仅在当前网格确实大于 n_cols 时执行）
+        if int(c_old) > int(n_cols) and int(cur_cols) > int(n_cols):
+            end_col = min(int(c_old), int(cur_cols))
+            end_row = min(int(max(r_old, n_rows)), int(cur_rows))
+            if end_col >= int(n_cols) + 1 and end_row >= 1:
+                self._exec(
+                    self._sheets.spreadsheets()
+                    .values()
+                    .clear(
+                        spreadsheetId=self._spreadsheet_id,
+                        range=(
+                            f"{tab_title}!{_index_to_col(int(n_cols) + 1)}1:{_index_to_col(int(end_col))}{int(end_row)}"
+                        ),
+                    ),
+                    is_write=True,
+                )
 
         # -------------------- style --------------------
         # layout 变更需要 bump style_version，确保冻结行数/表头行/目录行样式能“全量刷新”到新结构
@@ -2541,6 +2598,74 @@ class SaSheetsWriter:
                             }
                         }
                     )
+
+            # 离散信号上色：多/空 -> 绿/红（每轮覆盖，避免残留）
+            if direction_marks and period_cols:
+                bg_period_even = _rgb(1.0, 1.0, 1.0)
+                bg_period_odd = _rgb(0.975, 0.98, 0.99)  # 对齐“周期列灰白交替”底色
+                bg_bull = _rgb(0.776, 0.937, 0.808)  # light green (#C6EFCE)
+                bg_bear = _rgb(1.0, 0.780, 0.808)  # light red (#FFC7CE)
+
+                for row0, cells in direction_marks:
+                    if int(row0) < 0 or int(row0) >= int(n_rows):
+                        continue
+                    if not cells:
+                        continue
+
+                    # 按列排序，便于合并同色连续区间
+                    cells_sorted = sorted(cells, key=lambda t: int(t[0]))
+
+                    seg_c0: int | None = None
+                    seg_bg: dict[str, float] | None = None
+                    prev_c0: int | None = None
+
+                    def flush_seg() -> None:
+                        nonlocal seg_c0, seg_bg, prev_c0
+                        if seg_c0 is None or seg_bg is None or prev_c0 is None:
+                            return
+                        reqs_align.append(
+                            {
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": int(sh_id),
+                                        "startRowIndex": int(row0),
+                                        "endRowIndex": int(row0) + 1,
+                                        "startColumnIndex": int(seg_c0),
+                                        "endColumnIndex": int(prev_c0) + 1,
+                                    },
+                                    "cell": {"userEnteredFormat": {"backgroundColor": seg_bg}},
+                                    "fields": "userEnteredFormat.backgroundColor",
+                                }
+                            }
+                        )
+                        seg_c0 = None
+                        seg_bg = None
+                        prev_c0 = None
+
+                    for c0, pi, v in cells_sorted:
+                        base_bg = bg_period_odd if (int(pi) % 2 == 1) else bg_period_even
+                        cls = _classify_bull_bear(v)
+                        if cls > 0:
+                            bg = bg_bull
+                        elif cls < 0:
+                            bg = bg_bear
+                        else:
+                            bg = base_bg
+
+                        if seg_c0 is None:
+                            seg_c0 = int(c0)
+                            seg_bg = bg
+                            prev_c0 = int(c0)
+                            continue
+                        if prev_c0 is not None and int(c0) == int(prev_c0) + 1 and bg == seg_bg:
+                            prev_c0 = int(c0)
+                            continue
+                        flush_seg()
+                        seg_c0 = int(c0)
+                        seg_bg = bg
+                        prev_c0 = int(c0)
+
+                    flush_seg()
 
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
