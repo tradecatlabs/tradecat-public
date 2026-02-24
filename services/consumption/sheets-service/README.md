@@ -74,6 +74,7 @@
 - `SHEETS_SYMBOL_TABS_MODE`：`dashboard|every|none`（默认 `dashboard`；仅在 dashboard 全量重绘时刷新子表；`every` 表示 snapshot 模式也刷新，写入量更大）
 - `SHEETS_SYMBOL_TABS_INTERVAL_SECONDS`：子表刷新最小间隔（默认 900；仅对 `dashboard` 模式下的子表刷新节流生效）
 - `SHEETS_SYNC_INTERVAL_SECONDS`：daemon 模式间隔（默认 60）
+- `SHEETS_UNIFIED_REFRESH`：`0/1`（默认 `0`；`1` 表示由 daemon tick 统一刷新：每轮把“币种查询子表 + Polymarket”也完整刷新一次，不再使用各自的 interval 节流）
 - `SHEETS_IDEMPOTENCY_DB_PATH`：本地幂等键库（默认 `data/idempotency.db`）
 
 ### Polymarket 统计（旁路子表，可选）

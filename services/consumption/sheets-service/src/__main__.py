@@ -70,6 +70,11 @@ def _should_retry(status: int) -> bool:
     return status == 0 or status == 429 or (500 <= status <= 599)
 
 
+def _env_bool(key: str, default: str = "0") -> bool:
+    raw = (os.environ.get(key, default) or default).strip().lower()
+    return raw not in {"0", "off", "false", "no", ""}
+
+
 def _sleep_backoff(attempt: int, *, base: float, max_seconds: float) -> None:
     # attempt: 1..N
     delay = min(base * (2 ** (attempt - 1)), max_seconds)
@@ -393,6 +398,11 @@ async def _run_once(
             except Exception as exc:
                 print(f"⚠️ 变体看板生成失败：{type(exc).__name__}: {exc}")
 
+        # 统一时钟刷新（用户要求）：
+        # - 关闭“币种查询/Polymarket 的独立 interval 节流”，每轮只按 daemon 的 tick 统一刷新一次
+        # - 仍保留各功能 enable 开关（symbol_tabs_mode/pm_enable/pme_enable）
+        unified_refresh = _env_bool("SHEETS_UNIFIED_REFRESH", "0")
+
         # 币种查询子表（4 个交易对）：覆盖写，不走 facts（默认每 15 分钟刷新一次，避免配额爆炸）
         if settings.symbol_tabs_mode != "none" and settings.symbol_tabs:
             now = int(time.time())
@@ -402,7 +412,7 @@ async def _run_once(
             except Exception:
                 last = 0
             interval = int(settings.symbol_tabs_interval_seconds)
-            should = bool(settings.force_render) or interval <= 0 or (now - last) >= interval
+            should = bool(settings.force_render) or unified_refresh or interval <= 0 or (now - last) >= interval
             if should:
                 errors: list[str] = []
                 for sym in settings.symbol_tabs:
@@ -436,7 +446,7 @@ async def _run_once(
             except Exception:
                 last = 0
             interval = int((os.environ.get("SHEETS_POLYMARKET_STATS_INTERVAL_SECONDS", "900") or "900").strip() or "900")
-            should = bool(settings.force_render) or interval <= 0 or (now - last) >= interval
+            should = bool(settings.force_render) or unified_refresh or interval <= 0 or (now - last) >= interval
             if should:
                 tab_title = (os.environ.get("SHEETS_TAB_POLYMARKET_STATS", "Polymarket统计") or "Polymarket统计").strip()
                 err = ""
@@ -465,7 +475,7 @@ async def _run_once(
             interval = int(
                 (os.environ.get("SHEETS_POLYMARKET_FACTS_EVENTS_INTERVAL_SECONDS", "900") or "900").strip() or "900"
             )
-            should = bool(settings.force_render) or interval <= 0 or (now - last) >= interval
+            should = bool(settings.force_render) or unified_refresh or interval <= 0 or (now - last) >= interval
             if should:
                 tab_title = (os.environ.get("SHEETS_TAB_POLYMARKET_EVENTS", "Polymarket事件") or "Polymarket事件").strip()
                 err = ""
