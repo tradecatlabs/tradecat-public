@@ -7081,6 +7081,13 @@ class SaSheetsWriter:
             want_cols = max(int(cur_cols or 0), int(prev_used_cols or 0), int(required_cols))
             unmerge_end_rows = max(int(prev_used_rows or 0), int(want_rows))
             unmerge_end_cols = max(int(cur_cols or 0), int(want_cols))
+            # 无感刷新优化：
+            # - 主看板只在“卡片列/币种列”有 merge（A/B），没必要每轮 unmerge 全表宽度
+            # - 过宽的 unmerge 会放大写入体感延迟（弱网/代理环境下更明显）
+            # - 仍保底覆盖至少 2 列（卡片+币种），避免 frozen 列被用户调成 0 后 merge 冲突
+            col_l0 = int(_col_to_index(col_l)) - 1
+            unmerge_c0 = int(col_l0)
+            unmerge_c1 = min(int(unmerge_end_cols), int(col_l0) + max(int(frozen_cols), 2))
 
             self._exec(
                 self._sheets.spreadsheets().batchUpdate(
@@ -7093,8 +7100,8 @@ class SaSheetsWriter:
                                         "sheetId": int(sh_id),
                                         "startRowIndex": 0,
                                         "endRowIndex": int(unmerge_end_rows),
-                                        "startColumnIndex": 0,
-                                        "endColumnIndex": int(unmerge_end_cols),
+                                        "startColumnIndex": int(unmerge_c0),
+                                        "endColumnIndex": int(unmerge_c1),
                                     }
                                 }
                             },
@@ -7133,15 +7140,24 @@ class SaSheetsWriter:
             y0 = int(used_end_row_1) + 1
             y1 = int(prev_used_rows)
             try:
-                self._exec(
-                    self._sheets.spreadsheets()
-                    .values()
-                    .clear(
-                        spreadsheetId=self._spreadsheet_id,
-                        range=f"{self._tab_dashboard}!{col_l}{y0}:{col_r}{y1}",
-                    ),
-                    is_write=True,
-                )
+                # 避免 values.clear 造成“局部闪空再填充”的体感：用覆盖写空值矩阵实现“无感清尾巴”
+                width = int(_col_to_index(col_r)) - int(_col_to_index(col_l)) + 1
+                width = max(width, 1)
+                rows = int(y1) - int(y0) + 1
+                rows = max(rows, 0)
+                if rows > 0:
+                    blank = [[""] * width for _ in range(int(rows))]
+                    self._exec(
+                        self._sheets.spreadsheets()
+                        .values()
+                        .update(
+                            spreadsheetId=self._spreadsheet_id,
+                            range=f"{self._tab_dashboard}!{col_l}{y0}:{col_r}{y1}",
+                            valueInputOption="RAW",
+                            body={"values": blank},
+                        ),
+                        is_write=True,
+                    )
             except Exception:
                 pass
 
