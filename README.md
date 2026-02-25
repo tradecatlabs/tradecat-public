@@ -172,7 +172,7 @@ networkingMode=mirrored
 
 # 2) 填写全局配置（含 BOT_TOKEN / DB / 代理 等）
 cp config/.env.example config/.env && chmod 600 config/.env
-# 端口选择：保持 5434（新库）或改为 5433（旧库），见下方端口说明
+# 端口：默认 LF=5433（K线/指标）、HF=15432（原子事实），见 config/.env.example
 vim config/.env
 
 # 3) 启动核心服务（ai + signal + telegram + trading）
@@ -189,13 +189,10 @@ vim config/.env
 ### ⚙️ 配置（必须）
 
 - 路径：`config/.env`（已由 init.sh 复制），权限需 600，服务启动脚本会强制校验。  
-- **TimescaleDB 端口说明**（重要）：
-  - **新库（5434）**：`config/.env.example` 默认端口，含 raw/agg/quality 多 schema 架构，推荐新部署使用
-  - **旧库（5433）**：与早期数据采集链兼容，`scripts/export_timescaledb.sh` / `scripts/timescaledb_compression.sh` 默认使用
-  - **选择建议**：
-    - 继续沿用旧库：保持 `DATABASE_URL` 端口 5433，并将 markets-service 脚本端口改为 5433
-    - 切换到新库：保持 5434，同时修改顶层运维脚本与 README 示例端口为 5434，确保存储/压缩/导出脚本一致
-  - **混用风险**：脚本与服务若指向不同端口会造成数据分叉；变更前先备份
+- **TimescaleDB 端口说明**（重要，按仓库现状）：
+  - LF（低频/分时/K线与指标）：`DATABASE_URL` 默认 `localhost:5433/market_data`（见 `config/.env.example`）
+  - HF（高频/原子事实）：`BINANCE_VISION_DATABASE_URL` 默认 `localhost:15432/market_data`（见 `config/.env.example`）
+  - 若你在私有环境使用其它端口（例如历史文档曾提及 5434）：请全局统一端口与脚本/命令；仓库当前示例以 5433/15432 为准。<!-- TODO: 若仓库正式迁移到其它端口，请补“统一替换列表与执行顺序” -->
 - 核心字段：  
   - `DATABASE_URL`（TimescaleDB，见下方端口说明）  
   - `BOT_TOKEN`（Telegram Bot Token）  
@@ -209,6 +206,7 @@ vim config/.env
   - 展示过滤：`BINANCE_API_DISABLED`、`DISABLE_SINGLE_TOKEN_QUERY`、`SNAPSHOT_HIDDEN_FIELDS`、`BLOCKED_SYMBOLS`  
   - AI/交易：`AI_INDICATOR_TABLES`、`AI_INDICATOR_TABLES_DISABLED`、`LLM_BACKEND`、`LLM_API_BASE_URL`、`EXTERNAL_API_KEY`、`LLM_MODEL`、`LLM_MAX_TOKENS`、`AI_LARGE_PAYLOAD_CHAR_LIMIT`、`AI_FORCE_GEMINI_ON_LARGE_PAYLOAD`、`AI_DEFAULT_PROMPT`、`AI_RECORD_ENABLED`、`AI_RECORD_PAYLOAD`、`AI_RECORD_PROMPT`、`AI_RECORD_MESSAGES`、`AI_RECORD_ANALYSIS`、`AI_RECORD_MAX_DIRS`、`BINANCE_API_KEY`、`BINANCE_API_SECRET`
   - 国际化：`DEFAULT_LOCALE`（默认 en）、`SUPPORTED_LOCALES`（zh-CN,en）、`FALLBACK_LOCALE`
+  - Google Sheets（可选，`sheets-service`）：`SHEETS_*` 见 `config/.env.example` 的 “Google Sheets 公共看板” 段落；弱网/代理环境可用 `SHEETS_SA_NET_WRITE_RETRIES` 提升 SA 模式稳定性（代码支持，默认 2）。<!-- TODO: 若要在模板中展示该键，请同步补到 config/.env.example -->
 
 ### 📦 下载历史数据（可选）
 
@@ -253,22 +251,13 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
   -c "COPY market_data.binance_futures_metrics_5m FROM STDIN WITH (FORMAT binary)"
 ```
 
-> 端口说明：模板默认 5434，但仓库脚本默认 5433。复制后请在 `config/.env` 中把 `DATABASE_URL` 端口改为 5433，或若选择 5434，则务必同步修改 `scripts/export_timescaledb.sh`、`scripts/timescaledb_compression.sh` 与所有示例命令端口。
+> 端口说明：本文与仓库脚本示例按 `config/.env.example` 默认端口（LF=5433，HF=15432）编写；如你改动端口，请同步所有示例命令与脚本配置。
 
 ## 🔍 补充检查（2026-01-23）
 
-- **端口选择**：`config/.env.example` 默认端口为 **5434**（新库，含 raw/agg/quality schema）；核心脚本 `scripts/export_timescaledb.sh`、`scripts/timescaledb_compression.sh` 默认 **5433**（旧库）。请根据实际使用情况选定端口并同步修改。
+- **端口选择**：`config/.env.example` 默认 LF=5433、HF=15432；仓库脚本示例亦以此为准。若你自行改动端口，请全局统一。
 - CI 仅执行 ruff + py_compile 抽样（`.github/workflows/ci.yml`，检查前 50 个 .py 文件），不会跑 tests；提交前本地仍需 `./scripts/verify.sh`。
 - `scripts/install.sh` 生成各服务 `.env` 但运行时只读 `config/.env`；避免多份配置漂移。
-
-### 🗄️ 双库端口说明（旧库 5433 / 新库 5434）
-
-- 旧库（5433，单 schema `market_data`）：与早期数据采集链兼容，仍被 `scripts/export_timescaledb.sh` / `scripts/timescaledb_compression.sh` 及多数示例命令使用。
-- 新库（5434，多 schema `raw` / `agg` / `quality`）：`config/.env.example`、markets-service 的初始化与迁移脚本（`init_market_db.sh`、`sync_from_old_db.sh`、`migrate_5434.sql` 等）默认指向此库。
-- 使用原则：  
-  - 继续沿用旧库：保持 `DATABASE_URL` 5433，并将 markets-service 脚本端口改为 5433。  
-  - 切换到新库：保持 5434，同时修改顶层运维脚本与 README 示例端口为 5434，确保存储/压缩/导出脚本一致。  
-- 混用风险：脚本与服务若指向不同端口会造成数据分叉；变更前先备份 `./scripts/export_timescaledb.sh`（当前默认 5433）。<!-- TODO: 若正式迁移到 5434，请提供统一替换列表与执行顺序 -->
 
 ### ✅ 验证安装
 
@@ -285,7 +274,7 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
 
 | 依赖 | 版本 | 说明 |
 |:---|:---|:---|
-| Python | 3.12+ | CI 使用 3.12 |
+| Python | 3.12+ | CI 使用 3.12；各服务 `services/*/*/pyproject.toml` 声明 `requires-python >=3.12`（`scripts/init.sh` 的最低检查为 3.10） |
 | PostgreSQL | 16+ | 需安装 TimescaleDB 扩展 |
 | TA-Lib | 0.4+ | 系统级库，需单独安装 |
 | SQLite | 3.x | 系统自带 |
@@ -535,12 +524,13 @@ graph TD
 | **signal-service** | - | 独立信号检测服务（129条规则、8分类、事件发布） | Python, SQLite, psycopg2 |
 | **telegram-service** | - | Bot 交互、排行榜展示、信号推送 UI（通过 adapter 调用 signal-service） | python-telegram-bot, aiohttp |
 | **ai-service** | - | AI 分析、Wyckoff 方法论（作为 telegram-service 子模块） | Gemini/OpenAI/Claude/DeepSeek |
-| **api-service** | 8000 | REST API 服务（指标/K线/信号数据查询） | FastAPI, Pydantic |
+| **api-service** | 8088 | REST API 服务（指标/K线/信号数据查询；可用 `API_SERVICE_PORT` 覆盖） | FastAPI, Pydantic |
 | **sheets-service** | - | Google Sheets 公共看板同步（TG 卡片→表格；可审计/可重放） | python-dotenv, python-telegram-bot |
 | **predict-service** | - | 预测市场信号（Polymarket/Kalshi/Opinion） | Node.js, Telegram Bot |
 | **vis-service** | 8087 | 可视化渲染（K线图/指标图/VPVR） | FastAPI, matplotlib, mplfinance |
 | **order-service** | - | 交易执行、Avellaneda-Stoikov 做市 | Python, ccxt, cryptofeed |
-| **TimescaleDB** | 5434 | K线存储、期货数据存储、时序查询优化 | PostgreSQL 16 + TimescaleDB |
+| **TimescaleDB（LF）** | 5433 | 低频/分时/K线与指标（`DATABASE_URL`） | PostgreSQL 16 + TimescaleDB |
+| **TimescaleDB（HF）** | 15432 | 高频/原子事实（`BINANCE_VISION_DATABASE_URL`） | PostgreSQL 16 + TimescaleDB |
 
 ### 数据流向
 

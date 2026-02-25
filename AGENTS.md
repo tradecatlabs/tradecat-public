@@ -235,7 +235,9 @@ sqlite3 libs/database/services/telegram-service/market_data.db
 
 ### 4.5 兼容性要求
 
-- Python >= 3.10（CI 使用 3.12，pyproject.toml 声明 >=3.9）
+- Python 3.12+（推荐；CI 使用 3.12，且 `services/*/*/pyproject.toml` 声明 `requires-python = \">=3.12\"`）
+- Python 3.10+（脚本最低门槛；`scripts/init.sh` 会检查 >=3.10，但不保证所有服务依赖在 3.10 下可用）
+- 根包 `pyproject.toml`：`requires-python = ">=3.9"`（用于打包/发布的元信息，与服务运行时可能不完全一致）<!-- TODO: 统一根包与服务的 requires-python 口径 -->
 - 保持与现有数据库 schema 兼容
 - 新增指标需注册到 `indicators/__init__.py`
 - 新增卡片需注册到 `cards/registry.py`
@@ -496,7 +498,7 @@ chmod 600 config/.env
 ./scripts/check_env.sh
 
 # 检查内容：
-# - Python 版本 (3.10+)
+# - Python 版本（推荐 3.12+；脚本最低检查 3.10+）
 # - pip/venv 可用性
 # - 虚拟环境完整性
 # - config/.env 配置
@@ -679,6 +681,7 @@ CI（`.github/workflows/ci.yml`）仅执行：
 | `MAX_WORKERS` | trading-service | 计算线程数 |
 | `COMPUTE_BACKEND` | trading-service | 计算后端（thread/process/hybrid） |
 | `HIGH_PRIORITY_TOP_N` | trading-service | auto 模式高优先级币种数量 |
+| `API_SERVICE_PORT` | api-service | REST API 监听端口（默认 8088；见 `services/consumption/api-service/src/config.py` 与 `services/consumption/api-service/scripts/start.sh`） |
 | `VIS_SERVICE_PORT` | vis-service | 监听端口（默认 8087） |
 | `FATE_BOT_TOKEN` | fate-service | 命理 Bot Token |
 | `FATE_SERVICE_PORT` | fate-service | API 端口（默认 8001） |
@@ -688,6 +691,7 @@ CI（`.github/workflows/ci.yml`）仅执行：
 | `ORDER_BOOK_FULL_INTERVAL` | markets-service | L2 full 采样间隔（秒，默认 5） |
 | `ORDER_BOOK_DEPTH` | markets-service | 每侧档位数（默认 1000） |
 | `ORDER_BOOK_RETENTION_DAYS` | markets-service | 数据保留天数（默认 30） |
+| `SHEETS_SA_NET_WRITE_RETRIES` | sheets-service | SA 写请求网络抖动重试次数（仅对幂等写入生效；默认 2；用于缓解弱网/代理环境下的 `SSLError`；见 `services/consumption/sheets-service/src/sa_sheets_writer.py`） |
 
 ### 10.5 外部地址配置
 
