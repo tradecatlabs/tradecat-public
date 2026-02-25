@@ -910,18 +910,63 @@ class SaSheetsWriter:
                 max_retries = 8
             max_retries = max(max_retries, 0)
 
-            attempt = 0
+            # 弱网/代理环境下，写请求也可能遇到 SSL 抖动/5xx。
+            # 但对于 append/创建类请求，网络错误可能发生在“服务端已执行但客户端未收到响应”的窗口，
+            # 盲目重试会造成重复写入。因此这里只对“可视化展示面”的幂等写入做额外重试。
+            try:
+                net_retries = int((os.environ.get("SHEETS_SA_NET_WRITE_RETRIES", "2") or "2").strip())
+            except Exception:
+                net_retries = 2
+            net_retries = max(net_retries, 0)
+
+            uri = str(getattr(req, "uri", "") or "")
+            method = str(getattr(req, "method", "") or "").upper()
+            # sheets values.append / drive create 等非幂等写：禁止网络层重试
+            idempotent_write = True
+            if "values:append" in uri:
+                idempotent_write = False
+            if "drive/v3/files" in uri and method == "POST":
+                idempotent_write = False
+
+            def is_transient_write_error(exc: Exception, status: int) -> bool:
+                if not idempotent_write:
+                    return False
+                if status and 500 <= status <= 599:
+                    return True
+                # googleapiclient 的网络层错误常见 status=0
+                if status == 0:
+                    name = type(exc).__name__
+                    if name == "SSLError":
+                        return True
+                    msg = str(exc)
+                    if "DECRYPTION_FAILED_OR_BAD_RECORD_MAC" in msg:
+                        return True
+                    if "bad record mac" in msg.lower():
+                        return True
+                return isinstance(exc, TimeoutError)
+
+            attempt_429 = 0
+            attempt_net = 0
             while True:
                 try:
                     return req.execute()
                 except Exception as exc:
                     status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
-                    if status != 429 or attempt >= max_retries:
-                        raise
-                    # 指数退避：2s,4s,8s...（上限 60s），给配额窗口留时间
-                    delay = min(2.0 * (2**attempt), 60.0)
-                    time.sleep(delay)
-                    attempt += 1
+                    if status == 429:
+                        if attempt_429 >= max_retries:
+                            raise
+                        # 指数退避：2s,4s,8s...（上限 60s），给配额窗口留时间
+                        delay = min(2.0 * (2**attempt_429), 60.0)
+                        time.sleep(delay)
+                        attempt_429 += 1
+                        continue
+                    if is_transient_write_error(exc, status) and attempt_net < net_retries:
+                        # 指数退避：1s,2s,4s...（上限 10s），减少 SSL 抖动导致整轮失败
+                        delay = min(1.0 * (2**attempt_net), 10.0)
+                        time.sleep(delay)
+                        attempt_net += 1
+                        continue
+                    raise
 
         # 读请求也可能在弱网/代理环境下超时；读是幂等的，可以安全重试。
         try:
