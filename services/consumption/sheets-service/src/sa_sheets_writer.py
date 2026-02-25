@@ -217,12 +217,13 @@ def _classify_bull_bear(v: Any) -> int:
     if s.lower() in {"n/a", "na"}:
         return 0
 
-    # 1) 数值符号优先（例如 翻转信号：-1/0/+1）
+    # 1) 数值方向：仅允许离散 -1/0/+1，避免把“成交额/净流/涨跌幅”等连续数值误判上色
+    #    （即便调用方误把这类字段纳入了 direction_targets，也不要给出红/绿）
     n = _coerce_number(s)
     if isinstance(n, (int, float)):
-        if n > 0:
+        if n in {1, 1.0}:
             return 1
-        if n < 0:
+        if n in {-1, -1.0}:
             return -1
         return 0
 
