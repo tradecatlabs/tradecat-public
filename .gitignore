@@ -18,6 +18,8 @@ OPTIMIZATION_TODO.md
 MARKETING.md
 book/
 .ruff_cache/
+.mypy_cache/
+.pytest_cache/
 tmp_liuyao_repos_20260118/
 
 # ====================

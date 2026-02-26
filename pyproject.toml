@@ -98,7 +98,7 @@ packages = ["src/tradecat"]
 line-length = 120
 target-version = "py39"
 src = ["src", "tests"]
-cache-dir = "cache/ruff"
+cache-dir = "assets/artifacts/cache/ruff"
 exclude = [
     ".venv",
     "__pycache__",
@@ -132,6 +132,7 @@ strict = false
 warn_return_any = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+cache_dir = "assets/artifacts/cache/mypy"
 exclude = [
     ".venv",
     "__pycache__",
@@ -154,7 +155,7 @@ norecursedirs = [
     "assets/artifacts",
     "services",
 ]
-cache_dir = "cache/pytest"
+cache_dir = "assets/artifacts/cache/pytest"
 markers = [
     "slow: marks tests as slow",
     "integration: marks tests as integration tests",
