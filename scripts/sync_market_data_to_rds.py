@@ -216,7 +216,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="增量同步 SQLite market_data.db 到 PostgreSQL")
     parser.add_argument(
         "--sqlite",
-        default="libs/database/services/telegram-service/market_data.db",
+        default="assets/database/services/telegram-service/market_data.db",
         help="SQLite 数据库路径",
     )
     parser.add_argument("--pg-dsn", default=os.environ.get("PG_DSN", ""), help="PostgreSQL DSN")

@@ -47,7 +47,7 @@ fi
 
 # ========== 4. 数据目录 ==========
 echo -e "\n${YELLOW}[4/6] 检查数据目录...${NC}"
-mkdir -p "$ROOT/libs/database/db/state" 2>/dev/null || true
+mkdir -p "$ROOT/assets/database/db/state" 2>/dev/null || true
 echo -e "  ✅ 目录检查完成"
 
 # ========== 5. 检查数据库 ==========
@@ -57,10 +57,10 @@ if command -v psql &>/dev/null; then
     echo -e "  ✅ PostgreSQL 客户端已安装"
     echo -e "  ${YELLOW}⚠️ 请确保 TimescaleDB 已运行并导入 schema:${NC}"
     echo -e "     # LF（低频/分时/K线与指标库）"
-    echo -e "     psql -h localhost -p 5433 -U opentd -d market_data -f libs/database/db/stacks/lf.sql"
+    echo -e "     psql -h localhost -p 5433 -U opentd -d market_data -f assets/database/db/stacks/lf.sql"
     echo -e ""
     echo -e "     # HF（高频/原子事实库，可选）"
-    echo -e "     psql -h localhost -p 15432 -U opentd -d market_data -f libs/database/db/stacks/hf.sql"
+    echo -e "     psql -h localhost -p 15432 -U opentd -d market_data -f assets/database/db/stacks/hf.sql"
 else
     echo -e "  ${YELLOW}⚠️ 未检测到 psql，请手动安装 TimescaleDB${NC}"
 fi
@@ -74,10 +74,10 @@ echo "     - config/.env (设置 BOT_TOKEN / DATABASE_URL / 代理等)"
 echo ""
 echo "  2. 导入数据库 schema (如果是新数据库):"
 echo "     # LF（低频/分时/K线与指标库）"
-echo "     psql -h localhost -p 5433 -U opentd -d market_data -f libs/database/db/stacks/lf.sql"
+echo "     psql -h localhost -p 5433 -U opentd -d market_data -f assets/database/db/stacks/lf.sql"
 echo ""
 echo "     # HF（高频/原子事实库，可选）"
-echo "     psql -h localhost -p 15432 -U opentd -d market_data -f libs/database/db/stacks/hf.sql"
+echo "     psql -h localhost -p 15432 -U opentd -d market_data -f assets/database/db/stacks/hf.sql"
 echo ""
 echo "  3. 启动服务:"
 echo "     ./scripts/start.sh start"

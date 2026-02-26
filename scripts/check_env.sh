@@ -396,7 +396,7 @@ check_data_dirs() {
     echo "=== 数据目录 ==="
     
     local dirs=(
-        "$ROOT/libs/database/services/telegram-service"
+        "$ROOT/assets/database/services/telegram-service"
         "$ROOT/services/consumption/telegram-service/data/cache"
         "$ROOT/services/compute/trading-service/logs"
         "$ROOT/services/compute/signal-service/logs"
@@ -421,7 +421,7 @@ check_data_dirs() {
     ds_dir="$(find_service_dir "data-service")" && info "data-service 可选服务：$ds_dir（不参与默认检查）"
     
     # SQLite 数据库
-    local sqlite_db="$ROOT/libs/database/services/telegram-service/market_data.db"
+    local sqlite_db="$ROOT/assets/database/services/telegram-service/market_data.db"
     if [ -f "$sqlite_db" ]; then
         local size=$(du -h "$sqlite_db" | cut -f1)
         success "market_data.db: $size"

@@ -28,8 +28,8 @@ from psycopg2.extras import execute_values
 # ==================== 基础配置 ====================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_COOLDOWN_DB = PROJECT_ROOT / "libs/database/services/signal-service/cooldown.db"
-DEFAULT_HISTORY_DB = PROJECT_ROOT / "libs/database/services/signal-service/signal_history.db"
+DEFAULT_COOLDOWN_DB = PROJECT_ROOT / "assets/database/services/signal-service/cooldown.db"
+DEFAULT_HISTORY_DB = PROJECT_ROOT / "assets/database/services/signal-service/signal_history.db"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "artifacts/analysis/signal_correlation"
 DEFAULT_DB_URL = os.environ.get(
     "DATABASE_URL",
