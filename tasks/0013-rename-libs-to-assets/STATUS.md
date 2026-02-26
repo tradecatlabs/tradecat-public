@@ -1,6 +1,6 @@
 # STATUS
 
-状态：In Progress
+状态：Done
 
 ## 仓库基线
 
@@ -64,3 +64,15 @@
   - `.gitignore` 同步补齐：`assets/database/*` 的临时目录 ignore，避免迁移后出现大量 untracked
 - 迁移后快速验证：
   - `python3 -c "import libs.common, assets.common; print('ok')"` ✅
+
+## 完成态校验（摘要）
+
+- `libs` 已为 symlink：`libs -> assets`
+- 运行时侧 `libs/external` 引用为 0（仅任务文档/历史记录中保留文字描述）
+- `assets/repo/` 已加入 `.gitignore`，避免 2.9G 外部仓库镜像污染 git 状态
+
+## 落地提交（可回滚锚点）
+
+- `b3ff3cd`：外部仓库迁到 `assets/repo`
+- `9a7a4ac`：`libs/common` + `libs/database` 迁到 `assets/*` 并建立 `libs -> assets` 兼容 symlink
+- `b8b41e5`、`37a0bbf`：配置模板/脚本默认路径切到 `assets/database`
