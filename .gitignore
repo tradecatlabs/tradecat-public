@@ -155,6 +155,7 @@ services/trading-service/.venv
 libs/external/   # legacy path (pre-migration)
 assets/repo/
 assets/services-preview/
+services/ingestion/predict-service/
 dist/
 polymarket-bot.out
 
