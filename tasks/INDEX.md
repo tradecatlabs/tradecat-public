@@ -14,6 +14,7 @@
 | 0010 | option-bvol-eoh-ingestion | Not Started | P2 | 补齐 option 的 BVOLIndex/EOHSummary（下载回填），并完成字段解析与审计闭环 | tasks/0010-option-bvol-eoh-ingestion/ |
 | 0011 | tg-cards-sheets-dashboard | Done | P0 | 将 telegram-service 现有 TG 卡片同步到 Google Sheets 公共看板：卡片块 x,y 渲染 + 全字段无遗漏审计 + 幂等/outbox/可重建 | tasks/0011-tg-cards-sheets-dashboard/ |
 | 0012 | sheets-service-hardening | Not Started | P1 | 对 sheets-service 做可靠性/可观测/配额与运维体验加固：减少无意义写入、抖动重试、prune 调度化、列宽快照固化 | tasks/0012-sheets-service-hardening/ |
+| 0013 | rename-libs-to-assets | Not Started | P1 | 将仓库内“共享库/资源”目录从 `libs/` 逐步迁移为 `assets/`：先 `libs/external` → `assets/repo`，再通过兼容层完成 `libs/` → `assets/`（最少破坏、可回滚） | tasks/0013-rename-libs-to-assets/ |
 
 ## 相关索引（单点入口）
 
