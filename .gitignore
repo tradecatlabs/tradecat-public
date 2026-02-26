@@ -84,6 +84,10 @@ services/telegram-service/data/
 libs/database/csv/downloads/
 libs/database/db/state/
 libs/database/telegram-cards/
+# assets/ 迁移后等价路径（保留 libs/ 规则用于兼容 symlink）
+assets/database/csv/downloads/
+assets/database/db/state/
+assets/database/telegram-cards/
 # libs/external/  # fate-service 外部库需要提交
 
 # ====================
