@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 
 # ==================== 路径与默认配置 ====================
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_LOCALE_DIR = REPO_ROOT / "services" / "telegram-service" / "locales"
+DEFAULT_LOCALE_DIR = REPO_ROOT / "services" / "consumption" / "telegram-service" / "locales"
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +40,7 @@ def _discover_locale_dir() -> Path:
         parts = po.parts
         if "node_modules" in parts:
             continue
-        if "libs" in parts and "external" in parts:
+        if ("assets" in parts and "repo" in parts) or ("assets" in parts and "services-preview" in parts):
             continue
         if po.parent.name != "LC_MESSAGES":
             continue

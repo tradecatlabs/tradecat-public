@@ -40,7 +40,7 @@ def _discover_locale_dir() -> Path:
         parts = po.parts
         if "node_modules" in parts:
             continue
-        if "libs" in parts and "external" in parts:
+        if ("assets" in parts and "repo" in parts) or ("assets" in parts and "services-preview" in parts):
             continue
         if po.parent.name != "LC_MESSAGES":
             continue
