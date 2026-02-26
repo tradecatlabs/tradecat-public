@@ -126,6 +126,7 @@ services/trading-service/.venv
 # Large external libraries / repos mirror (ignored; see assets/repo)
 libs/external/   # legacy path (pre-migration)
 assets/repo/
+assets/services-preview/
 dist/
 polymarket-bot.out
 
