@@ -502,7 +502,7 @@ graph TD
     TS_CANDLE -.-> AI_WY
     AI_WY --> AI_MOD
 
-    subgraph ORD["💹 order-service<br><small>Python, ccxt, cryptofeed</small>"]
+    subgraph ORD["💹 order-service（🟡预览：本仓库未在 services/ 下内置）<br><small>Python, ccxt, cryptofeed</small>"]
         ORD_MM["market-maker<br>Avellaneda-Stoikov 做市"]
         ORD_EX["交易执行"]
     end
@@ -519,16 +519,18 @@ graph TD
 | 服务 | 端口 | 职责 | 技术栈 |
 |:---|:---:|:---|:---|
 | **data-service** | - | 加密货币 K线采集、期货指标采集、历史数据回填 | Python, asyncio, ccxt, cryptofeed |
-| **markets-service** | - | 全市场数据采集（美股/A股/宏观/衍生品定价） | yfinance, akshare, fredapi, QuantLib |
 | **trading-service** | - | 34个技术指标模块计算、高优先级币种筛选、定时调度 | Python, pandas, numpy, TA-Lib |
 | **signal-service** | - | 独立信号检测服务（129条规则、8分类、事件发布） | Python, SQLite, psycopg2 |
 | **telegram-service** | - | Bot 交互、排行榜展示、信号推送 UI（通过 adapter 调用 signal-service） | python-telegram-bot, aiohttp |
 | **ai-service** | - | AI 分析、Wyckoff 方法论（作为 telegram-service 子模块） | Gemini/OpenAI/Claude/DeepSeek |
+| **fate-service** | - | 命理/排盘服务（独立微服务） | Python, Node.js（可选） |
 | **api-service** | 8088 | REST API 服务（指标/K线/信号数据查询；可用 `API_SERVICE_PORT` 覆盖） | FastAPI, Pydantic |
 | **sheets-service** | - | Google Sheets 公共看板同步（TG 卡片→表格；可审计/可重放） | python-dotenv, python-telegram-bot |
-| **predict-service** | - | 预测市场信号（Polymarket/Kalshi/Opinion） | Node.js, Telegram Bot |
 | **vis-service** | 8087 | 可视化渲染（K线图/指标图/VPVR） | FastAPI, matplotlib, mplfinance |
-| **order-service** | - | 交易执行、Avellaneda-Stoikov 做市 | Python, ccxt, cryptofeed |
+| **predict-service** | - | 预测市场信号（Polymarket/Kalshi/Opinion） | Node.js + Python utilities |
+| **nofx-dev** | - | Agentic Trading OS（预览/外部工程镜像，非核心链路） | Go, React, TypeScript |
+| **markets-service（🟡预览：仅保留配置与文档，未在 services/ 下内置）** | - | 全市场数据采集（美股/A股/宏观/衍生品定价） | yfinance, akshare, fredapi, QuantLib |
+| **order-service（🟡预览：仅保留配置与文档，未在 services/ 下内置）** | - | 交易执行、Avellaneda-Stoikov 做市 | Python, ccxt, cryptofeed |
 | **TimescaleDB（LF）** | 5433 | 低频/分时/K线与指标（`DATABASE_URL`） | PostgreSQL 16 + TimescaleDB |
 | **TimescaleDB（HF）** | 15432 | 高频/原子事实（`BINANCE_VISION_DATABASE_URL`） | PostgreSQL 16 + TimescaleDB |
 
@@ -560,7 +562,7 @@ graph LR
     end
     
     subgraph 交易执行
-        C -.-> I["💹 order-service<br>做市/交易"]
+        C -.-> I["💹 order-service（🟡预览）<br>做市/交易"]
     end
 ```
 
@@ -830,97 +832,54 @@ K线维度:
 ```
 tradecat/
 │
-├── 📂 config/                      # 统一配置（所有服务共用）
-│   ├── .env                        # 生产配置（含密钥，不提交）
-│   ├── .env.example                # 配置模板
-│   └── logrotate.conf              # 日志轮转
+├── 📂 assets/                      # 规范化资源根（真实目录；建议以此为准）
+│   ├── 📂 common/                  # 共享工具库（等价 libs/common）
+│   ├── 📂 database/                # DDL/CSV/SQLite（等价 libs/database；*.db 默认忽略）
+│   ├── 📂 config/                  # 全局配置（等价 config；.env 不提交）
+│   ├── 📂 docs/                    # 项目文档（等价 docs）
+│   ├── 📂 tasks/                   # 任务文档（等价 tasks）
+│   └── 📂 artifacts/               # 构建/分析产物（等价 artifacts；默认忽略）
 │
-├── 📂 scripts/                     # 全局脚本
-│   ├── install.sh                  # 一键安装
-│   ├── init.sh                     # 初始化脚本
-│   ├── start.sh                    # 统一启动/守护脚本
-│   ├── verify.sh                   # 验证脚本
-│   ├── sync_market_data_to_rds.py  # SQLite -> PostgreSQL 增量同步
-│   ├── export_timescaledb.sh       # 数据导出
-│   └── timescaledb_compression.sh  # 压缩管理
+├── 📎 libs -> assets               # 兼容旧路径（symlink）：libs/common、libs/database
+├── 📎 config -> assets/config      # 兼容路径（symlink）：config/.env.example → config/.env（不提交）
+├── 📎 docs -> assets/docs          # 兼容路径（symlink）
+├── 📎 tasks -> assets/tasks        # 兼容路径（symlink）
+├── 📎 artifacts -> assets/artifacts# 兼容路径（symlink）
+│
+├── 📂 scripts/                     # 全局脚本（install/init/start/verify/check_env/导出/压缩等）
 │
 ├── 📂 services/                    # 服务分层（采集/计算/消费）
-│   │
-│   ├── 📂 ingestion/                   # 采集层：写 TimescaleDB
-│   │   ├── 📂 data-service/            # 低频/分时采集服务（1m K线、5m 指标，兼容链路，非默认启用）
-│   │   │   ├── 📂 src/
-│   │   │   ├── 📂 scripts/
-│   │   │   └── requirements.txt
-│   │   │
-│   │   └── 📂 binance-vision-service/  # Binance Vision Raw 对齐采集服务（高频原子事实）
-│   │       ├── 📂 src/
-│   │       │   ├── 📂 collectors/      # 采集器卡片（严格对齐 Binance Vision）
-│   │       │   ├── 📂 writers/         # 写入器（CSV/DB）
-│   │       │   └── config.py
-│   │       ├── 📂 scripts/
-│   │       ├── Makefile
-│   │       ├── pyproject.toml
-│   │       └── requirements.txt
+│   ├── 📂 ingestion/               # 采集层：写 TimescaleDB
+│   │   ├── 📂 data-service/        # 低频/分时采集（兼容链路，非默认启用）
+│   │   ├── 📂 binance-vision-service/  # Binance Vision Raw 对齐采集（高频原子事实）
+│   │   └── 📂 predict-service/     # 预测市场信号（Polymarket/Kalshi/Opinion）
 │   │
 │   ├── 📂 compute/                 # 计算层：读 PG / 写 SQLite
-│   │   ├── 📂 trading-service/     # 指标计算服务（写入 SQLite）
-│   │   ├── 📂 signal-service/      # 信号检测服务（规则引擎）
-│   │   └── 📂 ai-service/          # AI 分析（telegram 子模块）
+│   │   ├── 📂 trading-service/     # 指标计算（写入 SQLite，供展示层消费）
+│   │   ├── 📂 signal-service/      # 信号检测（规则引擎）
+│   │   ├── 📂 ai-service/          # AI 分析（telegram 子模块）
+│   │   └── 📂 fate-service/        # 命理/排盘（独立微服务）
 │   │
-│   └── 📂 consumption/             # 消费层：对外呈现（Telegram/API）
+│   └── 📂 consumption/             # 消费层：对外呈现（Telegram/API/Sheets/可视化）
 │       ├── 📂 telegram-service/    # Telegram Bot（卡片/订阅/快照）
 │       ├── 📂 api-service/         # REST API（可选）
-│       └── 📂 sheets-service/      # Google Sheets 公共看板同步（可选）
+│       ├── 📂 sheets-service/      # Google Sheets 公共看板同步（可选）
+│       ├── 📂 vis-service/         # 可视化渲染（可选）
+│       └── 📂 nofx-dev/            # 预览：外部工程镜像（非核心链路）
 │
-├── 📂 libs/                        # 共享库
-│   ├── 📂 database/                # 数据库文件
-│   │   └── 📂 services/
-│   │       ├── 📂 telegram-service/
-│   │       │   └── market_data.db      # 指标数据（Telegram 展示）
-│   │       └── 📂 signal-service/
-│   │           └── cooldown.db         # 信号冷却持久化（防重复推送）
-│   └── 📂 common/                  # 共享工具
-│       ├── i18n.py                 # 国际化模块
-│       ├── symbols.py              # 币种管理模块
-│       ├── proxy_manager.py        # 代理管理器
-│       └── utils/                  # 工具函数
+├── 📂 .github/                     # 社区与安全规范（CI/贡献指南/安全策略）
 │
-├── 📂 artifacts/                   # 构建/测试产物
-│   ├── 📂 services-archived/        # 历史服务归档区（按需使用）
-│   ├── 📂 coverage/                # 覆盖率数据
-│   │   └── .coverage
-│   ├── 📂 dist/                    # 构建输出
-│   └── 📂 i18n/                    # i18n 编译产物
-│       └── messages.mo
-│
-├── 📂 cache/                       # 工具缓存
-│   ├── pytest/
-│   └── ruff/
-│
-├── 📂 logs/                        # 顶层日志
-│   └── daemon.log
-│
-├── 📂 run/                         # 顶层进程状态
-│   └── daemon.pid
-│
-├── 📂 docs/                        # 项目文档
-│   ├── CHANGELOG.md
-│   ├── COMPETITION_REPORT.md
-│   ├── MARKETING_PROMO.md
-│   └── TODO.md
-│
-├── 📂 .github/                     # 社区与安全规范
-│   ├── CONTRIBUTING.md
-│   ├── CODE_OF_CONDUCT.md
-│   └── SECURITY.md
-│
-├── 📂 backups/                     # 备份目录
-│   └── 📂 timescaledb/             # 数据库备份
-│
-├── Makefile                        # 常用命令
-├── README.md                       # 项目说明
-├── AGENTS.md                       # AI Agent 指南
-└── .python-version                 # Python 版本锁定
+├── 📄 mkdocs.yml                   # 文档站配置（docs/ 为入口）
+├── 📄 pyproject.toml               # 根级工具配置（ruff/pytest 等）
+├── 📄 Makefile                     # 常用命令聚合
+├── 📄 README.md                    # 项目说明（本文件）
+├── 📄 README_EN.md                 # 英文说明
+├── 📄 AGENTS.md                    # AI Agent 操作手册
+├── 📄 CONSTITUTION.md              # 架构宪法/硬约束
+└── 📄 .python-version              # Python 版本锁定
+
+# 运行时生成（首次执行 ./scripts/init.sh 或 ./scripts/start.sh 后出现；不随仓库提交）
+# - logs/  run/  backups/  （以及各服务内的 logs/ pids/ data/cache 等）
 ```
 
 </details>
@@ -1067,6 +1026,7 @@ ORDER BY bucket_ts DESC LIMIT 10;
 
 ```bash
 # 连接数据库
+# 说明：`market_data.db` 由 `services/compute/trading-service` 运行后生成（`*.db` 默认在 `.gitignore` 中忽略，不随仓库提交）
 sqlite3 libs/database/services/telegram-service/market_data.db
 
 # 常用查询
