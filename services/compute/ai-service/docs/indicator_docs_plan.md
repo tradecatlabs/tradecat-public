@@ -53,7 +53,7 @@
    - `python3 - <<'PY'` 检查 `DATA_DOCS` JSON 可序列化。
 
 7) **交付记录**
-   - 更新 `AGENTS.md` 或在 `docs/indicator_docs_plan.md` 末尾添加已完成表清单。
+   - 更新 `AGENTS.md` 或在 `assets/docs/indicator_docs_plan.md` 末尾添加已完成表清单（兼容：`docs -> assets/docs`）。
 
 ## 优先级建议（先易后难）
 1) MACD柱状扫描器.py
