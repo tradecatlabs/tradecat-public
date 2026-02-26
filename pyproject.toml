@@ -145,6 +145,15 @@ pythonpath = ["src"]
 python_files = ["test_*.py", "*_test.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --strict-markers -ra"
+norecursedirs = [
+    ".git",
+    ".venv",
+    "assets/repo",
+    "assets/services-preview",
+    "assets/tasks",
+    "assets/artifacts",
+    "services",
+]
 cache_dir = "cache/pytest"
 markers = [
     "slow: marks tests as slow",
