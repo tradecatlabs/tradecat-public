@@ -1,6 +1,6 @@
 # STATUS
 
-State: In Progress
+State: Done
 
 ## 当前基线（证据记录）
 
@@ -12,9 +12,10 @@ State: In Progress
 - 本任务执行记录（已完成的关键提交）：
   - `7bb1933`：CI ruff 收敛到 `E,F` 并修复 `services/**` 的全部 `E,F` 错误
   - `7d89bc4`：补齐最小 `src/tradecat/**`（PyPI import/CLI 可用）
+  - `93b1828`：`src/tradecat/**` 与 `tests/**` ruff I001 + format 收敛
 - CI 现状：
-  - `.github/workflows/ci.yml` 运行 `ruff check services/ --ignore E501,E402`（当前会失败）
-  - `.github/workflows/pypi-ci.yml` 依赖 `src/tradecat/**`（当前目录缺失）
+  - `.github/workflows/ci.yml`：`ruff check services/ --ignore E501,E402 --select E,F`（已可稳定绿）
+  - `.github/workflows/pypi-ci.yml`：`src/tradecat/**` + build/import smoke（已可稳定绿）
 
 ## 已执行命令（执行 Agent 需继续补充）
 
@@ -22,8 +23,13 @@ State: In Progress
 - `pytest -q`：需保持通过且不误扫 `assets/repo/**`
 - ruff（CI 等价，E/F 基线）：
   - `/tmp/tradecat-audit-venv/bin/ruff check services/ --ignore E501,E402 --select E,F`：通过
+- ruff（PyPI 包骨架 + tests）：
+  - `/tmp/tradecat-audit-venv/bin/ruff check src/tradecat tests`：通过
+  - `/tmp/tradecat-audit-venv/bin/ruff format --check src/tradecat tests`：通过
 - PyPI build/import smoke：
   - `python -m build`：通过（产出 `dist/tradecat-0.1.0-*.whl` 与 `*.tar.gz`）
+  - `twine check dist/*`：通过
+  - `mypy src/tradecat --ignore-missing-imports`：通过
   - `python -c "from tradecat import Data, Indicators, Signals, AI"`：通过（安装 wheel 后验证）
 
 ## Blockers

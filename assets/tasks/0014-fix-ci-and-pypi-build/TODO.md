@@ -4,12 +4,14 @@
 
 ## P0（必须做）
 
-- [ ] P0: 复现 CI ruff 失败并统计 `E,F` 错误清单 | Verify: `/tmp/tradecat-audit-venv/bin/ruff check services/ --ignore E501,E402 --select E,F --output-format full` | Gate: `ACCEPTANCE.A1`
-- [ ] P0: 修改 `.github/workflows/ci.yml` 的 ruff 命令为 `--select E,F`（保留必要 ignore） | Verify: `cat .github/workflows/ci.yml | rg -n \"ruff check\"` | Gate: `ACCEPTANCE.A1`
-- [ ] P0: 修复所有 `E,F` 级别错误（`F401/F821/F601/E721/...`） | Verify: `/tmp/tradecat-audit-venv/bin/ruff check services/ --ignore E501,E402 --select E,F` 退出码 0 | Gate: `ACCEPTANCE.A1`
-- [ ] P0: 确保 pytest 只扫 `tests/` 且不会进入 `assets/repo/**` | Verify: `pytest -q` | Gate: `ACCEPTANCE.B1`
-- [ ] P0: 新增 `src/tradecat/**`（最小包骨架 + `cli.py` + `__init__.py`） | Verify: `python -c \"from tradecat import Data, Indicators, Signals, AI, __version__\"` | Gate: `ACCEPTANCE.C1`
-- [ ] P0: 确保 `python -m build` 可构建并 `twine check dist/*` 通过 | Verify: `python -m build && twine check dist/*` | Gate: `ACCEPTANCE.C3`
+- [x] P0: 复现 CI ruff 失败并统计 `E,F` 错误清单 | Verify: `/tmp/tradecat-audit-venv/bin/ruff check services/ --ignore E501,E402 --select E,F --output-format full` | Gate: `ACCEPTANCE.A1`
+- [x] P0: 修改 `.github/workflows/ci.yml` 的 ruff 命令为 `--select E,F`（保留必要 ignore） | Verify: `cat .github/workflows/ci.yml | rg -n \"ruff check\"` | Gate: `ACCEPTANCE.A1`
+- [x] P0: 修复所有 `E,F` 级别错误（`F401/F821/F601/E721/...`） | Verify: `/tmp/tradecat-audit-venv/bin/ruff check services/ --ignore E501,E402 --select E,F` 退出码 0 | Gate: `ACCEPTANCE.A1`
+- [x] P0: 确保 pytest 只扫 `tests/` 且不会进入 `assets/repo/**` | Verify: `pytest -q` | Gate: `ACCEPTANCE.B1`
+- [x] P0: 新增 `src/tradecat/**`（最小包骨架 + `cli.py` + `__init__.py`） | Verify: `python -c \"from tradecat import Data, Indicators, Signals, AI, __version__\"` | Gate: `ACCEPTANCE.C1`
+- [x] P0: 确保 `src/tradecat/**` 与 `tests/**` 通过 ruff check/format | Verify: `/tmp/tradecat-audit-venv/bin/ruff check src/tradecat tests && /tmp/tradecat-audit-venv/bin/ruff format --check src/tradecat tests` | Gate: `ACCEPTANCE.C1`
+- [x] P0: 确保 `python -m build` 可构建并 `twine check dist/*` 通过 | Verify: `python -m build && twine check dist/*` | Gate: `ACCEPTANCE.C3`
+- [x] P0: 确保 mypy 可运行并通过（PyPI facade 最小保证） | Verify: `mypy src/tradecat --ignore-missing-imports` | Gate: `ACCEPTANCE.C3`
 
 ## P1（建议做）
 
@@ -25,4 +27,3 @@
 
 - `P0: pytest discovery` 与 `P0: ruff E,F 修复` 可并行。
 - `P0: src/tradecat 包骨架` 可与上述并行，但最终需一起过 `python -m build`。
-

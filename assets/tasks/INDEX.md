@@ -15,7 +15,7 @@
 | 0011 | tg-cards-sheets-dashboard | Done | P0 | 将 telegram-service 现有 TG 卡片同步到 Google Sheets 公共看板：卡片块 x,y 渲染 + 全字段无遗漏审计 + 幂等/outbox/可重建 | ./0011-tg-cards-sheets-dashboard/ |
 | 0012 | sheets-service-hardening | Not Started | P1 | 对 sheets-service 做可靠性/可观测/配额与运维体验加固：减少无意义写入、抖动重试、prune 调度化、列宽快照固化 | ./0012-sheets-service-hardening/ |
 | 0013 | rename-libs-to-assets | Done | P1 | 将仓库内“共享库/资源”目录从 `libs/` 逐步迁移为 `assets/`：先 `libs/external` → `assets/repo`，再通过兼容层完成 `libs/` → `assets/`（最少破坏、可回滚） | ./0013-rename-libs-to-assets/ |
-| 0014 | fix-ci-and-pypi-build | Not Started | P0 | 资产迁移后收敛“可运行/可测试/可打包”：修复 CI ruff 失绿、pytest 误扫外部仓库、PyPI 包缺失 `src/tradecat` 的结构性断裂 | ./0014-fix-ci-and-pypi-build/ |
+| 0014 | fix-ci-and-pypi-build | Done | P0 | 资产迁移后收敛“可运行/可测试/可打包”：修复 CI ruff 失绿、pytest 误扫外部仓库、PyPI 包缺失 `src/tradecat` 的结构性断裂 | ./0014-fix-ci-and-pypi-build/ |
 
 ## 相关索引（单点入口）
 
