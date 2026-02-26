@@ -28,6 +28,13 @@ tmp_liuyao_repos_20260118/
 __pycache__/
 *.pyc
 *.pyo
+.Python
+*.egg-info/
+.eggs/
+build/
+htmlcov/
+.coverage.*
+coverage.xml
 .venv/
 venv/
 *.png
@@ -111,6 +118,14 @@ assets/database/telegram-cards/
 **/*sa-key*.json
 **/*.p12
 **/*.pem
+**/*.key
+**/*.crt
+**/*.cer
+**/*.der
+**/*.pfx
+**/*.jks
+**/*.keystore
+**/*.kdbx
 
 # 敏感配置（绝对不提交）
 config/.env
