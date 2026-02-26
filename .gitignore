@@ -48,6 +48,10 @@ pids/
 cache/
 artifacts/
 assets/artifacts/
+assets/artifacts/cache/
+assets/artifacts/dist/
+assets/artifacts/coverage/
+assets/artifacts/i18n/
 *.cache
 *.db
 
@@ -105,6 +109,8 @@ assets/database/telegram-cards/
 **/.config/google/**/*.json
 **/*service-account*.json
 **/*sa-key*.json
+**/*.p12
+**/*.pem
 
 # 敏感配置（绝对不提交）
 config/.env
