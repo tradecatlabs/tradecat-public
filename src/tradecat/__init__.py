@@ -47,4 +47,3 @@ __all__ = [
     "Signals",
     "__version__",
 ]
-
