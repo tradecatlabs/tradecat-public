@@ -82,6 +82,7 @@ run/
 # 服务特定
 # ====================
 services/telegram-service/data/
+services/consumption/telegram-service/data/
 libs/database/csv/downloads/
 libs/database/db/state/
 libs/database/telegram-cards/
@@ -116,6 +117,7 @@ assets/config/.env
 *.db-wal
 *.db-journal
 services/ai-service/data/
+services/compute/ai-service/data/
 services/markets-service/.venv
 services/ai-service/.venv
 services/data-service/.venv

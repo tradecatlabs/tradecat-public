@@ -1,6 +1,0 @@
-[CLI_ERROR] (node:31429) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-(node:31470) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-Loaded cached credentials.
-request to https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist failed, reason: Client network socket disconnected before secure TLS connection was established

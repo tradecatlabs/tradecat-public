@@ -1,7 +1,0 @@
-[CLI_ERROR] (node:39484) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-(node:39505) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-Error when talking to Gemini API Full report available at: /tmp/gemini-client-error-Turn.run-sendMessageStream-2026-01-14T06-57-27-085Z.json
-[API Error: {"error":{"message":"{\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Permission denied: Consumer 'api_key:AIzaSyCKsodlE70e5RySl7HdF5UNXZ7ZLeMy-Io' has been suspended.\",\n    \"status\": \"PERMISSION_DENIED\",\n    \"details\": [\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n        \"reason\": \"CONSUMER_SUSPENDED\",\n        \"domain\": \"googleapis.com\",\n        \"metadata\": {\n          \"consumer\": \"projects/461436909261\",\n          \"service\": \"generativelanguage.googleapis.com\",\n          \"containerInfo\": \"api_key:AIzaSyCKsodlE70e5RySl7HdF5UNXZ7ZLeMy-Io\"\n        }\n      },\n      {\n        \"@type\": \"type.googleapis.com/google.rpc.LocalizedMessage\",\n        \"locale\": \"en-US\",\n        \"message\": \"Permission denied: Consumer 'api_key:AIzaSyCKsodlE70e5RySl7HdF5UNXZ7ZLeMy-Io' has been suspended.\"\n      }\n    ]\n  }\n}\n","code":403,"status":"Forbidden"}}]
-An unexpected critical error occurred:[object Object]

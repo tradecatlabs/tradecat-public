@@ -1,8 +1,0 @@
-[CLI_ERROR] (node:697209) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-(node:697255) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
-(Use `node --trace-deprecation ...` to show where the warning was created)
-Loaded cached credentials.
-Error when talking to Gemini API Full report available at: /tmp/gemini-client-error-Turn.run-sendMessageStream-2026-01-13T14-32-01-014Z.json
-[API Error: Premature close]
-An unexpected critical error occurred:[object Object]
