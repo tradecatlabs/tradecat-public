@@ -136,7 +136,7 @@ init_global() {
     echo ""
     echo "=== 创建全局目录 ==="
     mkdir -p "$ROOT/run" "$ROOT/logs" "$ROOT/backups"
-    mkdir -p "$ROOT/libs/database/services/telegram-service"
+    mkdir -p "$ROOT/assets/database/services/telegram-service"
     chmod +x "$ROOT/scripts/"*.sh 2>/dev/null || true
     success "全局目录已创建"
 }

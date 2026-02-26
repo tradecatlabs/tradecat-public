@@ -280,10 +280,10 @@ check_database() {
                 -Atq -c "SELECT to_regclass('crypto.raw_futures_um_trades') IS NOT NULL" 2>/dev/null | grep -q "^t$"; then
                 warn "DATABASE_URL 看起来指向 HF（存在 crypto.raw_futures_um_trades），但本脚本期望 LF（candles_1m）"
                 echo "      建议：把 DATABASE_URL 指向 LF（例如 :5433），并用 BINANCE_VISION_DATABASE_URL 指向 HF（例如 :15432）"
-                echo "      参考：libs/database/db/README.md"
+                echo "      参考：assets/database/db/README.md"
             else
                 echo "      请导入 LF 栈（K线/指标）:"
-                echo "        PGPASSWORD=<密码> psql -h $db_host -p $db_port -U $db_user -d $db_name -f libs/database/db/stacks/lf.sql"
+                echo "        PGPASSWORD=<密码> psql -h $db_host -p $db_port -U $db_user -d $db_name -f assets/database/db/stacks/lf.sql"
             fi
         fi
     fi
@@ -328,7 +328,7 @@ check_database() {
                 success "HF 事实表: crypto.raw_futures_um_trades(ids) 已就绪"
             else
                 warn "HF 事实表未就绪（缺少 crypto.raw_futures_um_trades.venue_id）"
-                echo "      初始化：PGPASSWORD=<密码> psql -h $hf_host -p $hf_port -U $hf_user -d $hf_name -f libs/database/db/stacks/hf.sql"
+                echo "      初始化：PGPASSWORD=<密码> psql -h $hf_host -p $hf_port -U $hf_user -d $hf_name -f assets/database/db/stacks/hf.sql"
                 echo "      若运行库存在旧表结构漂移：按 docs/analysis/* 的 rename-swap playbook 迁移"
             fi
         fi
