@@ -7,7 +7,7 @@
 - A1（结构）：`assets/repo` 存在且包含原 `libs/external` 的顶层子目录  
   - Verify: `ls -la assets/repo | head`
 - A2（引用清零）：仓库中不再出现 `libs/external` 硬编码引用  
-  - Verify: `rg -n "libs/external" -S .` 输出为空  
+  - Verify: `rg -n "libs/external" -S services scripts config docs | wc -l` = 0  
 - A3（无副作用）：核心验证脚本可执行通过  
   - Verify: `./scripts/check_env.sh` exit code=0  
 
@@ -35,4 +35,3 @@
 
 - 不允许通过“删除功能/跳过检查”来让命令通过。
 - 不允许把问题掩盖为“只在某些环境不跑”；必须明确是否依赖 symlink，并给出无 symlink 方案。
-

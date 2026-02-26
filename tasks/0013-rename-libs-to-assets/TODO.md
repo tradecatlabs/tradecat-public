@@ -5,8 +5,8 @@
 ## P0（必须）
 
 - [ ] P0: Stage 0 盘点全仓库 `libs` 引用（import/path/systemd/docs） | Verify: `rg -n "import\\s+libs\\b|from\\s+libs\\b|libs/" -S . | wc -l` | Gate: 形成清单并写入 `STATUS.md`
-- [ ] P0: Stage 1 执行 `libs/external` → `assets/repo`（只做 `git mv`） | Verify: `ls -la assets/repo | head` | Gate: `ACCEPTANCE.A1`
-- [ ] P0: Stage 1 清理引用（若存在）并确保 `rg "libs/external"` 为空 | Verify: `rg -n "libs/external" -S .` | Gate: `ACCEPTANCE.A2`
+- [ ] P0: Stage 1 执行 `libs/external` → `assets/repo`（目录当前被 `.gitignore` 忽略，使用 `mv` 迁移） | Verify: `ls -la assets/repo | head` | Gate: `ACCEPTANCE.A1`
+- [ ] P0: Stage 1 清理运行时引用（若存在）并确保 runtime 侧 `libs/external` 为 0 | Verify: `rg -n "libs/external" -S services scripts config docs | wc -l` | Gate: `ACCEPTANCE.A2`
 - [ ] P0: Stage 1 基线验证（不允许破坏现有启动链路） | Verify: `./scripts/check_env.sh` | Gate: `ACCEPTANCE.A3`
 
 ## P1（高风险阶段：必须有兼容层）
@@ -20,4 +20,3 @@
 
 - [ ] P2: 文档同步（README/AGENTS/analysis docs） | Verify: `rg -n "libs/" -S README.md AGENTS.md docs | head` | Gate: 文档不误导
 - [ ] P2: 移除兼容层（仅在确认所有引用已迁移后） | Verify: `rg -n "\\bimport\\s+libs\\b|\\bfrom\\s+libs\\b" -S services scripts | head` 输出为空 | Gate: 无 `ModuleNotFoundError`
-

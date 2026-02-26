@@ -1,6 +1,6 @@
 # STATUS
 
-状态：Not Started
+状态：In Progress
 
 ## 仓库基线
 
@@ -42,3 +42,13 @@
 ## 下一步
 
 - 按 `TODO.md` 执行 Stage 0 盘点，并将“引用清单”完整落在本文件中（便于执行 Agent 逐项消除）。
+
+## Stage 1：执行记录（`libs/external` → `assets/repo`）
+
+- 现实约束：`libs/external/` 被 `.gitignore` 忽略（证据：`.gitignore:123: libs/external/`），因此无法用 `git mv` 产生可审计 diff（source 目录在 index 中为空）。
+- 已执行：
+  - `mv libs/external assets/repo`
+  - `.gitignore` 新增：`assets/repo/`（避免 2.9G 目录出现在 untracked）
+- 迁移后验证：
+  - `test -d assets/repo` ✅
+  - `test -e libs/external`（应不存在）✅

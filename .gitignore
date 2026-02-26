@@ -121,6 +121,7 @@ services/trading-service/.venv
 
 # Large external libraries
 libs/external/
+assets/repo/
 dist/
 polymarket-bot.out
 
