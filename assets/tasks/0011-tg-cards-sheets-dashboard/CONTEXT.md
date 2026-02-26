@@ -2,9 +2,9 @@
 
 ## 1) 需求真相源（PRD）
 
-- PRD 文件：`docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
+- PRD 文件：`assets/docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
 - 当前版本 SHA256（用于审计锁定）：`090b50122e4e874aee21dbd16aa3a3d9dd39b45ed1f6895a11c5761775f73f9e`
-  - Verify: `sha256sum docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
+  - Verify: `sha256sum assets/docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
 
 ## 2) 仓库内“契约级”约束（强关联）
 
@@ -13,8 +13,8 @@
 - 统一时间：存储/接口用 UTC，对外展示可格式化。
 
 证据：
-- `docs/analysis/layer_contract_one_pager.md:1`
-  - Verify: `sed -n '1,80p' docs/analysis/layer_contract_one_pager.md`
+- `assets/docs/analysis/layer_contract_one_pager.md:1`
+  - Verify: `sed -n '1,80p' assets/docs/analysis/layer_contract_one_pager.md`
 
 ## 3) 当前 TG 卡片形态（可复用的事实）
 

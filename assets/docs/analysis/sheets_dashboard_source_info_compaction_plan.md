@@ -105,7 +105,7 @@
 
 ### 3.2 文档同步
 
-- `docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
+- `assets/docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
   - 更新 6.x “固定版式”描述：源信息单行 + 表格主体 + 空行
 - `services/consumption/sheets-service/README.md`
   - 增补：源信息压缩后的布局口径（用于运维/验收）
@@ -125,4 +125,3 @@
 | 信息过长导致单元格看起来很挤 | Medium | `info_line` 超过 1 行高度 | 开启 `wrap`；必要时改为用 ` · ` 分隔或换行符 `\\n`（仍是 1 单元格） |
 | 高度公式/format range 不一致导致残留 | High | 背景色/竖线残留或覆盖错位 | 同步修改 `_calc_dashboard_height` 与 `_render_dashboard` 的 row 计算；reset 时清格式 |
 | chunks>1 时表头/边框范围画错 | Medium | 第二块开始表头颜色错/分隔线断 | 以 `table_y` 推进为唯一真相源，逐 chunk 计算范围 |
-

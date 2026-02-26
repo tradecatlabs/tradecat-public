@@ -4,10 +4,10 @@
 信号相关性分析（基于 cooldown.db + PG candles_1m）
 
 输出：
-- artifacts/analysis/signal_correlation/signal_events_snapshot.csv
-- artifacts/analysis/signal_correlation/buy_sell_rank.csv
-- artifacts/analysis/signal_correlation/alert_vol_rank.csv
-- artifacts/analysis/signal_correlation/report.md
+- assets/artifacts/analysis/signal_correlation/signal_events_snapshot.csv
+- assets/artifacts/analysis/signal_correlation/buy_sell_rank.csv
+- assets/artifacts/analysis/signal_correlation/alert_vol_rank.csv
+- assets/artifacts/analysis/signal_correlation/report.md
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from psycopg2.extras import execute_values
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COOLDOWN_DB = PROJECT_ROOT / "assets/database/services/signal-service/cooldown.db"
 DEFAULT_HISTORY_DB = PROJECT_ROOT / "assets/database/services/signal-service/signal_history.db"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "artifacts/analysis/signal_correlation"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "assets/artifacts/analysis/signal_correlation"
 DEFAULT_DB_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5433/market_data",

@@ -22,7 +22,7 @@
 - **跨数据集统一**：trades / bookTicker / bookDepth / metrics 等都能用同一套维度键联结与对齐（as-of 在 view 解决，不污染事实表）。
 - **演进友好**：symbol 改名、合约滚动、同名 symbol 跨产品（spot/um/cm/option）都靠 `core.*` 维表治理，不靠事实表改列/改主键。
 
-> 参考：`docs/analysis/crypto_trades_fact_table_pro_design.md` 的维度键方案与写库契约。
+> 参考：`assets/docs/analysis/crypto_trades_fact_table_pro_design.md` 的维度键方案与写库契约。
 
 ---
 
@@ -92,4 +92,3 @@
 注意：
 
 - 对于无法从 REST 回放的事件流（例如某些 L1/L2 WS-only 数据），回补只能靠官方 ZIP（如果官方提供）或承认缺口并记录。
-

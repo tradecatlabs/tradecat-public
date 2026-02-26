@@ -10,7 +10,7 @@
 
 - 修改服务代码：`services/**/src/`
 - 修改服务脚本：`services/*/scripts/` 与 `scripts/`
-- 更新文档：`README.md`、`README_EN.md`、`AGENTS.md`、`docs/**`
+- 更新文档：`README.md`、`README_EN.md`、`AGENTS.md`、`assets/docs/**`（保留 `docs -> assets/docs` 兼容 symlink）
 - 更新配置模板：`config/.env.example`
 
 ### 禁止
@@ -144,6 +144,9 @@ tradecat/
 │       ├── api-service/
 │       └── sheets-service/
 ├── assets/
+│   ├── docs/
+│   ├── tasks/
+│   └── artifacts/
 └── libs -> assets
 ```
 

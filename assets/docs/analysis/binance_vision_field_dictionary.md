@@ -1,7 +1,7 @@
 # Binance Vision 字段字典（基于本仓库样本）
 
 > 适用范围：本仓库样本目录  
-> `artifacts/analysis/binance_vision_compass/BTCUSDT_20260211_010327/data/`  
+> `assets/artifacts/analysis/binance_vision_compass/BTCUSDT_20260211_010327/data/`  
 >
 > 目标：把 **目录层级 → 数据集类型 → CSV 字段** 固化为可执行的解析契约与数据库设计依据。
 

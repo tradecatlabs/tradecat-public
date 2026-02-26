@@ -20,7 +20,7 @@
 
 ## 2. 理想形态（Perfect World）
 
-> 根目录只保留 `tradecat/`（实现）+ `docs/`（文档）；其他内容（scripts、deploy、legacy）逐步收敛到 `tradecat/` 内部或外移为工具仓。
+> 根目录只保留 `tradecat/`（实现）+ `assets/docs/`（文档；兼容入口 `docs -> assets/docs`）；其他内容（scripts、deploy、legacy）逐步收敛到 `tradecat/` 内部或外移为工具仓。
 
 ```
 tradecat/
@@ -52,7 +52,7 @@ tradecat/
 │       ├── push/                     # Telegram/钉钉/飞书/Discord（只读 PG；带 dedupe）
 │       ├── cache/                    # SQLite/Redis 等缓存实现（允许丢失）
 │       └── dedupe.py                 # 统一去重键生成与投递幂等
-└── docs/
+└── assets/docs/
     └── analysis/
         ├── layer_contract_one_pager.md
         └── repo_structure_design.md

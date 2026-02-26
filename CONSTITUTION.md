@@ -14,7 +14,7 @@ TradeCat 是一个多服务、以数据驱动为核心的交易/信号/推送系
 - **多消费出口**：Telegram/钉钉/飞书/Discord/API/可视化/执行系统对同一事实有不同展示与投递需求。
 - **可恢复性要求高**：外部源不稳定、限流频繁，系统必须在“至少一次”交付语义下保持正确性与可追溯性。
 
-当前共识（与 `docs/analysis/layer_contract_one_pager.md` 一致）：
+当前共识（与 `assets/docs/analysis/layer_contract_one_pager.md` 一致）：
 
 - **PG 为权威真相源**；SQLite 仅允许作为消费侧缓存（可丢、可重建）。
 - 系统应收敛为 **采集 → 处理 → 消费** 的单向数据流；用契约而不是口头约定治理复杂度。
@@ -104,6 +104,6 @@ TradeCat 是一个多服务、以数据驱动为核心的交易/信号/推送系
 
 > “宪法”不是一次写完，而是持续收敛；但第一步必须足够小、能马上执行。
 
-1) 以 `docs/analysis/layer_contract_one_pager.md` 为准，冻结三层契约的第一版（v1）。  
+1) 以 `assets/docs/analysis/layer_contract_one_pager.md` 为准，冻结三层契约的第一版（v1）。  
 2) 在每个写入路径旁声明幂等键与时间锚点（没有声明就不允许新增写入）。  
 3) 把延迟/缺口/重复三指标打通到日志（先不接监控系统也行，但必须可计算）。  

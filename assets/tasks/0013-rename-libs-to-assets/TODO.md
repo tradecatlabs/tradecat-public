@@ -11,7 +11,7 @@
 
 ## P1（高风险阶段：必须有兼容层）
 
-- [ ] P1: 选择兼容层策略（symlink vs Python re-export），并写入 `STATUS.md` 决策 | Verify: `cat tasks/0013-rename-libs-to-assets/STATUS.md | rg -n "compat"` | Gate: 决策可追溯
+- [ ] P1: 选择兼容层策略（symlink vs Python re-export），并写入 `STATUS.md` 决策 | Verify: `cat assets/tasks/0013-rename-libs-to-assets/STATUS.md | rg -n "compat"` | Gate: 决策可追溯
 - [ ] P1: Stage 2 执行 `libs/` → `assets/`（带兼容层） | Verify: `python3 -c "import libs.common; print('ok')"` | Gate: `ACCEPTANCE.B1`
 - [ ] P1: 迁移配置模板与脚本默认路径（`libs/database` → `assets/database`） | Verify: `rg -n "libs/database" -S config/.env.example scripts services | head` | Gate: 引用下降且无运行时断裂
 - [ ] P1: 启动链路验证（顶层脚本） | Verify: `./scripts/start.sh start && ./scripts/start.sh status` | Gate: `ACCEPTANCE.B4`

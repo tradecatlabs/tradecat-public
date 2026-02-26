@@ -24,9 +24,9 @@
 ## 证据存证（Live Evidence）
 
 ### 1) 需求真相源（PRD）hash
-- `docs/analysis/tg_cards_google_sheets_dashboard_prd.md` SHA256：
+- `assets/docs/analysis/tg_cards_google_sheets_dashboard_prd.md` SHA256：
   - `36c1a03046fa7b8708023e488757734312c82339c845acfe54e5e74528971957`
-  - Evidence command: `sha256sum docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
+  - Evidence command: `sha256sum assets/docs/analysis/tg_cards_google_sheets_dashboard_prd.md`
 
 ### 2) 本地 SA 写入真实工作簿成功（可重复验证）
 - Spreadsheet（用户创建并分享给 SA 编辑）：
@@ -38,7 +38,7 @@
   - 输出包含：`✅ flush 完成 ... mode=sa`
 
 ### 3) 分层契约（至少一次 + 幂等）
-- Evidence command: `sed -n '1,60p' docs/analysis/layer_contract_one_pager.md`
+- Evidence command: `sed -n '1,60p' assets/docs/analysis/layer_contract_one_pager.md`
 
 ### 4) 新服务目录已创建（消费层 sheets-service）
 - Evidence command: `ls -la services/consumption/sheets-service`

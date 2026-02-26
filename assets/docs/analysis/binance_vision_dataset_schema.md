@@ -1,7 +1,7 @@
 # Binance Data Vision：目录层级与 CSV 字段契约（对齐草案）
 
 > 目的：把 `data.binance.vision` 的“目录分类 + CSV 字段”固化为工程契约，用于后续设计 `raw_*` 表与解析器。  
-> 说明：本契约来自本仓库的 BTC 样本罗盘分析（见 `artifacts/analysis/binance_vision_compass/*`），覆盖：`futures/`、`spot/`、`option/` 的 daily 数据集子集。
+> 说明：本契约来自本仓库的 BTC 样本罗盘分析（见 `assets/artifacts/analysis/binance_vision_compass/*`），覆盖：`futures/`、`spot/`、`option/` 的 daily 数据集子集。
 
 ---
 
@@ -121,4 +121,3 @@ data/
 3) **建议的最小落库策略（MVP）**
    - 先只落：`futures/um/klines` 与 `metrics`（本仓库已覆盖并有表）
    - 其他数据集（trades/aggTrades/bookTicker/bookDepth/option）先落 `raw_*`（JSONB 或“窄表 + payload_json”），再按需要做派生
-

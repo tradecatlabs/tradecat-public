@@ -9,7 +9,7 @@
 -- - 若你希望对历史数据也给出“强一致保证”：
 --   - 在启用 Timescale 压缩（columnstore）后的 hypertable/chunk 上，`VALIDATE CONSTRAINT` 在部分版本/组合上不受支持；
 --   - 推荐低峰执行“重建 validated CHECK（ADD v2 / DROP / RENAME）”，见：
---     `docs/analysis/crypto_raw_trades_hardening_runbook.md`。
+--     `assets/docs/analysis/crypto_raw_trades_hardening_runbook.md`。
 --
 
 CREATE SCHEMA IF NOT EXISTS crypto;

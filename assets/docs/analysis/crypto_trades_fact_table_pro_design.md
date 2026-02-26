@@ -46,8 +46,8 @@
 
 相关 runbook / 索引：
 
-- `docs/analysis/crypto_raw_trades_hardening_runbook.md`（约束硬化、历史一致性、`--force-update` 权限隔离）
-- `docs/analysis/INDEX.md`（docs/analysis 单点真相入口）
+- `assets/docs/analysis/crypto_raw_trades_hardening_runbook.md`（约束硬化、历史一致性、`--force-update` 权限隔离）
+- `assets/docs/analysis/INDEX.md`（assets/docs/analysis 单点真相入口）
 
 ---
 

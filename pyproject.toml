@@ -71,7 +71,7 @@ all = ["tradecat[full,ai,dev,docs]"]
 Homepage = "https://tradecat.dev"
 Documentation = "https://docs.tradecat.dev"
 Repository = "https://github.com/tukuaiai/tradecat"
-Changelog = "https://github.com/tukuaiai/tradecat/blob/main/docs/CHANGELOG.md"
+Changelog = "https://github.com/tukuaiai/tradecat/blob/main/assets/docs/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/tukuaiai/tradecat/issues"
 
 [project.scripts]
@@ -88,7 +88,7 @@ include = [
     "/README.md",
     "/README_EN.md",
     "/LICENSE",
-    "/docs/CHANGELOG.md",
+    "/assets/docs/CHANGELOG.md",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -158,7 +158,7 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["src/tradecat"]
 branch = true
-data_file = "artifacts/coverage/.coverage"
+data_file = "assets/artifacts/coverage/.coverage"
 omit = ["*/tests/*", "*/__init__.py"]
 
 [tool.coverage.report]

@@ -1,7 +1,7 @@
 # 综合市场数据库规划与选型（基于当前 CSV 样本）
 
 > 本文以你当前已落盘并验证过的样本为“唯一事实源”：
-> `artifacts/analysis/binance_vision_compass/BTCUSDT_20260211_010327/data/`
+> `assets/artifacts/analysis/binance_vision_compass/BTCUSDT_20260211_010327/data/`
 >
 > 目标：先把 **多市场的“根结构 + 追溯层（storage）+ 加密资产落库（crypto）”** 定住；其他市场（美股/A股/港股/外汇/大宗/利率/基金/指数）先只建 schema 骨架占位，后续逐个补全事实表。
 

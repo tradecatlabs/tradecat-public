@@ -5,7 +5,7 @@
 > 2) 导入具备幂等语义（重复写入无害，可重跑）；  
 > 3) 在不破坏“目录结构对齐”的前提下，保留未来做统一查询/衍生层的演进空间。
 
-本设计面向你当前的样本目录：`artifacts/analysis/binance_vision_compass/**/data/`，并以其中已验证的 CSV 事实为准（含：spot 无 header、spot 时间戳 us、futures 多为 ms、EOHSummary 的 date+hour 语义等）。
+本设计面向你当前的样本目录：`assets/artifacts/analysis/binance_vision_compass/**/data/`，并以其中已验证的 CSV 事实为准（含：spot 无 header、spot 时间戳 us、futures 多为 ms、EOHSummary 的 date+hour 语义等）。
 
 ---
 
@@ -42,7 +42,7 @@
   - `crypto.*`（Binance Vision 派生/汇总层表：仍在 crypto 根内，用“脚本/表清单”区分）
   - 其余市场根 schema 先占位（`equities/fx/...`）
   
-  详见：`docs/analysis/multi_market_db_design.md` 与 `libs/database/db/schema/008_*.sql ~ 011_*.sql`。
+  详见：`assets/docs/analysis/multi_market_db_design.md` 与 `assets/database/db/schema/008_*.sql ~ 011_*.sql`。
 
 ### 2.2 目录结构到 schema/table 的映射规则（硬规则）
 

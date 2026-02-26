@@ -38,7 +38,7 @@
 ## 4. 输出文件
 
 ```
-artifacts/analysis/signal_correlation/
+assets/artifacts/analysis/signal_correlation/
 ├── signal_events_snapshot.csv   # 原始事件 + 入场价 + 前瞻收益
 ├── buy_sell_rank.csv            # BUY/SELL 汇总与排名
 ├── alert_vol_rank.csv           # ALERT 波动性排名

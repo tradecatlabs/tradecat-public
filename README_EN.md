@@ -132,7 +132,7 @@ If this project helps you, please consider supporting 🙏
 
 **Method 1: Complete Deployment Prompt (Recommended)**
 
-📄 **[docs/DEPLOY_PROMPT.md](docs/DEPLOY_PROMPT.md)** - Contains detailed 10-step deployment process:
+📄 **[assets/docs/DEPLOY_PROMPT.md](assets/docs/DEPLOY_PROMPT.md)** - Contains detailed 10-step deployment process:
 - Auto system dependencies installation
 - Service initialization and configuration
 - HuggingFace historical data auto download & import
@@ -894,13 +894,9 @@ tradecat/
 │
 ├── libs -> assets                  # Backward-compatible symlink
 │
-├── 📂 artifacts/                   # Build/test artifacts
-│   ├── 📂 services-archived/        # Archived services (opt-in)
-│   ├── 📂 coverage/                # Coverage data
-│   │   └── .coverage
-│   ├── 📂 dist/                    # Build outputs
-│   └── 📂 i18n/                    # i18n compiled output
-│       └── messages.mo
+├── artifacts -> assets/artifacts    # Backward-compatible symlink (ignored by default)
+├── docs -> assets/docs              # Backward-compatible symlink (documentation)
+├── tasks -> assets/tasks            # Backward-compatible symlink (task blueprints)
 │
 ├── 📂 cache/                       # Tool caches
 │   ├── pytest/
@@ -911,12 +907,6 @@ tradecat/
 │
 ├── 📂 run/                         # Top-level runtime state
 │   └── daemon.pid
-│
-├── 📂 docs/                        # Project docs
-│   ├── CHANGELOG.md
-│   ├── COMPETITION_REPORT.md
-│   ├── MARKETING_PROMO.md
-│   └── TODO.md
 │
 ├── 📂 .github/                     # Community & security
 │   ├── CONTRIBUTING.md

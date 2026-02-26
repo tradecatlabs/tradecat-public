@@ -98,7 +98,7 @@
 
 - **019 的“历史硬一致”不要指望 `VALIDATE CONSTRAINT`**：
   - 在启用 Timescale 压缩（columnstore）后的 hypertable 上，`ALTER TABLE ... VALIDATE CONSTRAINT ...` 在部分版本/组合上不受支持。
-  - 若要让历史也强一致，按 `docs/analysis/crypto_raw_trades_hardening_runbook.md` 的“重建 validated CHECK（ADD v2 / DROP / RENAME）”低峰执行。
+- 若要让历史也强一致，按 `assets/docs/analysis/crypto_raw_trades_hardening_runbook.md` 的“重建 validated CHECK（ADD v2 / DROP / RENAME）”低峰执行。
 - **`--force-update` 必须 operator-only**：
   - `--force-update` 会触发离线高成本路径：`decompress_chunk -> DO UPDATE -> compress_chunk`（仅 trades）。
   - 日常采集/回填必须走默认门禁（越过压缩线或命中已压缩 chunk：冲突降级 `DO NOTHING`）。
@@ -106,12 +106,12 @@
 
 补充入口（单点索引）：
 
-- `docs/analysis/INDEX.md`（docs/analysis 单点真相入口）
-- `docs/analysis/crypto_raw_trades_hardening_runbook.md`（加固 runbook：约束硬化/权限隔离/验收 SQL）
-- `docs/analysis/binance_vision_um_trades_dev_retrospective.md`（逐笔事实表落地复盘：坑 → 根因 → 解决方案）
-- `docs/analysis/binance_vision_futures_um_book_data_full_ingestion_plan.md`（bookDepth/bookTicker 全量采集整理入库规划）
-- `docs/analysis/binance_vision_futures_um_book_depth_curve_explained.md`（bookDepth 曲线白话解释：是什么/为什么/怎么用/与官方差异）
-- `docs/analysis/crypto_atomic_common_fields_contract.md`（原子事实表公共字段契约：`venue_id/instrument_id` 的构造与三种写入类型收敛口径）
+- `assets/docs/analysis/INDEX.md`（assets/docs/analysis 单点真相入口）
+- `assets/docs/analysis/crypto_raw_trades_hardening_runbook.md`（加固 runbook：约束硬化/权限隔离/验收 SQL）
+- `assets/docs/analysis/binance_vision_um_trades_dev_retrospective.md`（逐笔事实表落地复盘：坑 → 根因 → 解决方案）
+- `assets/docs/analysis/binance_vision_futures_um_book_data_full_ingestion_plan.md`（bookDepth/bookTicker 全量采集整理入库规划）
+- `assets/docs/analysis/binance_vision_futures_um_book_depth_curve_explained.md`（bookDepth 曲线白话解释：是什么/为什么/怎么用/与官方差异）
+- `assets/docs/analysis/crypto_atomic_common_fields_contract.md`（原子事实表公共字段契约：`venue_id/instrument_id` 的构造与三种写入类型收敛口径）
 
 ### 4.3 离线导入（local-only，本地已有 ZIP）
 

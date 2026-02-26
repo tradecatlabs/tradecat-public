@@ -5,7 +5,7 @@
 - 说明要基于真实字段与计算逻辑，不可凭空编造。
 
 ## 输入资产
-- 表结构：`libs/database/services/telegram-service/market_data.db`
+- 表结构：`assets/database/services/telegram-service/market_data.db`（兼容：`libs -> assets`）
 - 计算逻辑：
   - 指标注册：`services/compute/trading-service/src/indicators/__init__.py`
   - 指标实现：`services/compute/trading-service/src/indicators/batch/*.py`、`services/compute/trading-service/src/indicators/incremental/*.py`

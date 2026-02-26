@@ -88,9 +88,11 @@ tradecat/
 │   ├── ingestion/
 │   ├── compute/
 │   └── consumption/
-├── assets/                  # 共享库/资源：common/database/repo
+├── assets/                  # 共享库/资源：common/database/repo/docs/tasks/artifacts
 ├── libs -> assets            # 兼容旧路径（symlink）
-├── docs/                    # 文档（分析/架构/运维）
+├── docs -> assets/docs       # 文档（symlink）
+├── tasks -> assets/tasks     # 任务文档（symlink）
+├── artifacts -> assets/artifacts # 构建/分析产物（symlink，默认忽略）
 ├── logs/                    # 顶层日志（daemon）
 └── run/                     # 顶层 PID（daemon）
 ```

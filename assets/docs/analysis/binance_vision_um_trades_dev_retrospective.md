@@ -10,7 +10,7 @@
 
 ### 0.1 单点真相源（SSOT）
 
-- 文档索引入口：`docs/analysis/INDEX.md`
+- 文档索引入口：`assets/docs/analysis/INDEX.md`
 - DDL 真相源（禁止抄写运行库手工改）：
   - `libs/database/db/schema/008_multi_market_core_and_storage.sql`：`core/*` + `storage/*`
   - `libs/database/db/schema/009_crypto_binance_vision_landing.sql`：`crypto.raw_*`（含 UM trades 事实表）
@@ -136,4 +136,3 @@
 - `bookTicker/bookDepth` 全量回填：优先把“可用数据范围 + 成本曲线”跑出来，再决定是否需要 double / ids 重构。
 - 训练/回测数据集：用 continuous aggregate 或离线导出把 tick 压到可训练的 1s/5s bars（避免直接在 72 亿行上做研究）。
 - ClickHouse：如果要做 L2/L3 或更严苛的微观结构研究，再上列式主仓；PG/Timescale 继续做治理与衍生聚合即可。
-

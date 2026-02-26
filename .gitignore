@@ -45,6 +45,7 @@ pids/
 *.log
 cache/
 artifacts/
+assets/artifacts/
 *.cache
 *.db
 
