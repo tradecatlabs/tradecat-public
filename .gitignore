@@ -123,8 +123,8 @@ services/trading-service/.venv
 .venv-pypi/
 .coverage
 
-# Large external libraries
-libs/external/
+# Large external libraries / repos mirror (ignored; see assets/repo)
+libs/external/   # legacy path (pre-migration)
 assets/repo/
 dist/
 polymarket-bot.out

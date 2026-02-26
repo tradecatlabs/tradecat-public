@@ -16,7 +16,7 @@
 ### 禁止
 
 - 禁止修改生产配置：`config/.env`（包含密钥/凭证）
-- 禁止删除或改写数据库文件：`libs/database/**`（除非任务明确要求）
+- 禁止删除或改写数据库文件：`assets/database/**`（`libs/` 为兼容 symlink；除非任务明确要求）
 - 禁止大范围重构（无明确任务授权）
 - 禁止引入未经验证的第三方依赖（新增依赖必须同时更新锁文件/说明）
 
@@ -25,7 +25,7 @@
 | 路径 | 说明 |
 |:---|:---|
 | `config/.env` | 运行时私密配置（不提交） |
-| `libs/database/services/**` | SQLite 持久化与审计数据 |
+| `assets/database/services/**` | SQLite 持久化与审计数据（`libs/` 为兼容 symlink） |
 | `backups/` | 导出/备份产物 |
 
 ---
@@ -143,7 +143,8 @@ tradecat/
 │       ├── telegram-service/
 │       ├── api-service/
 │       └── sheets-service/
-└── libs/database/
+├── assets/
+└── libs -> assets
 ```
 
 ---
@@ -209,4 +210,3 @@ pip install TA-Lib
 - 目录结构/服务职责变更：更新 `README.md` / `AGENTS.md`
 
 不确定项必须写 `TODO` 并标注需要核对的文件路径/字段名，禁止猜测。
-

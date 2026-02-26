@@ -249,7 +249,7 @@ Script features:
 
 ```bash
 # 0. Load schema (TimescaleDB + continuous aggregates)
-for f in libs/database/db/schema/*.sql; do
+for f in assets/database/db/schema/*.sql; do
   psql -h localhost -p 5433 -U postgres -d market_data -f "$f"
 done
 
@@ -878,18 +878,21 @@ tradecat/
 │       ├── 📂 api-service/         # REST API (optional)
 │       └── 📂 sheets-service/      # Google Sheets dashboard sync (optional)
 │
-├── 📂 libs/                        # Shared libraries
+├── 📂 assets/                      # Shared libraries + resources
 │   ├── 📂 database/                # Database files
 │   │   └── 📂 services/
 │   │       ├── 📂 telegram-service/
 │   │       │   └── market_data.db      # Indicator data (Telegram rendering)
 │   │       └── 📂 signal-service/
 │   │           └── cooldown.db         # Cooldown persistence to dedupe pushes
-│   └── 📂 common/                  # Shared utilities
-│       ├── i18n.py                 # Internationalization module
-│       ├── symbols.py              # Token management module
-│       ├── proxy_manager.py        # Proxy manager
-│       └── utils/                  # Utility functions
+│   ├── 📂 common/                  # Shared utilities
+│   │   ├── i18n.py                 # Internationalization module
+│   │   ├── symbols.py              # Token management module
+│   │   ├── proxy_manager.py        # Proxy manager
+│   │   └── utils/                  # Utility functions
+│   └── 📂 repo/                    # External repos mirror (ignored by default)
+│
+├── libs -> assets                  # Backward-compatible symlink
 │
 ├── 📂 artifacts/                   # Build/test artifacts
 │   ├── 📂 services-archived/        # Archived services (opt-in)
@@ -1074,7 +1077,7 @@ ORDER BY bucket_ts DESC LIMIT 10;
 
 ```bash
 # Connect to database
-sqlite3 libs/database/services/telegram-service/market_data.db
+sqlite3 assets/database/services/telegram-service/market_data.db
 
 # Common queries
 .tables                          -- List all tables

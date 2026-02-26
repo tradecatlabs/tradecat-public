@@ -88,7 +88,8 @@ tradecat/
 │   ├── ingestion/
 │   ├── compute/
 │   └── consumption/
-├── libs/database/           # SQLite/DDL/CSV 等（敏感数据禁止随意改动）
+├── assets/                  # 共享库/资源：common/database/repo
+├── libs -> assets            # 兼容旧路径（symlink）
 ├── docs/                    # 文档（分析/架构/运维）
 ├── logs/                    # 顶层日志（daemon）
 └── run/                     # 顶层 PID（daemon）

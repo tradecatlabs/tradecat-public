@@ -52,3 +52,15 @@
 - 迁移后验证：
   - `test -d assets/repo` ✅
   - `test -e libs/external`（应不存在）✅
+
+## Stage 2：执行记录（`libs/` → `assets/` + 兼容层）
+
+- 兼容层决策：采用 **顶层 symlink**（`libs -> assets`），避免“在 `libs/` 下对已跟踪目录做子级 symlink”导致 git index/rename 检测混乱。
+- 已执行：
+  - `git mv libs/common assets/common`
+  - `git mv libs/database assets/database`
+  - `git mv libs/__init__.py assets/__init__.py`
+  - 创建并提交：`libs -> assets`（symlink，确保 `import libs.*` 与 `libs/database/...` 路径继续可用）
+  - `.gitignore` 同步补齐：`assets/database/*` 的临时目录 ignore，避免迁移后出现大量 untracked
+- 迁移后快速验证：
+  - `python3 -c "import libs.common, assets.common; print('ok')"` ✅
