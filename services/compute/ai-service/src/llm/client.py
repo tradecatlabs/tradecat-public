@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict
 
 from src.config import PROJECT_ROOT, HTTP_PROXY
 

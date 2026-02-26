@@ -11,7 +11,6 @@ import logging
 import time
 import json
 import threading
-import importlib.util
 import unicodedata
 import re
 

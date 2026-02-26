@@ -12,7 +12,7 @@
 import time
 import pickle
 from multiprocessing import cpu_count
-from typing import Dict, List, Tuple
+from typing import List
 from ..config import config
 from ..indicators.base import get_all_indicators, get_batch_indicators, get_incremental_indicators
 from ..utils.precision import trim_dataframe

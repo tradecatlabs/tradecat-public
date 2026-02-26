@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path

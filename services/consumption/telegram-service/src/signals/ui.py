@@ -21,7 +21,7 @@ if str(_SIGNAL_SERVICE_SRC) not in sys.path:
     sys.path.insert(0, str(_SIGNAL_SERVICE_SRC))
 
 from rules import RULES_BY_TABLE
-from storage.history import SignalHistory, get_history
+from storage.history import get_history
 
 logger = logging.getLogger(__name__)
 

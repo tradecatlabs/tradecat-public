@@ -19,7 +19,6 @@ if str(_SIGNAL_SERVICE_SRC) not in sys.path:
 
 # 导入 signal-service
 from engines import get_sqlite_engine, get_pg_engine as _get_pg_engine
-from engines.pg_engine import PGSignal
 from events import SignalPublisher, SignalEvent
 from formatters.base import BaseFormatter, strength_bar, fmt_price
 

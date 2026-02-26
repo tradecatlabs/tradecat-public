@@ -14,7 +14,7 @@ import logging
 from typing import Dict, List, Sequence
 
 from cards.data_provider import get_ranking_provider, format_symbol
-from cards.i18n import btn_auto as _btn_auto, gettext as _t, resolve_lang, translate_field, format_sort_field
+from cards.i18n import btn_auto as _btn_auto, gettext as _t, resolve_lang, format_sort_field
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -144,13 +144,11 @@ class VolumeRankingService(BaseService):
         lang: str | None = None,
     ) -> str:
         sort_symbol = "🔽" if sort_order == 'desc' else "🔼"
-        sort_text = "降序" if sort_order == 'desc' else "升序"
         period_display = {
             '5m': '5分钟', '15m': '15分钟', '30m': '30分钟',
             '1h': '1小时', '4h': '4小时', '12h': '12小时',
             '1d': '1天', '1w': '1周'
         }
-        market_text = '合约' if market_type == 'futures' else '现货'
         period_text = period_display.get(period, period)
 
         reverse = sort_order == 'desc'

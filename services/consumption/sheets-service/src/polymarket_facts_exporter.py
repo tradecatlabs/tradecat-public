@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from src.polymarket_exporter import PolymarketStatsSheet, _coerce_number
+
+def sh_quote(s: str) -> str:
+    return shlex.quote(s)
 
 def _parse_ts_utc(v: object) -> datetime | None:
     if v is None:

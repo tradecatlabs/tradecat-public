@@ -370,7 +370,7 @@ class SingleTokenTxtExporter:
                     if data:
                         val = data.get(field_id)
                         # 对字符串值进行翻译（如 "缩量"、"金叉" 等）
-                        if formatter == str and isinstance(val, str):
+                        if formatter is str and isinstance(val, str):
                             val = translate_value(val, lang=self.lang)
                         row.append(formatter(val))
                     else:

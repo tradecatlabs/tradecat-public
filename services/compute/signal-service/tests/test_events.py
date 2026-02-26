@@ -1,7 +1,6 @@
 """
 事件系统测试
 """
-import pytest
 from datetime import datetime
 
 

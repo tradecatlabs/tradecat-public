@@ -21,7 +21,7 @@ jobs:
         run: pip install ruff
       
       - name: Lint with ruff
-        run: ruff check services/ --ignore E501,E402
+        run: ruff check services/ --ignore E501,E402 --select E,F
 
   syntax-check:
     runs-on: ubuntu-latest

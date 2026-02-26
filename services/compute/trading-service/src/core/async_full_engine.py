@@ -20,12 +20,11 @@ import signal
 import queue
 import pickle
 from concurrent.futures import ProcessPoolExecutor, Future, as_completed, ThreadPoolExecutor
-from threading import Thread, Event, Lock
+from threading import Thread, Event
 from typing import Dict, List, Optional, Set
 from datetime import datetime, timezone
 import pandas as pd
 
-from ..config import config
 from ..db.reader import shared_pg_conn
 from ..indicators.base import get_all_indicators
 

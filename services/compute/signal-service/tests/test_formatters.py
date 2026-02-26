@@ -1,7 +1,6 @@
 """
 格式化器测试
 """
-import pytest
 
 
 def test_strength_bar():
