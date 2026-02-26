@@ -124,8 +124,7 @@ ingestion  -> TimescaleDB (LF/HF) -> compute -> SQLite -> consumption
 
 ```text
 tradecat/
-├── config/
-│   └── .env.example
+├── config -> assets/config
 ├── scripts/
 │   ├── init.sh
 │   ├── start.sh

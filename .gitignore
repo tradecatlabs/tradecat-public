@@ -105,9 +105,11 @@ assets/database/telegram-cards/
 
 # 敏感配置（绝对不提交）
 config/.env
+assets/config/.env
 
 # 保留模板
 !config/.env.example
+!assets/config/.env.example
 
 # SQLite 临时文件
 *.db-shm

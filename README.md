@@ -82,13 +82,13 @@ cd services/consumption/sheets-service && ./scripts/start.sh start
 
 ```text
 tradecat/
-├── config/                  # 全局配置：config/.env.example → config/.env（不提交）
+├── config -> assets/config   # 全局配置（symlink）：.env.example → .env（不提交）
 ├── scripts/                 # 顶层脚本：init/start/verify/check_env/导出等
 ├── services/                # 分层服务：ingestion/compute/consumption
 │   ├── ingestion/
 │   ├── compute/
 │   └── consumption/
-├── assets/                  # 共享库/资源：common/database/repo/docs/tasks/artifacts
+├── assets/                  # 共享库/资源：common/database/repo/config/docs/tasks/artifacts
 ├── libs -> assets            # 兼容旧路径（symlink）
 ├── docs -> assets/docs       # 文档（symlink）
 ├── tasks -> assets/tasks     # 任务文档（symlink）

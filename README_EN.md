@@ -848,10 +848,7 @@ Futures Dimension:
 ```
 tradecat/
 │
-├── 📂 config/                      # Unified config (shared by all services)
-│   ├── .env                        # Production config (contains secrets, not committed)
-│   ├── .env.example                # Config template
-│   └── logrotate.conf              # Log rotation
+├── config -> assets/config         # Unified config (symlink; contains .env/.env.example/logrotate.conf)
 │
 ├── 📂 scripts/                     # Global scripts
 │   ├── install.sh                  # One-click install
@@ -879,6 +876,7 @@ tradecat/
 │       └── 📂 sheets-service/      # Google Sheets dashboard sync (optional)
 │
 ├── 📂 assets/                      # Shared libraries + resources
+│   ├── 📂 config/                  # Source-of-truth config directory (symlinked as ./config)
 │   ├── 📂 database/                # Database files
 │   │   └── 📂 services/
 │   │       ├── 📂 telegram-service/
@@ -894,6 +892,7 @@ tradecat/
 │
 ├── libs -> assets                  # Backward-compatible symlink
 │
+├── config -> assets/config         # Backward-compatible symlink (unified config)
 ├── artifacts -> assets/artifacts    # Backward-compatible symlink (ignored by default)
 ├── docs -> assets/docs              # Backward-compatible symlink (documentation)
 ├── tasks -> assets/tasks            # Backward-compatible symlink (task blueprints)
