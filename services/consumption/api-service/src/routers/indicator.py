@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from functools import lru_cache
 import importlib.util
@@ -11,7 +12,7 @@ import sqlite3
 from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 
-from src.config import get_settings
+from src.config import get_settings, get_pg_pool
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
@@ -39,10 +40,30 @@ def _get_snapshot_provider():
         raise RuntimeError("无法加载 data_provider 模块")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    get_provider = getattr(module, "get_ranking_provider", None)
+    if callable(get_provider):
+        return get_provider()
     RankingDataProvider = getattr(module, "RankingDataProvider", None)
     if RankingDataProvider is None:
-        raise RuntimeError("data_provider 缺少 RankingDataProvider")
+        raise RuntimeError("data_provider 缺少 get_ranking_provider / RankingDataProvider")
     return RankingDataProvider()
+
+
+def _resolve_indicator_read_source() -> str:
+    """
+    指标读取来源（与 telegram-service/sheets-service 对齐）：
+    - INDICATOR_READ_SOURCE=sqlite|pg|auto（默认 auto）
+    - auto：跟随 INDICATOR_STORE_MODE（pg/dual => pg；否则 sqlite）
+    """
+    raw = (os.environ.get("INDICATOR_READ_SOURCE") or "auto").strip().lower()
+    if raw in {"sqlite", "pg"}:
+        return raw
+    store_mode = (os.environ.get("INDICATOR_STORE_MODE") or "sqlite").strip().lower()
+    return "pg" if store_mode in {"pg", "dual"} else "sqlite"
+
+
+def _indicator_pg_schema() -> str:
+    return (os.environ.get("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
 
 
 def _parse_csv(value: str | None) -> list[str]:
@@ -302,18 +323,43 @@ async def get_indicator_list() -> dict:
     settings = get_settings()
     db_path = settings.SQLITE_INDICATORS_PATH
 
-    if not db_path.exists():
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "指标数据库不可用")
+    read_source = _resolve_indicator_read_source()
 
-    def _fetch_tables():
+    def _fetch_tables_sqlite():
+        if not db_path.exists():
+            return None
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             rows = cursor.fetchall()
             return [row[0] for row in rows]
 
+    def _fetch_tables_pg():
+        schema = _indicator_pg_schema()
+        pool = get_pg_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema=%s AND table_type='BASE TABLE'
+                    ORDER BY table_name
+                    """,
+                    (schema,),
+                )
+                rows = cur.fetchall() or []
+                return [str(r[0]) for r in rows]
+
     try:
-        tables = await run_in_threadpool(_fetch_tables)
+        if read_source == "pg":
+            tables = await run_in_threadpool(_fetch_tables_pg)
+        else:
+            tables = await run_in_threadpool(_fetch_tables_sqlite)
+
+        if tables is None:
+            return error_response(ErrorCode.SERVICE_UNAVAILABLE, "指标数据库不可用")
+
         return api_response(tables)
     except Exception as e:
         return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
@@ -330,20 +376,19 @@ async def get_indicator_data(
     settings = get_settings()
     db_path = settings.SQLITE_INDICATORS_PATH
 
-    if not db_path.exists():
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "指标数据库不可用")
+    read_source = _resolve_indicator_read_source()
 
-    def _fetch_rows():
+    def _fetch_rows_sqlite():
+        if not db_path.exists():
+            return None
         with sqlite3.connect(db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # 检查表是否存在
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
             if not cursor.fetchone():
-                return None
+                return "table_not_found"
 
-            # 构建查询
             query = f'SELECT * FROM "{table}"'
             params: list = []
             conditions = []
@@ -365,10 +410,68 @@ async def get_indicator_data(
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
+    def _fetch_rows_pg():
+        from psycopg import sql  # type: ignore
+        from psycopg.rows import dict_row  # type: ignore
+
+        schema = _indicator_pg_schema()
+        pool = get_pg_pool()
+
+        with pool.connection() as conn:
+            # 1) 检查表是否存在
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",
+                    (schema, table),
+                )
+                if not cur.fetchone():
+                    return "table_not_found"
+
+                cur.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema=%s AND table_name=%s
+                    ORDER BY ordinal_position
+                    """,
+                    (schema, table),
+                )
+                cols = {str(r[0]) for r in (cur.fetchall() or [])}
+
+            clauses: list[sql.Composed] = []
+            params: list[object] = []
+
+            if symbol and "交易对" in cols:
+                clauses.append(sql.SQL("{}=%s").format(sql.Identifier("交易对")))
+                params.append(normalize_symbol(symbol))
+            if interval and "周期" in cols:
+                clauses.append(sql.SQL("{}=%s").format(sql.Identifier("周期")))
+                params.append(interval)
+
+            where_sql = sql.SQL("")
+            if clauses:
+                where_sql = sql.SQL(" WHERE ") + sql.SQL(" AND ").join(clauses)
+
+            tbl = sql.Identifier(schema, table)
+            query = sql.SQL("SELECT * FROM {}{} LIMIT %s").format(tbl, where_sql)
+            params.append(int(limit))
+
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(query, params)
+                rows = cur.fetchall() or []
+                return [dict(r) for r in rows]
+
     try:
-        data = await run_in_threadpool(_fetch_rows)
+        if read_source == "pg":
+            data = await run_in_threadpool(_fetch_rows_pg)
+        else:
+            data = await run_in_threadpool(_fetch_rows_sqlite)
+
         if data is None:
+            return error_response(ErrorCode.SERVICE_UNAVAILABLE, "指标数据库不可用")
+        if data == "table_not_found":
             return error_response(ErrorCode.TABLE_NOT_FOUND, f"表 '{table}' 不存在")
+
         return api_response(data)
     except Exception as e:
         return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
