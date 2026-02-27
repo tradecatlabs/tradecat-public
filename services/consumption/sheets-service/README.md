@@ -50,6 +50,18 @@
 - `SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS`：最小刷新间隔（默认 300；避免每次都传 170MB）
 - `SHEETS_REMOTE_DB_SNAPSHOT`：`0/1`（默认 `0`；`1` 表示先在远端生成一致性快照再拉取，避免并发写入导致 DB 不一致）
 
+### 指标数据源（SQLite / PG 可切换）
+
+sheets-service 复用 telegram-service 的卡片导出逻辑，因此“指标读取来源”与 Bot 保持一致：
+
+- SQLite（默认）：读取 `assets/database/services/telegram-service/market_data.db`（可配合上面的 remote_db 方案用服务器 DB）
+- PG：读取 `DATABASE_URL` 指向的库内 `tg_cards.*`（写端需 `INDICATOR_STORE_MODE=pg|dual`）
+
+开关：
+
+- `INDICATOR_READ_SOURCE=auto|sqlite|pg`（默认 `auto`，跟随 `INDICATOR_STORE_MODE`）
+- `INDICATOR_PG_SCHEMA=tg_cards`（可覆盖 schema）
+
 ### 导出与运行
 - `SHEETS_EXPORT_LANG`：默认 `zh_CN`
 - `SHEETS_EXPORT_CARDS`：逗号分隔 card_id 白名单；空=全部
