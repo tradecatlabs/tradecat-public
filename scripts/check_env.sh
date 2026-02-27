@@ -329,7 +329,7 @@ check_database() {
             else
                 warn "HF 事实表未就绪（缺少 crypto.raw_futures_um_trades.venue_id）"
                 echo "      初始化：PGPASSWORD=<密码> psql -h $hf_host -p $hf_port -U $hf_user -d $hf_name -f assets/database/db/stacks/hf.sql"
-                echo "      若运行库存在旧表结构漂移：按 assets/docs/analysis/* 的 rename-swap playbook 迁移"
+                echo "      若运行库存在旧表结构漂移：按 docs/analysis/* 的 rename-swap playbook 迁移"
             fi
         fi
     fi

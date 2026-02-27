@@ -10,13 +10,13 @@
 
 - 修改服务代码：`services/**/src/`
 - 修改服务脚本：`services/*/scripts/` 与 `scripts/`
-- 更新文档：`README.md`、`README_EN.md`、`AGENTS.md`、`assets/docs/**`（保留 `docs -> assets/docs` 兼容 symlink）
+- 更新文档：`README.md`、`README_EN.md`、`AGENTS.md`、`docs/**`
 - 更新配置模板：`config/.env.example`
 
 ### 禁止
 
 - 禁止修改生产配置：`config/.env`（包含密钥/凭证）
-- 禁止删除或改写数据库文件：`assets/database/**`（`libs/` 为兼容 symlink；除非任务明确要求）
+- 禁止删除或改写数据库文件：`assets/database/**`（`libs/` 为 Python 兼容包；除非任务明确要求）
 - 禁止大范围重构（无明确任务授权）
 - 禁止引入未经验证的第三方依赖（新增依赖必须同时更新锁文件/说明）
 
@@ -25,7 +25,7 @@
 | 路径 | 说明 |
 |:---|:---|
 | `config/.env` | 运行时私密配置（不提交） |
-| `assets/database/services/**` | SQLite 持久化与审计数据（`libs/` 为兼容 symlink） |
+| `assets/database/services/**` | SQLite 持久化与审计数据（`libs/` 为 Python 兼容包） |
 | `backups/` | 导出/备份产物 |
 
 ---
@@ -124,7 +124,11 @@ ingestion  -> TimescaleDB (LF/HF) -> compute -> SQLite -> consumption
 
 ```text
 tradecat/
-├── config -> assets/config
+├── config/
+├── docs/
+├── tasks/
+├── artifacts/
+├── libs/                      # Python 兼容包：`import libs.*` → `assets/*`（无软链接）
 ├── scripts/
 │   ├── init.sh
 │   ├── start.sh
@@ -142,11 +146,7 @@ tradecat/
 │       ├── telegram-service/
 │       ├── api-service/
 │       └── sheets-service/
-├── assets/
-│   ├── docs/
-│   ├── tasks/
-│   └── artifacts/
-└── libs -> assets
+└── assets/                    # 共享资产根：common/database/repo/tests 等
 ```
 
 ---

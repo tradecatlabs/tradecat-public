@@ -5,9 +5,9 @@ site_author: TradeCat Team
 
 repo_url: https://github.com/tukuaiai/tradecat
 repo_name: tukuaiai/tradecat
-edit_uri: edit/main/assets/docs/
+edit_uri: edit/main/docs/
 
-docs_dir: assets/docs
+docs_dir: docs
 
 theme:
   name: material

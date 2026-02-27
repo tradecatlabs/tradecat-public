@@ -125,48 +125,48 @@ fi
 # 6. 文档链接检查
 echo ""
 echo "6. 文档链接检查..."
-if [ -f "assets/docs/index.md" ]; then
+if [ -f "docs/index.md" ]; then
     BROKEN_LINKS=0
     while IFS= read -r line; do
         if [[ $line =~ \[.*\]\((.*)\) ]]; then
             link="${BASH_REMATCH[1]}"
             if [[ $link != http* ]] && [[ $link != \#* ]]; then
-                full_path="assets/docs/$link"
+                full_path="docs/$link"
                 if [ ! -f "$full_path" ] && [ ! -d "$full_path" ]; then
                     warn "死链: $link"
                     BROKEN_LINKS=$((BROKEN_LINKS + 1))
                 fi
             fi
         fi
-    done < assets/docs/index.md
+    done < docs/index.md
     
     if [ $BROKEN_LINKS -eq 0 ]; then
-        success "assets/docs/index.md 链接检查通过"
+        success "docs/index.md 链接检查通过"
     else
         warn "发现 $BROKEN_LINKS 个死链"
     fi
 else
-    warn "assets/docs/index.md 不存在，跳过文档链接检查（团队单入口文档约定已禁用）"
+    warn "docs/index.md 不存在，跳过文档链接检查（团队单入口文档约定已禁用）"
 fi
 
 # 7. ADR 编号检查
 echo ""
 echo "7. ADR 编号检查..."
-if [ -d "assets/docs/decisions/adr" ]; then
-    ADR_COUNT=$(ls assets/docs/decisions/adr/*.md 2>/dev/null | wc -l)
+if [ -d "docs/decisions/adr" ]; then
+    ADR_COUNT=$(ls docs/decisions/adr/*.md 2>/dev/null | wc -l)
     success "ADR 文件数: $ADR_COUNT"
 else
-    warn "assets/docs/decisions/adr 目录不存在"
+    warn "docs/decisions/adr 目录不存在"
 fi
 
 # 8. Prompt 模板检查
 echo ""
 echo "8. Prompt 模板检查..."
-if [ -d "assets/docs/prompts" ]; then
-    PROMPT_COUNT=$(ls assets/docs/prompts/*.md 2>/dev/null | wc -l)
+if [ -d "docs/prompts" ]; then
+    PROMPT_COUNT=$(ls docs/prompts/*.md 2>/dev/null | wc -l)
     success "Prompt 文件数: $PROMPT_COUNT"
 else
-    warn "assets/docs/prompts 目录不存在"
+    warn "docs/prompts 目录不存在"
 fi
 
 # 9. 单元测试 (如有)

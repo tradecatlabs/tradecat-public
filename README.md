@@ -833,19 +833,17 @@ K线维度:
 ```
 tradecat/
 │
-├── 📂 assets/                      # 规范化资源根（真实目录；建议以此为准）
-│   ├── 📂 common/                  # 共享工具库（等价 libs/common）
-│   ├── 📂 database/                # DDL/CSV/SQLite（等价 libs/database；*.db 默认忽略）
-│   ├── 📂 config/                  # 全局配置（等价 config；.env 不提交）
-│   ├── 📂 docs/                    # 项目文档（等价 docs）
-│   ├── 📂 tasks/                   # 任务文档（等价 tasks）
-│   └── 📂 artifacts/               # 构建/分析产物（等价 artifacts；默认忽略）
+├── 📂 assets/                      # 共享资产根（真实目录）
+│   ├── 📂 common/                  # 共享工具库（`import libs.*` 会映射到这里）
+│   ├── 📂 database/                # DDL/CSV/SQLite（敏感：勿改写持久化数据）
+│   ├── 📂 repo/                    # 外部仓库镜像（默认忽略）
+│   └── 📂 tests/                   # 资产/SQL/脚本级测试素材
 │
-├── 📎 libs -> assets               # 兼容旧路径（symlink）：libs/common、libs/database
-├── 📎 config -> assets/config      # 兼容路径（symlink）：config/.env.example → config/.env（不提交）
-├── 📎 docs -> assets/docs          # 兼容路径（symlink）
-├── 📎 tasks -> assets/tasks        # 兼容路径（symlink）
-├── 📎 artifacts -> assets/artifacts# 兼容路径（symlink）
+├── 📂 libs/                        # Python 兼容包：`import libs.*` → `assets/*`（无软链接）
+├── 📂 config/                      # 全局配置（.env 不提交）
+├── 📂 docs/                        # 项目文档（mkdocs 入口）
+├── 📂 tasks/                       # 任务文档
+├── 📂 artifacts/                   # 构建/分析产物（部分忽略）
 │
 ├── 📂 scripts/                     # 全局脚本（install/init/start/verify/check_env/导出/压缩等）
 │
@@ -870,7 +868,7 @@ tradecat/
 │
 ├── 📂 .github/                     # 社区与安全规范（CI/贡献指南/安全策略）
 │
-├── 📄 mkdocs.yml                   # 文档站配置（assets/docs/ 为入口；docs/ 为 symlink 兼容层）
+├── 📄 mkdocs.yml                   # 文档站配置（docs/ 为入口）
 ├── 📄 pyproject.toml               # 根级工具配置（ruff/pytest 等）
 ├── 📄 Makefile                     # 常用命令聚合
 ├── 📄 README.md                    # 项目说明（本文件）

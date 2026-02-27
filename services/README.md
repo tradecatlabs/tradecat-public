@@ -26,4 +26,4 @@ services/
 - `compute/**` 禁止 import `consumption/**`
 - `consumption/**` 禁止写入 PostgreSQL 业务域（Raw/Derived），只允许写 **缓存/投递去重状态**
 
-> 相关设计依据：`assets/docs/analysis/layer_contract_one_pager.md`、`assets/docs/analysis/repo_structure_design.md`。
+> 相关设计依据：`docs/analysis/layer_contract_one_pager.md`、`docs/analysis/repo_structure_design.md`。

@@ -132,7 +132,7 @@ If this project helps you, please consider supporting 🙏
 
 **Method 1: Complete Deployment Prompt (Recommended)**
 
-📄 **[assets/docs/DEPLOY_PROMPT.md](assets/docs/DEPLOY_PROMPT.md)** - Contains detailed 10-step deployment process:
+📄 **[docs/analysis/DEPLOY_PROMPT.md](docs/analysis/DEPLOY_PROMPT.md)** - Contains detailed 10-step deployment process:
 - Auto system dependencies installation
 - Service initialization and configuration
 - HuggingFace historical data auto download & import
@@ -845,19 +845,17 @@ Futures Dimension:
 ```
 tradecat/
 │
-├── 📂 assets/                      # Normalized resource root (real directory; recommended as source of truth)
-│   ├── 📂 common/                  # Shared utilities (equivalent to libs/common)
-│   ├── 📂 database/                # DDL/CSV/SQLite (equivalent to libs/database; *.db ignored by default)
-│   ├── 📂 config/                  # Global config (equivalent to config; .env must NOT be committed)
-│   ├── 📂 docs/                    # Project docs (equivalent to docs)
-│   ├── 📂 tasks/                   # Task blueprints (equivalent to tasks)
-│   └── 📂 artifacts/               # Build/analysis artifacts (equivalent to artifacts; partially ignored by default)
+├── 📂 assets/                      # Shared asset root (real directory)
+│   ├── 📂 common/                  # Shared utilities (`import libs.*` maps here)
+│   ├── 📂 database/                # DDL/CSV/SQLite (sensitive: do NOT rewrite persisted data)
+│   ├── 📂 repo/                    # External repo mirrors (ignored by default)
+│   └── 📂 tests/                   # Asset/SQL/script-level test fixtures
 │
-├── 📎 libs -> assets               # Backward-compatible symlink
-├── 📎 config -> assets/config      # Backward-compatible symlink
-├── 📎 docs -> assets/docs          # Backward-compatible symlink
-├── 📎 tasks -> assets/tasks        # Backward-compatible symlink
-├── 📎 artifacts -> assets/artifacts# Backward-compatible symlink
+├── 📂 libs/                        # Python compatibility package: `import libs.*` → `assets/*` (no symlinks)
+├── 📂 config/                      # Global config (.env must NOT be committed)
+├── 📂 docs/                        # Project docs (mkdocs entry)
+├── 📂 tasks/                       # Task blueprints
+├── 📂 artifacts/                   # Build/analysis artifacts (partially ignored)
 │
 ├── 📂 scripts/                     # Global scripts (install/init/start/verify/check_env/export/compress)
 │
@@ -885,7 +883,7 @@ tradecat/
 │   ├── CODE_OF_CONDUCT.md
 │   └── SECURITY.md
 │
-├── mkdocs.yml                      # Docs site config (assets/docs/ as source; docs/ is symlink)
+├── mkdocs.yml                      # Docs site config (docs/ as source)
 ├── pyproject.toml                  # Root tool config (ruff/pytest/etc.)
 ├── Makefile                        # Common commands
 ├── README.md                       # Project documentation (Chinese)

@@ -58,7 +58,7 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type f -name "*.pyo" -delete 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf cache/pytest cache/ruff assets/artifacts/coverage assets/artifacts/dist assets/artifacts/i18n 2>/dev/null || true
+	rm -rf cache/pytest cache/ruff artifacts/coverage artifacts/dist artifacts/i18n 2>/dev/null || true
 	@echo "✓ 缓存已清理"
 
 # 数据库导出
