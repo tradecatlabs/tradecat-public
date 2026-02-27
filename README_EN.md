@@ -480,7 +480,11 @@ graph TD
     TR_ENG --> TR_PRI
 
     SQLITE[("📁 market_data.db<br>SQLite Indicator Results")]
-    TR_IND --> SQLITE
+    PG_IND[("🗄️ tg_cards.*<br>PostgreSQL Indicator Store")]
+    TR_IND -->|INDICATOR_STORE_MODE=sqlite| SQLITE
+    TR_IND -->|INDICATOR_STORE_MODE=pg| PG_IND
+    TR_IND -->|INDICATOR_STORE_MODE=dual| SQLITE
+    TR_IND -->|INDICATOR_STORE_MODE=dual| PG_IND
 
     subgraph AI["🧠 AI Smart Analysis"]
         AI_WY["Wyckoff Methodology"]
@@ -494,6 +498,7 @@ graph TD
     end
 
     SQLITE --> SIG_ENG
+    PG_IND --> SIG_ENG
     TS_CANDLE --> SIG_ENG
     TS_FUTURE --> SIG_ENG
     SIG_ENG --> SIG_RULES
@@ -507,6 +512,7 @@ graph TD
     end
 
     SQLITE --> TG_CARD
+    PG_IND --> TG_CARD
     SIG_PUB --> TG_ADAPTER
     TG_ADAPTER --> TG_BOT
     TG_CARD --> TG_BOT
@@ -561,11 +567,13 @@ graph LR
     
     subgraph Calculation
         C --> D["📊 trading-service<br>38 Indicators"]
-        D --> E[("📁 market_data.db<br>SQLite")]
+        D --> E1[("📁 market_data.db<br>SQLite")]
+        D --> E2[("🗄️ tg_cards.*<br>PostgreSQL Indicator Store")]
     end
     
     subgraph UserService
-        E --> F["🤖 telegram-service"]
+        E1 --> F["🤖 telegram-service"]
+        E2 --> F
         F --> G["👤 User"]
     end
     
@@ -1031,6 +1039,25 @@ SELECT DISTINCT symbol FROM market_data.candles_1m ORDER BY symbol;
 SELECT * FROM market_data.candles_1m 
 WHERE symbol = 'BTCUSDT' 
 ORDER BY bucket_ts DESC LIMIT 10;
+```
+
+</details>
+
+<details>
+<summary><strong>Expand👉 Indicator Store (PG: tg_cards) Queries</strong></summary>
+
+```bash
+# Initialize DDL (once; creates tg_cards schema + 38 tables)
+PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
+    -f assets/database/db/schema/021_tg_cards_sqlite_parity.sql
+
+# List tables
+PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
+    -c "\\dt tg_cards.*"
+
+# Sample query (table/column names contain Chinese and .py; must be double-quoted)
+PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
+    -c "SELECT \\\"交易对\\\",\\\"周期\\\",\\\"数据时间\\\",\\\"ATR百分比\\\" FROM tg_cards.\\\"ATR波幅扫描器.py\\\" WHERE \\\"周期\\\"='15m' ORDER BY \\\"数据时间\\\" DESC LIMIT 5;"
 ```
 
 </details>

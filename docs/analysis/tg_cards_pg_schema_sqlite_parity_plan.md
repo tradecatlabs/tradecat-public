@@ -83,20 +83,33 @@ market_data (database)
 
 因为 SQLite 原表没有主键/唯一约束，严格对齐后 PG 侧同样没有。
 
-因此写入端的“幂等更新”建议使用以下之一（两种都符合你之前“不堆叠、直接替换”的要求）：
+因此 **幂等与“替换语义”必须由应用层实现**，不能指望 `ON CONFLICT`。
 
-### A) 每轮全量刷新（推荐，最像你现在的行为）
+当前仓库已落地的写入语义（✅已实现，见 `services/compute/trading-service/src/db/reader.py` 的 `PgDataWriter`）：
 
-- 对单张卡片表：`TRUNCATE tg_cards."<表名>";`
-- 然后 `INSERT` 全部新行（按当轮计算输出）
+1) **列对齐**
 
-优点：实现简单、语义清晰、不会产生重复行  
-缺点：写入量大（但表规模通常不大：几个币种 × 7 周期 × 字段行）
+- 以 PG 表结构为准：缺列补 `NULL`，多列丢弃，避免“列漂移导致重建表/写入失败”。
 
-### B) 分区删除再插入（当表行数明显变大时）
+2) **幂等写入（避免重复行）**
 
-- `DELETE FROM tg_cards."<表名>" WHERE "周期" = $interval;`
-- 再插入该周期的全部行
+- 对于含 `("交易对","周期","数据时间")` 三列的表：
+  - 先执行 `DELETE`（同一 `(交易对, 周期, 数据时间)` 作为幂等键）
+  - 再批量 `INSERT` 新行
+- 对于不含上述三列的表：仅执行 `INSERT`（严格对齐优先，避免误删）。
+
+3) **保留窗口（避免历史无限膨胀）**
+
+- 按 `(交易对, 周期)` 保留每周期最新 `N` 条：
+  - `1m=120, 5m=120, 15m=96, 1h=144, 4h=120, 1d=180, 1w=104`
+- 删除实现：`row_number() over (partition by 交易对 order by 数据时间 desc)` + `ctid` 精确删除超限行。
+
+为什么当前实现 **不使用 `TRUNCATE`**（刻意不选）：
+
+- `TRUNCATE` 会清空整张表（包含其他周期/其他币种/历史窗口），破坏“增量产出 + 保留窗口”的语义。
+- `TRUNCATE` 更强锁粒度，读端/写端并发时更容易阻塞与抖动。
+
+> 结论：**“delete-by-key + insert + retention”** 是在“严格对齐 + 允许历史窗口 + 并发读写”三者同时成立下的最稳方案。
 
 ## 5) 可选增强（不破坏“结构对齐”）
 
@@ -128,4 +141,3 @@ PGPASSWORD=postgres psql 'postgresql://postgres:postgres@localhost:5433/market_d
 PGPASSWORD=postgres psql 'postgresql://postgres:postgres@localhost:5433/market_data' \\
   -c \"\\d tg_cards.\\\"ATR波幅扫描器.py\\\"\"
 ```
-

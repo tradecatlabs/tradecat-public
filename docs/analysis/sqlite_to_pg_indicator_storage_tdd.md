@@ -66,93 +66,65 @@
 
 > 本次你提出“严格对齐原 SQLite 表结构”，默认走 **方案 B**，并保留未来向方案 A 迁移的空间。
 
-### 4.2 推荐 PG 结构（两层）
+### 4.3 当前落地（✅方案 B：SQLite 表结构严格对齐）
 
-#### A) 事实层（SSOT）：`dashboard.card_snapshots`
+本仓库当前已落地的“最小可用”实现：**把 `market_data.db` 的 38 张指标表 1:1 迁入 PG 的 `tg_cards` schema**，在写端提供 `sqlite|pg|dual` 开关，先完成“存储迁移”，再逐步推进读端 cutover。
 
-用途：保存每次计算/导出的“卡片快照”，可追溯、可回放、可复算。
+- PG 目标库：LF Timescale（默认复用 `DATABASE_URL`）
+- schema：`tg_cards`（可用 `INDICATOR_PG_SCHEMA` 覆盖）
+- DDL 真相源：`assets/database/db/schema/021_tg_cards_sqlite_parity.sql`（已纳入 `assets/database/db/stacks/lf.sql`）
 
-推荐字段：
+写入端（`services/compute/trading-service`）已落地：
 
-- `card_id` (text, not null)
-- `card_title` (text, not null)
-- `exchange` (text, not null) — 例：`binance_futures_um`
-- `symbol` (text, not null) — 例：`BTCUSDT`
-- `interval` (text, not null) — 例：`15m`
-- `bucket_ts` (timestamptz, not null) — 指标桶时间（UTC）
-- `export_ts` (timestamptz, not null) — 写入时刻（UTC）
-- `updated_at` (timestamptz, not null) — upsert 更新时刻（UTC）
-- `payload` (jsonb, not null) — 卡片所需全字段
+- 开关：`INDICATOR_STORE_MODE=sqlite|pg|dual`
+- 写入实现：`services/compute/trading-service/src/db/reader.py:PgDataWriter`
+- 写入语义：
+  - 列对齐：以 PG 表结构为准，缺列补 `NULL`，多列丢弃
+  - 幂等：对含 `交易对/周期/数据时间` 的表，先删同 key 再插入
+  - 保留窗口：按 `(交易对, 周期)` 保留每周期最新 N 条（window + `ctid` 精确删除）
 
-幂等唯一键（必须）：
+读取端（telegram/sheets/api）目标：
 
-- `UNIQUE(card_id, exchange, symbol, interval, bucket_ts)`
+- 引入 `INDICATOR_READ_SOURCE=auto|sqlite|pg`（`auto` 跟随 `INDICATOR_STORE_MODE`）
+- 读取语义：优先用 SQL `DISTINCT ON` 拿 latest-per-symbol，避免“拉全历史再 Python 过滤”造成网络与 CPU 浪费
 
-抽取列（可选，但推荐，用于排序/过滤/上色）：
+### 4.4 未来演进（方案 A：统一快照事实表 JSONB）
 
-- `direction` (smallint) — -1/0/+1
-- `score` (double precision)
-- `volume_quote` (numeric)
-- `rank` (integer)
-- `severity` (text)
-
-索引（最低要求）：
-
-- `(card_id, symbol, interval, bucket_ts DESC)`
-- `(card_id, interval, bucket_ts DESC)`
-- `(bucket_ts DESC)`
-- 如存在按成交额排序：`(card_id, interval, volume_quote DESC NULLS LAST)`
-
-#### B) 读优化层：`dashboard.card_latest`（view / materialized view）
-
-用途：快速取“每个 (card_id, exchange, symbol, interval) 最新一条”。
-
-实现方式：
-
-- view：`DISTINCT ON (...) ORDER BY bucket_ts DESC`
-- 或物化视图：按刷新频率（例如 10s/30s）定时刷新
-
-> 注：Timescale continuous aggregate 更适合“可聚合的数值指标”，对 JSONB 快照不一定划算；先用 view，后续再按压测演进。
+当你后续希望把“38 张表”的杂乱形态收敛成 BI 友好的 SSOT，可再演进到“统一快照事实表（JSONB + 抽取列）”的结构；但这不影响当前的方案 B 灰度切换与回滚路径。
 
 ## 5. 写入端改造（trading-service）
 
-### 5.1 引入存储抽象
+> 状态：**写端已落地**（SQLite/PG 可切换 + 支持双写）。
 
-定义 `IndicatorStore`（接口层，不绑定实现）：
+### 5.1 开关与配置（以仓库现状为准）
 
-- `upsert_snapshots(card_id, interval, rows[])`（批量 upsert）
-- `healthcheck()`（写库探测）
-
-实现：
-
-- `SQLiteIndicatorStore`（旧实现）
-- `PostgresIndicatorStore`（新实现）
-- `DualWriteStore`（双写：PG + SQLite，带容错策略）
-
-### 5.2 写入语义
-
-- 每轮计算输出一批 snapshots（同一轮可覆盖同 `bucket_ts` 的值 → upsert）
-- upsert 冲突策略：
-  - 以 `bucket_ts` 为幂等键，`payload` 全量覆盖
-  - `updated_at` 更新为当前时间
-  - `export_ts` 记录本次写入时间（可等于 `updated_at`）
-
-### 5.3 性能策略
-
-- 只允许批量写：`INSERT ... VALUES (...) ON CONFLICT DO UPDATE`
-- 禁止逐行写入（会把 PG 写爆）
-- 写入限流：对齐当前 `trading-service` 轮询节奏，必要时在 store 内做队列/合并写
-
-### 5.4 配置开关（建议）
-
-新增环境变量（写入端）：
-
+- `INDICATOR_SQLITE_PATH`：SQLite 指标库路径（默认 `assets/database/services/telegram-service/market_data.db`）
 - `INDICATOR_STORE_MODE=sqlite|pg|dual`
-- `INDICATOR_STORE_PG_URL=postgresql://...`（可复用 `DATABASE_URL` 或独立）
-- `INDICATOR_STORE_PG_SCHEMA=dashboard`
-- `INDICATOR_STORE_FAILOVER=on|off`（dual 模式下允许 SQLite 兜底）
+- `INDICATOR_PG_SCHEMA=tg_cards`（当 `mode=pg|dual` 生效）
+- PG 连接串：复用 `DATABASE_URL`（LF Timescale；与 K 线/期货指标同库）
 
-> TODO：以仓库现有 `config/.env.example` 为准落地命名，避免引入重复配置键。
+### 5.2 写入实现（方案 B：表结构严格对齐）
+
+- SQLite 写入：`services/compute/trading-service/src/db/reader.py:DataWriter`
+- PG 写入：`services/compute/trading-service/src/db/reader.py:PgDataWriter`
+- 开关分支：`services/compute/trading-service/src/core/storage.py`（按 `INDICATOR_STORE_MODE` 选择 `writer/pg_writer`）
+
+写入语义（两端一致）：
+
+- 列对齐：缺列补 `NULL`，多列丢弃
+- 幂等：对含 `交易对/周期/数据时间` 的表，先删同 key 再插入
+- 保留窗口：按 `(交易对, 周期)` 保留每周期最新 N 条（与 SQLite 口径一致）
+
+### 5.3 性能策略（现实现）
+
+- 批量写入：`executemany`（SQLite/PG）
+- 单轮事务：批量写入多表在同一事务内提交（降低提交次数）
+- 连接复用：PG 侧复用共享连接池（同 `DATABASE_URL`）
+
+### 5.4 观测与回滚
+
+- 灰度：先用 `INDICATOR_STORE_MODE=dual` 双写一段时间，对齐后再切 `pg`
+- 回滚：任意异常可将 `INDICATOR_STORE_MODE` 回切 `sqlite`（前提：SQLite 仍可用）
 
 ## 6. 读取端改造（telegram/sheets/api）
 
@@ -164,16 +136,22 @@
 
 ### 6.2 读取方式
 
-消费端读“latest 视图”：
+消费端直接读 `tg_cards.*`（方案 B：表结构 1:1 对齐），推荐按“取最新值”语义做轻薄查询：
 
-- 维度：`card_id + interval`（排行榜） 或 `card_id + symbol + interval`（币种查询）
-- 输出：直接对齐当前卡片字段 contract（保持结构不变）
+- 排行榜（latest-per-symbol）：
+  - `SELECT DISTINCT ON ("交易对") * FROM tg_cards."<表>" WHERE "周期"=$period ORDER BY "交易对","数据时间" DESC`
+  - 目标：每个交易对只取最新一条（供排序/TopN）
+- 基础数据（latest-batch）：
+  - 先取该周期 `MAX("数据时间")`，再 `WHERE "数据时间"=max_ts` 拉出同批次全量币种
+  - 目标：保证“价格/成交额/振幅”等公共字段来自同一批次
+- 币种查询（单币 latest）：
+  - `WHERE 交易对/币种 匹配 AND 周期=$period ORDER BY 数据时间 DESC LIMIT 1`
 
 ### 6.3 兼容与回滚
 
 消费端引入读开关：
 
-- `INDICATOR_READ_SOURCE=sqlite|pg`
+- `INDICATOR_READ_SOURCE=auto|sqlite|pg`
 
 回滚策略：
 
@@ -183,21 +161,21 @@
 
 ### 7.1 回填目标
 
-- 把 SQLite 中用于看板/币种查询的历史指标灌入 `dashboard.card_snapshots`
-- 回填必须幂等（可重复跑）
+- 把 SQLite 中的指标历史（`market_data.db` 的 38 张表）回填到 PG 的 `tg_cards.*`（同表名/同列名）
+- 回填必须幂等（可重复跑，重复跑不产生重复行）
 
 ### 7.2 回填方式
 
-- 从 SQLite 逐表导出 → 映射成统一 snapshot 结构 → 批量 upsert 到 PG
-- 回填粒度：按 `card_id` 分批（便于失败重跑与验收）
+- 从 SQLite 逐表导出 → 逐表写入同名 PG 表（严格对齐，不做字段映射）
+- 回填粒度：按“表 + 周期”分批（便于失败重跑与验收）
 
-> TODO：需要先完成“SQLite 表清单 → card_id 映射表”（见第 9 节测试用例与盘点项）。
+> TODO：回填脚本建议优先做“抽样对齐校验”（行数/最新时间戳/关键字段），再放开全量回填。
 
 ## 8. 验收标准（Definition of Done）
 
 ### 8.1 数据正确性
 
-- 同一时刻（相同 `bucket_ts`），PG 与 SQLite 在核心字段上值一致：
+- 同一批次（相同 `数据时间`），PG 与 SQLite 在核心字段上值一致（同一 `(交易对, 周期, 数据时间)`）：
   - 价格、成交量、成交额、方向、评分、排名等（以卡片 contract 为准）
 
 ### 8.2 稳定性
@@ -216,28 +194,28 @@
 
 ### 9.1 单元测试（Unit）
 
-1. **快照键规范化**
-   - 输入：`card_id,symbol,interval,bucket_ts`
-   - 断言：生成的幂等键一致（大小写/空白/UTC 规范化）
-2. **payload contract 校验**
-   - 对每个 card：必填字段存在（缺字段直接失败）
-3. **抽取列一致性**
-   - `direction/score/volume_quote/rank` 从 payload 抽取的规则固定，测试覆盖正负/空值
+1. **幂等键规范化（方案 B）**
+   - 输入：`交易对, 周期, 数据时间`
+   - 断言：写端在 SQLite/PG 两侧均使用相同三元组作为幂等键（重复写入不产生重复行）
+2. **列对齐（严格对齐）**
+   - 断言：缺列补 `NULL`、多列丢弃，不因列漂移导致写入失败/重建表
+3. **保留窗口（retention）**
+   - 断言：同一 `(交易对, 周期)` 写入超过 `N` 条后，仅保留最新 `N` 条
 
 ### 9.2 集成测试（Integration）
 
-1. **PG upsert 幂等**
-   - 同一批数据写两次，行数不变，`updated_at` 递增
+1. **PG delete-by-key 幂等**
+   - 同一批数据写两次，行数不变（同一 `(交易对, 周期, 数据时间)` 不出现重复）
 2. **dual-write 一致性**
-   - dual 模式写入后，从 PG 与 SQLite 读出的同一 `(card_id,symbol,interval,bucket_ts)` 一致
-3. **读取 latest 正确**
-   - 构造多条 bucket_ts，latest 视图返回最大 bucket_ts
+   - dual 模式写入后，抽样对比 SQLite 与 PG 的同表同 key 三元组：核心字段值一致
+3. **读取 latest-per-symbol 正确**
+   - 构造同一交易对的多条 `数据时间`，`DISTINCT ON` 查询返回最大 `数据时间`
 
 ### 9.3 回填测试（Migration/Backfill）
 
 1. SQLite → PG 回填后：
-   - 对抽样的 `card_id`、`symbol`、`interval`：PG 行数 >= SQLite 行数
-   - 幂等重复跑：PG 行数不增加（只允许更新）
+   - 对抽样的 `表名 + 周期`：PG 行数 >= SQLite 行数
+   - 幂等重复跑：PG 行数不增加（只允许同 key 覆盖/跳过）
 
 ### 9.4 端到端对齐（E2E）
 
@@ -250,27 +228,26 @@
 
 ### P0（会导致服务不可用）
 
-- 写入爆炸（逐行写/无索引）→ 强制批量 upsert + 指标索引 + 写入限流
+- 写入爆炸（逐行写/无窗口清理）→ 强制批量写 + retention 清理 + 写入限流
 - 幂等键错误导致重复/覆盖错位 → 统一 key 生成 + 单测覆盖
 
 ### P1（运行时才暴露）
 
-- JSONB payload 演进导致读端解析崩溃 → contract 校验 + 版本号字段（可选：`payload_version`）
-- 时区混乱导致“最新值”错 → bucket_ts 强制 UTC + 读端展示转换
+- 特殊列名/表名导致 SQL 报错 → 全量双引号引用 + SQL builder（`psycopg.sql.Identifier`）
+- `数据时间` 为 TEXT 导致“最新值”错 → 统一写入 ISO8601（UTC），并在读端约束排序字段
 
 ### P2（运维/成本问题）
 
-- 历史保留导致表膨胀 → 后续加 TTL（按 card/interval 分级保留）+ Timescale 压缩策略
+- 历史保留导致表膨胀 → 现阶段 retention 已控量；后续再引入“按表/周期分级保留”与压缩策略
 
 ## 11. 执行路线图（建议拆分成可回滚小 PR）
 
-1. PR#1：引入 `PostgresIndicatorStore`（仅写入端，默认关闭）
-2. PR#2：dual-write 模式上线（PG+SQLite），加一致性对账脚本
-3. PR#3：SQLite→PG 回填工具与映射表
-4. PR#4：切 `sheets-service` 读 PG（带开关）
-5. PR#5：切 `telegram-service` 读 PG（带开关）
-6. PR#6：切 `api-service` 读 PG（带开关）
-7. PR#7：停 SQLite 主写入（保留缓存/或废弃）
+1. PR#1：初始化 DDL + trading-service 支持 `INDICATOR_STORE_MODE=sqlite|pg|dual`（✅已完成）
+2. PR#2：补齐 `.env.example` + 文档真相源对齐（✅进行中）
+3. PR#3：切 `telegram-service` 读 PG（带 `INDICATOR_READ_SOURCE` 开关，可回滚）
+4. PR#4：切 `sheets-service` / `api-service` 读 PG（同开关）
+5. PR#5：对账脚本 + 可选索引脚本（仅加 index，不破坏结构对齐）
+6. PR#6：停 SQLite 主写（如需；保留为离线快照/降级缓存）
 
 ## 12. TODO（必须补齐的“事实清单”）
 

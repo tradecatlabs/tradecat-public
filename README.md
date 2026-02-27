@@ -468,7 +468,11 @@ graph TD
     TR_ENG --> TR_PRI
 
     SQLITE[("📁 market_data.db<br>SQLite 指标结果")]
-    TR_IND --> SQLITE
+    PG_IND[("🗄️ tg_cards.*<br>PostgreSQL 指标库")]
+    TR_IND -->|INDICATOR_STORE_MODE=sqlite| SQLITE
+    TR_IND -->|INDICATOR_STORE_MODE=pg| PG_IND
+    TR_IND -->|INDICATOR_STORE_MODE=dual| SQLITE
+    TR_IND -->|INDICATOR_STORE_MODE=dual| PG_IND
 
     subgraph AI["🧠 AI 智能分析"]
         AI_WY["Wyckoff 方法论"]
@@ -482,6 +486,7 @@ graph TD
     end
 
     SQLITE --> SIG_ENG
+    PG_IND --> SIG_ENG
     TS_CANDLE --> SIG_ENG
     TS_FUTURE --> SIG_ENG
     SIG_ENG --> SIG_RULES
@@ -495,6 +500,7 @@ graph TD
     end
 
     SQLITE --> TG_CARD
+    PG_IND --> TG_CARD
     SIG_PUB --> TG_ADAPTER
     TG_ADAPTER --> TG_BOT
     TG_CARD --> TG_BOT
@@ -549,11 +555,13 @@ graph LR
     
     subgraph 指标计算
         C --> D["📊 trading-service<br>38个指标计算"]
-        D --> E[("📁 market_data.db<br>SQLite")]
+        D --> E1[("📁 market_data.db<br>SQLite")]
+        D --> E2[("🗄️ tg_cards.*<br>PostgreSQL 指标库")]
     end
     
     subgraph 用户服务
-        E --> F["🤖 telegram-service"]
+        E1 --> F["🤖 telegram-service"]
+        E2 --> F
         F --> G["👤 用户"]
     end
     
@@ -1016,6 +1024,25 @@ SELECT DISTINCT symbol FROM market_data.candles_1m ORDER BY symbol;
 SELECT * FROM market_data.candles_1m 
 WHERE symbol = 'BTCUSDT' 
 ORDER BY bucket_ts DESC LIMIT 10;
+```
+
+</details>
+
+<details>
+<summary><strong>点击展开👉 指标库（PG: tg_cards）查询</strong></summary>
+
+```bash
+# 初始化 DDL（仅需一次；会创建 tg_cards schema + 38 张表）
+PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
+    -f assets/database/db/schema/021_tg_cards_sqlite_parity.sql
+
+# 查看表清单
+PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
+    -c "\\dt tg_cards.*"
+
+# 抽样查询（注意：表名/列名含中文与 .py，必须双引号）
+PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
+    -c "SELECT \\\"交易对\\\",\\\"周期\\\",\\\"数据时间\\\",\\\"ATR百分比\\\" FROM tg_cards.\\\"ATR波幅扫描器.py\\\" WHERE \\\"周期\\\"='15m' ORDER BY \\\"数据时间\\\" DESC LIMIT 5;"
 ```
 
 </details>
