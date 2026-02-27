@@ -187,7 +187,6 @@ Restart WSL: `wsl --shutdown`, then use the AI installation prompt above.
 
 # 2) Fill global config (DB / BOT_TOKEN / proxy)
 cp config/.env.example config/.env && chmod 600 config/.env
-# Change DATABASE_URL port to 5433 to match repo scripts (scripts default 5433, template defaults 5434)
 vim config/.env
 
 # 3) Start core services (ai + signal + telegram + trading)
@@ -203,8 +202,8 @@ vim config/.env
 
 ### ⚙️ Configuration (required)
 
-- Location: `config/.env` (copied by init.sh), must be chmod 600, startup scripts will enforce this.  
-- TimescaleDB port must match scripts: repo scripts default to 5433, template defaults to 5434. After copying, change `DATABASE_URL` to 5433; or if keeping 5434, update `scripts/export_timescaledb.sh`, `scripts/timescaledb_compression.sh` and all example ports below.
+- Location: `config/.env` (create by copying `config/.env.example`, or run `./scripts/install.sh` to generate), must be chmod 600, startup scripts will enforce this.  
+- Default ports (repo examples are written for this): LF TimescaleDB = `5433` (`DATABASE_URL`), HF TimescaleDB = `15432` (`BINANCE_VISION_DATABASE_URL`). If you customize ports, update scripts and examples consistently.
 - Key fields:  
   - `DATABASE_URL` (TimescaleDB, see port note below)  
   - `BOT_TOKEN` (Telegram Bot Token)  
@@ -262,22 +261,17 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
   -c "COPY market_data.binance_futures_metrics_5m FROM STDIN WITH (FORMAT binary)"
 ```
 
-> Port note: template defaults to 5434, but repo scripts default to 5433. After copying, change `DATABASE_URL` port to 5433 in `config/.env`, or if choosing 5434, update `scripts/export_timescaledb.sh`, `scripts/timescaledb_compression.sh` and all example command ports.
+> Port note: this repo’s examples default to LF=5433. If you customize the port, update all scripts and example commands consistently.
 
 ## 🔍 Additional Checks (2026-01-09)
 
-- **Port selection**: `config/.env.example` defaults to port **5434** (new DB with raw/agg/quality schema); core scripts `scripts/export_timescaledb.sh`, `scripts/timescaledb_compression.sh` still default to **5433** (old DB). Choose one port based on your needs and sync all scripts.<!-- TODO: choose unified port (5433 or 5434) and do global replace -->
+- **Port selection**: `config/.env.example` defaults to LF=5433 / HF=15432; keep scripts and services consistent if you change ports.
 - CI only runs ruff + py_compile sampling (`.github/workflows/ci.yml`, checks first 50 .py files), doesn't run tests; still need `./scripts/verify.sh` locally before commit.
-- `scripts/install.sh` generates per-service `.env` but runtime only reads `config/.env`; avoid config drift.
+- `scripts/install.sh` creates `config/.env` if missing; runtime reads `config/.env` as the single source of truth.
 
-### 🗄️ Dual Database Port Explanation (Old DB 5433 / New DB 5434)
+### 🗄️ Custom Port Note (Optional)
 
-- Old DB (5433, single schema `market_data`): Compatible with early data collection chain, still used by `scripts/export_timescaledb.sh` / `scripts/timescaledb_compression.sh` and most example commands.
-- New DB (5434, multi-schema `raw` / `agg` / `quality`): `config/.env.example` and markets-service init/migration scripts (`init_market_db.sh`, `sync_from_old_db.sh`, `migrate_5434.sql` etc.) default to this.
-- Usage principles:  
-  - Continue with old DB: Keep `DATABASE_URL` at 5433, change markets-service script ports to 5433.  
-  - Switch to new DB: Keep 5434, update top-level ops scripts and README example ports to 5434, ensure storage/compression/export scripts are consistent.  
-- Mixed use risk: If scripts and services point to different ports, data will fork; backup `./scripts/export_timescaledb.sh` (currently defaults to 5433) before changes.<!-- TODO: if migrating to 5434, provide unified replacement list and execution order -->
+- Some private deployments may use a custom TimescaleDB port (for example, `5434`). If you do this, you must update **all** scripts (`./scripts/export_timescaledb.sh`, `./scripts/timescaledb_compression.sh`, etc.) and all README example commands to match, otherwise data will fork across different ports.
 
 ### ✅ Verify Installation
 
@@ -474,7 +468,7 @@ graph TD
 
     subgraph TS["📊 trading-service<br><small>Python, pandas, numpy, TA-Lib</small>"]
         TR_ENG["engine<br>Compute Engine"]
-        TR_IND["indicators<br>34 Indicators"]
+        TR_IND["indicators<br>38 Indicators"]
         TR_SCH["scheduler<br>Scheduler"]
         TR_PRI["priority<br>High Priority Filtering"]
     end
@@ -538,17 +532,20 @@ graph TD
 | Service | Port | Responsibility | Tech Stack |
 |:---|:---:|:---|:---|
 | **data-service** | - | Crypto candlestick collection, futures metrics, historical backfill | Python, asyncio, ccxt, cryptofeed |
-| **trading-service** | - | 34 technical indicator modules calculation, high-priority token filtering | Python, pandas, numpy, TA-Lib |
-| **telegram-service** | - | Bot interaction, rankings display, signal push | python-telegram-bot, aiohttp |
-| **ai-service** | - | AI analysis, Wyckoff methodology (as telegram-service submodule) | Gemini/OpenAI/Claude/DeepSeek |
 | **signal-service** | - | Standalone signal detection (129 rules, 8 categories, event publishing) | Python, SQLite, psycopg2 |
-| **api-service** | 8000 | REST API service (indicators/candlesticks/signals query) [preview] | FastAPI, Pydantic |
+| **trading-service** | - | 38 indicator modules calculation, scheduling, high-priority symbol filtering | Python, pandas, numpy, TA-Lib |
+| **telegram-service** | - | Bot interaction, rankings display, signal UI (calls signal-service via adapter) | python-telegram-bot, aiohttp |
+| **ai-service** | - | AI analysis, Wyckoff methodology (as telegram-service submodule) | Gemini/OpenAI/Claude/DeepSeek |
+| **fate-service** | - | Fate/astrology service (independent microservice) | Python, Node.js (optional) |
+| **api-service** | 8088 | REST API (indicators/candles/signals query; override via `API_SERVICE_PORT`) | FastAPI, Pydantic |
 | **sheets-service** | - | Google Sheets public dashboard sync (TG cards → Sheets; auditable/replayable) | python-dotenv, python-telegram-bot |
-| **markets-service** | - | Multi-market data collection (US/China stocks, macro) [preview] | yfinance, akshare, fredapi, QuantLib |
-| **predict-service** | - | Prediction market signals (Polymarket/Kalshi/Opinion) [preview] | Node.js, Telegram Bot |
-| **vis-service** | 8087 | Visualization rendering (K-line/indicators/VPVR) [preview] | FastAPI, matplotlib, mplfinance |
-| **order-service** | - | Trade execution, Avellaneda-Stoikov market making [preview] | Python, ccxt, cryptofeed |
-| **TimescaleDB** | 5434 | Candlestick storage, futures data, time-series query optimization | PostgreSQL 16 + TimescaleDB |
+| **vis-service** | 8087 | Visualization rendering (K-line/indicators/VPVR) | FastAPI, matplotlib, mplfinance |
+| **predict-service** | - | Prediction market signals (Polymarket/Kalshi/Opinion) | Node.js + Python utilities |
+| **nofx-dev** | - | Agentic Trading OS (preview / external mirror, not core chain) | Go, React, TypeScript |
+| **markets-service** | - | Multi-market data collection (US/China stocks, macro) [preview; config/docs only] | yfinance, akshare, fredapi, QuantLib |
+| **order-service** | - | Trade execution, Avellaneda-Stoikov market making [preview; config/docs only] | Python, ccxt, cryptofeed |
+| **TimescaleDB (LF)** | 5433 | Low-frequency candles/indicators (`DATABASE_URL`) | PostgreSQL 16 + TimescaleDB |
+| **TimescaleDB (HF)** | 15432 | High-frequency raw/atomic facts (`BINANCE_VISION_DATABASE_URL`) | PostgreSQL 16 + TimescaleDB |
 
 ### Data Flow
 
@@ -848,78 +845,57 @@ Futures Dimension:
 ```
 tradecat/
 │
-├── config -> assets/config         # Unified config (symlink; contains .env/.env.example/logrotate.conf)
+├── 📂 assets/                      # Normalized resource root (real directory; recommended as source of truth)
+│   ├── 📂 common/                  # Shared utilities (equivalent to libs/common)
+│   ├── 📂 database/                # DDL/CSV/SQLite (equivalent to libs/database; *.db ignored by default)
+│   ├── 📂 config/                  # Global config (equivalent to config; .env must NOT be committed)
+│   ├── 📂 docs/                    # Project docs (equivalent to docs)
+│   ├── 📂 tasks/                   # Task blueprints (equivalent to tasks)
+│   └── 📂 artifacts/               # Build/analysis artifacts (equivalent to artifacts; partially ignored by default)
 │
-├── 📂 scripts/                     # Global scripts
-│   ├── install.sh                  # One-click install
-│   ├── init.sh                     # Initialization script
-│   ├── start.sh                    # Unified start/daemon script
-│   ├── verify.sh                   # Verification script
-│   ├── sync_market_data_to_rds.py  # SQLite -> PostgreSQL incremental sync
-│   ├── export_timescaledb.sh       # Data export
-│   └── timescaledb_compression.sh  # Compression management
+├── 📎 libs -> assets               # Backward-compatible symlink
+├── 📎 config -> assets/config      # Backward-compatible symlink
+├── 📎 docs -> assets/docs          # Backward-compatible symlink
+├── 📎 tasks -> assets/tasks        # Backward-compatible symlink
+├── 📎 artifacts -> assets/artifacts# Backward-compatible symlink
 │
-├── 📂 services/                    # Layered services (Ingestion/Compute/Consumption)
-│   │
+├── 📂 scripts/                     # Global scripts (install/init/start/verify/check_env/export/compress)
+│
+├── 📂 services/                    # Layered services (ingestion/compute/consumption)
 │   ├── 📂 ingestion/               # Ingestion layer: write TimescaleDB
-│   │   ├── 📂 data-service/            # Legacy low-frequency ingestion (1m candles, 5m metrics; opt-in)
-│   │   └── 📂 binance-vision-service/  # Binance Vision raw-aligned ingestion
+│   │   ├── 📂 data-service/        # Legacy low-frequency ingestion (opt-in)
+│   │   ├── 📂 binance-vision-service/  # Binance Vision raw-aligned ingestion (HF atomic facts)
+│   │   └── 📂 predict-service/     # Prediction market signals (Polymarket/Kalshi/Opinion)
 │   │
 │   ├── 📂 compute/                 # Compute layer: read PG / write SQLite
-│   │   ├── 📂 trading-service/     # Indicator calculation (writes SQLite)
+│   │   ├── 📂 trading-service/     # Indicator calculation (writes SQLite for consumption)
 │   │   ├── 📂 signal-service/      # Signal detection (rules engine)
-│   │   └── 📂 ai-service/          # AI analysis (telegram submodule)
+│   │   ├── 📂 ai-service/          # AI analysis (telegram submodule)
+│   │   └── 📂 fate-service/        # Fate/astrology (independent microservice)
 │   │
-│   └── 📂 consumption/             # Consumption layer: Telegram/API
-│       ├── 📂 telegram-service/    # Telegram Bot
+│   └── 📂 consumption/             # Consumption layer (Telegram/API/Sheets/Visualization)
+│       ├── 📂 telegram-service/    # Telegram Bot (cards/subscriptions/snapshots)
 │       ├── 📂 api-service/         # REST API (optional)
-│       └── 📂 sheets-service/      # Google Sheets dashboard sync (optional)
-│
-├── 📂 assets/                      # Shared libraries + resources
-│   ├── 📂 config/                  # Source-of-truth config directory (symlinked as ./config)
-│   ├── 📂 database/                # Database files
-│   │   └── 📂 services/
-│   │       ├── 📂 telegram-service/
-│   │       │   └── market_data.db      # Indicator data (Telegram rendering)
-│   │       └── 📂 signal-service/
-│   │           └── cooldown.db         # Cooldown persistence to dedupe pushes
-│   ├── 📂 common/                  # Shared utilities
-│   │   ├── i18n.py                 # Internationalization module
-│   │   ├── symbols.py              # Token management module
-│   │   ├── proxy_manager.py        # Proxy manager
-│   │   └── utils/                  # Utility functions
-│   └── 📂 repo/                    # External repos mirror (ignored by default)
-│
-├── libs -> assets                  # Backward-compatible symlink
-│
-├── config -> assets/config         # Backward-compatible symlink (unified config)
-├── artifacts -> assets/artifacts    # Backward-compatible symlink (ignored by default)
-├── docs -> assets/docs              # Backward-compatible symlink (documentation)
-├── tasks -> assets/tasks            # Backward-compatible symlink (task blueprints)
-│
-├── 📂 cache/                       # Tool caches
-│   ├── pytest/
-│   └── ruff/
-│
-├── 📂 logs/                        # Top-level logs
-│   └── daemon.log
-│
-├── 📂 run/                         # Top-level runtime state
-│   └── daemon.pid
+│       ├── 📂 sheets-service/      # Google Sheets dashboard sync (optional)
+│       ├── 📂 vis-service/         # Visualization rendering (optional)
+│       └── 📂 nofx-dev/            # Preview: external mirror (not core chain)
 │
 ├── 📂 .github/                     # Community & security
 │   ├── CONTRIBUTING.md
 │   ├── CODE_OF_CONDUCT.md
 │   └── SECURITY.md
 │
-├── 📂 backups/                     # Backup directory
-│   └── 📂 timescaledb/             # Database backups
-│
+├── mkdocs.yml                      # Docs site config (assets/docs/ as source; docs/ is symlink)
+├── pyproject.toml                  # Root tool config (ruff/pytest/etc.)
 ├── Makefile                        # Common commands
 ├── README.md                       # Project documentation (Chinese)
 ├── README_EN.md                    # Project documentation (English)
 ├── AGENTS.md                       # AI Agent guide
+├── CONSTITUTION.md                 # Architecture constitution / hard constraints
 └── .python-version                 # Python version pin
+
+# Runtime-generated (after ./scripts/init.sh or ./scripts/start.sh; not committed):
+# - logs/ run/ backups/ (and per-service logs/ pids/ data/cache, etc.)
 ```
 
 </details>
@@ -1065,8 +1041,8 @@ ORDER BY bucket_ts DESC LIMIT 10;
 <summary><strong>Expand👉 SQLite Queries</strong></summary>
 
 ```bash
-# Connect to database
-sqlite3 assets/database/services/telegram-service/market_data.db
+# Connect to database (generated after running trading-service; *.db ignored by default)
+sqlite3 libs/database/services/telegram-service/market_data.db
 
 # Common queries
 .tables                          -- List all tables
