@@ -24,7 +24,7 @@ src/
 │   ├── basic/                  # 基础指标卡片
 │   ├── futures/                # 合约指标卡片
 │   ├── advanced/               # 高级指标卡片
-│   ├── data_provider.py        # SQLite 数据读取
+│   ├── data_provider.py        # SQLite/PG 数据读取（tg_cards 对齐）
 │   ├── 排行榜服务.py           # 排行榜生成
 │   └── registry.py             # 卡片注册表
 ├── utils/
@@ -38,7 +38,9 @@ src/
 ### 环境要求
 
 - Python >= 3.10
-- SQLite (market_data.db，由 trading-service 生成)
+- 指标数据源（二选一）：
+  - SQLite：`market_data.db`（由 trading-service 生成）
+  - PG：`DATABASE_URL` 指向的库内 `tg_cards.*`（写端 `INDICATOR_STORE_MODE=pg|dual`）
 
 ### 安装
 
@@ -84,6 +86,8 @@ cd /path/to/tradecat
 |:---|:---:|:---|
 | `TELEGRAM_BOT_TOKEN` | ✓ | Bot Token |
 | `DATABASE_URL` | - | TimescaleDB 连接串（可选） |
+| `INDICATOR_READ_SOURCE` | - | 指标读取来源：`auto|sqlite|pg`（默认 `auto`，跟随 `INDICATOR_STORE_MODE`） |
+| `INDICATOR_PG_SCHEMA` | - | PG 指标 schema（默认 `tg_cards`） |
 | `HTTP_PROXY` | - | HTTP 代理地址 |
 | `HTTPS_PROXY` | - | HTTPS 代理地址 |
 | `BINANCE_API_DISABLED` | - | 禁用 Binance API (1=禁用) |
@@ -96,6 +100,8 @@ cd /path/to/tradecat
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 DATABASE_URL=postgresql://user:pass@localhost:5432/market_data
+INDICATOR_READ_SOURCE=auto
+INDICATOR_PG_SCHEMA=tg_cards
 HTTP_PROXY=http://127.0.0.1:7890
 HTTPS_PROXY=http://127.0.0.1:7890
 BINANCE_API_DISABLED=1
@@ -131,7 +137,9 @@ FALLBACK_LOCALE=zh-CN
 ## 数据流
 
 ```
-market_data.db (SQLite)
+Indicator Store
+  ├─ market_data.db (SQLite)
+  └─ tg_cards.* (PostgreSQL)
         │
         ▼
     data_provider.py (读取)
@@ -145,10 +153,15 @@ market_data.db (SQLite)
 
 ## 数据来源
 
-Bot 从 SQLite 数据库读取数据：
-- 路径：`assets/database/services/telegram-service/market_data.db`
-- 由 trading-service 写入
-- 包含 38 张指标表
+Bot 的排行榜/币种查询数据来自指标库（38 张表）：
+
+- SQLite：`assets/database/services/telegram-service/market_data.db`
+- PG：`DATABASE_URL` 指向的库内 `tg_cards.*`
+
+读取开关：
+
+- `INDICATOR_READ_SOURCE=auto|sqlite|pg`
+  - `auto`：跟随写端 `INDICATOR_STORE_MODE`（`pg/dual => pg`；否则 `sqlite`）
 
 ## 日志
 
