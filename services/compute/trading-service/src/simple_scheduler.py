@@ -15,6 +15,7 @@ import sqlite3
 import sys
 import time
 import atexit
+from pathlib import Path
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -24,20 +25,22 @@ TRADING_SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 # 将服务根目录加入路径，保证以包方式导入 src.*
 if TRADING_SERVICE_DIR not in sys.path:
     sys.path.insert(0, TRADING_SERVICE_DIR)
-PROJECT_ROOT = os.path.dirname(os.path.dirname(TRADING_SERVICE_DIR))  # tradecat/
+REPO_ROOT = str(Path(__file__).resolve().parents[4])
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 def _resolve_sqlite_path(env_path: str | None, default_path: str) -> str:
     """支持相对路径，统一基于项目根目录解析为绝对路径。"""
     if env_path and env_path.strip():
         path = env_path.strip()
         if not os.path.isabs(path):
-            path = os.path.abspath(os.path.join(PROJECT_ROOT, path))
+            path = os.path.abspath(os.path.join(REPO_ROOT, path))
         return path
     return default_path
 
 SQLITE_PATH = _resolve_sqlite_path(
     os.environ.get("INDICATOR_SQLITE_PATH"),
-    os.path.join(PROJECT_ROOT, "libs/database/services/telegram-service/market_data.db"),
+    os.path.join(REPO_ROOT, "assets/database/services/telegram-service/market_data.db"),
 )
 
 # 币种管理配置
@@ -82,13 +85,8 @@ def log(msg: str):
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}", flush=True)
 
 
-# 使用共享币种模块
-import sys as _sys
-from pathlib import Path as _Path
-_libs_path = str(_Path(__file__).resolve().parents[4] / "libs")
-if _libs_path not in _sys.path:
-    _sys.path.insert(0, _libs_path)
-from common.symbols import get_configured_symbols
+# 使用共享币种模块（仓库内 assets/common/symbols.py）
+from assets.common.symbols import get_configured_symbols
 
 
 # ============ 高优先级币种识别（复用 async_full_engine 完整逻辑）============

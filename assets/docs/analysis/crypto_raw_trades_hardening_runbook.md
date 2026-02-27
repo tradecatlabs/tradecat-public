@@ -25,20 +25,20 @@
 
 > 这些脚本应作为“真相源”，不允许靠人工在运行库里手敲一套“类似的”。
 
-- `libs/database/db/schema/013_core_symbol_map_hardening.sql`
+- `assets/database/db/schema/013_core_symbol_map_hardening.sql`
   - `core.symbol_map`：active 唯一性、窗口自洽、窗口不重叠（as-of 语义底座）。
-- `libs/database/db/schema/016_crypto_trades_readable_views.sql`
+- `assets/database/db/schema/016_crypto_trades_readable_views.sql`
   - trades readable views：`time(epoch)` → `timestamptz` + as-of `symbol_map` join（不放大行数）。
-- `libs/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`
+- `assets/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`
   - raw trades 最小 sanity CHECK：`venue_id/instrument_id/time/id/price/qty/quote_qty` 不为负且时间>0。
   - 以 `NOT VALID` 方式上线：避免上线时全表扫描，但会对**新写入**强制校验。
 
 ## 2. 一键应用（DDL）
 
 ```bash
-PGPASSWORD=postgres psql -h localhost -p 15432 -U postgres -d market_data -f libs/database/db/schema/013_core_symbol_map_hardening.sql
-PGPASSWORD=postgres psql -h localhost -p 15432 -U postgres -d market_data -f libs/database/db/schema/016_crypto_trades_readable_views.sql
-PGPASSWORD=postgres psql -h localhost -p 15432 -U postgres -d market_data -f libs/database/db/schema/019_crypto_raw_trades_sanity_checks.sql
+PGPASSWORD=postgres psql -h localhost -p 15432 -U postgres -d market_data -f assets/database/db/schema/013_core_symbol_map_hardening.sql
+PGPASSWORD=postgres psql -h localhost -p 15432 -U postgres -d market_data -f assets/database/db/schema/016_crypto_trades_readable_views.sql
+PGPASSWORD=postgres psql -h localhost -p 15432 -U postgres -d market_data -f assets/database/db/schema/019_crypto_raw_trades_sanity_checks.sql
 ```
 
 ## 3. 让历史也“硬一致”（019：validated CHECK 的正确姿势）

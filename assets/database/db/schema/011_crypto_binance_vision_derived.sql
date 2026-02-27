@@ -7,7 +7,7 @@
 --
 -- 重要说明：
 -- - 你的强约束是“物理层只收集基元数据”。因此：
---   - 原子/物理层表 → `libs/database/db/schema/009_crypto_binance_vision_landing.sql`
+--   - 原子/物理层表 → `assets/database/db/schema/009_crypto_binance_vision_landing.sql`
 --   - 派生/汇总层表 → 本脚本（可选执行）
 -- - `option_eoh_summary` 虽然语义上属于汇总，但你明确要求强制归类到物理层，所以不在此脚本内。
 --

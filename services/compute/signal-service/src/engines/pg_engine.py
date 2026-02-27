@@ -120,10 +120,10 @@ def _get_default_symbols() -> list[str]:
         import sys
         from pathlib import Path
 
-        libs_path = str(Path(__file__).resolve().parents[5] / "libs")
-        if libs_path not in sys.path:
-            sys.path.insert(0, libs_path)
-        from common.symbols import get_configured_symbols
+        repo_root = str(Path(__file__).resolve().parents[5])
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+        from assets.common.symbols import get_configured_symbols
     except Exception:
         get_configured_symbols = None
 

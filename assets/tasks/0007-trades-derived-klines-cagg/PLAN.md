@@ -31,7 +31,7 @@ Cons
 
 ## 交付物
 
-- 新增 SQL：`libs/database/db/schema/017_crypto_trades_cagg_klines.sql`（编号如已占用则顺延）
+- 新增 SQL：`assets/database/db/schema/017_crypto_trades_cagg_klines.sql`（编号如已占用则顺延）
 - 在 `crypto` schema 下创建：
   - `crypto.cagg_futures_um_klines_1m`
   - `crypto.cagg_futures_cm_klines_1m`

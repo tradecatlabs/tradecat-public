@@ -26,8 +26,8 @@
 
 ### Evidence 3: 迁移脚本已落地并执行（rename-swap）
 
-- Script: `libs/database/db/schema/015_crypto_spot_trades_fact_table.sql`
-- Command: `psql "$DATABASE_URL" -f libs/database/db/schema/015_crypto_spot_trades_fact_table.sql`
+- Script: `assets/database/db/schema/015_crypto_spot_trades_fact_table.sql`
+- Command: `psql "$DATABASE_URL" -f assets/database/db/schema/015_crypto_spot_trades_fact_table.sql`
 - Observed:
   - 新表 `crypto.raw_spot_trades` 列为 `venue_id/instrument_id + DOUBLE + time(us)`
   - 旧表保留为 `crypto.raw_spot_trades_old`

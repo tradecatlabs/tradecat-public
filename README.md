@@ -238,7 +238,7 @@ services/ingestion/data-service/.venv/bin/python scripts/download_hf_data.py --s
 
 ```bash
 # 0. 创建库并导入 schema（依次执行仓库内 SQL）
-for f in libs/database/db/schema/*.sql; do
+for f in assets/database/db/schema/*.sql; do
   psql -h localhost -p 5433 -U postgres -d market_data -f "$f"
 done
 
@@ -1028,7 +1028,7 @@ ORDER BY bucket_ts DESC LIMIT 10;
 ```bash
 # 连接数据库
 # 说明：`market_data.db` 由 `services/compute/trading-service` 运行后生成（`*.db` 默认在 `.gitignore` 中忽略，不随仓库提交）
-sqlite3 libs/database/services/telegram-service/market_data.db
+sqlite3 assets/database/services/telegram-service/market_data.db
 
 # 常用查询
 .tables                          -- 查看所有表

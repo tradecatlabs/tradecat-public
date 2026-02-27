@@ -102,7 +102,7 @@ python3 -m src --once --symbols BTCUSDT,ETHUSDT --intervals 5m,15m
 
 ```bash
 DATABASE_URL=postgresql://user:password@localhost:5432/market_data
-INDICATOR_SQLITE_PATH=/path/to/tradecat/libs/database/services/telegram-service/market_data.db
+INDICATOR_SQLITE_PATH=/path/to/tradecat/assets/database/services/telegram-service/market_data.db
 MAX_WORKERS=4
 COMPUTE_BACKEND=thread
 ```
@@ -148,7 +148,7 @@ TimescaleDB (candles_1m)
 
 ## 输出
 
-写入 `libs/database/services/telegram-service/market_data.db`：
+写入 `assets/database/services/telegram-service/market_data.db`：
 
 | 表名示例 | 说明 |
 |:---|:---|

@@ -76,7 +76,7 @@ class Settings:
         "DATA_SERVICE_LOG_DIR", str(SERVICE_ROOT / "logs")
     )))
     data_dir: Path = field(default_factory=lambda: Path(os.getenv(
-        "DATA_SERVICE_DATA_DIR", str(PROJECT_ROOT / "libs" / "database" / "csv")
+        "DATA_SERVICE_DATA_DIR", str(PROJECT_ROOT / "assets" / "database" / "csv")
     )))
 
     ws_gap_interval: int = field(default_factory=lambda: _int_env("BINANCE_WS_GAP_INTERVAL", 600))

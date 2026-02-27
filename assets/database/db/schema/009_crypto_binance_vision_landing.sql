@@ -4,7 +4,7 @@
 -- - 在 schema `crypto` 下创建“严格对齐 Binance Vision CSV”的落库表（Landing Zone）。
 -- - 该层追求：可追溯（file_id）、幂等（唯一键/主键）、可增量（按时间分区/压缩策略）。
 -- - 本脚本只包含「基元/物理层（Atomic Physical）」数据集；可派生/汇总数据集统一放到派生层脚本：
---   `libs/database/db/schema/011_crypto_binance_vision_derived.sql`
+--   `assets/database/db/schema/011_crypto_binance_vision_derived.sql`
 --
 -- 重要约束（来自当前样本事实）：
 -- - spot CSV：无 header，时间戳为 epoch(us)
@@ -80,7 +80,7 @@ END$$;
 --   - aggTrades 可由 trades 聚合重建
 --   - klines 可由 trades 聚合重建
 -- - 为了让“物理层=基元数据”保持纯粹，这两类表移动到派生层：
---   `libs/database/db/schema/011_crypto_binance_vision_derived.sql`
+--   `assets/database/db/schema/011_crypto_binance_vision_derived.sql`
 
 -- ==================== crypto.futures_um（raw） ====================
 
@@ -143,7 +143,7 @@ END$$;
 --   - klines 可由 trades 聚合重建（OHLCV/count/taker_buy_*）
 --   - mark/index/premium klines 本质也是按时间对齐的衍生序列
 -- - 为了保持“物理层=基元数据”，这类表移动到派生层：
---   `libs/database/db/schema/011_crypto_binance_vision_derived.sql`
+--   `assets/database/db/schema/011_crypto_binance_vision_derived.sql`
 
 -- futures/um/daily/bookTicker/{SYMBOL}/{SYMBOL}-bookTicker-YYYY-MM-DD.csv
 -- header：update_id,best_bid_price,best_bid_qty,best_ask_price,best_ask_qty,transaction_time(ms),event_time(ms)

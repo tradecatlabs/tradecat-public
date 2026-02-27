@@ -4,7 +4,7 @@ Status: Done
 
 ## Evidence Log
 
-- 已生成并纳入 DDL：`libs/database/db/schema/016_crypto_trades_readable_views.sql`
+- 已生成并纳入 DDL：`assets/database/db/schema/016_crypto_trades_readable_views.sql`
 - 运行库验证（`localhost:15432/market_data`）：
   - `to_regclass('crypto.vw_futures_um_trades')` / `...cm...` / `...spot...` 均为非 NULL
   - `SELECT * FROM crypto.vw_futures_um_trades LIMIT 1;` 可正常返回

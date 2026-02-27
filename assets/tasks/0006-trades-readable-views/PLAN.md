@@ -17,6 +17,6 @@
 
 ## 交付物
 
-- 新增 SQL：`libs/database/db/schema/016_crypto_trades_readable_views.sql`（编号如已占用则顺延）
+- 新增 SQL：`assets/database/db/schema/016_crypto_trades_readable_views.sql`（编号如已占用则顺延）
 - 执行后可在 DB 里直接 `SELECT` 使用。
 

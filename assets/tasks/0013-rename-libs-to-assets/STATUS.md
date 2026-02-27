@@ -29,8 +29,8 @@
 - `rg -n "libs/database" -S . --glob '!libs/external/**' | wc -l` = `158`
 - 关键命中（节选）：
   - `config/.env.example:458`（`INDICATOR_SQLITE_PATH=libs/database/...`）
-  - `scripts/init.sh:139`（创建 `libs/database/services/...`）
-  - `scripts/check_env.sh:424`（检查 `libs/database/services/telegram-service/market_data.db`）
+  - `scripts/init.sh`（创建 `assets/database/services/...`）
+  - `scripts/check_env.sh`（检查 `assets/database/services/telegram-service/market_data.db`）
   - `services/compute/signal-service/src/config.py:36`（默认返回 `libs/database/...`）
 
 ### 0.4 `libs/external` 路径依赖（仅检查本仓库代码/脚本/配置/文档）

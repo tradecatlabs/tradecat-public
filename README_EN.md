@@ -1042,7 +1042,7 @@ ORDER BY bucket_ts DESC LIMIT 10;
 
 ```bash
 # Connect to database (generated after running trading-service; *.db ignored by default)
-sqlite3 libs/database/services/telegram-service/market_data.db
+sqlite3 assets/database/services/telegram-service/market_data.db
 
 # Common queries
 .tables                          -- List all tables

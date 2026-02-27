@@ -13,6 +13,13 @@ ENV_FILE = PROJECT_ROOT / "config" / ".env"
 
 load_dotenv(ENV_FILE)
 
+def _resolve_repo_path(env_key: str, default: Path) -> Path:
+    raw = (os.getenv(env_key) or "").strip()
+    if not raw:
+        return default
+    p = Path(raw)
+    return p if p.is_absolute() else (PROJECT_ROOT / p)
+
 
 class Settings:
     """服务配置"""
@@ -30,10 +37,13 @@ class Settings:
 
     # SQLite 路径
     SQLITE_INDICATORS_PATH: Path = (
-        PROJECT_ROOT / "libs" / "database" / "services" / "telegram-service" / "market_data.db"
+        _resolve_repo_path(
+            "INDICATOR_SQLITE_PATH",
+            PROJECT_ROOT / "assets" / "database" / "services" / "telegram-service" / "market_data.db",
+        )
     )
     SQLITE_COOLDOWN_PATH: Path = (
-        PROJECT_ROOT / "libs" / "database" / "services" / "signal-service" / "cooldown.db"
+        PROJECT_ROOT / "assets" / "database" / "services" / "signal-service" / "cooldown.db"
     )
 
 

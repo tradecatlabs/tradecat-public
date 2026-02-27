@@ -21,10 +21,10 @@ LOGGER = logging.getLogger(__name__)
 # ============ 币种过滤（使用共享模块）============
 import sys as _sys
 from pathlib import Path as _Path
-_libs_path = str(_Path(__file__).resolve().parents[5] / "libs")
-if _libs_path not in _sys.path:
-    _sys.path.insert(0, _libs_path)
-from common.symbols import get_configured_symbols_set
+_repo_root = str(_Path(__file__).resolve().parents[5])
+if _repo_root not in _sys.path:
+    _sys.path.insert(0, _repo_root)
+from assets.common.symbols import get_configured_symbols_set
 
 
 # 缓存配置的币种（延迟初始化）
@@ -268,7 +268,7 @@ class RankingDataProvider:
         # __file__ = .../services/consumption/telegram-service/src/cards/data_provider.py
         # repo root = parents[5] (cards/src/telegram-service/consumption/services/<repo>)
         _project_root = Path(__file__).resolve().parents[5]
-        _default_db = _project_root / "libs" / "database" / "services" / "telegram-service" / "market_data.db"
+        _default_db = _project_root / "assets" / "database" / "services" / "telegram-service" / "market_data.db"
 
         # 支持相对路径：统一基于项目根目录解析为绝对路径
         def _resolve_path(p: Optional[Path]) -> Path:

@@ -26,7 +26,7 @@
 
 ### 3) spot trades 的“样本事实”与 UM 不同（必须先写死合同）
 
-在 `libs/database/db/schema/009_crypto_binance_vision_landing.sql` 中已有样本事实备注：
+在 `assets/database/db/schema/009_crypto_binance_vision_landing.sql` 中已有样本事实备注：
 - spot CSV：无 header
 - spot 时间戳：epoch(us)
 - 列序：`id, price, qty, quote_qty, time(us), is_buyer_maker, is_best_match`

@@ -26,8 +26,8 @@
 
 ### Evidence 3: 迁移脚本已落地并执行（rename-swap）
 
-- Script: `libs/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql`
-- Command: `psql "$DATABASE_URL" -f libs/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql`
+- Script: `assets/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql`
+- Command: `psql "$DATABASE_URL" -f assets/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql`
 - Observed:
   - 新表 `crypto.raw_futures_cm_trades` 列为 `venue_id/instrument_id + DOUBLE`
   - 旧表保留为 `crypto.raw_futures_cm_trades_old`

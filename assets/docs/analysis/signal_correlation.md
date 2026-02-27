@@ -14,7 +14,7 @@
 
 ## 2. 数据来源
 
-- 信号触发时间：`libs/database/services/signal-service/cooldown.db`
+- 信号触发时间：`assets/database/services/signal-service/cooldown.db`
   - 说明：该库仅保存“每个信号键的最后一次触发时间”。
 - 价格数据：PostgreSQL `market_data.candles_1m`
   - 仅使用 **已收盘** 1m K线作为入场与对比价。

@@ -21,7 +21,7 @@ def _get_cooldown_db_path() -> str:
         from ..config import REPO_ROOT
     except ImportError:
         REPO_ROOT = Path(__file__).resolve().parents[5]
-    return str(REPO_ROOT / "libs/database/services/signal-service/cooldown.db")
+    return str(REPO_ROOT / "assets/database/services/signal-service/cooldown.db")
 
 
 class CooldownStorage:

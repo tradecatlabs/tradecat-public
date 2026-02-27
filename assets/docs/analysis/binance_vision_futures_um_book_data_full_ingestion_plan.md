@@ -19,13 +19,13 @@
 
 ### 0.2 落库表（已存在）
 
-- DDL：`libs/database/db/schema/009_crypto_binance_vision_landing.sql`
+- DDL：`assets/database/db/schema/009_crypto_binance_vision_landing.sql`
 - 表：
   - `crypto.raw_futures_um_book_depth`（ids + DOUBLE；integer hypertable: `timestamp` BIGINT(ms)，chunk=7d，compress_after=30d）
   - `crypto.raw_futures_um_book_ticker`（ids + DOUBLE；integer hypertable: `event_time` BIGINT(ms)，chunk=1d，compress_after=3d）
 
 运行库迁移（若你本机仍是旧结构 file_id/symbol + NUMERIC + timestamptz）：
-- 脚本：`libs/database/db/schema/020_crypto_futures_book_ids_swap.sql`
+- 脚本：`assets/database/db/schema/020_crypto_futures_book_ids_swap.sql`
 - 方式：rename-swap，保留 `*_old`（不删除数据）
 
 ### 0.3 可追溯/治理旁路（已存在）

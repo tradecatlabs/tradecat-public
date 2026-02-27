@@ -38,7 +38,7 @@
 ## 原子变更清单（文件级）
 
 - DB：
-  - 新增迁移脚本（建议 `libs/database/db/schema/015_crypto_spot_trades_fact_table.sql`）
+  - 新增迁移脚本（建议 `assets/database/db/schema/015_crypto_spot_trades_fact_table.sql`）
 - Writers：
   - 新增 `services/ingestion/binance-vision-service/src/writers/raw_spot_trades.py`
 - Collectors：

@@ -11,12 +11,12 @@ from src.config import get_settings
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import to_base_symbol
 
-# 添加 libs/common 到路径以使用全局币种管理
-libs_path = Path(__file__).parent.parent.parent.parent.parent / "libs" / "common"
-if str(libs_path) not in sys.path:
-    sys.path.insert(0, str(libs_path))
+# 添加 repo root 到路径，以使用 assets/common/symbols.py 的全局币种管理
+repo_root = Path(__file__).resolve().parents[5]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
-from symbols import get_configured_symbols
+from assets.common.symbols import get_configured_symbols
 
 router = APIRouter(tags=["futures"])
 

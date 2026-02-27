@@ -39,7 +39,7 @@
 - 可读性：提供只读 view 把 `venue_id/instrument_id` 映射回 `exchange/symbol`（避免用 TEXT 做主键）
 
 # 旁路治理表（不污染事实表）
-- DDL：`libs/database/db/schema/012_crypto_ingest_governance.sql`
+- DDL：`assets/database/db/schema/012_crypto_ingest_governance.sql`
 - 表：`crypto.ingest_runs / crypto.ingest_watermark / crypto.ingest_gaps`
 - repair 消费者：`python3 -m src repair --dataset crypto.repair.futures.um.trades ...`
 

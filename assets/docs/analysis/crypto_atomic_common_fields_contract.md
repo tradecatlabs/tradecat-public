@@ -61,7 +61,7 @@
 
 - `services/ingestion/binance-vision-service/src/writers/core_registry.py`
 
-> 重要约束：`core.symbol_map` 必须应用硬约束脚本 `libs/database/db/schema/013_core_symbol_map_hardening.sql`，保证 active 唯一与有效期窗口自洽/不重叠。
+> 重要约束：`core.symbol_map` 必须应用硬约束脚本 `assets/database/db/schema/013_core_symbol_map_hardening.sql`，保证 active 唯一与有效期窗口自洽/不重叠。
 
 ---
 

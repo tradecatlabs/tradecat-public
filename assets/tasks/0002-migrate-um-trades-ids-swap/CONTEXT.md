@@ -6,7 +6,7 @@
 
 ### 1) 仓库 DDL 的“目标表结构”已经切到 ids + DOUBLE
 
-- 真相源：`libs/database/db/schema/009_crypto_binance_vision_landing.sql:71-115`
+- 真相源：`assets/database/db/schema/009_crypto_binance_vision_landing.sql:71-115`
   - `crypto.raw_futures_um_trades(venue_id BIGINT, instrument_id BIGINT, price/qty/quote_qty DOUBLE PRECISION, PRIMARY KEY(venue_id,instrument_id,time,id))`
 
 ### 2) 采集写库代码已经按 ids 列写入（不再写 exchange/symbol）

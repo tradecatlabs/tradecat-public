@@ -4,7 +4,7 @@ Status: Done
 
 ## Evidence Log
 
-- 已生成并纳入 DDL：`libs/database/db/schema/017_crypto_trades_cagg_klines.sql`
+- 已生成并纳入 DDL：`assets/database/db/schema/017_crypto_trades_cagg_klines.sql`
 - 运行库验证（`localhost:15432/market_data`）：
   - `timescaledb_information.continuous_aggregates` 存在 3 个 cagg：
     - `crypto.cagg_futures_um_klines_1m`

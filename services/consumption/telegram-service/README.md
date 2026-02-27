@@ -146,7 +146,7 @@ market_data.db (SQLite)
 ## 数据来源
 
 Bot 从 SQLite 数据库读取数据：
-- 路径：`libs/database/services/telegram-service/market_data.db`
+- 路径：`assets/database/services/telegram-service/market_data.db`
 - 由 trading-service 写入
 - 包含 38 张指标表
 
@@ -174,7 +174,7 @@ python -m src.main
 
 1. 检查数据库是否存在：
    ```bash
-   ls -la ../../../libs/database/services/telegram-service/market_data.db
+   ls -la ../../../assets/database/services/telegram-service/market_data.db
    ```
 2. 确认 trading-service 已运行并写入数据
 3. 查看日志中的 SQLite 查询错误

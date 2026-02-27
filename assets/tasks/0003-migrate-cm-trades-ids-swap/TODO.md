@@ -6,8 +6,8 @@
 ## P0（结构对齐）
 
 [ ] P0: 复核当前 CM 表结构与行数 | Verify: `psql "$DATABASE_URL" -c "\\d+ crypto.raw_futures_cm_trades" && psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM crypto.raw_futures_cm_trades;"` | Gate: 确认仍为 `exchange/symbol` 旧列  
-[ ] P0: 迁移脚本准备（rename-swap） | Verify: `ls -la libs/database/db/schema | rg -n "014_.*cm.*trades"` | Gate: 脚本存在且内容只影响 `crypto.raw_futures_cm_trades*`  
-[ ] P0: 执行迁移脚本 | Verify: `psql "$DATABASE_URL" -f libs/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql` | Gate: exit code=0  
+[ ] P0: 迁移脚本准备（rename-swap） | Verify: `ls -la assets/database/db/schema | rg -n "014_.*cm.*trades"` | Gate: 脚本存在且内容只影响 `crypto.raw_futures_cm_trades*`  
+[ ] P0: 执行迁移脚本 | Verify: `psql "$DATABASE_URL" -f assets/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql` | Gate: exit code=0  
 [ ] P0: AC1/AC2/AC3 结构验收 | Verify: 见 `ACCEPTANCE.md` | Gate: 全通过  
 
 ## P0（链路补齐）

@@ -7,7 +7,23 @@ set -uo pipefail
 # ==================== 配置区 ====================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(cd "$SERVICE_DIR/../../.." && pwd)"
+# 目录迁移后 services 层级可能变化，避免写死 ../../.. 导致指向错误根目录
+find_project_root() {
+    local current="$1"
+    for _ in {1..12}; do
+        if [[ -f "$current/config/.env.example" ]] && [[ -d "$current/services" ]]; then
+            echo "$current"
+            return 0
+        fi
+        local parent
+        parent="$(dirname "$current")"
+        [[ "$parent" == "$current" ]] && break
+        current="$parent"
+    done
+    # 兜底：兼容当前分层（services/compute/trading-service）
+    (cd "$SERVICE_DIR/../../.." && pwd)
+}
+PROJECT_ROOT="$(find_project_root "$SERVICE_DIR")"
 RUN_DIR="$SERVICE_DIR/pids"
 LOG_DIR="$SERVICE_DIR/logs"
 DAEMON_PID="$RUN_DIR/daemon.pid"
@@ -150,7 +166,8 @@ start_service() {
     cd "$SERVICE_DIR"
     source .venv/bin/activate
     export PYTHONPATH="$SERVICE_DIR"
-    nohup $START_CMD >> "$SERVICE_LOG" 2>&1 &
+    # 用 setsid 彻底与当前会话脱钩，避免在非交互/CI 执行器中被“会话回收”误杀
+    setsid $START_CMD >> "$SERVICE_LOG" 2>&1 < /dev/null &
     local new_pid=$!
     echo "$new_pid" > "$SERVICE_PID"
     

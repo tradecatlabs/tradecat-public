@@ -59,9 +59,17 @@ class BinanceWSAdapter:
 
         log_file = settings.log_dir / "cryptofeed.log"
         self._handler = FeedHandler(config={"uvloop": False, "log": {"filename": str(log_file), "level": "INFO"}})
-        kw = {"symbols": self._symbols, "channels": [CANDLES], "callbacks": {CANDLES: self._on_candle}, "candle_interval": "1m", "candle_closed_only": True, "timeout": 60}
+        # 重要：cryptofeed 的 http_proxy 仅对 HTTP GET 生效；WebSocket 代理需要走 websockets.connect(proxy=...)
+        # 这里在 WebsocketEndpoint.options 注入 proxy，确保 wss 在受限网络环境下也能稳定收流。
         if self._proxy:
-            kw["http_proxy"] = self._proxy
+            for ep in getattr(BinanceFutures, "websocket_endpoints", []) or []:
+                opts = dict(getattr(ep, "options", {}) or {})
+                opts.setdefault("proxy", self._proxy)
+                ep.options = opts
+
+        kw = {"symbols": self._symbols, "channels": [CANDLES], "callbacks": {CANDLES: self._on_candle}, "candle_interval": "1m", "candle_closed_only": True, "timeout": 60, "http_proxy": self._proxy}
+        if self._proxy:
+            logger.info("WebSocket/HTTP 代理已启用: %s", self._proxy)
         self._handler.add_feed(BinanceFutures(**kw))
         logger.info("启动 Binance WSS: 符号=%d", len(self._symbols))
         self._handler.run()

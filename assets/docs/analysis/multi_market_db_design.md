@@ -156,21 +156,21 @@ crypto
 
 已新增可执行 DDL（按顺序执行）：
 
-- `libs/database/db/schema/008_multi_market_core_and_storage.sql`
+- `assets/database/db/schema/008_multi_market_core_and_storage.sql`
   - 创建：`core.*` 与 `storage.*`
-- `libs/database/db/schema/009_crypto_binance_vision_landing.sql`
+- `assets/database/db/schema/009_crypto_binance_vision_landing.sql`
   - 创建：`crypto.*`（对齐 Binance Vision CSV，含 Timescale hypertable + 压缩策略）
-- `libs/database/db/schema/010_multi_market_roots_placeholders.sql`
+- `assets/database/db/schema/010_multi_market_roots_placeholders.sql`
   - 创建：`equities/fx/commodities/rates/funds/indices` schema 占位
-- `libs/database/db/schema/011_crypto_binance_vision_derived.sql`
+- `assets/database/db/schema/011_crypto_binance_vision_derived.sql`
   - 创建：`crypto.*` 中的派生/汇总数据集（aggTrades/klines/*Klines；可选执行）
 
 > 执行示例（按你实际 DB 名/连接串调整）：
 >
-> `psql "$DATABASE_URL" -f libs/database/db/schema/008_multi_market_core_and_storage.sql`
-> `psql "$DATABASE_URL" -f libs/database/db/schema/009_crypto_binance_vision_landing.sql`
-> `psql "$DATABASE_URL" -f libs/database/db/schema/010_multi_market_roots_placeholders.sql`
-> `psql "$DATABASE_URL" -f libs/database/db/schema/011_crypto_binance_vision_derived.sql`  # 可选
+> `psql "$DATABASE_URL" -f assets/database/db/schema/008_multi_market_core_and_storage.sql`
+> `psql "$DATABASE_URL" -f assets/database/db/schema/009_crypto_binance_vision_landing.sql`
+> `psql "$DATABASE_URL" -f assets/database/db/schema/010_multi_market_roots_placeholders.sql`
+> `psql "$DATABASE_URL" -f assets/database/db/schema/011_crypto_binance_vision_derived.sql`  # 可选
 
 ---
 

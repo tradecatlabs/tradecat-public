@@ -239,9 +239,9 @@ graph TD
 
 | 路径 | 用途 | 写入者 | 读取者 |
 |:---|:---|:---|:---|
-| `libs/database/services/telegram-service/market_data.db` | 指标结果 | trading-service | telegram/ai/signal/api/vis |
-| `libs/database/services/signal-service/cooldown.db` | 信号冷却状态 | signal-service | signal-service |
-| `libs/database/services/signal-service/signal_history.db` | 信号触发历史 | signal-service | 分析脚本 |
+| `assets/database/services/telegram-service/market_data.db` | 指标结果 | trading-service | telegram/ai/signal/api/vis |
+| `assets/database/services/signal-service/cooldown.db` | 信号冷却状态 | signal-service | signal-service |
+| `assets/database/services/signal-service/signal_history.db` | 信号触发历史 | signal-service | 分析脚本 |
 
 ---
 
@@ -305,5 +305,5 @@ PGPASSWORD=postgres psql -h localhost -p 5434 -U postgres -d market_data \
   -c "SELECT COUNT(*) FROM market_data.candles_1m"
 
 # 检查 SQLite
-sqlite3 libs/database/services/telegram-service/market_data.db ".tables"
+sqlite3 assets/database/services/telegram-service/market_data.db ".tables"
 ```

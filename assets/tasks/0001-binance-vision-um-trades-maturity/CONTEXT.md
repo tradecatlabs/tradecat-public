@@ -21,7 +21,7 @@
 
 ### 3) storage/core 维度锚点已存在，但未纳入 UM trades 回填链路
 
-- `storage.*` 与 `core.*` DDL：`libs/database/db/schema/008_multi_market_core_and_storage.sql:12-153`
+- `storage.*` 与 `core.*` DDL：`assets/database/db/schema/008_multi_market_core_and_storage.sql:12-153`
   - `storage.files` 已有 `checksum_sha256/size_bytes/row_count/min_event_ts/max_event_ts` 等字段
   - `storage.file_revisions/import_batches/import_errors` 已可支撑审计与可观测
   - `core.venue/instrument/symbol_map` 已具备“字典化维度键”基础
@@ -30,7 +30,7 @@
 
 ### 4) 旁路治理表存在（不污染事实表）
 
-- 治理 DDL：`libs/database/db/schema/012_crypto_ingest_governance.sql:15-61`
+- 治理 DDL：`assets/database/db/schema/012_crypto_ingest_governance.sql:15-61`
 - 写入器：`services/ingestion/binance-vision-service/src/writers/ingest_meta.py:30-121`
 
 ---

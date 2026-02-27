@@ -104,13 +104,13 @@ class DatabaseConfig:
         "postgresql://postgres:postgres@localhost:5434/market_data"
     ))
     sqlite_market_data: Path = field(default_factory=lambda: (
-        PROJECT_ROOT / "libs/database/services/telegram-service/market_data.db"
+        PROJECT_ROOT / "assets/database/services/telegram-service/market_data.db"
     ))
     sqlite_cooldown: Path = field(default_factory=lambda: (
-        PROJECT_ROOT / "libs/database/services/signal-service/cooldown.db"
+        PROJECT_ROOT / "assets/database/services/signal-service/cooldown.db"
     ))
     sqlite_history: Path = field(default_factory=lambda: (
-        PROJECT_ROOT / "libs/database/services/signal-service/signal_history.db"
+        PROJECT_ROOT / "assets/database/services/signal-service/signal_history.db"
     ))
 
 

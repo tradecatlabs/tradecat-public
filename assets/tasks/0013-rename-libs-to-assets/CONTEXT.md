@@ -29,10 +29,10 @@ libs/
 
 已观测到的典型硬编码路径引用（来自 `rg -n "libs/"` 扫描）：
 
-- `config/.env.example:458`：`INDICATOR_SQLITE_PATH=libs/database/services/telegram-service/market_data.db`
-- `scripts/signal_correlation_analysis.py:31-32`：默认指向 `libs/database/services/signal-service/*`
-- `scripts/init.sh:139`：创建 `libs/database/services/telegram-service`
-- `scripts/check_env.sh:424`：检查 `libs/database/services/telegram-service/market_data.db`
+- `assets/config/.env.example`：`INDICATOR_SQLITE_PATH=assets/database/services/telegram-service/market_data.db`
+- `scripts/signal_correlation_analysis.py`：默认指向 `assets/database/services/signal-service/*`
+- `scripts/init.sh`：创建 `assets/database/services/telegram-service`
+- `scripts/check_env.sh`：检查 `assets/database/services/telegram-service/market_data.db`
 
 结论：只要迁移 `libs/database`，就会触发**配置模板、脚本、文档、运维命令**的连锁变更。
 
@@ -75,4 +75,3 @@ libs/
   - Verify: `rg -n "libs/" -S . | wc -l`（并抽样检查 20 条）
 - 假设 C：`libs/external` 当前无运行时依赖（仅做资料/镜像）  
   - Verify: `rg -n "libs/external" -S services scripts config docs | wc -l` 应为 0
-

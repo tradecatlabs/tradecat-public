@@ -12,12 +12,12 @@
 
 - 文档索引入口：`assets/docs/analysis/INDEX.md`
 - DDL 真相源（禁止抄写运行库手工改）：
-  - `libs/database/db/schema/008_multi_market_core_and_storage.sql`：`core/*` + `storage/*`
-  - `libs/database/db/schema/009_crypto_binance_vision_landing.sql`：`crypto.raw_*`（含 UM trades 事实表）
-  - `libs/database/db/schema/012_crypto_ingest_governance.sql`：`crypto.ingest_*`（run/watermark/gaps）
-  - `libs/database/db/schema/013_core_symbol_map_hardening.sql`：`core.symbol_map` 语义硬约束
-  - `libs/database/db/schema/016_crypto_trades_readable_views.sql`：trades 可读 view（时间戳 + as-of 映射）
-  - `libs/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`：raw trades sanity CHECK（上线护栏）
+  - `assets/database/db/schema/008_multi_market_core_and_storage.sql`：`core/*` + `storage/*`
+  - `assets/database/db/schema/009_crypto_binance_vision_landing.sql`：`crypto.raw_*`（含 UM trades 事实表）
+  - `assets/database/db/schema/012_crypto_ingest_governance.sql`：`crypto.ingest_*`（run/watermark/gaps）
+  - `assets/database/db/schema/013_core_symbol_map_hardening.sql`：`core.symbol_map` 语义硬约束
+  - `assets/database/db/schema/016_crypto_trades_readable_views.sql`：trades 可读 view（时间戳 + as-of 映射）
+  - `assets/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`：raw trades sanity CHECK（上线护栏）
 
 ### 0.2 事实表（Atomic Fact）
 

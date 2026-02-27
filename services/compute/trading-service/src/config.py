@@ -41,7 +41,7 @@ class Config:
     # SQLite（写入指标结果）- 必须使用绝对路径
     sqlite_path: Path = field(default_factory=lambda: (
         Path(os.getenv("INDICATOR_SQLITE_PATH")) if os.getenv("INDICATOR_SQLITE_PATH")
-        else PROJECT_ROOT / "libs/database/services/telegram-service/market_data.db"
+        else PROJECT_ROOT / "assets/database/services/telegram-service/market_data.db"
     ))
 
     # 计算参数

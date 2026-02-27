@@ -274,7 +274,7 @@ class CoreRegistry:
                     raise RuntimeError(
                         "检测到旧运行库 core.venue(venue_code='binance') 仍存在，但采集已要求 futures_um 使用 "
                         f"'{qualified_venue_code}'。为避免生成新的 venue_id 导致事实表 split，请先执行迁移脚本："
-                        "libs/database/db/schema/018_core_binance_venue_code_futures_um.sql"
+                        "assets/database/db/schema/018_core_binance_venue_code_futures_um.sql"
                     )
 
             vid = self.get_or_create_venue_id(qualified_venue_code, cursor=cur)

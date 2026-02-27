@@ -7,7 +7,23 @@ set -uo pipefail
 # ==================== 配置区 ====================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(cd "$SERVICE_DIR/../../../.." && pwd)"
+# 目录迁移后 services 层级可能变化，避免写死 ../../../.. 导致指向错误根目录
+find_project_root() {
+    local current="$1"
+    for _ in {1..12}; do
+        if [[ -f "$current/config/.env.example" ]] && [[ -d "$current/services" ]]; then
+            echo "$current"
+            return 0
+        fi
+        local parent
+        parent="$(dirname "$current")"
+        [[ "$parent" == "$current" ]] && break
+        current="$parent"
+    done
+    # 兜底：兼容当前分层（services/ingestion/data-service）
+    (cd "$SERVICE_DIR/../../.." && pwd)
+}
+PROJECT_ROOT="$(find_project_root "$SERVICE_DIR")"
 RUN_DIR="$SERVICE_DIR/pids"
 LOG_DIR="$SERVICE_DIR/logs"
 DAEMON_PID="$RUN_DIR/daemon.pid"
@@ -286,7 +302,10 @@ start_component() {
     cd "$SERVICE_DIR"
     source .venv/bin/activate
     export PYTHONPATH=src
-    nohup bash -c "${START_CMDS[$name]}" >> "$log_file" 2>&1 &
+    # 用 setsid 彻底与当前会话脱钩，避免在非交互/CI 执行器中被“会话回收”误杀
+    # 并在子 shell 内 exec，确保 pidfile 指向真实的 Python 进程（而不是 bash 包装器）
+    local cmd="exec ${START_CMDS[$name]}"
+    setsid bash -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
     local new_pid=$!
     echo "$new_pid" > "$pid_file"
 
@@ -415,6 +434,12 @@ daemon_loop() {
     done
 }
 
+# 独立的守护循环入口：用于 setsid 启动，避免 bash 函数后台运行被会话回收
+cmd_daemon_loop() {
+    init_dirs
+    daemon_loop
+}
+
 cmd_daemon() {
     init_dirs
     
@@ -434,12 +459,14 @@ cmd_daemon() {
     done
     
     # 后台启动守护循环
-    # 注意：必须断开 stdout/stderr，避免被上层脚本通过管道调用时（如 `./scripts/start.sh start | sed ...`）
-    # 因后台进程继承管道写端导致管道永不关闭、上层启动脚本卡死。
-    daemon_loop >/dev/null 2>&1 &
-    echo $! > "$DAEMON_PID"
-    log "守护进程已启动 (PID: $!)"
-    echo "守护进程已启动 (PID: $!)"
+    # - 必须断开 stdin/stdout/stderr，避免继承上层管道导致卡死
+    # - 必须 setsid 脱钩，避免在非交互执行器中被进程组清理
+    # daemon-loop 内部使用 log() 写入 $DAEMON_LOG；此处将 stdout/stderr 丢弃，避免 tee 写同一文件导致重复行
+    setsid bash "$SCRIPT_DIR/start.sh" daemon-loop >/dev/null 2>&1 < /dev/null &
+    local dpid=$!
+    echo "$dpid" > "$DAEMON_PID"
+    log "守护进程已启动 (PID: $dpid)"
+    echo "守护进程已启动 (PID: $dpid)"
 }
 
 cmd_stop() {
@@ -523,6 +550,7 @@ case "${1:-status}" in
     stop)    cmd_stop ;;
     status)  cmd_status ;;
     restart) check_proxy; cmd_restart ;;
+    daemon-loop) cmd_daemon_loop ;;
     *)
         echo "用法: $0 {start|stop|status|restart}"
         exit 1

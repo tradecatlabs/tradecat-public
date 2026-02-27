@@ -39,15 +39,15 @@ def get_client(exchange: str = "binance") -> ccxt.Exchange:
 
 
 # ========== 币种管理配置 ==========
-# 使用共享模块
+# 使用共享模块（assets/common/symbols.py）
 import sys
 
 from config import PROJECT_ROOT
 
-_libs_path = str(PROJECT_ROOT / "libs")
-if _libs_path not in sys.path:
-    sys.path.insert(0, _libs_path)
-from common.symbols import get_configured_symbols
+_repo_root = str(PROJECT_ROOT)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+from assets.common.symbols import get_configured_symbols
 
 
 def load_symbols(exchange: str = "binance") -> List[str]:

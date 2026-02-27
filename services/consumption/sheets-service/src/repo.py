@@ -10,9 +10,13 @@ def find_repo_root(start: Path) -> Path:
     - 旧结构：services/telegram-service
     """
     for p in [start] + list(start.parents):
-        if (p / "config").is_dir() and (p / "services").is_dir() and (p / "libs").is_dir():
+        has_services = (p / "services").is_dir()
+        has_config = (p / "config").exists()  # 可能是目录或 symlink
+        has_assets_or_libs = (p / "assets").is_dir() or (p / "libs").is_dir()
+        has_env_example = (p / "config" / ".env.example").exists()
+        if has_services and has_config and has_assets_or_libs and has_env_example:
             return p
-    raise RuntimeError(f"无法定位 repo root（从 {start} 向上未找到 config/services/libs）")
+    raise RuntimeError(f"无法定位 repo root（从 {start} 向上未找到 services + config/.env.example + assets|libs）")
 
 
 def find_telegram_service_src(repo_root: Path) -> Path:

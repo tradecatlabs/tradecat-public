@@ -45,7 +45,8 @@ def build_binance_url(symbol: str, market: str = "futures") -> str:
 
 # 数据库路径
 _PROJECT_ROOT = str(_REPO_ROOT)
-SUBS_DB_PATH = os.path.join(_PROJECT_ROOT, "libs/database/services/telegram-service/signal_subs.db")
+# 订阅库统一归档到 signal-service（便于 compute/consumption 共享）
+SUBS_DB_PATH = os.path.join(_PROJECT_ROOT, "assets/database/services/signal-service/signal_subs.db")
 
 # 表名映射为简短名称
 TABLE_NAMES = {

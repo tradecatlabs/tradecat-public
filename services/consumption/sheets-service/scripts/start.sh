@@ -11,7 +11,7 @@ find_repo_root() {
     local start="$1"
     local p="$start"
     while [[ -n "$p" && "$p" != "/" ]]; do
-        if [[ -d "$p/config" && -d "$p/services" && -d "$p/libs" ]]; then
+        if [[ -d "$p/services" && -e "$p/config/.env.example" && ( -d "$p/assets" || -d "$p/libs" ) ]]; then
             echo "$p"
             return 0
         fi
@@ -22,7 +22,7 @@ find_repo_root() {
 
 PROJECT_ROOT="$(find_repo_root "$SERVICE_DIR" || true)"
 if [[ -z "$PROJECT_ROOT" ]]; then
-    echo "❌ 错误: 无法定位 PROJECT_ROOT（从 $SERVICE_DIR 向上未找到 config/services/libs）"
+    echo "❌ 错误: 无法定位 PROJECT_ROOT（从 $SERVICE_DIR 向上未找到 services + config/.env.example + assets|libs）"
     exit 1
 fi
 

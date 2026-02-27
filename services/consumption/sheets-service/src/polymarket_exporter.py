@@ -104,12 +104,13 @@ def _detect_polymarket_service_dir() -> Path | None:
     candidates: list[Path] = []
     if repo_root is not None:
         candidates += [
+            # 当前仓库布局（推荐）
+            repo_root / "services" / "ingestion" / "predict-service" / "services" / "polymarket",
+            # 旧预览布局（兼容）
             repo_root / "services-preview" / "predict-service" / "services" / "polymarket",
+            # 历史单体布局（兼容）
             repo_root / "services" / "polymarket",
         ]
-    candidates += [
-        Path.home() / ".projects" / "tradecat" / "services-preview" / "predict-service" / "services" / "polymarket",
-    ]
 
     for p in candidates:
         if p.is_dir() and (p / "scripts" / "csv-report.js").is_file():

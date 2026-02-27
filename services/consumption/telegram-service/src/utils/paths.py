@@ -6,7 +6,7 @@ SERVICE_ROOT = Path(__file__).parent.parent.parent  # utils -> src -> telegram-s
 PROJECT_ROOT = SERVICE_ROOT.parents[2]              # services -> tradecat
 
 # 数据库目录
-DATABASE_DIR = PROJECT_ROOT / "libs" / "database" / "services" / "telegram-service"
+DATABASE_DIR = PROJECT_ROOT / "assets" / "database" / "services" / "telegram-service"
 
 
 def 获取数据库目录() -> Path:

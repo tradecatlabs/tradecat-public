@@ -33,7 +33,7 @@ def get_sqlite_path() -> Path:
         if not p.is_absolute():
             p = REPO_ROOT / p
         return p
-    return REPO_ROOT / "libs/database/services/telegram-service/market_data.db"
+    return REPO_ROOT / "assets/database/services/telegram-service/market_data.db"
 
 
 def get_history_db_path() -> Path:
@@ -41,12 +41,12 @@ def get_history_db_path() -> Path:
     env_path = os.environ.get("SIGNAL_HISTORY_DB_PATH")
     if env_path:
         return Path(env_path)
-    return REPO_ROOT / "libs/database/services/signal-service/signal_history.db"
+    return REPO_ROOT / "assets/database/services/signal-service/signal_history.db"
 
 
 def get_subscription_db_path() -> Path:
     """获取订阅数据库路径"""
-    return REPO_ROOT / "libs/database/services/signal-service/signal_subs.db"
+    return REPO_ROOT / "assets/database/services/signal-service/signal_subs.db"
 
 
 # 信号检测配置

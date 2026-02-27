@@ -20,7 +20,7 @@
 
 ### 2) 仓库 DDL 已是“目标结构”，但由于 IF NOT EXISTS 无法修正既有表
 
-- `libs/database/db/schema/009_crypto_binance_vision_landing.sql` 已将 `crypto.raw_futures_um_trades` 定义为 ids+DOUBLE，并用 `LIKE crypto.raw_futures_um_trades` 创建 CM 占位。
+- `assets/database/db/schema/009_crypto_binance_vision_landing.sql` 已将 `crypto.raw_futures_um_trades` 定义为 ids+DOUBLE，并用 `LIKE crypto.raw_futures_um_trades` 创建 CM 占位。
 - 但运行库里 CM 表是历史遗留创建的旧结构，因此必须单独迁移（drop/recreate 或 rename-swap）。
 
 ### 3) 采集卡片仍是占位（未实现）

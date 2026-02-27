@@ -44,7 +44,7 @@ Vision ZIP (daily/monthly) ---> checksum verify ---> COPY tmp ---> INSERT ... ON
 ## 原子变更清单（文件级）
 
 - DB：
-  - 新增一个迁移脚本（建议 `libs/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql`），实现 rename-swap + hypertable/compress policy。
+  - 新增一个迁移脚本（建议 `assets/database/db/schema/014_crypto_futures_cm_trades_ids_swap.sql`），实现 rename-swap + hypertable/compress policy。
 - Writers：
   - 新增 `services/ingestion/binance-vision-service/src/writers/raw_futures_cm_trades.py`（对齐 UM 的 writer 形态）。
 - Collectors（realtime/backfill）：

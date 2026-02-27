@@ -92,13 +92,13 @@ UM trades CSV header：
 
 你现在已经在仓库里具备这些 DDL（真相源）：
 
-- `libs/database/db/schema/008_multi_market_core_and_storage.sql`
-- `libs/database/db/schema/009_crypto_binance_vision_landing.sql`
-- `libs/database/db/schema/013_core_symbol_map_hardening.sql`（symbol_map 必须写死的硬约束：active 唯一性/窗口自洽/窗口不重叠）
-- `libs/database/db/schema/016_crypto_trades_readable_views.sql`（trades 可读视图：时间戳转换 + as-of 映射）
-- `libs/database/db/schema/018_core_binance_venue_code_futures_um.sql`（兼容性迁移：若历史运行库把 futures_um 写在 `venue_code=binance` 下，需先改名为 `binance_futures_um` 且保持 `venue_id` 不变）
-- `libs/database/db/schema/012_crypto_ingest_governance.sql`
-- `libs/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`（raw trades 最小 sanity CHECK：默认 NOT VALID，上线护栏）
+- `assets/database/db/schema/008_multi_market_core_and_storage.sql`
+- `assets/database/db/schema/009_crypto_binance_vision_landing.sql`
+- `assets/database/db/schema/013_core_symbol_map_hardening.sql`（symbol_map 必须写死的硬约束：active 唯一性/窗口自洽/窗口不重叠）
+- `assets/database/db/schema/016_crypto_trades_readable_views.sql`（trades 可读视图：时间戳转换 + as-of 映射）
+- `assets/database/db/schema/018_core_binance_venue_code_futures_um.sql`（兼容性迁移：若历史运行库把 futures_um 写在 `venue_code=binance` 下，需先改名为 `binance_futures_um` 且保持 `venue_id` 不变）
+- `assets/database/db/schema/012_crypto_ingest_governance.sql`
+- `assets/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`（raw trades 最小 sanity CHECK：默认 NOT VALID，上线护栏）
 
 相关 runbook / 索引：
 

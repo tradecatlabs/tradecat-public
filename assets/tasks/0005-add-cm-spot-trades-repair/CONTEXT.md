@@ -8,7 +8,7 @@
 - 当前仅存在 UM repair 代码目录：
   - `services/ingestion/binance-vision-service/src/collectors/crypto/repair/futures/um/trades.py`
 - 治理表 DDL 将 watermark/gap 的时间单位注释为 epoch(ms)：
-  - `libs/database/db/schema/012_crypto_ingest_governance.sql:31-53`
+  - `assets/database/db/schema/012_crypto_ingest_governance.sql:31-53`
 - Spot realtime 的 gap 插入使用 ms（REST since 也使用 ms）：
   - `services/ingestion/binance-vision-service/src/collectors/crypto/data/spot/trades.py:390-426`
 - 但 Spot 的 watermark 更新当前写入的是 raw 行的 `time`（epoch(us)），与治理表“ms 口径”漂移：

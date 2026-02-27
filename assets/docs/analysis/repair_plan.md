@@ -84,13 +84,13 @@
 - services/consumption/api-service/src/routers/open_interest.py
 - services/consumption/api-service/src/routers/funding_rate.py
 - services/consumption/api-service/src/routers/futures_metrics.py
-- /home/lenovo/.projects/new/tradecat-pro1/control/preview/api-service/src/routers/open_interest.py
-- /home/lenovo/.projects/new/tradecat-pro1/control/preview/api-service/src/routers/funding_rate.py
-- /home/lenovo/.projects/new/tradecat-pro1/control/preview/api-service/src/routers/futures_metrics.py
-- /home/lenovo/.projects/new/tradecat-pro1/control/preview/api-service/src/routers/ohlc.py
+- $LEGACY_TRADECAT_PRO1_ROOT/control/preview/api-service/src/routers/open_interest.py
+- $LEGACY_TRADECAT_PRO1_ROOT/control/preview/api-service/src/routers/funding_rate.py
+- $LEGACY_TRADECAT_PRO1_ROOT/control/preview/api-service/src/routers/futures_metrics.py
+- $LEGACY_TRADECAT_PRO1_ROOT/control/preview/api-service/src/routers/ohlc.py
 
 > 历史参考（源仓库路径，当前仓库目录已迁移并移除 `services-preview/`）：
-> - /home/lenovo/.projects/tradecat/services-preview/api-service/src/routers/{open_interest,funding_rate,futures_metrics}.py
+> - $LEGACY_TRADECAT_ROOT/services-preview/api-service/src/routers/{open_interest,funding_rate,futures_metrics}.py
 
 ---
 

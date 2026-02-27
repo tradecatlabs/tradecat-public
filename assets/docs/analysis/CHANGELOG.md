@@ -328,7 +328,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Delete CSV read logic, unify to SQLite
 - Remove libs/common, services fully independent
-- Unified database location to libs/database/services/telegram-service/
+- Unified database location to assets/database/services/telegram-service/
 - Remove telegram-service cross-service dependencies
 - Rename crypto_trading_bot.py → main.py
 - Delete unused realtime_service/kline_manager/kline_listener

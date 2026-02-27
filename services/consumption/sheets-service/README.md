@@ -39,7 +39,7 @@
 
 ### 远程数据源（SSH 拉取服务器 market_data.db，可选，推荐）
 
-> 用途：当本机 `libs/database/.../market_data.db` 不全/落后时，sheets-service 可在每轮同步前先从服务器拉取一份快照作为数据源。
+> 用途：当本机 `assets/database/.../market_data.db` 不全/落后时，sheets-service 可在每轮同步前先从服务器拉取一份快照作为数据源。
 
 - `SHEETS_REMOTE_DB_MODE`：`off|ssh`（默认：检测到 `SHEETS_REMOTE_DB_SSH_HOST` 则自动启用 `ssh`）
 - `SHEETS_REMOTE_DB_SSH_HOST`：SSH 主机（例如 `100.91.176.84`）

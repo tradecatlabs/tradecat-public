@@ -45,17 +45,18 @@ export SHEETS_EXPORT_SYMBOLS_UNFILTERED=0
 - host：`100.91.176.84`
 - user：`nvidia`
 - key：`/home/lenovo/.ssh/tradecat_nvidia`
-- remote db：`/home/nvidia/.projects/tradecat/libs/database/services/telegram-service/market_data.db`
+- remote db：`$REMOTE_REPO_ROOT/assets/database/services/telegram-service/market_data.db`
 - local cache：`services/consumption/sheets-service/data/remote/market_data.db`
 
 建议：避免每次都拉 170MB，设置最小刷新间隔（例如 3600 秒）：
 
 ```bash
 export SHEETS_REMOTE_DB_MODE=ssh
+export REMOTE_REPO_ROOT="/home/nvidia/tradecat/tradecat"
 export SHEETS_REMOTE_DB_SSH_HOST="100.91.176.84"
 export SHEETS_REMOTE_DB_SSH_USER="nvidia"
 export SHEETS_REMOTE_DB_SSH_KEY_PATH="/home/lenovo/.ssh/tradecat_nvidia"
-export SHEETS_REMOTE_DB_PATH="/home/nvidia/.projects/tradecat/libs/database/services/telegram-service/market_data.db"
+export SHEETS_REMOTE_DB_PATH="$REMOTE_REPO_ROOT/assets/database/services/telegram-service/market_data.db"
 export SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS=3600
 ```
 

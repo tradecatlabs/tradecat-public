@@ -37,12 +37,12 @@
 
 仓库内 DDL 真相源：
 
-- `libs/database/db/schema/008_multi_market_core_and_storage.sql`
-- `libs/database/db/schema/009_crypto_binance_vision_landing.sql`（会被本方案的“最终 DDL”替换其中的 trades 部分）
-- `libs/database/db/schema/013_core_symbol_map_hardening.sql`（symbol_map 必须写死的硬约束：active 唯一性/窗口自洽/窗口不重叠）
-- `libs/database/db/schema/016_crypto_trades_readable_views.sql`（trades 可读视图：时间戳转换 + as-of 映射）
-- `libs/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`（raw trades 最小 sanity CHECK：默认 NOT VALID，上线护栏）
-- `libs/database/db/schema/012_crypto_ingest_governance.sql`
+- `assets/database/db/schema/008_multi_market_core_and_storage.sql`
+- `assets/database/db/schema/009_crypto_binance_vision_landing.sql`（会被本方案的“最终 DDL”替换其中的 trades 部分）
+- `assets/database/db/schema/013_core_symbol_map_hardening.sql`（symbol_map 必须写死的硬约束：active 唯一性/窗口自洽/窗口不重叠）
+- `assets/database/db/schema/016_crypto_trades_readable_views.sql`（trades 可读视图：时间戳转换 + as-of 映射）
+- `assets/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`（raw trades 最小 sanity CHECK：默认 NOT VALID，上线护栏）
+- `assets/database/db/schema/012_crypto_ingest_governance.sql`
 
 相关 runbook / 索引：
 
@@ -91,7 +91,7 @@ UM trades header：
 
 - **产品维度必须纳入键空间**：同一交易所的 spot / futures_um / futures_cm / option 会共享 `BTCUSDT` 这类同名 symbol。  
   - 最小方案（不改 schema）：把 product 折叠进 `core.venue.venue_code`，例如 `binance_spot / binance_futures_cm / binance_option`。  
-  - 兼容性：若历史运行库曾把 `futures_um` 落在 `venue_code=binance` 下，需先做一次性迁移：`core.venue: binance -> binance_futures_um`（保持 `venue_id` 不变），脚本见 `libs/database/db/schema/018_core_binance_venue_code_futures_um.sql`；再切换采集代码。
+  - 兼容性：若历史运行库曾把 `futures_um` 落在 `venue_code=binance` 下，需先做一次性迁移：`core.venue: binance -> binance_futures_um`（保持 `venue_id` 不变），脚本见 `assets/database/db/schema/018_core_binance_venue_code_futures_um.sql`；再切换采集代码。
 
 > 对人类可读的 `exchange/symbol`：不放进事实表主键；用 view/维表 join 恢复。  
 
