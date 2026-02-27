@@ -35,7 +35,6 @@
 - `assets/database/db/schema/019_crypto_raw_trades_sanity_checks.sql`：raw trades 最小 sanity CHECK（默认 NOT VALID，上线护栏）。
 - `assets/database/db/schema/018_core_binance_venue_code_futures_um.sql`：兼容迁移脚本（历史把 `futures_um` 写在 `venue_code=binance` 的环境使用）。
 - `assets/database/db/schema/020_crypto_futures_book_ids_swap.sql`：bookDepth/bookTicker ids 迁移脚本（旧结构运行库 rename-swap 保留 *_old）。
-- `assets/database/db/schema/021_tg_cards_sqlite_parity.sql`：`tg_cards.*`（指标/卡片表结构严格对齐 SQLite：`assets/database/services/telegram-service/market_data.db`）。
 
 ## 4) 执行任务索引
 
