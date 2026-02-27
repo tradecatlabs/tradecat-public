@@ -167,7 +167,7 @@ networkingMode=mirrored
 # 0) 环境检查（可选，推荐部署前运行）
 ./scripts/check_env.sh
 
-# 1) 初始化（创建各服务 .venv + 依赖 + 复制配置模板）
+# 1) 初始化（创建各服务 .venv + 安装依赖）
 ./scripts/init.sh
 
 # 2) 填写全局配置（含 BOT_TOKEN / DB / 代理 等）
@@ -188,7 +188,7 @@ vim config/.env
 
 ### ⚙️ 配置（必须）
 
-- 路径：`config/.env`（已由 init.sh 复制），权限需 600，服务启动脚本会强制校验。  
+- 路径：`config/.env`（需手动从 `.env.example` 复制；或运行 `./scripts/install.sh` 自动生成），权限需 600，服务启动脚本会强制校验。  
 - **TimescaleDB 端口说明**（重要，按仓库现状）：
   - LF（低频/分时/K线与指标）：`DATABASE_URL` 默认 `localhost:5433/market_data`（见 `config/.env.example`）
   - HF（高频/原子事实）：`BINANCE_VISION_DATABASE_URL` 默认 `localhost:15432/market_data`（见 `config/.env.example`）
@@ -206,7 +206,7 @@ vim config/.env
   - 展示过滤：`BINANCE_API_DISABLED`、`DISABLE_SINGLE_TOKEN_QUERY`、`SNAPSHOT_HIDDEN_FIELDS`、`BLOCKED_SYMBOLS`  
   - AI/交易：`AI_INDICATOR_TABLES`、`AI_INDICATOR_TABLES_DISABLED`、`LLM_BACKEND`、`LLM_API_BASE_URL`、`EXTERNAL_API_KEY`、`LLM_MODEL`、`LLM_MAX_TOKENS`、`AI_LARGE_PAYLOAD_CHAR_LIMIT`、`AI_FORCE_GEMINI_ON_LARGE_PAYLOAD`、`AI_DEFAULT_PROMPT`、`AI_RECORD_ENABLED`、`AI_RECORD_PAYLOAD`、`AI_RECORD_PROMPT`、`AI_RECORD_MESSAGES`、`AI_RECORD_ANALYSIS`、`AI_RECORD_MAX_DIRS`、`BINANCE_API_KEY`、`BINANCE_API_SECRET`
   - 国际化：`DEFAULT_LOCALE`（默认 en）、`SUPPORTED_LOCALES`（zh-CN,en）、`FALLBACK_LOCALE`
-  - Google Sheets（可选，`sheets-service`）：`SHEETS_*` 见 `config/.env.example` 的 “Google Sheets 公共看板” 段落；弱网/代理环境可用 `SHEETS_SA_NET_WRITE_RETRIES` 提升 SA 模式稳定性（代码支持，默认 2）。<!-- TODO: 若要在模板中展示该键，请同步补到 config/.env.example -->
+  - Google Sheets（可选，`sheets-service`）：`SHEETS_*` 见 `config/.env.example` 的 “Google Sheets 公共看板” 段落；弱网/代理环境可用 `SHEETS_SA_NET_WRITE_RETRIES` 提升 SA 模式稳定性（默认 2）。
 
 ### 📦 下载历史数据（可选）
 
@@ -220,13 +220,13 @@ vim config/.env
 
 ```bash
 # 安装依赖
-services/ingestion/data-service/.venv/bin/pip install pandas psycopg2-binary huggingface_hub
+services/ingestion/data-service/.venv/bin/python -m pip install pandas psycopg2-binary huggingface_hub
 
 # 默认下载 Main4 数据集（BTC/ETH/BNB/SOL，415MB）
-python scripts/download_hf_data.py
+services/ingestion/data-service/.venv/bin/python scripts/download_hf_data.py
 
 # 或指定币种
-python scripts/download_hf_data.py --symbols BTCUSDT,ETHUSDT,BNBUSDT
+services/ingestion/data-service/.venv/bin/python scripts/download_hf_data.py --symbols BTCUSDT,ETHUSDT,BNBUSDT
 ```
 
 脚本特性：
@@ -257,7 +257,7 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
 
 - **端口选择**：`config/.env.example` 默认 LF=5433、HF=15432；仓库脚本示例亦以此为准。若你自行改动端口，请全局统一。
 - CI 仅执行 ruff + py_compile 抽样（`.github/workflows/ci.yml`，检查前 50 个 .py 文件），不会跑 tests；提交前本地仍需 `./scripts/verify.sh`。
-- `scripts/install.sh` 生成各服务 `.env` 但运行时只读 `config/.env`；避免多份配置漂移。
+- `scripts/install.sh` 会创建 `config/.env`（若不存在）；运行时统一只读 `config/.env`，避免多份配置漂移。
 
 ### ✅ 验证安装
 
@@ -315,7 +315,7 @@ cd .. && rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 #### 4. 配置环境变量
 
 ```bash
-# 编辑 `config/.env`（init.sh 已自动从 .env.example 复制；请同步端口为 5433 以与脚本一致）
+# 编辑 `config/.env`（如不存在：cp config/.env.example config/.env && chmod 600 config/.env）
 vim config/.env
 ```
 
@@ -324,7 +324,7 @@ vim config/.env
 - `COOLDOWN_SECONDS`（signal-service）：PG 信号冷却时间（秒），可与规则级冷却配合，避免重复推送。
 
 关键配置补充（nofx-dev，预览服务）：
-- `NOFX_AI_PAYLOAD_ALL`：是否将 ai-service 全量 `raw_payload.json` 并入 nofx AI 输入（1/0），默认 1。
+- `NOFX_*`：nofx-dev 上游地址/鉴权等（见 `config/.env.example` 的 NOFX 段落；nofx-dev 本身也有独立文档）。
 
 #### 5. 启动服务
 
@@ -358,7 +358,8 @@ vim config/.env
 <tr>
 <td width="50%">
 
-### 🔄 多市场数据采集
+### 🔄 多市场数据采集（🟡预览/规划中）
+- 说明：当前仓库核心链路聚焦加密货币；A股/美股/宏观/OpenBB 等属于 markets-service 预览方向（本仓库 `services/` 下未内置实现，仅保留配置/文档占位）。
 - **加密货币** - CCXT (100+交易所) + Cryptofeed (WebSocket)
 - **A股市场** - AKShare + BaoStock (免费全量)
 - **美股/全球** - yfinance + pandas-datareader
@@ -368,7 +369,7 @@ vim config/.env
 </td>
 <td width="50%">
 
-### 📊 34个技术指标模块
+### 📊 38个技术指标模块
 - **趋势指标** - EMA/MACD/SuperTrend/趋势云/趋势线/ADX/Ichimoku
 - **动量指标** - RSI/KDJ/MFI/多空比/斐波那契狙击/CCI/WilliamsR
 - **波动指标** - 布林带/ATR/支撑阻力/VWAP/Donchian/Keltner
@@ -455,7 +456,7 @@ graph TD
 
     subgraph TS["📊 trading-service<br><small>Python, pandas, numpy, TA-Lib</small>"]
         TR_ENG["engine<br>计算引擎"]
-        TR_IND["indicators<br>34个指标"]
+        TR_IND["indicators<br>38个指标"]
         TR_SCH["scheduler<br>定时调度"]
         TR_PRI["priority<br>高优先级币种筛选"]
     end
@@ -519,7 +520,7 @@ graph TD
 | 服务 | 端口 | 职责 | 技术栈 |
 |:---|:---:|:---|:---|
 | **data-service** | - | 加密货币 K线采集、期货指标采集、历史数据回填 | Python, asyncio, ccxt, cryptofeed |
-| **trading-service** | - | 34个技术指标模块计算、高优先级币种筛选、定时调度 | Python, pandas, numpy, TA-Lib |
+| **trading-service** | - | 38个技术指标模块计算、高优先级币种筛选、定时调度 | Python, pandas, numpy, TA-Lib |
 | **signal-service** | - | 独立信号检测服务（129条规则、8分类、事件发布） | Python, SQLite, psycopg2 |
 | **telegram-service** | - | Bot 交互、排行榜展示、信号推送 UI（通过 adapter 调用 signal-service） | python-telegram-bot, aiohttp |
 | **ai-service** | - | AI 分析、Wyckoff 方法论（作为 telegram-service 子模块） | Gemini/OpenAI/Claude/DeepSeek |
@@ -547,7 +548,7 @@ graph LR
     end
     
     subgraph 指标计算
-        C --> D["📊 trading-service<br>35个指标计算"]
+        C --> D["📊 trading-service<br>38个指标计算"]
         D --> E[("📁 market_data.db<br>SQLite")]
     end
     
@@ -646,8 +647,8 @@ graph LR
 # 1. 下载数据文件
 # 从 HuggingFace 下载 .bin.zst 文件到 backups/timescaledb/
 
-# 2. 恢复表结构
-zstd -d schema.sql.zst -c | psql -h localhost -p 5433 -U postgres -d market_data
+# 2. 恢复表结构（兼容 schema.sql.zst / schema_*.sql.zst）
+zstd -d schema*.sql.zst -c | psql -h localhost -p 5433 -U postgres -d market_data
 
 # 3. 导入 K线数据
 zstd -d candles_1m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d market_data \
@@ -662,7 +663,7 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
 
 </details>
 
-### 📈 技术指标 (34个模块)
+### 📈 技术指标 (38个模块)
 
 <details>
 <summary><strong>点击展开👉 🔥 趋势指标 (8个)</strong></summary>
@@ -869,7 +870,7 @@ tradecat/
 │
 ├── 📂 .github/                     # 社区与安全规范（CI/贡献指南/安全策略）
 │
-├── 📄 mkdocs.yml                   # 文档站配置（docs/ 为入口）
+├── 📄 mkdocs.yml                   # 文档站配置（assets/docs/ 为入口；docs/ 为 symlink 兼容层）
 ├── 📄 pyproject.toml               # 根级工具配置（ruff/pytest 等）
 ├── 📄 Makefile                     # 常用命令聚合
 ├── 📄 README.md                    # 项目说明（本文件）
@@ -986,10 +987,10 @@ tail -f logs/daemon.log
 
 ```bash
 # 查看所有相关进程
-ps aux | grep -E "data-service|trading-service|telegram|simple_scheduler"
+ps aux | grep -E "data-service|trading-service|telegram|signal-service|src\\.simple_scheduler|main\\.py"
 
 # 查看资源占用
-htop -p $(pgrep -d',' -f "simple_scheduler|crypto_trading")
+htop -p $(pgrep -d',' -f "src\\.simple_scheduler|src\\.kline_listener|telegram-service|signal-service|uvicorn")
 ```
 
 </details>
@@ -1149,7 +1150,6 @@ PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -c "\l"
 
 - **Telegram 频道**: [tradecat_ai_channel](https://t.me/tradecat_ai_channel)
 - **Telegram 交流群**: [glue_coding](https://t.me/glue_coding)
-- **Twitter/X**: [123olp](https://x.com/123olp)
 - **Twitter/X**: [123olp](https://x.com/123olp)
 - **discord**:  [tradecat](https://discord.gg/nppHyjrfqX)
 
