@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -26,6 +27,7 @@ from ..observability import metrics
 _sqlite_lock = threading.Lock()
 LOG = logging.getLogger("indicator_service.db")
 _pg_query_total = metrics.counter("pg_query_total", "PG 查询次数")
+_pg_write_total = metrics.counter("pg_write_total", "PG 写入次数")
 _sqlite_commit_total = metrics.counter("sqlite_commit_total", "SQLite 提交次数")
 
 # 共享 PG 连接池（默认行工厂）
@@ -37,6 +39,7 @@ def get_db_counters() -> Dict[str, float]:
     """获取 DB 计数器快照"""
     return {
         "pg_query_total": _pg_query_total.get(),
+        "pg_write_total": _pg_write_total.get(),
         "sqlite_commit_total": _sqlite_commit_total.get(),
     }
 
@@ -44,6 +47,10 @@ def get_db_counters() -> Dict[str, float]:
 def inc_pg_query():
     """记录 PG 查询次数"""
     _pg_query_total.inc()
+
+def inc_pg_write():
+    """记录 PG 写入次数"""
+    _pg_write_total.inc()
 
 
 def inc_sqlite_commit():
@@ -421,6 +428,203 @@ class DataWriter:
                 self._conn = None
 
 
+# ==================== PG 写入（tg_cards schema，严格对齐 SQLite） ====================
+
+class PgDataWriter:
+    """
+    将指标结果写入 PostgreSQL（tg_cards schema）。
+
+    语义对齐 SQLite DataWriter：
+    - 对齐列：缺失补 NULL，多余丢弃
+    - 幂等：先删同一 (交易对, 周期, 数据时间) 再插入
+    - 保留窗口：按 (交易对, 周期) 保留每周期最新 N 条
+    """
+
+    def __init__(self, *, schema: str | None = None) -> None:
+        self.schema = (schema or config.indicator_pg_schema or "tg_cards").strip() or "tg_cards"
+        self._lock = threading.Lock()
+        self._cols_cache: dict[str, list[tuple[str, str]]] = {}
+
+    def _load_table_columns(self, conn, table: str) -> list[tuple[str, str]]:
+        cached = self._cols_cache.get(table)
+        if cached is not None:
+            return cached
+
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = %s AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (self.schema, table),
+            )
+            rows = cur.fetchall() or []
+
+        cols = [(str(r[0]), str(r[1])) for r in rows]
+        self._cols_cache[table] = cols
+        return cols
+
+    def write(self, table: str, df: pd.DataFrame) -> None:
+        with self._lock:
+            with shared_pg_conn() as conn:
+                try:
+                    with conn.cursor() as cur:
+                        self._write_table(conn, cur, table, df)
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+
+    def write_batch(self, data: Dict[str, pd.DataFrame]) -> None:
+        if not data:
+            return
+        with self._lock:
+            with shared_pg_conn() as conn:
+                try:
+                    with conn.cursor() as cur:
+                        for table, df in data.items():
+                            self._write_table(conn, cur, table, df)
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+
+    def _write_table(self, conn, cur, table: str, df: pd.DataFrame) -> None:
+        if df is None or df.empty:
+            return
+
+        cols_meta = self._load_table_columns(conn, table)
+        if not cols_meta:
+            LOG.warning("PG 指标表不存在或不可见: %s.%s（请先初始化 DDL）", self.schema, table)
+            return
+
+        pg_cols = [c for c, _t in cols_meta]
+        df_cols = list(df.columns)
+
+        # 对齐列：缺失补 None，多余丢弃
+        missing = [c for c in pg_cols if c not in df_cols]
+        for c in missing:
+            df[c] = None
+        df = df[pg_cols]
+
+        # NaN -> None（避免 PG 插入 NaN 造成后续聚合/排序异常）
+        df = df.where(pd.notnull(df), None)
+
+        # 幂等删除：同一 (交易对, 周期, 数据时间) 先删再插
+        if {"交易对", "周期", "数据时间"}.issubset(set(pg_cols)):
+            keys = df[["交易对", "周期", "数据时间"]].drop_duplicates()
+            # 过滤空 key，避免误删
+            keys = keys[(keys["交易对"].notna()) & (keys["周期"].notna()) & (keys["数据时间"].notna())]
+            if not keys.empty:
+                delete_sql = sql.SQL(
+                    'DELETE FROM {} WHERE "交易对"=%s AND "周期"=%s AND "数据时间"=%s'
+                ).format(sql.Identifier(self.schema, table))
+                cur.executemany(delete_sql, list(keys.itertuples(index=False, name=None)))
+                inc_pg_write()
+
+        # 插入
+        placeholders = sql.SQL(",").join(sql.Placeholder() for _ in pg_cols)
+        insert_sql = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
+            sql.Identifier(self.schema, table),
+            sql.SQL(",").join(sql.Identifier(c) for c in pg_cols),
+            placeholders,
+        )
+
+        rows: list[tuple] = []
+        for tup in df.itertuples(index=False, name=None):
+            out: list[object] = []
+            for (_col, typ), val in zip(cols_meta, tup):
+                if val is None:
+                    out.append(None)
+                    continue
+                if typ == "integer":
+                    try:
+                        out.append(int(val))
+                    except Exception:
+                        out.append(None)
+                    continue
+                if typ == "double precision":
+                    try:
+                        out.append(float(val))
+                    except Exception:
+                        out.append(None)
+                    continue
+                # text
+                try:
+                    out.append(str(val))
+                except Exception:
+                    out.append(None)
+            rows.append(tuple(out))
+
+        if rows:
+            cur.executemany(insert_sql, rows)
+            inc_pg_write()
+
+        # 保留窗口清理
+        self._cleanup_old_data(cur, table, df)
+
+    def _cleanup_old_data(self, cur, table: str, df: pd.DataFrame) -> None:
+        RETENTION = {
+            "1m": 120,   # 2小时
+            "5m": 120,   # 10小时
+            "15m": 96,   # 24小时
+            "1h": 144,   # 6天
+            "4h": 120,   # 20天，满足长窗口计算
+            "1d": 180,   # 6个月
+            "1w": 104,   # 2年
+        }
+
+        if df is None or df.empty:
+            return
+        if not {"交易对", "周期", "数据时间"}.issubset(set(df.columns)):
+            return
+
+        keys = df[["交易对", "周期"]].drop_duplicates()
+        if keys.empty:
+            return
+
+        by_interval: dict[str, list[str]] = {}
+        for symbol, interval in keys.itertuples(index=False, name=None):
+            sym = str(symbol).strip() if symbol is not None else ""
+            iv = str(interval).strip() if interval is not None else ""
+            if not sym or not iv:
+                continue
+            by_interval.setdefault(iv, []).append(sym)
+
+        if not by_interval:
+            return
+
+        cleanup_sql = sql.SQL(
+            """
+            WITH ranked AS (
+                SELECT ctid,
+                       row_number() OVER (PARTITION BY {sym_col} ORDER BY {ts_col} DESC) AS rn
+                FROM {tbl}
+                WHERE {period_col} = %s AND {sym_col} = ANY(%s)
+            )
+            DELETE FROM {tbl} t
+            USING ranked r
+            WHERE t.ctid = r.ctid AND r.rn > %s
+            """
+        ).format(
+            tbl=sql.Identifier(self.schema, table),
+            sym_col=sql.Identifier("交易对"),
+            period_col=sql.Identifier("周期"),
+            ts_col=sql.Identifier("数据时间"),
+        )
+
+        for iv, symbols in by_interval.items():
+            limit = int(RETENTION.get(iv, 60))
+            uniq = sorted({s for s in symbols if s})
+            if not uniq:
+                continue
+            cur.execute(cleanup_sql, (iv, uniq, limit))
+            inc_pg_write()
+
+
 # 全局单例
 reader = DataReader()
 writer = DataWriter()
+pg_writer = PgDataWriter()
