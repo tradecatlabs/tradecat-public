@@ -59,8 +59,8 @@ pip install -r requirements.txt
 ### 配置
 
 ```bash
-cp config/.env.example config/.env
-vim config/.env
+cp assets/config/.env.example assets/config/.env
+vim assets/config/.env
 # 设置 TELEGRAM_BOT_TOKEN
 ```
 
@@ -80,7 +80,7 @@ cd /path/to/tradecat
 
 ## 配置说明
 
-### 环境变量 (config/.env)
+### 环境变量 (assets/config/.env)
 
 | 变量 | 必填 | 说明 |
 |:---|:---:|:---|
@@ -205,4 +205,4 @@ python -m src.main
 
 1. 在 Telegram 中找到 @BotFather
 2. 发送 `/newbot` 创建新 Bot
-3. 复制 Token 到 `config/.env`
+3. 复制 Token 到 `assets/config/.env`

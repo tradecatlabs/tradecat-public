@@ -17,7 +17,7 @@ safe_load_env() {
     local file="$1"
     [ -f "$file" ] || return 0
 
-    if [[ "$file" == *"config/.env" ]] && [[ ! "$file" == *".example" ]]; then
+    if [[ ( "$file" == *"assets/config/.env" ) || ( "$file" == *"config/.env" ) ]] && [[ ! "$file" == *".example" ]]; then
         local perm
         perm=$(stat -c %a "$file" 2>/dev/null || echo "")
         if [[ -n "$perm" ]] && [[ "$perm" != "600" && "$perm" != "400" ]]; then
@@ -42,7 +42,11 @@ safe_load_env() {
     done < "$file"
 }
 
-safe_load_env "$PROJECT_ROOT/config/.env"
+ENV_FILE="$PROJECT_ROOT/assets/config/.env"
+if [ ! -f "$ENV_FILE" ] && [ -f "$PROJECT_ROOT/config/.env" ]; then
+    ENV_FILE="$PROJECT_ROOT/config/.env"
+fi
+safe_load_env "$ENV_FILE"
 
 init_dirs() {
     mkdir -p "$RUN_DIR" "$LOG_DIR"

@@ -38,7 +38,9 @@ if str(REPO_ROOT) not in sys.path:
 
 # ================== 提前加载 .env（必须在 cards 导入前）==================
 # cards/i18n.py 在导入时会初始化 I18N，需要先加载环境变量
-_ENV_FILE = REPO_ROOT / "config" / ".env"
+_ENV_FILE = REPO_ROOT / "assets" / "config" / ".env"
+if not _ENV_FILE.exists():
+    _ENV_FILE = REPO_ROOT / "config" / ".env"  # legacy（只读）
 if _ENV_FILE.exists():
     for _line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
         _line = _line.strip()
@@ -49,7 +51,7 @@ if _ENV_FILE.exists():
             os.environ[_key] = _val
 
 # 延后导入依赖于 sys.path 的模块
-from libs.common.i18n import build_i18n_from_env
+from assets.common.i18n import build_i18n_from_env
 
 # 当以脚本方式运行时，显式注册模块别名
 if __name__ == "__main__":
@@ -79,7 +81,9 @@ from telegram.ext import (
 from telegram.error import BadRequest
 
 # ================== 本地 .env 加载 ==================
-ENV_FILE = REPO_ROOT / "config" / ".env"
+ENV_FILE = REPO_ROOT / "assets" / "config" / ".env"
+if not ENV_FILE.exists():
+    ENV_FILE = REPO_ROOT / "config" / ".env"  # legacy（只读）
 
 
 def _load_env_file(env_path: Path) -> None:
@@ -3633,7 +3637,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = (
                 f"👥 **{_t(update, 'admin.users_title', '管理员列表')}**\n\n"
                 f"{admin_list}\n\n"
-                f"💡 在 `config/.env` 中配置 `ADMIN_USER_IDS`"
+                f"💡 在 `assets/config/.env` 中配置 `ADMIN_USER_IDS`"
             )
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(_t(update, "btn.back", "⬅️ 返回"), callback_data="admin_menu")],

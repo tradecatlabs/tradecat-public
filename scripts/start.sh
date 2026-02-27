@@ -50,7 +50,11 @@ log() {
 
 # ==================== 数据库就绪检查 ====================
 check_database() {
-    local config_file="$ROOT/config/.env"
+    local config_file="$ROOT/assets/config/.env"
+    if [ ! -f "$config_file" ] && [ -f "$ROOT/config/.env" ]; then
+        # 兼容旧路径（只读回退，不创建旧目录）
+        config_file="$ROOT/config/.env"
+    fi
     if [ ! -f "$config_file" ]; then
         return 0  # 无配置，跳过检查
     fi

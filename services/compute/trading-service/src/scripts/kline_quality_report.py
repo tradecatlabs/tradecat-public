@@ -50,15 +50,21 @@ def _repo_root() -> Path:
 
 
 def _load_db_url() -> str:
-    env = _read_env(_repo_root() / "config" / ".env")
+    env_file = _repo_root() / "assets" / "config" / ".env"
+    if not env_file.exists():
+        env_file = _repo_root() / "config" / ".env"
+    env = _read_env(env_file)
     url = env.get("DATABASE_URL")
     if not url:
-        raise RuntimeError("DATABASE_URL not found in config/.env")
+        raise RuntimeError("DATABASE_URL not found in assets/config/.env")
     return url
 
 
 def _load_symbols() -> list[str]:
-    env = _read_env(_repo_root() / "config" / ".env")
+    env_file = _repo_root() / "assets" / "config" / ".env"
+    if not env_file.exists():
+        env_file = _repo_root() / "config" / ".env"
+    env = _read_env(env_file)
     groups = [g.strip() for g in env.get("SYMBOLS_GROUPS", "").split(",") if g.strip()]
     if not groups:
         raise RuntimeError("SYMBOLS_GROUPS missing/empty")

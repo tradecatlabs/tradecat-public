@@ -2,8 +2,8 @@
 
 统一配置文件：
 
-- `config/.env`
+- `assets/config/.env`
 
 模板：
 
-- `config/.env.example`
+- `assets/config/.env.example`

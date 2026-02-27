@@ -222,7 +222,7 @@ def main() -> int:
     parser.add_argument("--pg-dsn", default=os.environ.get("PG_DSN", ""), help="PostgreSQL DSN")
     parser.add_argument(
         "--state",
-        default="artifacts/sync_state_market_data.json",
+        default="assets/artifacts/sync_state_market_data.json",
         help="同步水位文件路径",
     )
     parser.add_argument("--tables", default="", help="仅同步指定表，逗号分隔")

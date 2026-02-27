@@ -18,8 +18,10 @@ from typing import List
 SERVICE_ROOT = Path(__file__).parents[1]  # src/config.py -> src -> trading-service
 PROJECT_ROOT = SERVICE_ROOT.parents[2]    # trading-service -> services -> tradecat
 
-# 加载 config/.env
-_env_file = PROJECT_ROOT / "config" / ".env"
+# 加载 assets/config/.env（优先）→ config/.env（兼容只读回退）
+_env_file = PROJECT_ROOT / "assets" / "config" / ".env"
+if not _env_file.exists():
+    _env_file = PROJECT_ROOT / "config" / ".env"
 if _env_file.exists():
     for line in _env_file.read_text().splitlines():
         line = line.strip()

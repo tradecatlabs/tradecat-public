@@ -20,6 +20,33 @@ success() { echo -e "${GREEN}✓ $1${NC}"; }
 fail() { echo -e "${RED}✗ $1${NC}"; exit 1; }
 warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 
+# 0) 目录结构守护（防止旧目录/软链接回潮）
+echo ""
+echo "0. 目录结构守护..."
+
+# 顶层软链接（不允许）
+TOP_SYMLINKS="$(find . -maxdepth 1 -type l -print 2>/dev/null | tr '\n' ' ' | xargs echo)"
+if [ -n "${TOP_SYMLINKS:-}" ]; then
+    fail "发现顶层 symlink（禁止）：${TOP_SYMLINKS}"
+else
+    success "顶层无 symlink"
+fi
+
+# 遗留顶层目录/文件（不允许）
+LEGACY_TOP=(config docs tasks artifacts libs)
+LEGACY_FOUND=0
+for d in "${LEGACY_TOP[@]}"; do
+    if [ -e "$d" ]; then
+        warn "发现遗留顶层路径: $d（应迁移到 assets/ 并删除顶层）"
+        LEGACY_FOUND=1
+    fi
+done
+if [ "$LEGACY_FOUND" -ne 0 ]; then
+    fail "目录结构不符合约定：请移除顶层 config/docs/tasks/artifacts/libs"
+else
+    success "目录结构符合 assets/ 约定"
+fi
+
 # 1. 检查 Python 环境
 echo ""
 echo "1. 检查 Python 环境..."
@@ -125,48 +152,49 @@ fi
 # 6. 文档链接检查
 echo ""
 echo "6. 文档链接检查..."
-if [ -f "docs/index.md" ]; then
+DOCS_ROOT="assets/docs"
+if [ -f "$DOCS_ROOT/index.md" ]; then
     BROKEN_LINKS=0
     while IFS= read -r line; do
         if [[ $line =~ \[.*\]\((.*)\) ]]; then
             link="${BASH_REMATCH[1]}"
             if [[ $link != http* ]] && [[ $link != \#* ]]; then
-                full_path="docs/$link"
+                full_path="$DOCS_ROOT/$link"
                 if [ ! -f "$full_path" ] && [ ! -d "$full_path" ]; then
                     warn "死链: $link"
                     BROKEN_LINKS=$((BROKEN_LINKS + 1))
                 fi
             fi
         fi
-    done < docs/index.md
+    done < "$DOCS_ROOT/index.md"
     
     if [ $BROKEN_LINKS -eq 0 ]; then
-        success "docs/index.md 链接检查通过"
+        success "$DOCS_ROOT/index.md 链接检查通过"
     else
         warn "发现 $BROKEN_LINKS 个死链"
     fi
 else
-    warn "docs/index.md 不存在，跳过文档链接检查（团队单入口文档约定已禁用）"
+    warn "$DOCS_ROOT/index.md 不存在，跳过文档链接检查（团队单入口文档约定已禁用）"
 fi
 
 # 7. ADR 编号检查
 echo ""
 echo "7. ADR 编号检查..."
-if [ -d "docs/decisions/adr" ]; then
-    ADR_COUNT=$(ls docs/decisions/adr/*.md 2>/dev/null | wc -l)
+if [ -d "$DOCS_ROOT/decisions/adr" ]; then
+    ADR_COUNT=$(ls "$DOCS_ROOT/decisions/adr"/*.md 2>/dev/null | wc -l)
     success "ADR 文件数: $ADR_COUNT"
 else
-    warn "docs/decisions/adr 目录不存在"
+    warn "$DOCS_ROOT/decisions/adr 目录不存在"
 fi
 
 # 8. Prompt 模板检查
 echo ""
 echo "8. Prompt 模板检查..."
-if [ -d "docs/prompts" ]; then
-    PROMPT_COUNT=$(ls docs/prompts/*.md 2>/dev/null | wc -l)
+if [ -d "$DOCS_ROOT/prompts" ]; then
+    PROMPT_COUNT=$(ls "$DOCS_ROOT/prompts"/*.md 2>/dev/null | wc -l)
     success "Prompt 文件数: $PROMPT_COUNT"
 else
-    warn "docs/prompts 目录不存在"
+    warn "$DOCS_ROOT/prompts 目录不存在"
 fi
 
 # 9. 单元测试 (如有)
@@ -175,6 +203,12 @@ echo "9. 单元测试..."
 if command -v pytest &> /dev/null; then
     if [ -d "tests" ] && [ "$(ls -A tests 2>/dev/null)" ]; then
         if pytest tests/ -q --tb=no 2>/dev/null; then
+            success "单元测试通过"
+        else
+            warn "单元测试失败或无测试"
+        fi
+    elif [ -d "assets/tests" ] && [ "$(ls -A assets/tests 2>/dev/null)" ]; then
+        if pytest assets/tests/ -q --tb=no 2>/dev/null; then
             success "单元测试通过"
         else
             warn "单元测试失败或无测试"

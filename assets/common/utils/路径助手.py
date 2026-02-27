@@ -14,13 +14,24 @@ from typing import Final
 # ---------------- 基础定位 ----------------
 
 def _探测仓库根(start: Path) -> Path:
-    """从当前文件向上查找同时存在 services 与 libs 的目录，找不到则兜底 parents[4]。"""
+    """从当前文件向上查找仓库根目录。
+
+    约定：
+    - 新结构以 `services/` + `assets/config/.env.example` 作为锚点。
+    - 兼容旧结构（`config/.env.example`）仅用于定位 root，不作为写入路径。
+    """
 
     for p in start.parents:
-        if (p / "services").exists() and (p / "libs").exists():
+        if (p / "services").exists() and (p / "assets" / "config" / ".env.example").exists():
             return p
-    # 兜底：假设 libs/common/utils/路径助手.py 深度为 4
-    return start.parents[4]
+        if (p / "services").exists() and (p / "config" / ".env.example").exists():
+            return p
+
+    # 兜底：当前文件位于 assets/common/utils/路径助手.py，仓库根应为 parents[3]
+    fallback_idx = 3
+    if len(start.parents) <= fallback_idx:
+        fallback_idx = len(start.parents) - 1
+    return start.parents[fallback_idx]
 
 
 _HERE: Final[Path] = Path(__file__).resolve()
@@ -38,7 +49,16 @@ def 获取仓库根目录() -> Path:
 def 获取服务根目录(service: str) -> Path:
     """返回指定微服务根目录。"""
 
-    return 仓库根目录 / "services" / service
+    candidates = [
+        仓库根目录 / "services" / "ingestion" / service,
+        仓库根目录 / "services" / "compute" / service,
+        仓库根目录 / "services" / "consumption" / service,
+        仓库根目录 / "services" / service,  # legacy
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[-1]
 
 
 def 获取数据服务CSV目录() -> Path:

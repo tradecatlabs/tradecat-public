@@ -5,7 +5,7 @@
 ## 配置（环境变量）
 
 说明：
-- `scripts/start.sh` 会按顺序加载：`<repo>/config/.env`（只读）→ `<service>/.env`（本地私密，不提交）。
+- `scripts/start.sh` 会按顺序加载：`<repo>/assets/config/.env`（只读）→ `<service>/.env`（本地私密，不提交）。
 - 你也可以直接在 shell 里 `export` 这些变量（纯 CLI）。
 
 - `SHEETS_WRITE_MODE`：写入模式 `webhook|sa`（默认 `webhook`）
@@ -79,7 +79,7 @@ sheets-service 复用 telegram-service 的卡片导出逻辑，因此“指标�
   - `SHEETS_TOP_BANNER_TEXT`：全局广告栏文本（当 `SHEETS_DASHBOARD_BANNER_TEXT` 为空时回退使用）
 - `SHEETS_EXPORT_SYMBOLS_GROUPS`：导出侧覆盖 `SYMBOLS_GROUPS`（例如 `main4`），避免继承全局配置导致看板币种不全
 - `SHEETS_EXPORT_SYMBOLS_UNFILTERED`：`0/1`（`1` 表示导出侧强制关闭币种过滤，等价 `SYMBOLS_GROUPS=auto`）
-  - 常见现象：如果你的全局 `config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。
+  - 常见现象：如果你的全局 `assets/config/.env` 是 `SYMBOLS_GROUPS=main1`（仅 BTC），看板会“只有 BTC”。此时无需改全局配置，只需在 sheets-service 侧设置以上变量即可。
 - 看板源信息：每张卡片的 `标题/更新/排序/提示/最后更新` 会按固定顺序拼接到 **同一单元格**（整行合并），紧贴在表格主体上方。
 - `SHEETS_SYMBOL_TABS`：逗号分隔交易对（默认取 `SYMBOLS_GROUP_main4`，再回退 `BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT`），为每个交易对创建一个中文前缀的子表 `币种查询_<SYMBOL>` 并覆盖写“币种查询真表格（结构化字段）”。
 - `SHEETS_SYMBOL_TAB_PREFIX`：子表名前缀（默认 `币种查询_`）

@@ -146,15 +146,15 @@ check_config() {
     echo ""
     echo "=== 配置文件检查 ==="
     
-    local config_file="$ROOT/config/.env"
-    local config_example="$ROOT/config/.env.example"
+    local config_file="$ROOT/assets/config/.env"
+    local config_example="$ROOT/assets/config/.env.example"
     
     if [ -f "$config_file" ]; then
         local perms=$(stat -c %a "$config_file" 2>/dev/null || stat -f %Lp "$config_file" 2>/dev/null)
         if [ "$perms" = "600" ] || [ "$perms" = "400" ]; then
-            success "config/.env 存在 (权限: $perms)"
+            success "assets/config/.env 存在 (权限: $perms)"
         else
-            warn "config/.env 权限不安全: $perms (建议: chmod 600 config/.env)"
+            warn "assets/config/.env 权限不安全: $perms (建议: chmod 600 assets/config/.env)"
         fi
         
         # 检查关键配置
@@ -174,10 +174,10 @@ check_config() {
         fi
     else
         if [ -f "$config_example" ]; then
-            info "config/.env 不存在，请执行:"
-            echo "    cp config/.env.example config/.env && chmod 600 config/.env"
+            info "assets/config/.env 不存在，请执行:"
+            echo "    cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env"
         else
-            fail "配置模板不存在: config/.env.example"
+            fail "配置模板不存在: assets/config/.env.example"
         fi
     fi
 }
@@ -187,9 +187,9 @@ check_database() {
     echo ""
     echo "=== 数据库连接检查 ==="
     
-    local config_file="$ROOT/config/.env"
+    local config_file="$ROOT/assets/config/.env"
     if [ ! -f "$config_file" ]; then
-        info "跳过数据库检查 (config/.env 不存在)"
+        info "跳过数据库检查 (assets/config/.env 不存在)"
         return 0
     fi
     
@@ -229,13 +229,13 @@ print_summary() {
     echo ""
     echo "下一步："
     
-    local config_file="$ROOT/config/.env"
+    local config_file="$ROOT/assets/config/.env"
     if [ ! -f "$config_file" ]; then
         echo "  1. 创建配置文件:"
-        echo "     cp config/.env.example config/.env && chmod 600 config/.env"
+        echo "     cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env"
         echo ""
         echo "  2. 编辑配置 (必填 BOT_TOKEN, DATABASE_URL):"
-        echo "     vim config/.env"
+        echo "     vim assets/config/.env"
         echo ""
         echo "  3. 启动服务:"
     else

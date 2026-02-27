@@ -37,12 +37,13 @@ echo -e "\n${YELLOW}[2/6] 初始化服务环境...${NC}"
 
 # ========== 3. 配置文件 ==========
 echo -e "\n${YELLOW}[3/6] 配置文件...${NC}"
-if [ ! -f "$ROOT/config/.env" ]; then
-    cp "$ROOT/config/.env.example" "$ROOT/config/.env"
-    chmod 600 "$ROOT/config/.env" 2>/dev/null || true
-    echo -e "  ✅ 已创建 config/.env（请编辑 BOT_TOKEN / DATABASE_URL 等）"
+if [ ! -f "$ROOT/assets/config/.env" ]; then
+    mkdir -p "$ROOT/assets/config" 2>/dev/null || true
+    cp "$ROOT/assets/config/.env.example" "$ROOT/assets/config/.env"
+    chmod 600 "$ROOT/assets/config/.env" 2>/dev/null || true
+    echo -e "  ✅ 已创建 assets/config/.env（请编辑 BOT_TOKEN / DATABASE_URL 等）"
 else
-    echo -e "  ⏭️ config/.env 已存在"
+    echo -e "  ⏭️ assets/config/.env 已存在"
 fi
 
 # ========== 4. 数据目录 ==========
@@ -70,7 +71,7 @@ echo -e "\n${GREEN}✅ 安装完成！${NC}"
 echo ""
 echo "下一步："
 echo "  1. 编辑配置文件:"
-echo "     - config/.env (设置 BOT_TOKEN / DATABASE_URL / 代理等)"
+echo "     - assets/config/.env (设置 BOT_TOKEN / DATABASE_URL / 代理等)"
 echo ""
 echo "  2. 导入数据库 schema (如果是新数据库):"
 echo "     # LF（低频/分时/K线与指标库）"

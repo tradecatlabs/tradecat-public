@@ -53,7 +53,7 @@ async def call_llm(
 async def _call_api(messages: List[Dict[str, str]], model: str) -> Tuple[str, str]:
     """通过 API 网关调用"""
     try:
-        from libs.common.utils.LLM客户端 import 创建LLM客户端
+        from assets.common.utils.LLM客户端 import 创建LLM客户端
 
         if HTTP_PROXY:
             os.environ["HTTP_PROXY"] = HTTP_PROXY
@@ -134,7 +134,7 @@ async def _call_gemini_cli(messages: List[Dict[str, str]], model: str) -> Tuple[
     import asyncio
 
     try:
-        from libs.common.utils.gemini_client import call_gemini_with_system
+        from assets.common.utils.gemini_client import call_gemini_with_system
 
         # 提取 system 和 user 消息
         system_prompt = None

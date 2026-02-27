@@ -40,7 +40,11 @@ DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
 
 def load_env():
     """加载 .env 配置"""
-    env_file = ROOT / "config" / ".env"
+    env_file = ROOT / "assets" / "config" / ".env"
+    if not env_file.exists():
+        # 兼容旧路径（只读回退）
+        legacy = ROOT / "config" / ".env"
+        env_file = legacy if legacy.exists() else env_file
     if env_file.exists():
         with open(env_file) as f:
             for line in f:
@@ -55,7 +59,7 @@ def get_db_connection():
     """获取数据库连接"""
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
-        raise ValueError("DATABASE_URL 未配置，请检查 config/.env")
+        raise ValueError("DATABASE_URL 未配置，请检查 assets/config/.env")
     return psycopg2.connect(db_url)
 
 

@@ -6,5 +6,4 @@
 
 设计入口：
 
-- `docs/analysis/INDEX.md`
-
+- `assets/docs/analysis/INDEX.md`

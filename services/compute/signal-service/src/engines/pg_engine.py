@@ -71,14 +71,16 @@ def _validate_symbols(symbols: list[str]) -> list[str]:
 
 
 def _load_env_file() -> dict:
-    """加载 config/.env 文件"""
+    """加载 assets/config/.env 文件（优先），兼容回退到 config/.env（只读）。"""
     from pathlib import Path
 
-    # 查找 config/.env
+    # 查找 assets/config/.env
     current = Path(__file__).resolve()
     for _ in range(6):  # 最多向上查找 6 层
         current = current.parent
-        env_file = current / "config" / ".env"
+        env_file = current / "assets" / "config" / ".env"
+        if not env_file.exists():
+            env_file = current / "config" / ".env"
         if env_file.exists():
             result = {}
             for line in env_file.read_text().splitlines():
@@ -94,7 +96,7 @@ def _get_default_symbols() -> list[str]:
     """
     从全局配置获取监控币种
 
-    读取 config/.env 中的配置：
+    读取 assets/config/.env 中的配置：
     - SIGNAL_SYMBOLS: 直接指定（优先级最高）
     - SYMBOLS_GROUPS + SYMBOLS_GROUP_*: 分组配置
     - SYMBOLS_EXTRA / SYMBOLS_EXCLUDE: 额外添加/排除

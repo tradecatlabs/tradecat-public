@@ -4,12 +4,12 @@
 
 ## 设计/运维索引
 
-- `docs/analysis/INDEX.md`
+- `assets/docs/analysis/INDEX.md`
 
 ## 任务索引
 
-- `tasks/INDEX.md`
+- `assets/tasks/INDEX.md`
 
 ## 变更日志
 
-- `docs/changelog.md`
+- `assets/docs/changelog.md`

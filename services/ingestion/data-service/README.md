@@ -54,8 +54,8 @@ pip install -r requirements.txt
 ### 配置
 
 ```bash
-cp config/.env.example config/.env
-vim config/.env
+cp assets/config/.env.example assets/config/.env
+vim assets/config/.env
 ```
 
 ### 启动
@@ -75,7 +75,7 @@ PYTHONPATH=src python3 -m collectors.backfill --all  # 补齐
 
 ## 配置说明
 
-### 环境变量 (config/.env)
+### 环境变量 (assets/config/.env)
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|

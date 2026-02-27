@@ -21,7 +21,7 @@ safe_load_env() {
     [ -f "$file" ] || return 0
 
     # 检查权限（生产环境强制 600）
-    if [[ "$file" == *"config/.env" ]] && [[ ! "$file" == *".example" ]]; then
+    if [[ ( "$file" == *"assets/config/.env" ) || ( "$file" == *"config/.env" ) ]] && [[ ! "$file" == *".example" ]]; then
         local perm
         perm=$(stat -c %a "$file" 2>/dev/null || echo "")
         if [[ -n "$perm" && "$perm" != "600" && "$perm" != "400" ]]; then
@@ -50,7 +50,11 @@ safe_load_env() {
     done < "$file"
 }
 
-safe_load_env "$PROJECT_ROOT/config/.env"
+ENV_FILE="$PROJECT_ROOT/assets/config/.env"
+if [ ! -f "$ENV_FILE" ] && [ -f "$PROJECT_ROOT/config/.env" ]; then
+    ENV_FILE="$PROJECT_ROOT/config/.env"
+fi
+safe_load_env "$ENV_FILE"
 
 # 激活虚拟环境（优先用 telegram-service 的）
 TELEGRAM_VENV="$PROJECT_ROOT/services/consumption/telegram-service/.venv"
@@ -96,7 +100,7 @@ except ImportError:
 
 # 检查 gemini_client
 try:
-    from libs.common.utils.gemini_client import call_gemini_with_system  # noqa: F401
+    from assets.common.utils.gemini_client import call_gemini_with_system  # noqa: F401
     print('✅ gemini_client')
 except ImportError as e:
     print(f'⚠️  gemini_client: {e}')

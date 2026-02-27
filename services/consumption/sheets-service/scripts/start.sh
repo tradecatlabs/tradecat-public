@@ -11,7 +11,7 @@ find_repo_root() {
     local start="$1"
     local p="$start"
     while [[ -n "$p" && "$p" != "/" ]]; do
-        if [[ -d "$p/services" && -e "$p/config/.env.example" && ( -d "$p/assets" || -d "$p/libs" ) ]]; then
+        if [[ -d "$p/services" && ( -e "$p/assets/config/.env.example" || -e "$p/config/.env.example" ) && ( -d "$p/assets" || -d "$p/libs" ) ]]; then
             echo "$p"
             return 0
         fi
@@ -22,7 +22,7 @@ find_repo_root() {
 
 PROJECT_ROOT="$(find_repo_root "$SERVICE_DIR" || true)"
 if [[ -z "$PROJECT_ROOT" ]]; then
-    echo "❌ 错误: 无法定位 PROJECT_ROOT（从 $SERVICE_DIR 向上未找到 services + config/.env.example + assets|libs）"
+    echo "❌ 错误: 无法定位 PROJECT_ROOT（从 $SERVICE_DIR 向上未找到 services + assets/config/.env.example）"
     exit 1
 fi
 
@@ -36,7 +36,7 @@ STOP_TIMEOUT=10
 safe_load_env() {
     local file="$1"
     [ -f "$file" ] || return 0
-    if [[ "$file" == *"config/.env" ]] && [[ ! "$file" == *".example" ]]; then
+    if [[ ( "$file" == *"assets/config/.env" ) || ( "$file" == *"config/.env" ) ]] && [[ ! "$file" == *".example" ]]; then
         local perm
         perm=$(stat -c %a "$file" 2>/dev/null || echo "")
         if [[ -n "$perm" && "$perm" != "600" && "$perm" != "400" ]]; then
@@ -60,7 +60,11 @@ safe_load_env() {
     done < "$file"
 }
 
-safe_load_env "$PROJECT_ROOT/config/.env"
+ENV_FILE="$PROJECT_ROOT/assets/config/.env"
+if [ ! -f "$ENV_FILE" ] && [ -f "$PROJECT_ROOT/config/.env" ]; then
+    ENV_FILE="$PROJECT_ROOT/config/.env"
+fi
+safe_load_env "$ENV_FILE"
 safe_load_env "$SERVICE_DIR/.env"
 
 init_dirs() {

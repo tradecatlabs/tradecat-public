@@ -171,9 +171,9 @@ networkingMode=mirrored
 ./scripts/init.sh
 
 # 2) 填写全局配置（含 BOT_TOKEN / DB / 代理 等）
-cp config/.env.example config/.env && chmod 600 config/.env
-# 端口：默认 LF=5433（K线/指标）、HF=15432（原子事实），见 config/.env.example
-vim config/.env
+cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
+# 端口：默认 LF=5433（K线/指标）、HF=15432（原子事实），见 assets/config/.env.example
+vim assets/config/.env
 
 # 3) 启动核心服务（ai + signal + telegram + trading）
 ./scripts/start.sh start
@@ -188,10 +188,10 @@ vim config/.env
 
 ### ⚙️ 配置（必须）
 
-- 路径：`config/.env`（需手动从 `.env.example` 复制；或运行 `./scripts/install.sh` 自动生成），权限需 600，服务启动脚本会强制校验。  
+- 路径：`assets/config/.env`（需手动从 `.env.example` 复制；或运行 `./scripts/install.sh` 自动生成），权限需 600，服务启动脚本会强制校验。  
 - **TimescaleDB 端口说明**（重要，按仓库现状）：
-  - LF（低频/分时/K线与指标）：`DATABASE_URL` 默认 `localhost:5433/market_data`（见 `config/.env.example`）
-  - HF（高频/原子事实）：`BINANCE_VISION_DATABASE_URL` 默认 `localhost:15432/market_data`（见 `config/.env.example`）
+  - LF（低频/分时/K线与指标）：`DATABASE_URL` 默认 `localhost:5433/market_data`（见 `assets/config/.env.example`）
+  - HF（高频/原子事实）：`BINANCE_VISION_DATABASE_URL` 默认 `localhost:15432/market_data`（见 `assets/config/.env.example`）
   - 若你在私有环境使用其它端口（例如历史文档曾提及 5434）：请全局统一端口与脚本/命令；仓库当前示例以 5433/15432 为准。<!-- TODO: 若仓库正式迁移到其它端口，请补“统一替换列表与执行顺序” -->
 - 核心字段：  
   - `DATABASE_URL`（TimescaleDB，见下方端口说明）  
@@ -206,7 +206,7 @@ vim config/.env
   - 展示过滤：`BINANCE_API_DISABLED`、`DISABLE_SINGLE_TOKEN_QUERY`、`SNAPSHOT_HIDDEN_FIELDS`、`BLOCKED_SYMBOLS`  
   - AI/交易：`AI_INDICATOR_TABLES`、`AI_INDICATOR_TABLES_DISABLED`、`LLM_BACKEND`、`LLM_API_BASE_URL`、`EXTERNAL_API_KEY`、`LLM_MODEL`、`LLM_MAX_TOKENS`、`AI_LARGE_PAYLOAD_CHAR_LIMIT`、`AI_FORCE_GEMINI_ON_LARGE_PAYLOAD`、`AI_DEFAULT_PROMPT`、`AI_RECORD_ENABLED`、`AI_RECORD_PAYLOAD`、`AI_RECORD_PROMPT`、`AI_RECORD_MESSAGES`、`AI_RECORD_ANALYSIS`、`AI_RECORD_MAX_DIRS`、`BINANCE_API_KEY`、`BINANCE_API_SECRET`
   - 国际化：`DEFAULT_LOCALE`（默认 en）、`SUPPORTED_LOCALES`（zh-CN,en）、`FALLBACK_LOCALE`
-  - Google Sheets（可选，`sheets-service`）：`SHEETS_*` 见 `config/.env.example` 的 “Google Sheets 公共看板” 段落；弱网/代理环境可用 `SHEETS_SA_NET_WRITE_RETRIES` 提升 SA 模式稳定性（默认 2）。
+  - Google Sheets（可选，`sheets-service`）：`SHEETS_*` 见 `assets/config/.env.example` 的 “Google Sheets 公共看板” 段落；弱网/代理环境可用 `SHEETS_SA_NET_WRITE_RETRIES` 提升 SA 模式稳定性（默认 2）。
 
 ### 📦 下载历史数据（可选）
 
@@ -251,13 +251,13 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
   -c "COPY market_data.binance_futures_metrics_5m FROM STDIN WITH (FORMAT binary)"
 ```
 
-> 端口说明：本文与仓库脚本示例按 `config/.env.example` 默认端口（LF=5433，HF=15432）编写；如你改动端口，请同步所有示例命令与脚本配置。
+> 端口说明：本文与仓库脚本示例按 `assets/config/.env.example` 默认端口（LF=5433，HF=15432）编写；如你改动端口，请同步所有示例命令与脚本配置。
 
 ## 🔍 补充检查（2026-01-23）
 
-- **端口选择**：`config/.env.example` 默认 LF=5433、HF=15432；仓库脚本示例亦以此为准。若你自行改动端口，请全局统一。
+- **端口选择**：`assets/config/.env.example` 默认 LF=5433、HF=15432；仓库脚本示例亦以此为准。若你自行改动端口，请全局统一。
 - CI 仅执行 ruff + py_compile 抽样（`.github/workflows/ci.yml`，检查前 50 个 .py 文件），不会跑 tests；提交前本地仍需 `./scripts/verify.sh`。
-- `scripts/install.sh` 会创建 `config/.env`（若不存在）；运行时统一只读 `config/.env`，避免多份配置漂移。
+- `scripts/install.sh` 会创建 `assets/config/.env`（若不存在）；运行时统一只读 `assets/config/.env`，避免多份配置漂移。
 
 ### ✅ 验证安装
 
@@ -315,8 +315,8 @@ cd .. && rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 #### 4. 配置环境变量
 
 ```bash
-# 编辑 `config/.env`（如不存在：cp config/.env.example config/.env && chmod 600 config/.env）
-vim config/.env
+# 编辑 `assets/config/.env`（如不存在：cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env）
+vim assets/config/.env
 ```
 
 关键配置补充（信号服务）：
@@ -324,7 +324,7 @@ vim config/.env
 - `COOLDOWN_SECONDS`（signal-service）：PG 信号冷却时间（秒），可与规则级冷却配合，避免重复推送。
 
 关键配置补充（nofx-dev，预览服务）：
-- `NOFX_*`：nofx-dev 上游地址/鉴权等（见 `config/.env.example` 的 NOFX 段落；nofx-dev 本身也有独立文档）。
+- `NOFX_*`：nofx-dev 上游地址/鉴权等（见 `assets/config/.env.example` 的 NOFX 段落；nofx-dev 本身也有独立文档）。
 
 #### 5. 启动服务
 
@@ -842,16 +842,14 @@ K线维度:
 tradecat/
 │
 ├── 📂 assets/                      # 共享资产根（真实目录）
-│   ├── 📂 common/                  # 共享工具库（`import libs.*` 会映射到这里）
+│   ├── 📂 common/                  # 共享工具库（`import assets.*`）
+│   ├── 📂 config/                  # 全局配置模板/运行时 .env（不提交）
+│   ├── 📂 docs/                    # 项目文档（mkdocs 入口）
+│   ├── 📂 tasks/                   # 任务文档
+│   ├── 📂 artifacts/               # 构建/分析产物（默认忽略）
 │   ├── 📂 database/                # DDL/CSV/SQLite（敏感：勿改写持久化数据）
 │   ├── 📂 repo/                    # 外部仓库镜像（默认忽略）
 │   └── 📂 tests/                   # 资产/SQL/脚本级测试素材
-│
-├── 📂 libs/                        # Python 兼容包：`import libs.*` → `assets/*`（无软链接）
-├── 📂 config/                      # 全局配置（.env 不提交）
-├── 📂 docs/                        # 项目文档（mkdocs 入口）
-├── 📂 tasks/                       # 任务文档
-├── 📂 artifacts/                   # 构建/分析产物（部分忽略）
 │
 ├── 📂 scripts/                     # 全局脚本（install/init/start/verify/check_env/导出/压缩等）
 │
@@ -876,7 +874,7 @@ tradecat/
 │
 ├── 📂 .github/                     # 社区与安全规范（CI/贡献指南/安全策略）
 │
-├── 📄 mkdocs.yml                   # 文档站配置（docs/ 为入口）
+├── 📄 mkdocs.yml                   # 文档站配置（assets/docs 为入口）
 ├── 📄 pyproject.toml               # 根级工具配置（ruff/pytest 等）
 ├── 📄 Makefile                     # 常用命令聚合
 ├── 📄 README.md                    # 项目说明（本文件）

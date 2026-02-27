@@ -8,7 +8,7 @@
 import json
 import requests
 from typing import Dict, List, Optional, Any
-from libs.common.utils.路径助手 import 获取仓库根目录
+from assets.common.utils.路径助手 import 获取仓库根目录
 
 
 class LLM客户端:
@@ -35,8 +35,11 @@ class LLM客户端:
         from dotenv import load_dotenv
         import os
 
-        # 加载.env文件（统一读取 config/.env）
-        env_path = 获取仓库根目录() / "config" / ".env"
+        # 加载.env文件（优先 assets/config/.env；兼容回退到 config/.env）
+        repo_root = 获取仓库根目录()
+        env_path = repo_root / "assets" / "config" / ".env"
+        if not env_path.exists():
+            env_path = repo_root / "config" / ".env"
         load_dotenv(env_path)
 
         # 设置 API 地址（必须来自入参或环境变量）

@@ -13,7 +13,9 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]  # ai-service/
 PROJECT_ROOT = SERVICE_ROOT.parents[2]  # tradecat/
 
 # 加载环境变量
-ENV_PATH = PROJECT_ROOT / "config" / ".env"
+ENV_PATH = PROJECT_ROOT / "assets" / "config" / ".env"
+if not ENV_PATH.exists():
+    ENV_PATH = PROJECT_ROOT / "config" / ".env"  # legacy（只读）
 if ENV_PATH.exists():
     load_dotenv(ENV_PATH)
 

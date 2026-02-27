@@ -47,7 +47,7 @@ except ImportError as e:
 
 # i18n
 try:
-    from libs.common.i18n import normalize_locale, build_i18n_from_env
+    from assets.common.i18n import normalize_locale, build_i18n_from_env
     I18N = build_i18n_from_env()
 except ImportError:
     I18N = None
@@ -61,7 +61,7 @@ prompt_registry = PromptRegistry() if PromptRegistry else None
 def get_configured_symbols() -> List[str]:
     """获取配置的币种列表"""
     try:
-        from libs.common.symbols import get_configured_symbols as _get
+        from assets.common.symbols import get_configured_symbols as _get
         return _get()
     except Exception as e:
         logger.warning(f"获取配置币种失败: {e}")

@@ -10,14 +10,17 @@ PID_FILE="$PROJECT_DIR/logs/signal-service.pid"
 LOG_FILE="$PROJECT_DIR/logs/signal-service.log"
 
 # 加载配置
-ENV_FILE="$REPO_ROOT/config/.env"
+ENV_FILE="$REPO_ROOT/assets/config/.env"
+if [ ! -f "$ENV_FILE" ] && [ -f "$REPO_ROOT/config/.env" ]; then
+    ENV_FILE="$REPO_ROOT/config/.env"
+fi
 # 安全加载 .env（只读键值解析，拒绝危险行）
 safe_load_env() {
     local file="$1"
     [ -f "$file" ] || return 0
 
     # 检查权限（生产环境强制 600）
-    if [[ "$file" == *"config/.env" ]] && [[ ! "$file" == *".example" ]]; then
+    if [[ ( "$file" == *"assets/config/.env" ) || ( "$file" == *"config/.env" ) ]] && [[ ! "$file" == *".example" ]]; then
         local perm
         perm=$(stat -c %a "$file" 2>/dev/null || echo "")
         if [[ -n "$perm" && "$perm" != "600" && "$perm" != "400" ]]; then

@@ -11,7 +11,12 @@ SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
 find_project_root() {
     local current="$1"
     for _ in {1..12}; do
+        if [[ -f "$current/assets/config/.env.example" ]] && [[ -d "$current/services" ]]; then
+            echo "$current"
+            return 0
+        fi
         if [[ -f "$current/config/.env.example" ]] && [[ -d "$current/services" ]]; then
+            # 兼容旧路径（仅用于定位 root）
             echo "$current"
             return 0
         fi
@@ -39,7 +44,7 @@ safe_load_env() {
     [ -f "$file" ] || return 0
     
     # 检查权限（生产环境强制 600）
-    if [[ "$file" == *"config/.env" ]] && [[ ! "$file" == *".example" ]]; then
+    if [[ ( "$file" == *"assets/config/.env" ) || ( "$file" == *"config/.env" ) ]] && [[ ! "$file" == *".example" ]]; then
         local perm=$(stat -c %a "$file" 2>/dev/null)
         if [[ "$perm" != "600" && "$perm" != "400" ]]; then
             if [[ "${CODESPACES:-}" == "true" ]]; then
@@ -68,8 +73,12 @@ safe_load_env() {
 }
 
 # 加载全局配置 → 服务配置
-safe_load_env "$PROJECT_ROOT/config/.env"
-# 配置已统一到 config/.env
+ENV_FILE="$PROJECT_ROOT/assets/config/.env"
+if [ ! -f "$ENV_FILE" ] && [ -f "$PROJECT_ROOT/config/.env" ]; then
+    ENV_FILE="$PROJECT_ROOT/config/.env"
+fi
+safe_load_env "$ENV_FILE"
+# 配置已统一到 assets/config/.env
 if [ -z "${BINANCE_PING_URL:-}" ]; then
     if [ -n "${BINANCE_REST_BASE_MAINNET:-}" ]; then
         BINANCE_PING_URL="${BINANCE_REST_BASE_MAINNET%/}/api/v3/ping"

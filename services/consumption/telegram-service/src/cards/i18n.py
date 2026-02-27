@@ -14,7 +14,7 @@ from typing import Optional
 
 from telegram import InlineKeyboardButton
 
-from libs.common.i18n import build_i18n_from_env
+from assets.common.i18n import build_i18n_from_env
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOCALE_STORE = PROJECT_ROOT / "data" / "user_locale.json"

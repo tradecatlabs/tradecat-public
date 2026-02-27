@@ -132,7 +132,7 @@ If this project helps you, please consider supporting 🙏
 
 **Method 1: Complete Deployment Prompt (Recommended)**
 
-📄 **[docs/analysis/DEPLOY_PROMPT.md](docs/analysis/DEPLOY_PROMPT.md)** - Contains detailed 10-step deployment process:
+📄 **[assets/docs/analysis/DEPLOY_PROMPT.md](assets/docs/analysis/DEPLOY_PROMPT.md)** - Contains detailed 10-step deployment process:
 - Auto system dependencies installation
 - Service initialization and configuration
 - HuggingFace historical data auto download & import
@@ -186,8 +186,8 @@ Restart WSL: `wsl --shutdown`, then use the AI installation prompt above.
 ./scripts/init.sh
 
 # 2) Fill global config (DB / BOT_TOKEN / proxy)
-cp config/.env.example config/.env && chmod 600 config/.env
-vim config/.env
+cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
+vim assets/config/.env
 
 # 3) Start core services (ai + signal + telegram + trading)
 ./scripts/start.sh start
@@ -202,7 +202,7 @@ vim config/.env
 
 ### ⚙️ Configuration (required)
 
-- Location: `config/.env` (create by copying `config/.env.example`, or run `./scripts/install.sh` to generate), must be chmod 600, startup scripts will enforce this.  
+- Location: `assets/config/.env` (create by copying `assets/config/.env.example`, or run `./scripts/install.sh` to generate), must be chmod 600, startup scripts will enforce this.  
 - Default ports (repo examples are written for this): LF TimescaleDB = `5433` (`DATABASE_URL`), HF TimescaleDB = `15432` (`BINANCE_VISION_DATABASE_URL`). If you customize ports, update scripts and examples consistently.
 - Key fields:  
   - `DATABASE_URL` (TimescaleDB, see port note below)  
@@ -265,9 +265,9 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
 
 ## 🔍 Additional Checks (2026-01-09)
 
-- **Port selection**: `config/.env.example` defaults to LF=5433 / HF=15432; keep scripts and services consistent if you change ports.
+- **Port selection**: `assets/config/.env.example` defaults to LF=5433 / HF=15432; keep scripts and services consistent if you change ports.
 - CI only runs ruff + py_compile sampling (`.github/workflows/ci.yml`, checks first 50 .py files), doesn't run tests; still need `./scripts/verify.sh` locally before commit.
-- `scripts/install.sh` creates `config/.env` if missing; runtime reads `config/.env` as the single source of truth.
+- `scripts/install.sh` creates `assets/config/.env` if missing; runtime reads `assets/config/.env` as the single source of truth.
 
 ### 🗄️ Custom Port Note (Optional)
 
@@ -330,7 +330,7 @@ cd .. && rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
 ```bash
 # Edit service configs (init.sh auto-copies from .env.example)
-vim config/.env
+vim assets/config/.env
 ```
 
 Signal service tips:
@@ -854,16 +854,14 @@ Futures Dimension:
 tradecat/
 │
 ├── 📂 assets/                      # Shared asset root (real directory)
-│   ├── 📂 common/                  # Shared utilities (`import libs.*` maps here)
+│   ├── 📂 common/                  # Shared utilities (`import assets.*`)
+│   ├── 📂 config/                  # Global config templates / runtime .env (must NOT be committed)
+│   ├── 📂 docs/                    # Project docs (mkdocs entry)
+│   ├── 📂 tasks/                   # Task blueprints
+│   ├── 📂 artifacts/               # Build/analysis artifacts (ignored by default)
 │   ├── 📂 database/                # DDL/CSV/SQLite (sensitive: do NOT rewrite persisted data)
 │   ├── 📂 repo/                    # External repo mirrors (ignored by default)
 │   └── 📂 tests/                   # Asset/SQL/script-level test fixtures
-│
-├── 📂 libs/                        # Python compatibility package: `import libs.*` → `assets/*` (no symlinks)
-├── 📂 config/                      # Global config (.env must NOT be committed)
-├── 📂 docs/                        # Project docs (mkdocs entry)
-├── 📂 tasks/                       # Task blueprints
-├── 📂 artifacts/                   # Build/analysis artifacts (partially ignored)
 │
 ├── 📂 scripts/                     # Global scripts (install/init/start/verify/check_env/export/compress)
 │
@@ -891,7 +889,7 @@ tradecat/
 │   ├── CODE_OF_CONDUCT.md
 │   └── SECURITY.md
 │
-├── mkdocs.yml                      # Docs site config (docs/ as source)
+├── mkdocs.yml                      # Docs site config (assets/docs as source)
 ├── pyproject.toml                  # Root tool config (ruff/pytest/etc.)
 ├── Makefile                        # Common commands
 ├── README.md                       # Project documentation (Chinese)

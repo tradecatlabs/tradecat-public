@@ -163,15 +163,15 @@ check_config() {
     echo ""
     echo "=== 配置文件 ==="
     
-    local config_file="$ROOT/config/.env"
+    local config_file="$ROOT/assets/config/.env"
     
     if [ -f "$config_file" ]; then
         # 权限检查
         local perms=$(stat -c %a "$config_file" 2>/dev/null || stat -f %Lp "$config_file" 2>/dev/null)
         if [ "$perms" = "600" ] || [ "$perms" = "400" ]; then
-            success "config/.env: 权限 $perms"
+            success "assets/config/.env: 权限 $perms"
         else
-            warn "config/.env: 权限 $perms (建议 600)"
+            warn "assets/config/.env: 权限 $perms (建议 600)"
         fi
         
         # 必填字段检查
@@ -214,8 +214,8 @@ check_config() {
             info "COOLDOWN_SECONDS: 未配置，使用代码默认值"
         fi
     else
-        fail "config/.env 不存在"
-        echo "      创建: cp config/.env.example config/.env && chmod 600 config/.env"
+        fail "assets/config/.env 不存在"
+        echo "      创建: cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env"
     fi
 }
 
@@ -224,9 +224,9 @@ check_database() {
     echo ""
     echo "=== 数据库连接 ==="
     
-    local config_file="$ROOT/config/.env"
+    local config_file="$ROOT/assets/config/.env"
     if [ ! -f "$config_file" ]; then
-        info "跳过 (config/.env 不存在)"
+        info "跳过 (assets/config/.env 不存在)"
         return 0
     fi
     
@@ -340,7 +340,7 @@ check_network() {
     echo ""
     echo "=== 网络连接 ==="
     
-    local config_file="$ROOT/config/.env"
+    local config_file="$ROOT/assets/config/.env"
     local proxy=""
     
     if [ -f "$config_file" ]; then

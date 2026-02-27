@@ -64,8 +64,8 @@ pip install tradingpattern --no-deps
 ### 配置
 
 ```bash
-cp config/.env.example config/.env
-vim config/.env
+cp assets/config/.env.example assets/config/.env
+vim assets/config/.env
 ```
 
 ### 启动
@@ -89,7 +89,7 @@ python3 -m src --once --symbols BTCUSDT,ETHUSDT --intervals 5m,15m
 
 ## 配置说明
 
-### 环境变量 (config/.env)
+### 环境变量 (assets/config/.env)
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|

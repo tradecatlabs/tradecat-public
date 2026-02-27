@@ -19,9 +19,12 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]  # services/ingestion/binance
 
 
 def _find_project_root(start: Path) -> Path:
-    """向上查找仓库根目录（以 config/.env.example 与 services/ 作为锚点）。"""
+    """向上查找仓库根目录（以 assets/config/.env.example 与 services/ 作为锚点）。"""
     current = start
     for _ in range(12):
+        if (current / "assets" / "config" / ".env.example").exists() and (current / "services").is_dir():
+            return current
+        # 兼容旧路径（仅用于定位 root）
         if (current / "config" / ".env.example").exists() and (current / "services").is_dir():
             return current
         if current.parent == current:
@@ -57,7 +60,10 @@ def _load_env_defaults_from_file(env_file: Path) -> None:
 
 
 PROJECT_ROOT = _find_project_root(SERVICE_ROOT)
-_load_env_defaults_from_file(PROJECT_ROOT / "config" / ".env")
+_env_file = PROJECT_ROOT / "assets" / "config" / ".env"
+if not _env_file.exists():
+    _env_file = PROJECT_ROOT / "config" / ".env"  # legacy（只读）
+_load_env_defaults_from_file(_env_file)
 
 
 @dataclass(frozen=True)

@@ -15,8 +15,11 @@ from pathlib import Path
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# 加载 config/.env
-_env_file = Path(__file__).resolve().parents[4] / "config" / ".env"
+# 加载 assets/config/.env（优先）→ config/.env（兼容只读回退）
+_repo_root = Path(__file__).resolve().parents[4]
+_env_file = _repo_root / "assets" / "config" / ".env"
+if not _env_file.exists():
+    _env_file = _repo_root / "config" / ".env"
 if _env_file.exists():
     for line in _env_file.read_text().splitlines():
         line = line.strip()

@@ -10,13 +10,13 @@
 
 - 修改服务代码：`services/**/src/`
 - 修改服务脚本：`services/*/scripts/` 与 `scripts/`
-- 更新文档：`README.md`、`README_EN.md`、`AGENTS.md`、`docs/**`
-- 更新配置模板：`config/.env.example`
+- 更新文档：`README.md`、`README_EN.md`、`AGENTS.md`、`assets/docs/**`
+- 更新配置模板：`assets/config/.env.example`
 
 ### 禁止
 
-- 禁止修改生产配置：`config/.env`（包含密钥/凭证）
-- 禁止删除或改写数据库文件：`assets/database/**`（`libs/` 为 Python 兼容包；除非任务明确要求）
+- 禁止修改生产配置：`assets/config/.env`（包含密钥/凭证）
+- 禁止删除或改写数据库文件：`assets/database/**`（除非任务明确要求）
 - 禁止大范围重构（无明确任务授权）
 - 禁止引入未经验证的第三方依赖（新增依赖必须同时更新锁文件/说明）
 
@@ -24,8 +24,8 @@
 
 | 路径 | 说明 |
 |:---|:---|
-| `config/.env` | 运行时私密配置（不提交） |
-| `assets/database/services/**` | SQLite 持久化与审计数据（`libs/` 为 Python 兼容包） |
+| `assets/config/.env` | 运行时私密配置（不提交） |
+| `assets/database/services/**` | SQLite 持久化与审计数据 |
 | `backups/` | 导出/备份产物 |
 
 ---
@@ -40,8 +40,8 @@
 ./scripts/init.sh
 
 # 2) 准备配置（模板 → 运行时）
-cp config/.env.example config/.env && chmod 600 config/.env
-vim config/.env
+cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
+vim assets/config/.env
 
 # 3) 启动核心服务
 ./scripts/start.sh start
@@ -99,7 +99,7 @@ ingestion  -> TimescaleDB (LF/HF) -> compute -> (SQLite | PG:tg_cards) -> consum
   - 证据：CI 使用 Python 3.12（`.github/workflows/ci.yml`）
   - 证据：各服务 `services/*/*/pyproject.toml` 声明 `requires-python = ">=3.12"`
 - 脚本最低门槛：`scripts/init.sh` 检查 Python >= 3.10（不代表所有服务在 3.10 下可用）
-- 数据库端口（模板默认，来源：`config/.env.example`）：
+- 数据库端口（模板默认，来源：`assets/config/.env.example`）：
   - LF：`DATABASE_URL` 默认 `localhost:5433/market_data`
   - HF（可选）：`BINANCE_VISION_DATABASE_URL` 默认 `localhost:15432/market_data`
 
@@ -108,7 +108,7 @@ ingestion  -> TimescaleDB (LF/HF) -> compute -> (SQLite | PG:tg_cards) -> consum
 1) 先确认仓库/服务内是否已存在相同依赖  
 2) 只在对应服务的 `requirements*.txt` 或 `pyproject.toml` 增加  
 3) 如仓库要求锁定：同步更新 `requirements.lock.txt`（服务内已有）  
-4) 文档同步：`config/.env.example` / README / AGENTS 需要同步说明
+4) 文档同步：`assets/config/.env.example` / README / AGENTS 需要同步说明
 
 ---
 
@@ -124,11 +124,15 @@ ingestion  -> TimescaleDB (LF/HF) -> compute -> (SQLite | PG:tg_cards) -> consum
 
 ```text
 tradecat/
-├── config/
-├── docs/
-├── tasks/
-├── artifacts/
-├── libs/                      # Python 兼容包：`import libs.*` → `assets/*`（无软链接）
+├── assets/
+│   ├── common/                # 共享工具库（`import assets.*`）
+│   ├── config/                # 配置模板/运行时 .env（不提交）
+│   ├── docs/                  # 项目文档（mkdocs 入口）
+│   ├── tasks/                 # 任务文档
+│   ├── artifacts/             # 构建/分析产物（默认忽略）
+│   ├── database/              # DDL/CSV/SQLite（敏感：勿改写持久化数据）
+│   ├── repo/                  # 外部仓库镜像（默认忽略）
+│   └── tests/                 # 资产/SQL/脚本级测试素材
 ├── scripts/
 │   ├── init.sh
 │   ├── start.sh
@@ -156,13 +160,13 @@ tradecat/
 ### `.env` 权限导致服务启动失败
 
 ```bash
-chmod 600 config/.env
+chmod 600 assets/config/.env
 ```
 
 ### TimescaleDB 端口不一致
 
-- 证据：`config/.env.example` 默认 LF=5433、HF=15432
-- 修复：统一 `config/.env` 中的端口，并同步所有脚本/示例命令
+- 证据：`assets/config/.env.example` 默认 LF=5433、HF=15432
+- 修复：统一 `assets/config/.env` 中的端口，并同步所有脚本/示例命令
 
 ### TA-Lib 安装失败（形态指标需要）
 
@@ -208,7 +212,7 @@ pip install TA-Lib
 当你修改了以下任一项，必须同步更新文档：
 
 - 新增/修改命令：更新 `README.md` / `AGENTS.md`
-- 新增/修改配置项：更新 `config/.env.example`，并在 `README.md` / `AGENTS.md` 说明
+- 新增/修改配置项：更新 `assets/config/.env.example`，并在 `README.md` / `AGENTS.md` 说明
 - 目录结构/服务职责变更：更新 `README.md` / `AGENTS.md`
 
 不确定项必须写 `TODO` 并标注需要核对的文件路径/字段名，禁止猜测。
