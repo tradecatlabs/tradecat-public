@@ -54,8 +54,8 @@ pids/
 *.pid
 *.log
 cache/
-artifacts/
-assets/artifacts/
+/artifacts/
+services/**/artifacts/
 assets/artifacts/cache/
 assets/artifacts/dist/
 assets/artifacts/coverage/
