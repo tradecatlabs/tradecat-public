@@ -13,3 +13,6 @@
 \ir ../schema/004_continuous_aggregates.sql
 \ir ../schema/005_metrics_5m.sql
 \ir ../schema/007_metrics_cagg_from_5m.sql
+
+-- TG 卡片/指标派生表（对齐 telegram-service SQLite 结构）
+\ir ../schema/021_tg_cards_sqlite_parity.sql
