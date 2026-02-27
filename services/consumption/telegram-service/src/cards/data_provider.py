@@ -774,7 +774,14 @@ class PgRankingDataProvider:
     """
 
     def __init__(self, *, dsn: str | None = None, schema: str | None = None) -> None:
+        try:
+            import psycopg  # noqa: F401  # type: ignore
+        except Exception as exc:
+            raise RuntimeError("psycopg 未安装，无法启用 PG 指标读取") from exc
+
         self.dsn = (dsn or os.environ.get("INDICATOR_PG_URL") or os.environ.get("DATABASE_URL") or "").strip()
+        if not self.dsn:
+            raise RuntimeError("DATABASE_URL 未设置，无法启用 PG 指标读取")
         self.schema = (schema or os.environ.get("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
         self._pool = _get_pg_pool(self.dsn)
         self._cols_cache: Dict[str, List[str]] = {}
