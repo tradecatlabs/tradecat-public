@@ -24,13 +24,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # 数据库路径
-_indicator_env = (os.getenv("INDICATOR_SQLITE_PATH") or "").strip()
-if _indicator_env:
-    _p = Path(_indicator_env)
-    INDICATOR_DB = _p if _p.is_absolute() else (PROJECT_ROOT / _p)
-else:
-    INDICATOR_DB = PROJECT_ROOT / "assets" / "database" / "services" / "telegram-service" / "market_data.db"
-
 # Bot Token（复用 telegram-service 配置）
 BOT_TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
 

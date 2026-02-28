@@ -38,17 +38,6 @@ class Settings:
         "postgresql://postgres:postgres@localhost:5433/market_data"
     )
 
-    # SQLite 路径（迁移期兼容；目标是全 PG）
-    SQLITE_INDICATORS_PATH: Path = (
-        _resolve_repo_path(
-            "INDICATOR_SQLITE_PATH",
-            PROJECT_ROOT / "assets" / "database" / "services" / "telegram-service" / "market_data.db",
-        )
-    )
-    SQLITE_COOLDOWN_PATH: Path = (
-        PROJECT_ROOT / "assets" / "database" / "services" / "signal-service" / "cooldown.db"
-    )
-
 
 _PG_POOL: ConnectionPool | None = None
 _PG_POOL_LOCK = Lock()

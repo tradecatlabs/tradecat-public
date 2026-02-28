@@ -1,7 +1,6 @@
 """支持币种路由 (对齐 CoinGlass /api/futures/supported-coins)"""
 
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -9,7 +8,7 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from psycopg import sql
 
-from src.config import get_settings, get_pg_pool
+from src.config import get_pg_pool
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import to_base_symbol
 
@@ -37,8 +36,6 @@ async def get_supported_coins() -> dict:
         return api_response(symbols)
     
     # auto/all 模式: 从数据库获取实际可用币种（优先 PG）
-    settings = get_settings()
-    db_path = settings.SQLITE_INDICATORS_PATH
     schema = (os.environ.get("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
 
     def _fetch_symbols_pg():
@@ -58,21 +55,8 @@ async def get_supported_coins() -> dict:
         symbols = [to_base_symbol(r[0]) for r in rows if r and r[0]]
         return sorted(set(symbols))
 
-    def _fetch_symbols_sqlite():
-        if not db_path.exists():
-            raise RuntimeError("SQLite 指标数据库不可用")
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT DISTINCT "交易对" FROM "基础数据同步器.py" ORDER BY "交易对"')
-            rows = cursor.fetchall()
-        symbols = [to_base_symbol(row[0]) for row in rows if row[0]]
-        return sorted(set(symbols))
-
     try:
-        try:
-            symbols = await run_in_threadpool(_fetch_symbols_pg)
-        except Exception:
-            symbols = await run_in_threadpool(_fetch_symbols_sqlite)
+        symbols = await run_in_threadpool(_fetch_symbols_pg)
         return api_response(symbols)
     except Exception as e:
         return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")

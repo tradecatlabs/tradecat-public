@@ -2,19 +2,18 @@
 """
 数据获取器 - 全量版
 - 从 TimescaleDB 获取 K线数据（50条）
-- 从 PostgreSQL(tg_cards) 获取全部指标数据（迁移期可回退 SQLite）
+- 从 PostgreSQL(tg_cards) 获取全部指标数据
 - 复用 telegram-service 的 data_provider（单币快照）
 """
 from __future__ import annotations
 
 import os
 import sys
-import sqlite3
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Set
 
-from src.config import INDICATOR_DB, PROJECT_ROOT
+from src.config import PROJECT_ROOT
 
 # 添加 telegram-service 路径，复用 data_provider
 TELEGRAM_SRC = PROJECT_ROOT / "services" / "consumption" / "telegram-service" / "src"
@@ -191,80 +190,12 @@ def fetch_metrics(symbol: str, limit: int = 50) -> List[Dict[str, Any]]:
 
 
 def fetch_indicators_full(symbol: str) -> Dict[str, Any]:
-    """从 PG(tg_cards) 获取指标数据（每个周期只取最新一条，按配置过滤表；必要时回退 SQLite）"""
+    """从 PG(tg_cards) 获取指标数据（每个周期只取最新一条，按配置过滤表）"""
     try:
         out = _fetch_indicators_full_pg(symbol)
-        if isinstance(out, dict) and out:
-            return out
-    except Exception:
-        pass
-    return _fetch_indicators_full_sqlite(symbol)
-
-
-def _fetch_indicators_full_sqlite(symbol: str) -> Dict[str, Any]:
-    db_path = INDICATOR_DB
-    indicators: Dict[str, Any] = {}
-
-    if not db_path.exists():
-        return {"error": f"数据库不存在: {db_path}"}
-
-    try:
-        conn = sqlite3.connect(str(db_path))
-    except Exception:
-        try:
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        except Exception as e:
-            return {"error": str(e)}
-
-    cur = conn.cursor()
-    tables = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-
-    for tbl in tables:
-        # 按配置过滤表
-        if AI_TABLES_ENABLED and tbl not in AI_TABLES_ENABLED:
-            continue
-        if tbl in AI_TABLES_DISABLED:
-            continue
-
-        try:
-            cols = [d[1] for d in cur.execute(f"PRAGMA table_info('{tbl}')").fetchall()]
-            if not cols:
-                continue
-
-            sym_col = None
-            for cand in ["交易对", "symbol", "Symbol", "SYMBOL"]:
-                if cand in cols:
-                    sym_col = cand
-                    break
-            if sym_col is None:
-                continue
-
-            # 有周期字段：每个周期取最新一条（使用子查询保证确定性）
-            if "周期" in cols and "数据时间" in cols:
-                sql = (
-                    f"SELECT * FROM '{tbl}' WHERE `{sym_col}`=? "
-                    "AND (`周期`, `数据时间`) IN ("
-                    f"SELECT `周期`, MAX(`数据时间`) FROM '{tbl}' WHERE `{sym_col}`=? GROUP BY `周期`"
-                    ")"
-                )
-                rows = cur.execute(sql, (symbol, symbol)).fetchall()
-            elif "数据时间" in cols:
-                # 无周期字段：只取最新一条
-                sql = f"SELECT * FROM '{tbl}' WHERE `{sym_col}`=? ORDER BY `数据时间` DESC LIMIT 1"
-                rows = cur.execute(sql, (symbol,)).fetchall()
-            else:
-                # 无时间字段：退化为取一条
-                sql = f"SELECT * FROM '{tbl}' WHERE `{sym_col}`=? LIMIT 1"
-                rows = cur.execute(sql, (symbol,)).fetchall()
-
-            if rows:
-                indicators[tbl] = [dict(zip(cols, r)) for r in rows]
-        except Exception as e:
-            indicators[tbl] = {"error": str(e)}
-
-    cur.close()
-    conn.close()
-    return indicators
+        return out if isinstance(out, dict) else {}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def _fetch_indicators_full_pg(symbol: str) -> Dict[str, Any]:

@@ -32,30 +32,6 @@ def get_database_url() -> str:
     return "postgresql://postgres:postgres@localhost:5433/market_data"
 
 
-def get_sqlite_path() -> Path:
-    """获取 SQLite 指标数据库路径"""
-    env_path = os.environ.get("INDICATOR_SQLITE_PATH")
-    if env_path:
-        p = Path(env_path)
-        if not p.is_absolute():
-            p = REPO_ROOT / p
-        return p
-    return REPO_ROOT / "assets/database/services/telegram-service/market_data.db"
-
-
-def get_history_db_path() -> Path:
-    """获取信号历史数据库路径"""
-    env_path = os.environ.get("SIGNAL_HISTORY_DB_PATH")
-    if env_path:
-        return Path(env_path)
-    return REPO_ROOT / "assets/database/services/signal-service/signal_history.db"
-
-
-def get_subscription_db_path() -> Path:
-    """获取订阅数据库路径"""
-    return REPO_ROOT / "assets/database/services/signal-service/signal_subs.db"
-
-
 # 信号检测配置
 DEFAULT_TIMEFRAMES = ["1h", "4h", "1d"]
 DEFAULT_MIN_VOLUME = 100000

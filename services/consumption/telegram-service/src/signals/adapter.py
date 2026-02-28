@@ -18,7 +18,7 @@ if str(_SIGNAL_SERVICE_SRC) not in sys.path:
     sys.path.insert(0, str(_SIGNAL_SERVICE_SRC))
 
 # 导入 signal-service
-from engines import get_sqlite_engine, get_pg_engine as _get_pg_engine
+from engines import get_pg_engine as _get_pg_engine
 from events import SignalPublisher, SignalEvent
 from formatters.base import BaseFormatter, strength_bar, fmt_price
 
@@ -113,13 +113,13 @@ def init_pusher(send_func: Callable, loop: Optional[asyncio.AbstractEventLoop] =
 
 
 def start_signal_loop(interval: int = 60):
-    """启动 SQLite 信号检测"""
+    """启动 PG 信号检测"""
     def run():
-        get_sqlite_engine().run_loop(interval=interval)
+        _get_pg_engine().run_loop(interval=interval)
 
-    thread = threading.Thread(target=run, daemon=True, name="SQLiteSignalEngine")
+    thread = threading.Thread(target=run, daemon=True, name="PGSignalEngine")
     thread.start()
-    logger.info(f"SQLite 信号引擎已启动，间隔 {interval}s")
+    logger.info(f"PG 信号引擎已启动，间隔 {interval}s")
     return thread
 
 

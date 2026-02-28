@@ -2,15 +2,15 @@
 存储层
 """
 
-from .history import SignalHistory, get_history
-from .subscription import SubscriptionManager, get_subscription_manager
-from .cooldown import CooldownStorage, get_cooldown_storage
+from .history import PgSignalHistory, get_history
+from .subscription import PgSubscriptionManager, get_subscription_manager
+from .cooldown import PgCooldownStorage, get_cooldown_storage
 
 __all__ = [
-    "SignalHistory",
+    "PgSignalHistory",
     "get_history",
-    "SubscriptionManager",
+    "PgSubscriptionManager",
     "get_subscription_manager",
-    "CooldownStorage",
+    "PgCooldownStorage",
     "get_cooldown_storage",
 ]
