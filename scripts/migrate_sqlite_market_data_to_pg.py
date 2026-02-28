@@ -336,9 +336,20 @@ def main() -> int:
 
     with psycopg.connect(database_url, connect_timeout=3) as pg_conn:
         with pg_conn.cursor() as cur:
-            # ensure schema/tables
-            _pg_ensure_schema_and_tables(cur, target_schema=args.schema, clone_from_schema=args.clone_from_schema)
-            pg_conn.commit()
+            src_tables = _pg_list_tables(cur, args.clone_from_schema)
+            if not src_tables:
+                print(f"❌ clone schema 为空：{args.clone_from_schema}（请先执行 assets/database/db/schema/021_tg_cards_sqlite_parity.sql）")
+                return 2
+
+            if apply:
+                _pg_ensure_schema_and_tables(cur, target_schema=args.schema, clone_from_schema=args.clone_from_schema)
+                pg_conn.commit()
+            else:
+                if _pg_schema_exists(cur, args.schema):
+                    tgt_tables = _pg_list_tables(cur, args.schema)
+                    print(f"[dry-run] target schema 已存在：{args.schema} tables={len(tgt_tables)}")
+                else:
+                    print(f"[dry-run] target schema 不存在：{args.schema}（apply 时会创建并克隆 {len(src_tables)} 张表）")
 
         # 逐批处理，避免单事务过大
         for batch_tables in _batched(sqlite_tables, batch_size=int(args.batch_tables)):
