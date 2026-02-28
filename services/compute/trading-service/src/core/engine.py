@@ -145,7 +145,7 @@ class Engine:
             # 写入数据库
             with trace("db.write") as write_span:
                 t2 = time.time()
-                # 写入 market_data.db（每个指标一张表，全量覆盖）
+                # 写入 PG tg_cards（每个指标一张表，全量覆盖）
                 write_results(all_results)
                 t_write = time.time() - t2
                 _db_write_duration.observe(t_write)
@@ -153,8 +153,7 @@ class Engine:
 
             db_counters_end = get_db_counters()
             pg_queries = db_counters_end["pg_query_total"] - db_counters_start["pg_query_total"]
-            sqlite_commits = db_counters_end["sqlite_commit_total"] - db_counters_start["sqlite_commit_total"]
-            LOG.info("DB压力: pg_queries=%s, sqlite_commits=%s", pg_queries, sqlite_commits)
+            LOG.info("DB压力: pg_queries=%s", pg_queries)
 
             total_rows = sum(len(recs) for recs_list in all_results.values() for recs in recs_list)
             total_time = time.time() - start

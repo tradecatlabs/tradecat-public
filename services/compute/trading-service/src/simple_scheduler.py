@@ -11,10 +11,8 @@
 2. 每小时重新评估优先级
 """
 import os
-import sqlite3
 import sys
 import time
-import atexit
 from pathlib import Path
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,20 +27,6 @@ REPO_ROOT = str(Path(__file__).resolve().parents[4])
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-def _resolve_sqlite_path(env_path: str | None, default_path: str) -> str:
-    """支持相对路径，统一基于项目根目录解析为绝对路径。"""
-    if env_path and env_path.strip():
-        path = env_path.strip()
-        if not os.path.isabs(path):
-            path = os.path.abspath(os.path.join(REPO_ROOT, path))
-        return path
-    return default_path
-
-SQLITE_PATH = _resolve_sqlite_path(
-    os.environ.get("INDICATOR_SQLITE_PATH"),
-    os.path.join(REPO_ROOT, "assets/database/services/telegram-service/market_data.db"),
-)
-
 # 币种管理配置
 HIGH_PRIORITY_TOP_N = int(os.environ.get("HIGH_PRIORITY_TOP_N", "50"))
 
@@ -56,26 +40,6 @@ INDICATORS_DISABLED = [i.strip().lower() for i in os.environ.get("INDICATORS_DIS
 last_computed = {i: None for i in INTERVALS}
 last_priority_update = None
 high_priority_symbols = []
-
-# SQLite 连接复用（避免频繁开关连接）
-_sqlite_conn = None
-
-def _get_sqlite_conn():
-    """获取 SQLite 连接（单例复用）"""
-    global _sqlite_conn
-    if _sqlite_conn is None:
-        _sqlite_conn = sqlite3.connect(SQLITE_PATH, check_same_thread=False)
-        _sqlite_conn.execute("PRAGMA journal_mode=WAL")
-    return _sqlite_conn
-
-def _close_sqlite_conn():
-    """关闭 SQLite 连接"""
-    global _sqlite_conn
-    if _sqlite_conn:
-        _sqlite_conn.close()
-        _sqlite_conn = None
-
-atexit.register(_close_sqlite_conn)
 
 
 from src.db.reader import shared_pg_conn
@@ -242,18 +206,21 @@ def get_source_latest(interval: str) -> datetime:
 
 
 def get_indicator_latest(interval: str) -> datetime:
-    """查询 SQLite 指标该周期最新数据时间"""
+    """查询 PG 指标该周期最新数据时间（tg_cards）"""
     try:
-        conn = _get_sqlite_conn()
-        row = conn.execute("""
-            SELECT MAX(数据时间) as latest FROM [MACD柱状扫描器.py] WHERE 周期 = ?
-        """, (interval,)).fetchone()
-        if row and row[0]:
-            ts_str = row[0].replace("+00:00", "").replace("T", " ")
-            return datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+        with shared_pg_conn() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    'SELECT MAX("数据时间") AS latest FROM tg_cards."MACD柱状扫描器.py" WHERE "周期"=%s',
+                    (interval,),
+                )
+                row = cur.fetchone()
+                if row and row.get("latest"):
+                    ts_str = str(row["latest"]).replace("+00:00", "").replace("T", " ")
+                    return datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
         return None
     except Exception as e:
-        log(f"查询 SQLite 指标 {interval} 最新时间失败: {e}")
+        log(f"查询 tg_cards 指标 {interval} 最新时间失败: {e}")
         return None
 
 

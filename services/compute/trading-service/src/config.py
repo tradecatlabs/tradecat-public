@@ -3,8 +3,6 @@
 
 环境变量:
     DATABASE_URL: TimescaleDB 连接串
-    INDICATOR_SQLITE_PATH: SQLite 输出路径
-    INDICATOR_STORE_MODE: 指标结果存储后端（sqlite|pg|dual）
     INDICATOR_PG_SCHEMA: PG 指标 schema（默认 tg_cards）
     MAX_WORKERS: 并行计算线程数
     KLINE_INTERVALS: K线指标计算周期
@@ -41,18 +39,6 @@ class Config:
         "DATABASE_URL",
         "postgresql://postgres:postgres@localhost:5433/market_data"
     ))
-
-    # SQLite（写入指标结果）- 必须使用绝对路径
-    sqlite_path: Path = field(default_factory=lambda: (
-        Path(os.getenv("INDICATOR_SQLITE_PATH")) if os.getenv("INDICATOR_SQLITE_PATH")
-        else PROJECT_ROOT / "assets/database/services/telegram-service/market_data.db"
-    ))
-
-    # 指标结果存储后端：
-    # - sqlite: 仅写 SQLite（默认，兼容现有消费端）
-    # - pg:     仅写 PG(tg_cards schema)
-    # - dual:   SQLite + PG 双写（用于迁移期对齐校验）
-    indicator_store_mode: str = field(default_factory=lambda: (os.getenv("INDICATOR_STORE_MODE", "pg") or "pg").strip().lower())
 
     # PG 指标 schema（表名严格对齐 SQLite 表名）
     indicator_pg_schema: str = field(default_factory=lambda: (os.getenv("INDICATOR_PG_SCHEMA", "tg_cards") or "tg_cards").strip())

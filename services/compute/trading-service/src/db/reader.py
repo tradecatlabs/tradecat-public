@@ -5,13 +5,10 @@
 1. PG 连接池复用 + 扩大池大小
 2. 多周期并行查询
 3. 批量 SQL 查询（IN 子句）
-4. SQLite 连接复用 + WAL 模式
-5. 批量写入
+4. 批量写入
 """
-import sqlite3
 import threading
 import logging
-from pathlib import Path
 from typing import Dict, List, Sequence
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,11 +21,9 @@ from psycopg_pool import ConnectionPool
 from ..config import config
 from ..observability import metrics
 
-_sqlite_lock = threading.Lock()
 LOG = logging.getLogger("indicator_service.db")
 _pg_query_total = metrics.counter("pg_query_total", "PG 查询次数")
 _pg_write_total = metrics.counter("pg_write_total", "PG 写入次数")
-_sqlite_commit_total = metrics.counter("sqlite_commit_total", "SQLite 提交次数")
 
 # 共享 PG 连接池（默认行工厂）
 _shared_pg_pool: ConnectionPool | None = None
@@ -40,7 +35,6 @@ def get_db_counters() -> Dict[str, float]:
     return {
         "pg_query_total": _pg_query_total.get(),
         "pg_write_total": _pg_write_total.get(),
-        "sqlite_commit_total": _sqlite_commit_total.get(),
     }
 
 
@@ -51,11 +45,6 @@ def inc_pg_query():
 def inc_pg_write():
     """记录 PG 写入次数"""
     _pg_write_total.inc()
-
-
-def inc_sqlite_commit():
-    """记录 SQLite commit 次数"""
-    _sqlite_commit_total.inc()
 
 
 def get_shared_pg_pool() -> ConnectionPool:
@@ -291,143 +280,6 @@ class DataReader:
             self._pool = None
 
 
-class DataWriter:
-    """将指标结果写入 SQLite（优化版）"""
-
-    def __init__(self, sqlite_path: Path = None):
-        self.sqlite_path = sqlite_path or config.sqlite_path
-        self._conn = None
-        self._lock = threading.Lock()
-
-    def _get_conn(self) -> sqlite3.Connection:
-        """获取或创建连接"""
-        if self._conn is None:
-            self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(str(self.sqlite_path), check_same_thread=False)
-            self._conn.execute("PRAGMA auto_vacuum=FULL")
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-            self._conn.execute("PRAGMA cache_size=10000")
-        return self._conn
-
-    def write(self, table: str, df: pd.DataFrame, interval: str = None):
-        """写入单个表 - 批量 INSERT"""
-        with self._lock:
-            conn = self._get_conn()
-            self._write_table(conn, table, df)
-            inc_sqlite_commit()
-            conn.commit()
-
-    def _write_table(self, conn, table: str, df: pd.DataFrame):
-        """写入单表 - 复用逻辑，便于批量事务"""
-        if df.empty:
-            return
-
-        # 检查表是否存在及列是否匹配
-        try:
-            existing_cols = [c[1] for c in conn.execute(f'PRAGMA table_info([{table}])').fetchall()]
-        except Exception:
-            existing_cols = []
-
-        df_cols = list(df.columns)
-
-        if existing_cols:
-            # 对齐列：缺失的补 None，多余的丢弃，避免因列不匹配重建表
-            missing = [c for c in existing_cols if c not in df_cols]
-            for c in missing:
-                df[c] = None
-            df = df[existing_cols]
-            df_cols = existing_cols
-        else:
-            # 表不存在，按当前列创建
-            df.head(0).to_sql(table, conn, if_exists="replace", index=False)
-            existing_cols = df_cols
-
-        # 先删除同一 (交易对, 周期, 数据时间) 的旧数据
-        if "交易对" in df_cols and "周期" in df_cols and "数据时间" in df_cols:
-            dup_rows = df[["交易对", "周期", "数据时间"]].drop_duplicates()
-            if not dup_rows.empty:
-                delete_sql = f"DELETE FROM [{table}] WHERE [交易对]=? AND [周期]=? AND [数据时间]=?"
-                delete_params = list(dup_rows.itertuples(index=False, name=None))
-                conn.executemany(delete_sql, delete_params)
-
-        # 批量 INSERT - 列名用方括号包裹以支持特殊字符
-        placeholders = ",".join(["?"] * len(df_cols))
-        cols_escaped = ",".join(f"[{c}]" for c in df_cols)
-        sql = f"INSERT INTO [{table}] ({cols_escaped}) VALUES ({placeholders})"
-        data = list(df.itertuples(index=False, name=None))
-        conn.executemany(sql, data)
-
-        # 清理旧数据
-        self._cleanup_old_data(conn, table, df)
-
-    def _cleanup_old_data(self, conn, table: str, df: pd.DataFrame):
-        """清理旧数据，保留每个币种每个周期最新N条"""
-        # 保留条数配置（约4GB总量）
-        RETENTION = {
-            '1m': 120,   # 2小时
-            '5m': 120,   # 10小时
-            '15m': 96,   # 24小时
-            '1h': 144,   # 6天
-            '4h': 120,   # 20天，满足长窗口计算
-            '1d': 180,   # 6个月
-            '1w': 104,   # 2年
-        }
-
-        if "周期" not in df.columns or "交易对" not in df.columns or "数据时间" not in df.columns:
-            return
-
-        keys = df[["交易对", "周期"]].drop_duplicates()
-        if keys.empty:
-            return
-
-        params = []
-        for symbol, interval in keys.itertuples(index=False, name=None):
-            limit = RETENTION.get(interval, 60)
-            params.append((symbol, interval, symbol, interval, limit))
-
-        try:
-            # 删除超出保留数量的旧数据
-            conn.executemany(f"""
-                DELETE FROM [{table}]
-                WHERE 交易对 = ? AND 周期 = ?
-                AND 数据时间 NOT IN (
-                    SELECT 数据时间 FROM [{table}]
-                    WHERE 交易对 = ? AND 周期 = ?
-                    ORDER BY 数据时间 DESC
-                    LIMIT ?
-                )
-            """, params)
-        except Exception:
-            pass
-
-    def write_batch(self, data: Dict[str, pd.DataFrame], interval: str = None):
-        """批量写入多个表 - 单次事务，executemany 批量插入"""
-        if not data:
-            return
-
-        with self._lock:
-            conn = self._get_conn()
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-
-                for table, df in data.items():
-                    self._write_table(conn, table, df)
-
-                inc_sqlite_commit()
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                raise e
-
-    def close(self):
-        """关闭连接"""
-        with self._lock:
-            if self._conn:
-                self._conn.close()
-                self._conn = None
-
-
 # ==================== PG 写入（tg_cards schema，严格对齐 SQLite） ====================
 
 class PgDataWriter:
@@ -497,8 +349,9 @@ class PgDataWriter:
 
         cols_meta = self._load_table_columns(conn, table)
         if not cols_meta:
-            LOG.warning("PG 指标表不存在或不可见: %s.%s（请先初始化 DDL）", self.schema, table)
-            return
+            raise RuntimeError(
+                f"PG 指标表不存在或不可见: {self.schema}.{table}（请先执行 assets/database/db/schema/021_tg_cards_sqlite_parity.sql）"
+            )
 
         pg_cols = [c for c, _t in cols_meta]
         df_cols = list(df.columns)
@@ -626,5 +479,4 @@ class PgDataWriter:
 
 # 全局单例
 reader = DataReader()
-writer = DataWriter()
 pg_writer = PgDataWriter()
