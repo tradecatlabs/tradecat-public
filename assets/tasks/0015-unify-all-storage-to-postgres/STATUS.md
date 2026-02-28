@@ -1,6 +1,6 @@
 # STATUS
 
-状态：Not Started
+状态：In Progress
 
 ## 1) 证据存证（Planning 阶段只读审计）
 
@@ -18,5 +18,31 @@
 
 ## 2) 阻塞项（Blocked）
 
-无（规划已就绪，可进入执行阶段）。
+无（已进入执行阶段）。
 
+## 3) 已落地（关键里程碑）
+
+- ✅ 新增 PG DDL：
+  - `assets/database/db/schema/022_signal_state.sql`（cooldown/signal_subs/signal_history）
+  - `assets/database/db/schema/023_sheets_state.sql`（sent_keys）
+- ✅ signal-service 状态库切换（默认 PG，保留 sqlite 回退）：
+  - `services/compute/signal-service/src/storage/cooldown.py`
+  - `services/compute/signal-service/src/storage/subscription.py`
+  - `services/compute/signal-service/src/storage/history.py`
+- ✅ sheets-service 幂等切换（默认 PG，保留 sqlite 回退）：
+  - `services/consumption/sheets-service/src/idempotency.py`
+- ✅ telegram-service 信号订阅存储去重：复用 signal-service SubscriptionManager（避免重复实现/多份 DB）：
+  - `services/consumption/telegram-service/src/signals/ui.py`
+- ✅ api-service 读端优先 PG（base-data / supported-coins / signal-cooldown）：
+  - `services/consumption/api-service/src/routers/base_data.py`
+  - `services/consumption/api-service/src/routers/coins.py`
+  - `services/consumption/api-service/src/routers/signal.py`
+- ✅ ai-service 指标全量读取优先 PG(tg_cards)（必要时回退 SQLite）+ 修复 telegram-service 路径：
+  - `services/compute/ai-service/src/data/fetcher.py`
+- ✅ 一次性迁移工具（dry-run 默认）：
+  - `scripts/migrate_sqlite_state_to_pg.py`
+
+## 4) 版本证据（可回滚点）
+
+- `git show --oneline -1`：`feat(storage): migrate runtime state/idempotency to postgres`
+- `./scripts/verify.sh`：通过（语法检查 + i18n + 文档入口）
