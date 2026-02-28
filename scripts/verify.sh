@@ -47,6 +47,34 @@ else
     success "目录结构符合 assets/ 约定"
 fi
 
+# 0.1) SQLite 依赖守护（核心链路必须 PG-only）
+echo ""
+echo "0.1 SQLite 依赖守护..."
+if command -v rg &> /dev/null; then
+    SQLITE_SCAN_DIRS=(
+        services/compute/trading-service/src
+        services/compute/signal-service/src
+        services/compute/ai-service/src
+        services/consumption/telegram-service/src
+        services/consumption/sheets-service/src
+        services/consumption/api-service/src
+    )
+    SQLITE_HITS="$(
+        rg -n --hidden --no-ignore-vcs -F 'import sqlite3' "${SQLITE_SCAN_DIRS[@]}" --glob '!**/.venv/**' --glob '!**/node_modules/**' --glob '!**/libs/external/**' || true
+        rg -n --hidden --no-ignore-vcs -F 'sqlite3.connect(' "${SQLITE_SCAN_DIRS[@]}" --glob '!**/.venv/**' --glob '!**/node_modules/**' --glob '!**/libs/external/**' || true
+        rg -n --hidden --no-ignore-vcs -F 'aiosqlite' "${SQLITE_SCAN_DIRS[@]}" --glob '!**/.venv/**' --glob '!**/node_modules/**' --glob '!**/libs/external/**' || true
+        rg -n --hidden --no-ignore-vcs -F 'sqlite://' "${SQLITE_SCAN_DIRS[@]}" --glob '!**/.venv/**' --glob '!**/node_modules/**' --glob '!**/libs/external/**' || true
+    )"
+    if [ -n "${SQLITE_HITS:-}" ]; then
+        echo "$SQLITE_HITS"
+        fail "发现 SQLite 引用（核心链路必须 PG-only）"
+    else
+        success "核心链路无 SQLite 引用"
+    fi
+else
+    warn "rg 未安装，跳过 SQLite 引用检查"
+fi
+
 # 1. 检查 Python 环境
 echo ""
 echo "1. 检查 Python 环境..."

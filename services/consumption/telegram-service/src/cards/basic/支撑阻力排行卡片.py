@@ -1,6 +1,6 @@
 """支撑阻力排行榜卡片
 
-数据源：market_data.db 表 全量支撑阻力扫描器.py
+数据源：PostgreSQL 指标库（tg_cards）表 全量支撑阻力扫描器.py
 """
 
 from __future__ import annotations

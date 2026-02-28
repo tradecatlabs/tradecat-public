@@ -1,6 +1,6 @@
 # Trading Service
 
-指标计算服务：从 TimescaleDB 读取 K线/期货数据，计算 38 个技术指标，默认写入 SQLite（`market_data.db`），也支持写入 PG（`tg_cards.*`）或双写（灰度切换/回滚）。
+指标计算服务：从 TimescaleDB 读取 K线/期货数据，计算 38 个技术指标，并写入 PostgreSQL 指标库（`tg_cards.*`）。
 
 ## 功能
 
@@ -94,9 +94,7 @@ python3 -m src --once --symbols BTCUSDT,ETHUSDT --intervals 5m,15m
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `DATABASE_URL` | - | TimescaleDB 连接串 |
-| `INDICATOR_SQLITE_PATH` | - | SQLite 输出路径 |
-| `INDICATOR_STORE_MODE` | sqlite | 指标存储后端：`sqlite|pg|dual` |
-| `INDICATOR_PG_SCHEMA` | tg_cards | PG 指标 schema（`mode=pg|dual` 生效） |
+| `INDICATOR_PG_SCHEMA` | tg_cards | PG 指标 schema |
 | `MAX_WORKERS` | 4 | 并行线程数 |
 | `COMPUTE_BACKEND` | thread | 计算后端 |
 
@@ -104,8 +102,6 @@ python3 -m src --once --symbols BTCUSDT,ETHUSDT --intervals 5m,15m
 
 ```bash
 DATABASE_URL=postgresql://user:password@localhost:5432/market_data
-INDICATOR_SQLITE_PATH=/path/to/tradecat/assets/database/services/telegram-service/market_data.db
-INDICATOR_STORE_MODE=sqlite
 INDICATOR_PG_SCHEMA=tg_cards
 MAX_WORKERS=4
 COMPUTE_BACKEND=thread
@@ -145,8 +141,7 @@ TimescaleDB (candles_1m)
         │
         ▼
     Indicator Store
-      ├─ SQLite (market_data.db, 38张表)   [mode=sqlite|dual]
-      └─ PG (tg_cards.*, 38张表)           [mode=pg|dual]
+      └─ PG (tg_cards.*, 38张表)
         │
         ▼
     telegram-service (读取展示)
@@ -154,10 +149,7 @@ TimescaleDB (candles_1m)
 
 ## 输出
 
-写入位置取决于 `INDICATOR_STORE_MODE`：
-
-- `sqlite|dual`：写入 `assets/database/services/telegram-service/market_data.db`
-- `pg|dual`：写入 `DATABASE_URL` 指向的 PG 库的 `tg_cards.*`（可用 `INDICATOR_PG_SCHEMA` 覆盖）
+指标结果固定写入 `DATABASE_URL` 指向的 PG 库的 `tg_cards.*`（可用 `INDICATOR_PG_SCHEMA` 覆盖）。
 
 初始化 `tg_cards` DDL（仅需一次）：
 

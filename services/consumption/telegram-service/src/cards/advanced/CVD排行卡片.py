@@ -1,6 +1,6 @@
 """CVD 资金流向排行榜卡片
 
-数据源：market_data.db 表 CVD信号排行榜.py
+数据源：PostgreSQL 指标库（tg_cards）表 CVD信号排行榜.py
 """
 
 from __future__ import annotations

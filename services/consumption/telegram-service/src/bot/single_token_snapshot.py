@@ -6,7 +6,7 @@
 - 等宽对齐：首列左对齐，其余右对齐（沿用 docs/数据对齐.md 算法）
 
 注意：本文件只负责数据聚合与文本渲染，不修改消息路由。
-数据源已切换为 SQLite（assets/database/services/telegram-service/market_data.db，兼容：libs -> assets），不再读取 JSONL/CSV 兜底。
+数据源：PostgreSQL 指标库（`DATABASE_URL` → `tg_cards.*`）。
 """
 
 from __future__ import annotations

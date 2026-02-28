@@ -1,6 +1,6 @@
 """ATR 波幅排行榜卡片
 
-数据源：market_data.db 表 ATR波幅扫描器.py
+数据源：PostgreSQL 指标库（tg_cards）表 ATR波幅扫描器.py
 字段：排名,币种,周期,强度,波动分类,ATR百分比,上轨,中轨,下轨,当前价格,成交额（USDT）,数据时间
 """
 

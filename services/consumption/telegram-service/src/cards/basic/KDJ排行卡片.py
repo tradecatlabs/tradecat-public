@@ -1,6 +1,6 @@
 """KDJ 随机指标排行榜卡片
 
-数据源：market_data.db 表 KDJ随机指标扫描器.py
+数据源：PostgreSQL 指标库（tg_cards）表 KDJ随机指标扫描器.py
 字段：排名,币种,周期,方向,强度,J值,K值,D值,信号概述,当前价格,成交额（USDT）,数据时间
 """
 

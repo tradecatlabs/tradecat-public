@@ -479,12 +479,8 @@ graph TD
     TR_ENG --> TR_IND
     TR_ENG --> TR_PRI
 
-    SQLITE[("📁 market_data.db<br>SQLite Indicator Results")]
     PG_IND[("🗄️ tg_cards.*<br>PostgreSQL Indicator Store")]
-    TR_IND -->|INDICATOR_STORE_MODE=sqlite| SQLITE
-    TR_IND -->|INDICATOR_STORE_MODE=pg| PG_IND
-    TR_IND -->|INDICATOR_STORE_MODE=dual| SQLITE
-    TR_IND -->|INDICATOR_STORE_MODE=dual| PG_IND
+    TR_IND --> PG_IND
 
     subgraph AI["🧠 AI Smart Analysis"]
         AI_WY["Wyckoff Methodology"]
@@ -493,11 +489,10 @@ graph TD
 
     subgraph SIG["🔔 signal-service<br><small>Standalone signal detection</small>"]
         SIG_RULES["rules<br>129 Signal Rules"]
-        SIG_ENG["engines<br>SQLite + PG Engine"]
+        SIG_ENG["engines<br>PG Engine"]
         SIG_PUB["events<br>SignalPublisher"]
     end
 
-    SQLITE --> SIG_ENG
     PG_IND --> SIG_ENG
     TS_CANDLE --> SIG_ENG
     TS_FUTURE --> SIG_ENG
@@ -511,7 +506,6 @@ graph TD
         TG_BOT["bot<br>Main Program"]
     end
 
-    SQLITE --> TG_CARD
     PG_IND --> TG_CARD
     SIG_PUB --> TG_ADAPTER
     TG_ADAPTER --> TG_BOT
@@ -567,12 +561,10 @@ graph LR
     
     subgraph Calculation
         C --> D["📊 trading-service<br>38 Indicators"]
-        D --> E1[("📁 market_data.db<br>SQLite")]
         D --> E2[("🗄️ tg_cards.*<br>PostgreSQL Indicator Store")]
     end
     
     subgraph UserService
-        E1 --> F["🤖 telegram-service"]
         E2 --> F
         F --> G["👤 User"]
     end
@@ -1061,20 +1053,14 @@ PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
 </details>
 
 <details>
-<summary><strong>Expand👉 SQLite Queries</strong></summary>
+<summary><strong>Expand👉 SQLite Queries (Deprecated)</strong></summary>
+
+> Note: the indicator store is now PostgreSQL-only (`tg_cards.*`).  
+> If you still have a historical `market_data.db`, you can inspect it temporarily (migration/replay only).
 
 ```bash
-# Connect to database (generated after running trading-service; *.db ignored by default)
 sqlite3 assets/database/services/telegram-service/market_data.db
-
-# Common queries
-.tables                          -- List all tables
-.schema "K线形态扫描器.py"        -- View table schema
-
--- View pattern data
-SELECT * FROM "K线形态扫描器.py" 
-WHERE 形态类型 LIKE '%头肩%' 
-LIMIT 10;
+.tables
 ```
 
 </details>

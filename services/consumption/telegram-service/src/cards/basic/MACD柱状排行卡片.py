@@ -1,6 +1,6 @@
 """MACD 柱状排行榜卡片
 
-数据源：market_data.db 表 MACD柱状扫描器.py
+数据源：PostgreSQL 指标库（tg_cards）表 MACD柱状扫描器.py
 字段：排名,币种,周期,方向,强度,信号概述,MACD柱,DIF,DEA,当前价格,成交额（USDT）,数据时间
 """
 

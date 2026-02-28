@@ -2,7 +2,7 @@
 
 特性：
 - 文案/键盘与 KDJ 模板对齐：字段开关默认仅关键字段开启，关闭状态显示“❎”前缀
-- 数据源：market_data.db 表 主动买卖比扫描器.py SQLite（provider.merge_with_base）
+- 数据源：PostgreSQL 指标库（tg_cards）表 主动买卖比扫描器.py（provider.merge_with_base）
 - 支持字段开关、排序字段切换、周期/方向/条数切换
 """
 

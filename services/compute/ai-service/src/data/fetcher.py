@@ -202,7 +202,7 @@ def _fetch_indicators_full_pg(symbol: str) -> Dict[str, Any]:
     """
     从 PostgreSQL 读取 tg_cards schema 的指标表。
 
-    读取策略（与 sqlite 版保持一致）：
+    读取策略（兼容不同表结构）：
     - 有 (周期, 数据时间)：每个周期取最新一条
     - 仅有 数据时间：取最新一条
     - 否则：取一条兜底

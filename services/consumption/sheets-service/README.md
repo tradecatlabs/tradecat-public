@@ -37,30 +37,12 @@
 - `SHEETS_BLOB_THRESHOLD_CHARS`：raw 超长阈值（默认 20000；超长会落 Drive 并在表内存引用）
 - `SHEETS_SA_WRITE_RPM`：SA 写入限流（写请求/分钟，默认 55；配额为 60 时建议 50）
 
-### 远程数据源（SSH 拉取服务器 market_data.db，可选，推荐）
+### 指标数据源（PG）
 
-> 用途：当本机 `assets/database/.../market_data.db` 不全/落后时，sheets-service 可在每轮同步前先从服务器拉取一份快照作为数据源。
+sheets-service 复用 telegram-service 的卡片导出逻辑，指标数据固定读取 `DATABASE_URL` 指向的库内 `tg_cards.*`。
 
-- `SHEETS_REMOTE_DB_MODE`：`off|ssh`（默认：检测到 `SHEETS_REMOTE_DB_SSH_HOST` 则自动启用 `ssh`）
-- `SHEETS_REMOTE_DB_SSH_HOST`：SSH 主机（例如 `100.91.176.84`）
-- `SHEETS_REMOTE_DB_SSH_USER`：SSH 用户（默认 `nvidia`）
-- `SHEETS_REMOTE_DB_SSH_KEY_PATH`：SSH 私钥路径（建议 `chmod 600`）
-- `SHEETS_REMOTE_DB_PATH`：远端 DB 路径（例如 `/home/nvidia/.../market_data.db`）
-- `SHEETS_REMOTE_DB_LOCAL_PATH`：本地落地路径（默认 `data/remote/market_data.db`）
-- `SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS`：最小刷新间隔（默认 300；避免每次都传 170MB）
-- `SHEETS_REMOTE_DB_SNAPSHOT`：`0/1`（默认 `0`；`1` 表示先在远端生成一致性快照再拉取，避免并发写入导致 DB 不一致）
-
-### 指标数据源（SQLite / PG 可切换）
-
-sheets-service 复用 telegram-service 的卡片导出逻辑，因此“指标读取来源”与 Bot 保持一致：
-
-- SQLite（默认）：读取 `assets/database/services/telegram-service/market_data.db`（可配合上面的 remote_db 方案用服务器 DB）
-- PG：读取 `DATABASE_URL` 指向的库内 `tg_cards.*`（写端需 `INDICATOR_STORE_MODE=pg|dual`）
-
-开关：
-
-- `INDICATOR_READ_SOURCE=auto|sqlite|pg`（默认 `auto`，跟随 `INDICATOR_STORE_MODE`）
-- `INDICATOR_PG_SCHEMA=tg_cards`（可覆盖 schema）
+- `DATABASE_URL`：PostgreSQL/TimescaleDB 连接串（必填；需已执行 `assets/database/db/schema/021_tg_cards_sqlite_parity.sql`）
+- `INDICATOR_PG_SCHEMA=tg_cards`：可覆盖 schema
 
 ### 导出与运行
 - `SHEETS_EXPORT_LANG`：默认 `zh_CN`
@@ -87,7 +69,6 @@ sheets-service 复用 telegram-service 的卡片导出逻辑，因此“指标�
 - `SHEETS_SYMBOL_TABS_INTERVAL_SECONDS`：子表刷新最小间隔（默认 900；仅对 `dashboard` 模式下的子表刷新节流生效）
 - `SHEETS_SYNC_INTERVAL_SECONDS`：daemon 模式间隔（默认 60）
 - `SHEETS_UNIFIED_REFRESH`：`0/1`（默认 `0`；`1` 表示由 daemon tick 统一刷新：每轮把“币种查询子表 + Polymarket”也完整刷新一次，不再使用各自的 interval 节流）
-- `SHEETS_IDEMPOTENCY_DB_PATH`：本地幂等键库（默认 `data/idempotency.db`）
 
 ### Polymarket 统计（旁路子表，可选）
 
@@ -103,7 +84,7 @@ sheets-service 复用 telegram-service 的卡片导出逻辑，因此“指标�
 - `SHEETS_POLYMARKET_TIMEOUT_SECONDS`：导出超时（默认 30）
 - `SHEETS_POLYMARKET_TRANSLATE`：`0/1`（默认 `0`；禁用翻译避免外部依赖与副作用）
 - `SHEETS_POLYMARKET_ENABLE_API_RANKINGS`：`0/1`（默认 `0`；`1` 才会请求 polymarket gamma API）
-- `SHEETS_POLYMARKET_SSH_HOST/SHEETS_POLYMARKET_SSH_USER/SHEETS_POLYMARKET_SSH_KEY_PATH`：ssh 参数（默认复用 `SHEETS_REMOTE_DB_SSH_*`）
+- `SHEETS_POLYMARKET_SSH_HOST/SHEETS_POLYMARKET_SSH_USER/SHEETS_POLYMARKET_SSH_KEY_PATH`：ssh 参数（可选）
 - `SHEETS_POLYMARKET_REMOTE_SERVICE_DIR` / `SHEETS_POLYMARKET_REMOTE_LOG_FILE`：ssh 模式下覆盖远端路径（可选；默认优先 `$HOME/.local/state/tradecat/polymarket.log`）
 - `SHEETS_POLYMARKET_COMPACT_GRID`：`0/1`（默认 `1`；收缩网格，让右侧无单元格）
 - 冻结（阅读体验）：

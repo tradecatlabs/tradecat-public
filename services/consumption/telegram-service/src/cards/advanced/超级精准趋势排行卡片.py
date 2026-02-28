@@ -1,6 +1,6 @@
 """超级精准趋势榜单卡片
 
-数据源：assets/database/services/telegram-service/market_data.db 表 `超级精准趋势扫描器.py`
+数据源：PostgreSQL 指标库（tg_cards）表 `超级精准趋势扫描器.py`
 字段：趋势方向(1/-1)、趋势持续根数、趋势强度(价距趋势带/带宽)、趋势带、最近翻转时间、量能偏向
 默认：15m / 降序 / 10 条；全部字段可开关、可排序；币种展示去掉 USDT 后缀。
 """

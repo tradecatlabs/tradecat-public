@@ -47,7 +47,6 @@ class Settings:
     dry_run: bool
     outbox_path: Path
     checkpoint_path: Path
-    idempotency_db_path: Path
 
     @staticmethod
     def from_env(service_dir: Path) -> Settings:
@@ -130,9 +129,6 @@ class Settings:
         outbox_path = Path(outbox_env).expanduser() if outbox_env else (service_dir / "data" / "outbox.jsonl")
         checkpoint_path = Path(ckpt_env).expanduser() if ckpt_env else (service_dir / "data" / "checkpoint.json")
 
-        idem_env = os.environ.get("SHEETS_IDEMPOTENCY_DB_PATH", "").strip()
-        idempotency_db_path = Path(idem_env).expanduser() if idem_env else (service_dir / "data" / "idempotency.db")
-
         local_meta_env = os.environ.get("SHEETS_LOCAL_META_PATH", "").strip()
         local_meta_path = (
             Path(local_meta_env).expanduser() if local_meta_env else (service_dir / "data" / "local_meta.json")
@@ -173,5 +169,4 @@ class Settings:
             dry_run=dry_run,
             outbox_path=outbox_path,
             checkpoint_path=checkpoint_path,
-            idempotency_db_path=idempotency_db_path,
         )

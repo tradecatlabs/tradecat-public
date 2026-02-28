@@ -467,12 +467,8 @@ graph TD
     TR_ENG --> TR_IND
     TR_ENG --> TR_PRI
 
-    SQLITE[("📁 market_data.db<br>SQLite 指标结果")]
     PG_IND[("🗄️ tg_cards.*<br>PostgreSQL 指标库")]
-    TR_IND -->|INDICATOR_STORE_MODE=sqlite| SQLITE
-    TR_IND -->|INDICATOR_STORE_MODE=pg| PG_IND
-    TR_IND -->|INDICATOR_STORE_MODE=dual| SQLITE
-    TR_IND -->|INDICATOR_STORE_MODE=dual| PG_IND
+    TR_IND --> PG_IND
 
     subgraph AI["🧠 AI 智能分析"]
         AI_WY["Wyckoff 方法论"]
@@ -481,11 +477,10 @@ graph TD
 
     subgraph SIG["🔔 signal-service<br><small>独立信号检测服务</small>"]
         SIG_RULES["rules<br>129条信号规则"]
-        SIG_ENG["engines<br>SQLite + PG 引擎"]
+        SIG_ENG["engines<br>PG 引擎"]
         SIG_PUB["events<br>SignalPublisher"]
     end
 
-    SQLITE --> SIG_ENG
     PG_IND --> SIG_ENG
     TS_CANDLE --> SIG_ENG
     TS_FUTURE --> SIG_ENG
@@ -499,7 +494,6 @@ graph TD
         TG_BOT["bot<br>主程序"]
     end
 
-    SQLITE --> TG_CARD
     PG_IND --> TG_CARD
     SIG_PUB --> TG_ADAPTER
     TG_ADAPTER --> TG_BOT
@@ -555,12 +549,10 @@ graph LR
     
     subgraph 指标计算
         C --> D["📊 trading-service<br>38个指标计算"]
-        D --> E1[("📁 market_data.db<br>SQLite")]
         D --> E2[("🗄️ tg_cards.*<br>PostgreSQL 指标库")]
     end
     
     subgraph 用户服务
-        E1 --> F["🤖 telegram-service"]
         E2 --> F
         F --> G["👤 用户"]
     end
@@ -1046,21 +1038,14 @@ PGPASSWORD=postgres psql -h localhost -p 5433 -U postgres -d market_data \
 </details>
 
 <details>
-<summary><strong>点击展开👉 SQLite 查询</strong></summary>
+<summary><strong>点击展开👉 SQLite 查询（已废弃）</strong></summary>
+
+> 说明：当前指标库已统一为 PostgreSQL（`tg_cards.*`），不再写入/读取 `market_data.db`。  
+> 如你仍保留历史 SQLite 文件，可用以下方式临时查看（仅用于迁移期对账/回放）。
 
 ```bash
-# 连接数据库
-# 说明：`market_data.db` 由 `services/compute/trading-service` 运行后生成（`*.db` 默认在 `.gitignore` 中忽略，不随仓库提交）
 sqlite3 assets/database/services/telegram-service/market_data.db
-
-# 常用查询
-.tables                          -- 查看所有表
-.schema "K线形态扫描器.py"        -- 查看表结构
-
--- 查看形态数据
-SELECT * FROM "K线形态扫描器.py" 
-WHERE 形态类型 LIKE '%头肩%' 
-LIMIT 10;
+.tables
 ```
 
 </details>

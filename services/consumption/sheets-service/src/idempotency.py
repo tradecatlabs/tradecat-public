@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 
 class PgIdempotencyStore:
@@ -49,11 +48,10 @@ class PgIdempotencyStore:
 
 class IdempotencyStore:
     """
-    兼容层：对外保持 IdempotencyStore(path) 的构造方式，
-    内部固定使用 pg（不再支持 sqlite）。
+    幂等存储统一走 PG（不再支持 sqlite）。
     """
 
-    def __init__(self, _path: Path) -> None:
+    def __init__(self) -> None:
         database_url = (os.environ.get("DATABASE_URL") or os.environ.get("TIMESCALE_DATABASE_URL") or "").strip()
         schema = (os.environ.get("SHEETS_STATE_PG_SCHEMA") or "sheets_state").strip() or "sheets_state"
         self._impl = PgIdempotencyStore(database_url=database_url, schema=schema)

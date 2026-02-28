@@ -1,11 +1,11 @@
 # 指标数据说明补全计划（给另一位 AI 执行）
 
 ## 目标
-- 为 SQLite 指标表（market_data.db 内全部表）补全 what/why/how + fields 说明，写入 `src/utils/data_docs.py` 的 `DATA_DOCS`。
+- 为 PG 指标表（`tg_cards.*` 内全部表）补全 what/why/how + fields 说明，写入 `src/utils/data_docs.py` 的 `DATA_DOCS`。
 - 说明要基于真实字段与计算逻辑，不可凭空编造。
 
 ## 输入资产
-- 表结构：`assets/database/services/telegram-service/market_data.db`（兼容：`libs -> assets`）
+- 表结构：`assets/database/db/schema/021_tg_cards_sqlite_parity.sql`（建表 DDL）
 - 计算逻辑：
   - 指标注册：`services/compute/trading-service/src/indicators/__init__.py`
   - 指标实现：`services/compute/trading-service/src/indicators/batch/*.py`、`services/compute/trading-service/src/indicators/incremental/*.py`
@@ -28,7 +28,7 @@
 
 ## 任务拆解
 1) **枚举表 + 字段**
-   - 用 sqlite3/`PRAGMA table_info` 列出全部表、字段、类型。
+   - 用 PG `information_schema.columns` 列出全部表、字段、类型（schema=`tg_cards`）。
    - 产出临时清单 `tmp/indicator_tables.json`（表名 -> 字段列表）。
 
 2) **建立表名 ↔ 脚本映射**
@@ -49,7 +49,7 @@
    - 确保 UTF-8，简体中文。
 
 6) **验证**
-   - 运行轻量校验脚本：遍历 market_data.db 表名，确认 `DATA_DOCS` 覆盖率 100%；输出缺失列表。
+   - 运行轻量校验脚本：遍历 `tg_cards` 表名，确认 `DATA_DOCS` 覆盖率 100%；输出缺失列表。
    - `python3 - <<'PY'` 检查 `DATA_DOCS` JSON 可序列化。
 
 7) **交付记录**

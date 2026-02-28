@@ -56,10 +56,10 @@ graph TB
             TSDB_MV[("物化视图<br>5m/15m/1h/4h/1d/1w")]
         end
         
-        subgraph SQLITE["SQLite 集群"]
-            SQL_MKT[("market_data.db<br>34张指标表")]
-            SQL_CD[("cooldown.db<br>信号冷却")]
-            SQL_HIST[("signal_history.db<br>信号历史")]
+        subgraph PG_STORE["PostgreSQL Schemas（统一存储）"]
+            PG_TG[("tg_cards.*<br>指标表（38张）")]
+            PG_SIG[("signal_state.*<br>信号状态（cooldown/subs/history）")]
+            PG_SHEETS[("sheets_state.*<br>Sheets 幂等 keys")]
         end
     end
 
@@ -89,11 +89,10 @@ graph TB
     %% 信号检测层 - signal-service
     %% ========================================
     subgraph SIGNAL["🔔 信号检测层 signal-service 🟢稳定"]
-        SIG_MAIN["__main__.py<br>--sqlite/--pg/--all"]
+        SIG_MAIN["__main__.py<br>PG only"]
         
-        subgraph SIG_ENG["双引擎"]
-            SIG_SQLITE["SQLiteSignalEngine<br>读取指标表"]
-            SIG_PG["PGSignalEngine<br>读取K线/期货"]
+        subgraph SIG_ENG["PG 引擎"]
+            SIG_PG["PGSignalEngine<br>读取 tg_cards + K线/期货"]
         end
         
         subgraph SIG_RULES["129条规则 (8分类)"]
@@ -322,19 +321,18 @@ graph TB
     IND_VOL --> TS_STORE
     IND_P --> TS_STORE
     IND_F --> TS_STORE
-    TS_STORE --> SQL_MKT
+    TS_STORE --> PG_TG
 
     %% ========================================
     %% 连接关系 - 信号检测
     %% ========================================
-    SIG_MAIN --> SIG_SQLITE
     SIG_MAIN --> SIG_PG
-    SQL_MKT --> SIG_SQLITE
+    PG_TG --> SIG_PG
     TSDB_C1M --> SIG_PG
     TSDB_F5M --> SIG_PG
-    SIG_SQLITE --> R_CORE
-    SIG_SQLITE --> R_MOM
-    SIG_SQLITE --> R_TREND
+    SIG_PG --> R_CORE
+    SIG_PG --> R_MOM
+    SIG_PG --> R_TREND
     SIG_PG --> R_VOL
     SIG_PG --> R_VOLUME
     SIG_PG --> R_FUT
@@ -349,15 +347,15 @@ graph TB
     R_PAT --> SIG_PUB
     R_MISC --> SIG_PUB
     SIG_PUB --> SIG_COOL
-    SIG_COOL --> SQL_CD
-    SIG_PUB --> SQL_HIST
+    SIG_COOL --> PG_SIG
+    SIG_PUB --> PG_SIG
     SIG_PUB --> SIG_FMT
 
     %% ========================================
     %% 连接关系 - AI分析
     %% ========================================
     TSDB_C1M --> AI_FETCH
-    SQL_MKT --> AI_FETCH
+    PG_TG --> AI_FETCH
     AI_FETCH --> AI_PROMPT
     AI_PROMPT --> AI_LLM
     AI_LLM --> AI_WYCKOFF
@@ -365,7 +363,7 @@ graph TB
     %% ========================================
     %% 连接关系 - Telegram
     %% ========================================
-    SQL_MKT --> TG_PROVIDER
+    PG_TG --> TG_PROVIDER
     TG_PROVIDER --> TG_CARDS
     TG_CARDS --> TG_BOT
     SIG_FMT --> TG_ADAPTER
@@ -379,11 +377,11 @@ graph TB
     %% ========================================
     %% 连接关系 - API/VIS
     %% ========================================
-    SQL_MKT --> API_ROUTES
+    PG_TG --> API_ROUTES
     TSDB_C1M --> API_ROUTES
     TSDB_F5M --> API_ROUTES
     API_ROUTES --> API_APP
-    SQL_MKT --> VIS_APP
+    PG_TG --> VIS_APP
     TSDB_C1M --> VIS_APP
 
     %% ========================================
@@ -391,7 +389,7 @@ graph TB
     %% ========================================
     TSDB_C1M --> ORD_MM
     TSDB_F5M --> ORD_MM
-    SQL_MKT --> AWS_SYNC
+    PG_TG --> AWS_SYNC
 
     %% ========================================
     %% 连接关系 - 运维
@@ -413,9 +411,9 @@ graph TB
     style TSDB_C1M fill:#4169E1,color:#fff
     style TSDB_F5M fill:#4169E1,color:#fff
     style TSDB_MV fill:#6495ED,color:#fff
-    style SQL_MKT fill:#2E8B57,color:#fff
-    style SQL_CD fill:#3CB371,color:#fff
-    style SQL_HIST fill:#3CB371,color:#fff
+    style PG_TG fill:#2E8B57,color:#fff
+    style PG_SIG fill:#3CB371,color:#fff
+    style PG_SHEETS fill:#3CB371,color:#fff
     style SIG_PUB fill:#FF6347,color:#fff
     style USER fill:#FFD700,color:#000
     style TG_BOT fill:#26A5E4,color:#fff

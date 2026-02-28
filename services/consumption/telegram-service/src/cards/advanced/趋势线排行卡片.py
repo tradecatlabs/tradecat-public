@@ -1,6 +1,6 @@
 """趋势线榜单卡片（Pine 等价版）
 
-数据源：market_data.db 表 趋势线榜单.py
+数据源：PostgreSQL 指标库（tg_cards）表 趋势线榜单.py
 字段：排名,币种,趋势方向,距离趋势线%,价格
 """
 

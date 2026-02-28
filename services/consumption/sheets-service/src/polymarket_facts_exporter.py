@@ -145,18 +145,10 @@ def export_polymarket_facts_events_sheet(*, lang: str = "zh_CN") -> PolymarketSt
         facts_dir = str(Path.home() / ".local" / "state" / "tradecat" / "polymarket" / "facts")
     facts_dir = str(Path(facts_dir).expanduser())
 
-    # ssh 默认复用 remote-db 的 ssh 参数（否则用户要配两遍）
-    ssh_host = (
-        os.environ.get("SHEETS_POLYMARKET_SSH_HOST", "") or os.environ.get("SHEETS_REMOTE_DB_SSH_HOST", "") or ""
-    ).strip()
-    ssh_user = (
-        os.environ.get("SHEETS_POLYMARKET_SSH_USER", "")
-        or os.environ.get("SHEETS_REMOTE_DB_SSH_USER", "nvidia")
-        or "nvidia"
-    ).strip()
-    ssh_key_path = (
-        os.environ.get("SHEETS_POLYMARKET_SSH_KEY_PATH", "") or os.environ.get("SHEETS_REMOTE_DB_SSH_KEY_PATH", "") or ""
-    ).strip()
+    # ssh 参数（可选；留空则回退 local）
+    ssh_host = (os.environ.get("SHEETS_POLYMARKET_SSH_HOST", "") or "").strip()
+    ssh_user = (os.environ.get("SHEETS_POLYMARKET_SSH_USER", "") or "nvidia").strip()
+    ssh_key_path = (os.environ.get("SHEETS_POLYMARKET_SSH_KEY_PATH", "") or "").strip()
 
     # auto：优先 ssh（如果配置了 host），否则 local
     eff_mode = mode

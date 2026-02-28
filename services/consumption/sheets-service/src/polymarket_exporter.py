@@ -396,18 +396,10 @@ def export_polymarket_stats_sheet(*, lang: str = "zh_CN") -> PolymarketStatsShee
     max_log_mb = int((os.environ.get("SHEETS_POLYMARKET_MAX_LOG_MB", "200") or "200").strip() or "200")
     max_log_bytes = int(max_log_mb) * 1024 * 1024 if int(max_log_mb) > 0 else 0
 
-    # ssh 默认复用 remote-db 的 ssh 参数（否则用户要配两遍）
-    ssh_host = (
-        os.environ.get("SHEETS_POLYMARKET_SSH_HOST", "") or os.environ.get("SHEETS_REMOTE_DB_SSH_HOST", "") or ""
-    ).strip()
-    ssh_user = (
-        os.environ.get("SHEETS_POLYMARKET_SSH_USER", "")
-        or os.environ.get("SHEETS_REMOTE_DB_SSH_USER", "nvidia")
-        or "nvidia"
-    ).strip()
-    ssh_key_path = (
-        os.environ.get("SHEETS_POLYMARKET_SSH_KEY_PATH", "") or os.environ.get("SHEETS_REMOTE_DB_SSH_KEY_PATH", "") or ""
-    ).strip()
+    # ssh 参数（可选；留空则回退 local）
+    ssh_host = (os.environ.get("SHEETS_POLYMARKET_SSH_HOST", "") or "").strip()
+    ssh_user = (os.environ.get("SHEETS_POLYMARKET_SSH_USER", "") or "nvidia").strip()
+    ssh_key_path = (os.environ.get("SHEETS_POLYMARKET_SSH_KEY_PATH", "") or "").strip()
 
     try:
         # auto：优先 ssh（如果配置了 host），否则 local

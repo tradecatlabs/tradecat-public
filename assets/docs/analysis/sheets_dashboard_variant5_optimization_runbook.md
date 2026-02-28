@@ -38,46 +38,29 @@ export SHEETS_EXPORT_SYMBOLS_UNFILTERED=0
 
 > 若你显式设置 `SHEETS_EXPORT_SYMBOLS_UNFILTERED=1`，会强制关闭过滤（不建议，币种会很多）。
 
-## 3) 数据源：服务器 market_data.db（SSH 拉取）
+## 3) 数据源：服务器 PostgreSQL（ssh 隧道）
 
-服务端 DB（单一真相源）：
+指标数据源已统一为 PostgreSQL（`DATABASE_URL` → `tg_cards.*`），不再拉取 `market_data.db`。
 
-- host：`100.91.176.84`
-- user：`nvidia`
-- key：`/home/lenovo/.ssh/tradecat_nvidia`
-- remote db：`$REMOTE_REPO_ROOT/assets/database/services/telegram-service/market_data.db`
-- local cache：`services/consumption/sheets-service/data/remote/market_data.db`
+服务端（单一真相源）：
 
-建议：避免每次都拉 170MB，设置最小刷新间隔（例如 3600 秒）：
+- host：`<server_host>`
+- user：`<ssh_user>`
+- key：`<ssh_key_path>`
 
-```bash
-export SHEETS_REMOTE_DB_MODE=ssh
-export REMOTE_REPO_ROOT="/home/nvidia/tradecat/tradecat"
-export SHEETS_REMOTE_DB_SSH_HOST="100.91.176.84"
-export SHEETS_REMOTE_DB_SSH_USER="nvidia"
-export SHEETS_REMOTE_DB_SSH_KEY_PATH="/home/lenovo/.ssh/tradecat_nvidia"
-export SHEETS_REMOTE_DB_PATH="$REMOTE_REPO_ROOT/assets/database/services/telegram-service/market_data.db"
-export SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS=3600
-```
-
-### 3.1 一致性快照（可选但推荐）
-
-为了避免远端 SQLite 在 WAL/并发写入期间被直接拉取导致“不一致快照”，可以先在远端生成 `.backup` 快照再拉取：
+若服务器不开放 5433：在本机建立隧道（示例：转发到本机 15433）：
 
 ```bash
-export SHEETS_REMOTE_DB_SNAPSHOT=1
-export SHEETS_REMOTE_DB_SNAPSHOT_PATH="/tmp/tradecat_market_data.snapshot.db"
-export SHEETS_REMOTE_DB_SNAPSHOT_TIMEOUT_SECONDS=300
+ssh -N -L 15433:127.0.0.1:5433 <ssh_user>@<server_host> -i <ssh_key_path>
+export DATABASE_URL="postgresql://postgres:postgres@localhost:15433/market_data"
 ```
-
-> 依赖：远端需要存在 `sqlite3` 命令；失败会自动降级为“直接拉取原始 DB”，不阻断主流程。
 
 ## 4) Google Sheets 写入：SA 模式（推荐 CLI）
 
 ```bash
 export SHEETS_WRITE_MODE=sa
-export SHEETS_SPREADSHEET_ID="1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4"
-export GOOGLE_APPLICATION_CREDENTIALS="/home/lenovo/.config/gcp/credentials/just-effect-487712-p4-ec65508ad391.json"
+export SHEETS_SPREADSHEET_ID="<spreadsheet_id>"
+export GOOGLE_APPLICATION_CREDENTIALS="<sa_key_json_path>"
 ```
 
 ### 4.1 配额/限流（避免 429）

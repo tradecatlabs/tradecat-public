@@ -1,6 +1,6 @@
 """流动性危机排行榜卡片
 
-数据源：market_data.db 表 流动性扫描器.py
+数据源：PostgreSQL 指标库（tg_cards）表 流动性扫描器.py
 字段：排名,币种,周期,流动性指数,危机等级,Amihud贡献,Kyle贡献,波动率贡献,成交量贡献,Amihud原值,Kyle原值,成交额（USDT）,当前价格,数据时间
 """
 

@@ -465,7 +465,7 @@ async def _run_once(
 
     # snapshot/append 模式：outbox + 幂等（用于事实表或 slot 覆盖写）
     outbox = JsonlOutbox(settings.outbox_path, settings.checkpoint_path)
-    idem = IdempotencyStore(settings.idempotency_db_path)
+    idem = IdempotencyStore()
 
     def _flush_outbox() -> tuple[int, int] | None:
         sent = 0

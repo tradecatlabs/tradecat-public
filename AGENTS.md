@@ -80,12 +80,12 @@ make start|stop|status
 ### 架构分层（单向依赖）
 
 ```text
-ingestion  -> TimescaleDB (LF/HF) -> compute -> (SQLite | PG:tg_cards) -> consumption
+ingestion  -> TimescaleDB (LF/HF) -> compute -> PG(tg_cards.*) -> consumption
 ```
 
 - ingestion：写 TimescaleDB（事实/原始数据）
-- compute：读 TimescaleDB，计算指标，写 SQLite（`market_data.db`）或写 PG（`tg_cards.*`，`INDICATOR_STORE_MODE=pg|dual`）
-- consumption：按 `INDICATOR_READ_SOURCE` 读 SQLite/PG，导出卡片并写 Sheets/API/Telegram
+- compute：读 TimescaleDB，计算指标，写 PostgreSQL 指标库（`tg_cards.*`）
+- consumption：读 `tg_cards.*`，导出卡片并写 Sheets/API/Telegram
 
 ### 服务边界（来自仓库结构 `services/`）
 

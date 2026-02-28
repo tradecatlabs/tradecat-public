@@ -44,12 +44,12 @@
 - Evidence command: `ls -la services/consumption/sheets-service`
 
 ### 5) 远端数据源（nvidia）已部署并 daemon 同步（SSH）
-- 远端：`nvidia@100.91.176.84`（repo：`$REMOTE_REPO_ROOT`，legacy services 布局）
+- 远端：`nvidia@<server_host>`（repo：`$REMOTE_REPO_ROOT`，legacy services 布局）
 - 远端服务：`$REMOTE_REPO_ROOT/services/sheets-service`
 - Evidence commands:
   - `export REMOTE_REPO_ROOT="/path/to/tradecat"`  
-  - `ssh -i /home/lenovo/.ssh/tradecat_nvidia nvidia@100.91.176.84 'cd $REMOTE_REPO_ROOT/services/sheets-service && ./scripts/start.sh status'`
-  - `ssh -i /home/lenovo/.ssh/tradecat_nvidia nvidia@100.91.176.84 'cat $REMOTE_REPO_ROOT/services/sheets-service/data/checkpoint.json && wc -l $REMOTE_REPO_ROOT/services/sheets-service/data/outbox.jsonl'`
+  - `ssh -i <ssh_key_path> nvidia@<server_host> 'cd $REMOTE_REPO_ROOT/services/sheets-service && ./scripts/start.sh status'`
+  - `ssh -i <ssh_key_path> nvidia@<server_host> 'cat $REMOTE_REPO_ROOT/services/sheets-service/data/checkpoint.json && wc -l $REMOTE_REPO_ROOT/services/sheets-service/data/outbox.jsonl'`
 - Key observed signal（示例）：
   - 日志包含：`✅ flush 完成 ... mode=sa`
 

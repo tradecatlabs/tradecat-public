@@ -420,14 +420,7 @@ check_data_dirs() {
     local ds_dir
     ds_dir="$(find_service_dir "data-service")" && info "data-service 可选服务：$ds_dir（不参与默认检查）"
     
-    # SQLite 数据库
-    local sqlite_db="$ROOT/assets/database/services/telegram-service/market_data.db"
-    if [ -f "$sqlite_db" ]; then
-        local size=$(du -h "$sqlite_db" | cut -f1)
-        success "market_data.db: $size"
-    else
-        info "market_data.db: 不存在 (首次启动会创建)"
-    fi
+    info "指标库：PostgreSQL（tg_cards.*）"
 }
 
 # ==================== 8. 磁盘空间 ====================

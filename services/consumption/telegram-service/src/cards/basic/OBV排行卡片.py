@@ -1,6 +1,6 @@
 """OBV 能量潮排行榜卡片
 
-数据源：market_data.db 表 OBV能量潮扫描器.py
+数据源：PostgreSQL 指标库（tg_cards）表 OBV能量潮扫描器.py
 字段：排名,币种,周期,方向,强度,OBV当前,斜率20,信号概述,当前价格,成交额（USDT）,数据时间
 """
 
