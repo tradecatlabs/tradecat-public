@@ -17,11 +17,18 @@ def get_database_url() -> str:
     url = os.environ.get("DATABASE_URL")
     if url:
         return url
-    env_file = REPO_ROOT / "config" / ".env"
+    # 优先 assets/config/.env；兼容旧路径 config/.env（只读回退）
+    env_file = REPO_ROOT / "assets" / "config" / ".env"
+    if not env_file.exists():
+        env_file = REPO_ROOT / "config" / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
-            if line.startswith("DATABASE_URL="):
-                return line.strip().split("=", 1)[1].strip("\"'")
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            if k.strip() == "DATABASE_URL":
+                return v.strip().strip("\"'")
     return "postgresql://postgres:postgres@localhost:5433/market_data"
 
 

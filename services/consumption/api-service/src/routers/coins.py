@@ -1,13 +1,15 @@
 """支持币种路由 (对齐 CoinGlass /api/futures/supported-coins)"""
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
+from psycopg import sql
 
-from src.config import get_settings
+from src.config import get_settings, get_pg_pool
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import to_base_symbol
 
@@ -19,6 +21,8 @@ if str(repo_root) not in sys.path:
 from assets.common.symbols import get_configured_symbols
 
 router = APIRouter(tags=["futures"])
+
+BASE_TABLE = "基础数据同步器.py"
 
 
 @router.get("/supported-coins")
@@ -32,24 +36,43 @@ async def get_supported_coins() -> dict:
         symbols = sorted(set(to_base_symbol(s) for s in configured))
         return api_response(symbols)
     
-    # auto/all 模式: 从数据库获取实际可用币种
+    # auto/all 模式: 从数据库获取实际可用币种（优先 PG）
     settings = get_settings()
     db_path = settings.SQLITE_INDICATORS_PATH
+    schema = (os.environ.get("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
 
-    if not db_path.exists():
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "指标数据库不可用")
+    def _fetch_symbols_pg():
+        pool = get_pg_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s",
+                    (schema, BASE_TABLE),
+                )
+                if not cur.fetchone():
+                    raise RuntimeError(f"PG 基础数据表不存在: {schema}.{BASE_TABLE}")
+                cur.execute(
+                    sql.SQL('SELECT DISTINCT "交易对" FROM {} ORDER BY "交易对"').format(sql.Identifier(schema, BASE_TABLE))
+                )
+                rows = cur.fetchall() or []
+        symbols = [to_base_symbol(r[0]) for r in rows if r and r[0]]
+        return sorted(set(symbols))
 
-    def _fetch_symbols():
+    def _fetch_symbols_sqlite():
+        if not db_path.exists():
+            raise RuntimeError("SQLite 指标数据库不可用")
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT DISTINCT "交易对" FROM "基础数据同步器.py" ORDER BY "交易对"')
             rows = cursor.fetchall()
-            # 转换为 CoinGlass 格式 (BTC 而非 BTCUSDT)
-            symbols = [to_base_symbol(row[0]) for row in rows if row[0]]
-            return sorted(set(symbols))
+        symbols = [to_base_symbol(row[0]) for row in rows if row[0]]
+        return sorted(set(symbols))
 
     try:
-        symbols = await run_in_threadpool(_fetch_symbols)
+        try:
+            symbols = await run_in_threadpool(_fetch_symbols_pg)
+        except Exception:
+            symbols = await run_in_threadpool(_fetch_symbols_sqlite)
         return api_response(symbols)
     except Exception as e:
         return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")

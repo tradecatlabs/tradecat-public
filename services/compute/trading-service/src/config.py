@@ -52,7 +52,7 @@ class Config:
     # - sqlite: 仅写 SQLite（默认，兼容现有消费端）
     # - pg:     仅写 PG(tg_cards schema)
     # - dual:   SQLite + PG 双写（用于迁移期对齐校验）
-    indicator_store_mode: str = field(default_factory=lambda: (os.getenv("INDICATOR_STORE_MODE", "sqlite") or "sqlite").strip().lower())
+    indicator_store_mode: str = field(default_factory=lambda: (os.getenv("INDICATOR_STORE_MODE", "pg") or "pg").strip().lower())
 
     # PG 指标 schema（表名严格对齐 SQLite 表名）
     indicator_pg_schema: str = field(default_factory=lambda: (os.getenv("INDICATOR_PG_SCHEMA", "tg_cards") or "tg_cards").strip())

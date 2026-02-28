@@ -581,7 +581,11 @@ def main() -> None:
     # 尝试加载全局 .env（不强制；服务启动脚本通常已 export）
     try:
         repo_root = find_repo_root(Path(__file__).resolve())
-        load_dotenv(repo_root / "config" / ".env", override=False)
+        env_path = repo_root / "assets" / "config" / ".env"
+        if not env_path.exists():
+            env_path = repo_root / "config" / ".env"
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
     except Exception:
         # 允许在“非仓库根目录结构”下运行（例如单文件调试/容器内挂载结构不同），此时依赖外部 export 的环境变量。
         pass

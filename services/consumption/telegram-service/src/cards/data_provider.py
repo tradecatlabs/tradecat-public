@@ -1248,7 +1248,7 @@ def _resolve_indicator_read_source() -> str:
     raw = (os.environ.get("INDICATOR_READ_SOURCE") or "auto").strip().lower()
     if raw in {"sqlite", "pg"}:
         return raw
-    store_mode = (os.environ.get("INDICATOR_STORE_MODE") or "sqlite").strip().lower()
+    store_mode = (os.environ.get("INDICATOR_STORE_MODE") or "pg").strip().lower()
     return "pg" if store_mode in {"pg", "dual"} else "sqlite"
 
 

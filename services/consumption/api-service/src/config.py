@@ -9,9 +9,12 @@ from dotenv import load_dotenv
 from psycopg_pool import ConnectionPool
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-ENV_FILE = PROJECT_ROOT / "config" / ".env"
-
-load_dotenv(ENV_FILE)
+# 优先加载 assets/config/.env；兼容旧路径 config/.env（只读回退）
+ENV_FILE = PROJECT_ROOT / "assets" / "config" / ".env"
+if not ENV_FILE.exists():
+    ENV_FILE = PROJECT_ROOT / "config" / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE, override=False)
 
 def _resolve_repo_path(env_key: str, default: Path) -> Path:
     raw = (os.getenv(env_key) or "").strip()
@@ -35,7 +38,7 @@ class Settings:
         "postgresql://postgres:postgres@localhost:5433/market_data"
     )
 
-    # SQLite 路径
+    # SQLite 路径（迁移期兼容；目标是全 PG）
     SQLITE_INDICATORS_PATH: Path = (
         _resolve_repo_path(
             "INDICATOR_SQLITE_PATH",

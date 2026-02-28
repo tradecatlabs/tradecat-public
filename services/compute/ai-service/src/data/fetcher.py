@@ -2,8 +2,8 @@
 """
 数据获取器 - 全量版
 - 从 TimescaleDB 获取 K线数据（50条）
-- 从 SQLite 获取全部指标数据
-- 复用 telegram-service 的 data_provider
+- 从 PostgreSQL(tg_cards) 获取全部指标数据（迁移期可回退 SQLite）
+- 复用 telegram-service 的 data_provider（单币快照）
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional, Set
 from src.config import INDICATOR_DB, PROJECT_ROOT
 
 # 添加 telegram-service 路径，复用 data_provider
-TELEGRAM_SRC = PROJECT_ROOT / "services" / "telegram-service" / "src"
+TELEGRAM_SRC = PROJECT_ROOT / "services" / "consumption" / "telegram-service" / "src"
 if str(TELEGRAM_SRC) not in sys.path:
     sys.path.insert(0, str(TELEGRAM_SRC))
 
@@ -191,7 +191,17 @@ def fetch_metrics(symbol: str, limit: int = 50) -> List[Dict[str, Any]]:
 
 
 def fetch_indicators_full(symbol: str) -> Dict[str, Any]:
-    """从 SQLite 获取指标数据（每个周期只取最新一条，按配置过滤表）"""
+    """从 PG(tg_cards) 获取指标数据（每个周期只取最新一条，按配置过滤表；必要时回退 SQLite）"""
+    try:
+        out = _fetch_indicators_full_pg(symbol)
+        if isinstance(out, dict) and out:
+            return out
+    except Exception:
+        pass
+    return _fetch_indicators_full_sqlite(symbol)
+
+
+def _fetch_indicators_full_sqlite(symbol: str) -> Dict[str, Any]:
     db_path = INDICATOR_DB
     indicators: Dict[str, Any] = {}
 
@@ -246,6 +256,106 @@ def fetch_indicators_full(symbol: str) -> Dict[str, Any]:
                 # 无时间字段：退化为取一条
                 sql = f"SELECT * FROM '{tbl}' WHERE `{sym_col}`=? LIMIT 1"
                 rows = cur.execute(sql, (symbol,)).fetchall()
+
+            if rows:
+                indicators[tbl] = [dict(zip(cols, r)) for r in rows]
+        except Exception as e:
+            indicators[tbl] = {"error": str(e)}
+
+    cur.close()
+    conn.close()
+    return indicators
+
+
+def _fetch_indicators_full_pg(symbol: str) -> Dict[str, Any]:
+    """
+    从 PostgreSQL 读取 tg_cards schema 的指标表。
+
+    读取策略（与 sqlite 版保持一致）：
+    - 有 (周期, 数据时间)：每个周期取最新一条
+    - 仅有 数据时间：取最新一条
+    - 否则：取一条兜底
+    """
+    from psycopg import sql
+
+    schema = (os.getenv("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"error": "empty_symbol"}
+
+    conn = _get_pg_conn()
+    cur = conn.cursor()
+
+    # 表列表
+    cur.execute(
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = %s AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+        """,
+        (schema,),
+    )
+    tables = [r[0] for r in (cur.fetchall() or []) if r and r[0]]
+
+    indicators: Dict[str, Any] = {}
+
+    for tbl in tables:
+        # 按配置过滤表
+        if AI_TABLES_ENABLED and tbl not in AI_TABLES_ENABLED:
+            continue
+        if tbl in AI_TABLES_DISABLED:
+            continue
+
+        try:
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema=%s AND table_name=%s
+                ORDER BY ordinal_position
+                """,
+                (schema, tbl),
+            )
+            cols = [r[0] for r in (cur.fetchall() or []) if r and r[0]]
+            if not cols:
+                continue
+
+            sym_col = None
+            for cand in ["交易对", "币种", "symbol", "Symbol", "SYMBOL"]:
+                if cand in cols:
+                    sym_col = cand
+                    break
+            if sym_col is None:
+                continue
+
+            col_sql = sql.SQL(",").join(sql.Identifier(c) for c in cols)
+            table_sql = sql.Identifier(schema, tbl)
+            sym_sql = sql.Identifier(sym_col)
+
+            rows = []
+            if "周期" in cols and "数据时间" in cols:
+                period_sql = sql.Identifier("周期")
+                ts_sql = sql.Identifier("数据时间")
+                q = sql.SQL(
+                    "SELECT DISTINCT ON ({period}) {cols} FROM {tbl} "
+                    "WHERE {sym_col}=%s ORDER BY {period}, {ts} DESC"
+                ).format(period=period_sql, cols=col_sql, tbl=table_sql, sym_col=sym_sql, ts=ts_sql)
+                cur.execute(q, (sym,))
+                rows = cur.fetchall() or []
+            elif "数据时间" in cols:
+                ts_sql = sql.Identifier("数据时间")
+                q = sql.SQL("SELECT {cols} FROM {tbl} WHERE {sym_col}=%s ORDER BY {ts} DESC LIMIT 1").format(
+                    cols=col_sql, tbl=table_sql, sym_col=sym_sql, ts=ts_sql
+                )
+                cur.execute(q, (sym,))
+                rows = cur.fetchall() or []
+            else:
+                q = sql.SQL("SELECT {cols} FROM {tbl} WHERE {sym_col}=%s LIMIT 1").format(
+                    cols=col_sql, tbl=table_sql, sym_col=sym_sql
+                )
+                cur.execute(q, (sym,))
+                rows = cur.fetchall() or []
 
             if rows:
                 indicators[tbl] = [dict(zip(cols, r)) for r in rows]
@@ -345,7 +455,7 @@ def fetch_payload(symbol: str, interval: str) -> Dict[str, Any]:
     包含：
     - K线数据：全部 7 个周期，每个 50 条
     - 期货指标：50 条
-    - SQLite 指标：全部表的全部数据
+    - tg_cards 指标：全部表的全部数据（按配置过滤；迁移期可回退 SQLite）
     - 单币快照数据：基础/合约/高级三面板完整字段
     """
     candles = fetch_candles(symbol, ALL_INTERVALS, limit=50)

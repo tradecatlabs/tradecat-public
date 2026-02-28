@@ -1,11 +1,9 @@
 """信号数据路由"""
 
-import sqlite3
-
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
-from src.config import get_settings
+from src.config import get_pg_pool, get_settings
 from src.utils.errors import ErrorCode, api_response, error_response
 
 router = APIRouter(tags=["signal"])
@@ -15,24 +13,25 @@ router = APIRouter(tags=["signal"])
 async def get_cooldown_status() -> dict:
     """获取信号冷却状态"""
     settings = get_settings()
-    db_path = settings.SQLITE_COOLDOWN_PATH
-
-    if not db_path.exists():
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "冷却数据库不可用")
 
     def _fetch_rows():
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT key, timestamp FROM cooldown ORDER BY timestamp DESC")
-            rows = cursor.fetchall()
-            return [
-                {
-                    "key": row[0],
-                    "timestamp": int(row[1] * 1000),  # 转为毫秒
-                    "expireTime": int(row[1] * 1000)
-                }
-                for row in rows
-            ]
+        # 优先 PG（单真相源）；迁移期可通过 settings.SQLITE_COOLDOWN_PATH 回退旧逻辑
+        pool = get_pg_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass(%s)", ("signal_state.cooldown",))
+                if cur.fetchone()[0] is None:
+                    raise RuntimeError("PG 冷却表不存在：signal_state.cooldown")
+                cur.execute("SELECT key, ts_epoch FROM signal_state.cooldown ORDER BY ts_epoch DESC")
+                rows = cur.fetchall() or []
+        return [
+            {
+                "key": row[0],
+                "timestamp": int(float(row[1] or 0.0) * 1000),
+                "expireTime": int(float(row[1] or 0.0) * 1000),
+            }
+            for row in rows
+        ]
 
     try:
         data = await run_in_threadpool(_fetch_rows)

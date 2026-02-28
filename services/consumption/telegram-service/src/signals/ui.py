@@ -3,10 +3,7 @@
 """
 import os
 import sys
-import json
-import sqlite3
 import logging
-from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Dict
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,6 +19,7 @@ if str(_SIGNAL_SERVICE_SRC) not in sys.path:
 
 from rules import RULES_BY_TABLE
 from storage.history import get_history
+from storage.subscription import get_subscription_manager
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +40,6 @@ def build_binance_url(symbol: str, market: str = "futures") -> str:
     else:
         path = f"/en/futures/{sym}?type=perpetual"
     return f"{web_base}{path}" if web_base else path
-
-# 数据库路径
-_PROJECT_ROOT = str(_REPO_ROOT)
-# 订阅库统一归档到 signal-service（便于 compute/consumption 共享）
-SUBS_DB_PATH = os.path.join(_PROJECT_ROOT, "assets/database/services/signal-service/signal_subs.db")
 
 # 表名映射为简短名称
 TABLE_NAMES = {
@@ -90,9 +83,6 @@ TABLE_NAMES = {
 # 所有表
 ALL_TABLES = list(RULES_BY_TABLE.keys())
 
-# 内存缓存
-_subs: Dict[int, Dict] = {}
-
 def resolve_target_id(update=None, user_id: int | None = None) -> int | None:
     """解析订阅目标ID：优先 chat_id（群/私聊），再回退 user_id。"""
     if user_id is not None:
@@ -113,84 +103,21 @@ def resolve_target_id(update=None, user_id: int | None = None) -> int | None:
     return None
 
 
-@contextmanager
-def _conn():
-    """获取订阅库连接，确保异常也能释放。"""
-    conn = None
-    try:
-        conn = sqlite3.connect(SUBS_DB_PATH)
-        yield conn
-        conn.commit()
-    finally:
-        if conn:
-            with suppress(Exception):
-                conn.close()
-
-
-def _init_db():
-    """初始化订阅数据库"""
-    os.makedirs(os.path.dirname(SUBS_DB_PATH), exist_ok=True)
-    with _conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS signal_subs (
-                user_id INTEGER PRIMARY KEY,
-                enabled INTEGER DEFAULT 1,
-                tables TEXT
-            )
-        """)
-
-
-def _load_sub(uid: int) -> Dict:
-    """从数据库加载订阅"""
-    try:
-        with _conn() as conn:
-            row = conn.execute("SELECT enabled, tables FROM signal_subs WHERE user_id = ?", (uid,)).fetchone()
-        if row:
-            tables = set(json.loads(row[1])) if row[1] else set(ALL_TABLES)
-            return {"enabled": bool(row[0]), "tables": tables}
-    except Exception as e:
-        logger.warning(f"加载订阅失败 uid={uid}: {e}")
-    return None
-
-
-def _save_sub(uid: int, sub: Dict):
-    """保存订阅到数据库"""
-    try:
-        with _conn() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO signal_subs (user_id, enabled, tables) VALUES (?, ?, ?)",
-                (uid, int(sub["enabled"]), json.dumps(list(sub["tables"])))
-            )
-    except Exception as e:
-        logger.warning(f"保存订阅失败 uid={uid}: {e}")
-
-
-# 初始化数据库
-_init_db()
-
-
 def _get_subscribers() -> list:
     """获取所有启用推送的用户ID列表"""
     try:
-        with _conn() as conn:
-            rows = conn.execute("SELECT user_id FROM signal_subs WHERE enabled = 1").fetchall()
-        return [r[0] for r in rows]
+        return get_subscription_manager().get_enabled_subscribers()
     except Exception as e:
         logger.warning(f"获取订阅用户失败: {e}")
         return []
 
 
 def get_sub(uid: int) -> Dict:
-    if uid not in _subs:
-        # 先从数据库加载
-        loaded = _load_sub(uid)
-        if loaded:
-            _subs[uid] = loaded
-        else:
-            # 默认开启推送，开启全部信号
-            _subs[uid] = {"enabled": True, "tables": set(ALL_TABLES)}
-            _save_sub(uid, _subs[uid])
-    return _subs[uid]
+    try:
+        return get_subscription_manager().get(uid)
+    except Exception as e:
+        logger.warning("读取订阅失败 uid=%s: %s", uid, e)
+        return {"enabled": True, "tables": set(ALL_TABLES)}
 
 
 def get_short_name(table: str) -> str:
@@ -265,27 +192,21 @@ async def handle(update, context) -> bool:
         return False
 
     # 即时响应已在 app.py 统一处理
-    sub = get_sub(uid)
+    manager = get_subscription_manager()
+    sub = manager.get(uid)
 
     if data == "sig_toggle":
-        sub["enabled"] = not sub["enabled"]
-        _save_sub(uid, sub)
+        manager.set_enabled(uid, not sub["enabled"])
     elif data == "sig_all":
-        sub["tables"] = set(ALL_TABLES)
-        _save_sub(uid, sub)
+        manager.enable_all(uid)
     elif data == "sig_none":
-        sub["tables"] = set()
-        _save_sub(uid, sub)
+        manager.disable_all(uid)
     elif data.startswith("sig_t_"):
         table = data[6:]
         # 白名单验证
         if table not in ALL_TABLES:
             return False
-        if table in sub["tables"]:
-            sub["tables"].discard(table)
-        else:
-            sub["tables"].add(table)
-        _save_sub(uid, sub)
+        manager.toggle_table(uid, table)
     elif data == "sig_menu":
         pass
     elif data == "sig_hist_recent":
