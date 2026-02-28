@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import os
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -10,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from src.remote_db import sh_quote
 from src.repo import find_repo_root
 
 
@@ -38,6 +38,9 @@ _NUM_SUFFIX = {
     "B": 1_000_000_000.0,
     "T": 1_000_000_000_000.0,
 }
+
+def sh_quote(s: str) -> str:
+    return shlex.quote(str(s))
 
 
 def _coerce_number(v: object) -> float | int | None:

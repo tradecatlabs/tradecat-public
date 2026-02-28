@@ -48,14 +48,6 @@ class Settings:
     outbox_path: Path
     checkpoint_path: Path
     idempotency_db_path: Path
-    # ---------- remote db (optional) ----------
-    remote_db_mode: str  # off|ssh
-    remote_db_ssh_host: str
-    remote_db_ssh_user: str
-    remote_db_ssh_key_path: str
-    remote_db_path: str
-    remote_db_local_path: Path
-    remote_db_min_refresh_seconds: int
 
     @staticmethod
     def from_env(service_dir: Path) -> Settings:
@@ -146,26 +138,6 @@ class Settings:
             Path(local_meta_env).expanduser() if local_meta_env else (service_dir / "data" / "local_meta.json")
         )
 
-        # remote db (optional): use server data as the source of truth
-        remote_db_mode = (os.environ.get("SHEETS_REMOTE_DB_MODE", "") or "").strip().lower()
-        if not remote_db_mode:
-            remote_db_mode = "ssh" if (os.environ.get("SHEETS_REMOTE_DB_SSH_HOST", "") or "").strip() else "off"
-        if remote_db_mode not in {"off", "ssh"}:
-            remote_db_mode = "off"
-        remote_db_ssh_host = (os.environ.get("SHEETS_REMOTE_DB_SSH_HOST", "") or "").strip()
-        remote_db_ssh_user = (os.environ.get("SHEETS_REMOTE_DB_SSH_USER", "nvidia") or "nvidia").strip()
-        remote_db_ssh_key_path = (os.environ.get("SHEETS_REMOTE_DB_SSH_KEY_PATH", "") or "").strip()
-        remote_db_path = (os.environ.get("SHEETS_REMOTE_DB_PATH", "") or "").strip()
-        remote_db_local_env = (os.environ.get("SHEETS_REMOTE_DB_LOCAL_PATH", "") or "").strip()
-        remote_db_local_path = (
-            Path(remote_db_local_env).expanduser()
-            if remote_db_local_env
-            else (service_dir / "data" / "remote" / "market_data.db")
-        )
-        remote_db_min_refresh_seconds = int(
-            (os.environ.get("SHEETS_REMOTE_DB_MIN_REFRESH_SECONDS", "300") or "300").strip() or "300"
-        )
-
         return Settings(
             write_mode=write_mode,
             sync_mode=sync_mode,
@@ -202,11 +174,4 @@ class Settings:
             outbox_path=outbox_path,
             checkpoint_path=checkpoint_path,
             idempotency_db_path=idempotency_db_path,
-            remote_db_mode=remote_db_mode,
-            remote_db_ssh_host=remote_db_ssh_host,
-            remote_db_ssh_user=remote_db_ssh_user,
-            remote_db_ssh_key_path=remote_db_ssh_key_path,
-            remote_db_path=remote_db_path,
-            remote_db_local_path=remote_db_local_path,
-            remote_db_min_refresh_seconds=remote_db_min_refresh_seconds,
         )

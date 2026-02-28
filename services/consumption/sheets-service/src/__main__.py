@@ -19,7 +19,6 @@ from src.mock_webhook_server import serve_mock_webhook
 from src.outbox import JsonlOutbox
 from src.polymarket_facts_exporter import export_polymarket_facts_events_sheet
 from src.polymarket_exporter import export_polymarket_stats_sheet
-from src.remote_db import RemoteDbSpec, ensure_local_market_db
 from src.repo import find_repo_root
 from src.sa_sheets_writer import SaSheetsWriter
 from src.symbol_query_exporter import export_symbol_query_sheet, normalize_symbol_tab_title
@@ -173,41 +172,6 @@ async def _run_once(
     dashboard_variants: bool,
     dashboard_variants_only: bool,
 ) -> int:
-    # 可选：使用服务器 DB 作为数据源（避免本机 DB 落后/不全）
-    try:
-        spec = RemoteDbSpec(
-            mode=settings.remote_db_mode,
-            ssh_host=settings.remote_db_ssh_host,
-            ssh_user=settings.remote_db_ssh_user,
-            ssh_key_path=settings.remote_db_ssh_key_path,
-            remote_db_path=settings.remote_db_path,
-            local_db_path=settings.remote_db_local_path,
-            min_refresh_seconds=settings.remote_db_min_refresh_seconds,
-            meta_path=settings.local_meta_path,
-        )
-        res = ensure_local_market_db(spec)
-        if res.get("ok") and res.get("action") in {"pulled", "skip_same_sig", "skip_by_interval"}:
-            print(f"🛰️ 使用远程 market_data.db: action={res.get('action')} local={res.get('local_db')}")
-    except Exception as exc:
-        print(f"⚠️ 远程数据源准备失败（将继续使用本机 DB）：{type(exc).__name__}: {exc}")
-
-    # ==================== 币种过滤默认策略（sheets-service 侧） ====================
-    # 现象：如果用户的全局配置是 SYMBOLS_GROUPS=main1（仅 BTC），看板会“只有 BTC”。
-    # 但当启用 remote_db=ssh 时，通常意味着“使用服务器全量数据源”，此时继续沿用 main1 会让看板失真。
-    #
-    # 策略：
-    # - remote_db=ssh 且用户未显式设置导出侧覆盖时：默认关闭过滤（auto）
-    # - 显式覆盖优先级：
-    #   1) SHEETS_EXPORT_SYMBOLS_UNFILTERED=1
-    #   2) SHEETS_EXPORT_SYMBOLS_GROUPS=<group>
-    if (settings.remote_db_mode or "").strip().lower() == "ssh":
-        if (
-            (os.environ.get("SHEETS_EXPORT_SYMBOLS_UNFILTERED") or "").strip() == ""
-            and (os.environ.get("SHEETS_EXPORT_SYMBOLS_GROUPS") or "").strip() == ""
-        ):
-            os.environ["SHEETS_EXPORT_SYMBOLS_UNFILTERED"] = "1"
-            print("🧩 Sheets 导出：检测到 remote_db=ssh，默认关闭币种过滤（可用 SHEETS_EXPORT_SYMBOLS_GROUPS 覆盖）")
-
     if settings.write_mode == "webhook":
         if not settings.webhook_url or not settings.webhook_secret:
             print("❌ 缺少 SHEETS_WEBHOOK_URL / SHEETS_WEBHOOK_SECRET，无法发送（可先用 SHEETS_SYNC_DRY_RUN=1）")

@@ -1,17 +1,7 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 from pathlib import Path
-
-
-def _resolve_backend() -> str:
-    """
-    幂等存储后端：
-    - SHEETS_IDEMPOTENCY_BACKEND=pg|sqlite（默认 pg）
-    """
-    raw = (os.environ.get("SHEETS_IDEMPOTENCY_BACKEND") or "pg").strip().lower()
-    return raw if raw in {"pg", "sqlite"} else "pg"
 
 
 class PgIdempotencyStore:
@@ -57,60 +47,16 @@ class PgIdempotencyStore:
                 )
 
 
-class SqliteIdempotencyStore:
-    def __init__(self, path: Path) -> None:
-        self._path = path
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._path))
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
-
-    def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sent_keys (
-                    card_key TEXT PRIMARY KEY
-                );
-                """.strip()
-            )
-
-    def has(self, card_key: str) -> bool:
-        if not card_key:
-            return False
-        with self._connect() as conn:
-            row = conn.execute("SELECT 1 FROM sent_keys WHERE card_key = ? LIMIT 1;", (card_key,)).fetchone()
-            return row is not None
-
-    def mark(self, card_key: str) -> None:
-        if not card_key:
-            return
-        with self._connect() as conn:
-            conn.execute("INSERT OR IGNORE INTO sent_keys(card_key) VALUES (?);", (card_key,))
-
-
 class IdempotencyStore:
     """
     兼容层：对外保持 IdempotencyStore(path) 的构造方式，
-    内部按 env 选择 pg/sqlite。
+    内部固定使用 pg（不再支持 sqlite）。
     """
 
-    def __init__(self, path: Path) -> None:
-        backend = _resolve_backend()
-        if backend == "pg":
-            database_url = (os.environ.get("DATABASE_URL") or os.environ.get("TIMESCALE_DATABASE_URL") or "").strip()
-            schema = (os.environ.get("SHEETS_STATE_PG_SCHEMA") or "sheets_state").strip() or "sheets_state"
-            try:
-                self._impl = PgIdempotencyStore(database_url=database_url, schema=schema)
-                return
-            except Exception:
-                # PG 不可用时回退 sqlite（避免因环境缺失导致服务不可用）
-                pass
-        self._impl = SqliteIdempotencyStore(path)
+    def __init__(self, _path: Path) -> None:
+        database_url = (os.environ.get("DATABASE_URL") or os.environ.get("TIMESCALE_DATABASE_URL") or "").strip()
+        schema = (os.environ.get("SHEETS_STATE_PG_SCHEMA") or "sheets_state").strip() or "sheets_state"
+        self._impl = PgIdempotencyStore(database_url=database_url, schema=schema)
 
     def has(self, card_key: str) -> bool:
         return bool(self._impl.has(card_key))
