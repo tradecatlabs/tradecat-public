@@ -122,7 +122,8 @@ start_bot() {
     
     cd "$SERVICE_DIR/src"
     source ../.venv/bin/activate
-    nohup python3 -u main.py >> "$BOT_LOG" 2>&1 &
+    # 用 setsid 彻底与当前会话脱钩，避免被调用方会话回收误杀（CI/非交互环境常见）
+    setsid python3 -u main.py >> "$BOT_LOG" 2>&1 < /dev/null &
     local new_pid=$!
     echo "$new_pid" > "$BOT_PID"
     
