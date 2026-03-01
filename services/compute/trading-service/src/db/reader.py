@@ -365,6 +365,24 @@ class PgDataWriter:
         # NaN -> None（避免 PG 插入 NaN 造成后续聚合/排序异常）
         df = df.where(pd.notnull(df), None)
 
+        # ==================== 三键防线（避免无键脏数据写入） ====================
+        #
+        # 历史上曾出现某些指标未输出 (交易对/周期/数据时间) 导致写入 NULL 或 "nan"，
+        # 这类行会绕过幂等删除与保留窗口清理，最终让表无限膨胀并破坏消费端筛选。
+        #
+        # 规则：只要表结构包含三键，则写入前强制丢弃任何三键缺失/空白/NaN 的行。
+        bad_tokens = {"", "-", "nan", "nat", "none", "null"}
+        if {"交易对", "周期", "数据时间"}.issubset(set(pg_cols)):
+            def _ok_key(series: pd.Series) -> pd.Series:
+                s = series.astype(str).str.strip()
+                return (~series.isna()) & (~s.str.lower().isin(bad_tokens)) & (s != "None") & (s != "")
+
+            mask = _ok_key(df["交易对"]) & _ok_key(df["周期"]) & _ok_key(df["数据时间"])
+            if not mask.all():
+                df = df[mask]
+            if df.empty:
+                return
+
         # 幂等删除：同一 (交易对, 周期, 数据时间) 先删再插
         if {"交易对", "周期", "数据时间"}.issubset(set(pg_cols)):
             keys = df[["交易对", "周期", "数据时间"]].drop_duplicates()

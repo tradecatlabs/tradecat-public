@@ -145,13 +145,46 @@ class FuturesGapMonitor(Indicator):
     meta = IndicatorMeta(name="期货情绪缺口监控.py", lookback=1, is_incremental=False, min_data=1)
 
     def compute(self, df: pd.DataFrame, symbol: str, interval: str) -> pd.DataFrame:
-        # 只监控 5m 周期
+        # 期货缺口监控只对 5m 有意义，但为了避免上层 placeholder 逻辑插入“无键垃圾行”，
+        # 这里对所有周期都返回“带三键(交易对/周期/数据时间)”的单行结果。
         if interval != "5m":
-            return self._make_insufficient_result(df, symbol, interval, {"信号": "仅支持5m周期"})
+            ts = df.index[-1] if not df.empty else None
+            ts_str = ts.isoformat() if hasattr(ts, "isoformat") else (str(ts) if ts is not None else None)
+            return pd.DataFrame(
+                [
+                    {
+                        "交易对": symbol,
+                        "周期": interval,
+                        "数据时间": ts_str,
+                        "信号": "仅支持5m周期",
+                        "已加载根数": None,
+                        "最新时间": None,
+                        "缺失根数": None,
+                        "首缺口起": None,
+                        "首缺口止": None,
+                    }
+                ]
+            )
 
         times = get_metrics_times(symbol, 240, interval)
         gap_info = detect_gaps(times, 300)
 
-        # 不使用 _make_result，直接构建（因为没有数据时间字段）
-        row = {"交易对": symbol, **gap_info}
-        return pd.DataFrame([row])
+        latest_ts = gap_info.get("最新时间")
+        # gap_info["最新时间"] 可能为空；兜底使用 K线最新时间（保持三键完整）
+        if not latest_ts:
+            ts = df.index[-1] if not df.empty else None
+            latest_ts = ts.isoformat() if hasattr(ts, "isoformat") else (str(ts) if ts is not None else None)
+
+        missing = gap_info.get("缺失根数")
+        signal = "有缺口" if isinstance(missing, int) and missing > 0 else "正常"
+
+        row = {
+            "交易对": symbol,
+            "周期": interval,
+            "数据时间": latest_ts,
+            "信号": signal,
+            **gap_info,
+        }
+        # 固定列顺序：保证前三列为主键
+        cols = ["交易对", "周期", "数据时间"] + [c for c in row.keys() if c not in ("交易对", "周期", "数据时间")]
+        return pd.DataFrame([row])[cols]
