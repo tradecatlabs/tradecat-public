@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 from psycopg import sql
+from psycopg import OperationalError, InterfaceError
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -61,6 +62,17 @@ def get_shared_pg_pool() -> ConnectionPool:
                     kwargs={"connect_timeout": 3},
                 )
     return _shared_pg_pool
+
+
+def reset_shared_pg_pool() -> None:
+    """重置共享连接池（用于应对连接断开/SSL EOF 等瞬时错误）。"""
+    global _shared_pg_pool
+    with _shared_pg_pool_lock:
+        if _shared_pg_pool is not None:
+            try:
+                _shared_pg_pool.close()
+            finally:
+                _shared_pg_pool = None
 
 
 @contextmanager
@@ -320,34 +332,63 @@ class PgDataWriter:
 
     def write(self, table: str, df: pd.DataFrame) -> None:
         with self._lock:
-            with shared_pg_conn() as conn:
-                try:
-                    with conn.cursor() as cur:
+            for attempt in (1, 2):
+                with shared_pg_conn() as conn:
+                    try:
+                        with conn.cursor() as cur:
+                            try:
+                                self._write_table(conn, cur, table, df)
+                            except Exception as exc:
+                                raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
+                        conn.commit()
+                        return
+                    except (OperationalError, InterfaceError):
+                        # 连接断开/SSL EOF：回滚可能失败，忽略并重置连接池重试一次
                         try:
-                            self._write_table(conn, cur, table, df)
-                        except Exception as exc:
-                            raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        if attempt == 1:
+                            reset_shared_pg_pool()
+                            continue
+                        raise
+                    except Exception:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        raise
 
     def write_batch(self, data: Dict[str, pd.DataFrame]) -> None:
         if not data:
             return
         with self._lock:
-            with shared_pg_conn() as conn:
-                try:
-                    with conn.cursor() as cur:
-                        for table, df in data.items():
-                            try:
-                                self._write_table(conn, cur, table, df)
-                            except Exception as exc:
-                                raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
+            for attempt in (1, 2):
+                with shared_pg_conn() as conn:
+                    try:
+                        with conn.cursor() as cur:
+                            for table, df in data.items():
+                                try:
+                                    self._write_table(conn, cur, table, df)
+                                except Exception as exc:
+                                    raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
+                        conn.commit()
+                        return
+                    except (OperationalError, InterfaceError):
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        if attempt == 1:
+                            reset_shared_pg_pool()
+                            continue
+                        raise
+                    except Exception:
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        raise
 
     def _write_table(self, conn, cur, table: str, df: pd.DataFrame) -> None:
         if df is None or df.empty:
