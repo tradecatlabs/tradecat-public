@@ -3,7 +3,7 @@
 """排行榜数据访问层
 
 数据源：
-- PG: DATABASE_URL 指向的库内 tg_cards schema（表结构严格对齐历史 SQLite）
+- PG: DATABASE_URL 指向的库内 tg_cards schema（表结构严格对齐历史指标表结构）
 """
 
 from __future__ import annotations
@@ -262,10 +262,10 @@ atexit.register(_cleanup_pg_pool)
 
 class PgRankingDataProvider:
     """
-    PG 读取端：从 `tg_cards.*` 读取指标表（表结构严格对齐 SQLite）。
+    PG 读取端：从 `tg_cards.*` 读取指标表（表结构严格对齐历史指标表结构）。
 
     设计目标：
-    - 与 RankingDataProvider（SQLite）保持同一接口
+    - 与历史 Provider 保持同一接口
     - 查询优先走 latest-per-symbol（DISTINCT ON），避免拉全历史
     """
 

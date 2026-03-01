@@ -60,7 +60,7 @@ if __name__ == "__main__":
 from cards import RankingRegistry
 
 # ==== 数据库指标服务（可选） ==============================================
-# 前端仅消费本地 CSV/SQLite 时不需要连接 Postgres/Timescale。
+# 前端仅消费本地 CSV/文件缓存时不需要连接 Postgres/Timescale。
 # 为避免未安装 psycopg 导致启动失败，这里使用安全降级导入。
 try:  # noqa: SIM105
     from services.币安数据库指标服务 import 币安数据库指标服务 as _MetricService
@@ -2732,7 +2732,7 @@ class TradeCatBot:
 
         # 预加载数据的任务列表 - 仅使用本地数据源
         cache_tasks = [
-            # 预计算的市场指标（从 SQLite 读取）
+            # 预计算的市场指标（从指标库读取）
             ('market_sentiment_cache', self.compute_market_sentiment_data),
             ('top_gainers_cache', lambda: self.compute_top_movers_data('gainers')),
             ('top_losers_cache', lambda: self.compute_top_movers_data('losers')),
@@ -6231,7 +6231,7 @@ async def post_init(application):
 
     # 启动信号检测服务（绑定主事件循环，避免跨线程/跨循环发送消息）
     try:
-        from signals import init_pusher, start_signal_loop
+        from signals import init_pusher, start_signal_loop, get_pg_engine
 
         async def send_signal(user_id: int, text: str, reply_markup):
             """发送信号消息"""
@@ -6245,19 +6245,8 @@ async def post_init(application):
                 logger.warning(f"发送信号给 {user_id} 失败: {e}")
 
         init_pusher(send_signal, loop=APP_LOOP)
-        start_signal_loop(interval=60)
-        logger.info("✅ SQLite信号检测服务已启动")
-        print("🔔 SQLite信号检测服务已启动，间隔60秒")
-    except Exception as e:
-        logger.warning(f"⚠️ SQLite信号服务启动失败: {e}")
-
-    # 启动 PG 实时信号检测服务
-    try:
-        from signals import start_pg_signal_loop, get_pg_engine
-
-        # 仅启动 PG 引擎，推送由 SignalPublisher -> signals.adapter 统一处理
         engine = get_pg_engine()
-        start_pg_signal_loop(interval=60)
+        start_signal_loop(interval=60)
         logger.info(f"✅ PG实时信号检测服务已启动，监控: {engine.symbols}")
         print(f"🔔 PG实时信号检测服务已启动，监控 {len(engine.symbols)} 个币种")
     except Exception as e:

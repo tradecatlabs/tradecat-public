@@ -59,7 +59,7 @@ class BaseService:
 class VolumeRankingService(BaseService):
     def __init__(self, handler) -> None:
         super().__init__(handler)
-        # 统一使用 SQLite 数据访问层
+        # 统一使用 PG 指标访问层
         self.provider = get_ranking_provider()
 
     def render_text(
@@ -76,7 +76,7 @@ class VolumeRankingService(BaseService):
         allowed = VOLUME_SPOT_PERIODS if market_type == "spot" else VOLUME_FUTURES_PERIODS
         period = normalize_period(period, allowed, default="4h")
 
-        # 使用 SQLite 数据
+        # 使用 PG 指标数据
         try:
             rows = self._load_from_provider(period)
             if rows:
@@ -656,7 +656,7 @@ class BuySellRatioService(BaseService):
                 })
             return self._sort_rows(rows, sort_field, sort_order)[:limit]
         except Exception as exc:  # pragma: no cover
-            self.logger.warning("SQLite 主动买卖比兜底失败: %s", exc)
+            self.logger.warning("主动买卖比兜底失败: %s", exc)
             return []
 
     @staticmethod

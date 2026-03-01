@@ -344,7 +344,7 @@ class VisHandler:
             return None, str(e)
 
     async def _fetch_market_data(self, interval: str) -> List[Dict]:
-        """获取全市场 VPVR 数据（从 SQLite 或 trading-service）"""
+        """获取全市场 VPVR 数据（从 trading-service 计算）"""
         try:
             # 尝试从 trading-service 获取 VPVR 数据
             trading_service_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "trading-service" / "src"

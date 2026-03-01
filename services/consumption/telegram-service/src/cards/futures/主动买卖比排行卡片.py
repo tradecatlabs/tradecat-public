@@ -289,7 +289,7 @@ class 主动买卖比排行卡片(RankingCard):
                         "主动买卖比": float(row.get("主动买卖比") or row.get("buy_ratio") or 0),
                     })
             except Exception as exc:  # pragma: no cover
-                self._logger.warning("SQLite 主动买卖比兜底失败: %s", exc)
+                self._logger.warning("主动买卖比兜底失败: %s", exc)
 
         reverse = sort_order != "asc"
         items.sort(key=lambda x: x.get(sort_field, 0), reverse=reverse)
