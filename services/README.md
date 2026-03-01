@@ -10,7 +10,7 @@ services/
 │   ├── binance-vision-service/      # Binance Vision Raw 对齐采集（ccxtpro + Vision ZIP 回填）
 │   └── data-service/                # 低频/分时采集（1m K线、5m 指标，兼容链路，非默认启动）
 ├── compute/                          # 处理层：只读采集层事实，计算指标/信号并落派生结果
-│   ├── trading-service/             # 指标计算（写入 SQLite 指标库供消费侧展示）
+│   ├── trading-service/             # 指标计算（写入 PG(tg_cards) 指标库供消费侧展示）
 │   ├── signal-service/              # 信号检测（只读指标库，写入自身冷却/历史）
 │   └── ai-service/                  # AI 分析（读指标/信号做解释与摘要）
 └── consumption/                      # 消费层：只读派生结果，负责 API/推送/可视化
