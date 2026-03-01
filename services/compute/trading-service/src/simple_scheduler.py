@@ -319,8 +319,6 @@ def check_need_calc() -> list:
 
             if indicator_ts is None or source_ts > indicator_ts:
                 need_calc.append(interval)
-
-            last_computed[interval] = source_ts
         except Exception as e:
             log(f"检查 {interval} 需要计算失败: {e}")
             need_calc.append(interval)
@@ -331,7 +329,7 @@ def check_need_calc() -> list:
 def run_calculation(intervals: list, symbols: list):
     """执行指标计算"""
     if not intervals or not symbols:
-        return
+        return False
 
     import subprocess
 
@@ -354,17 +352,19 @@ def run_calculation(intervals: list, symbols: list):
         for line in result.stdout.split("\n"):
             if "计算完成" in line or "rows" in line.lower():
                 log(line.strip())
+        return True
     else:
         stderr = (result.stderr or "").strip()
         if not stderr:
             log("错误: 子进程非0退出，但 stderr 为空")
-            return
+            return False
 
         # 只打印尾部，避免日志爆炸；但要保留 “哪张表写入失败” 等关键信息
         lines = stderr.splitlines()
         tail = lines[-60:] if len(lines) > 60 else lines
         for line in tail:
             log(f"错误: {line}")
+        return False
 
 
 def update_priority():
@@ -426,7 +426,11 @@ def main():
 
     # 2. 启动时强制计算全部周期（确保表里有全周期数据）
     log(f"首次启动，计算全部周期: {INTERVALS}")
-    run_calculation(INTERVALS, high_priority_symbols)
+    ok = run_calculation(INTERVALS, high_priority_symbols)
+    if ok:
+        # 只有在计算成功后才推进 last_computed，避免一次失败后“永不重试直到新数据出现”
+        for interval in INTERVALS:
+            last_computed[interval] = get_effective_source_latest(interval)
 
     log("-" * 50)
     log("进入轮询检查 (每10秒检查新数据, 每小时更新优先级)...")
@@ -436,19 +440,13 @@ def main():
         if time.time() - last_priority_update > 3600:
             update_priority()
 
-        # 检查新数据
-        to_calc = []
-        for interval in INTERVALS:
-            try:
-                latest = get_effective_source_latest(interval)
-                if latest and (last_computed[interval] is None or latest > last_computed[interval]):
-                    to_calc.append(interval)
-                    last_computed[interval] = latest
-            except Exception as e:
-                log(f"检查 {interval} 失败: {e}")
-
+        # 计算触发条件：以“指标进度 vs 源进度”为准（不是以 last_computed 为准）
+        to_calc = check_need_calc()
         if to_calc:
-            run_calculation(to_calc, high_priority_symbols)
+            ok = run_calculation(to_calc, high_priority_symbols)
+            if ok:
+                for interval in to_calc:
+                    last_computed[interval] = get_effective_source_latest(interval)
 
         time.sleep(10)
 
