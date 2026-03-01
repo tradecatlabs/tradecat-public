@@ -323,7 +323,10 @@ class PgDataWriter:
             with shared_pg_conn() as conn:
                 try:
                     with conn.cursor() as cur:
-                        self._write_table(conn, cur, table, df)
+                        try:
+                            self._write_table(conn, cur, table, df)
+                        except Exception as exc:
+                            raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
                     conn.commit()
                 except Exception:
                     conn.rollback()
@@ -337,7 +340,10 @@ class PgDataWriter:
                 try:
                     with conn.cursor() as cur:
                         for table, df in data.items():
-                            self._write_table(conn, cur, table, df)
+                            try:
+                                self._write_table(conn, cur, table, df)
+                            except Exception as exc:
+                                raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
                     conn.commit()
                 except Exception:
                     conn.rollback()
