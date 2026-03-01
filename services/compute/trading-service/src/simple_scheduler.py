@@ -274,7 +274,16 @@ def run_calculation(intervals: list, symbols: list):
             if "计算完成" in line or "rows" in line.lower():
                 log(line.strip())
     else:
-        log(f"错误: {result.stderr[:200]}")
+        stderr = (result.stderr or "").strip()
+        if not stderr:
+            log("错误: 子进程非0退出，但 stderr 为空")
+            return
+
+        # 只打印尾部，避免日志爆炸；但要保留 “哪张表写入失败” 等关键信息
+        lines = stderr.splitlines()
+        tail = lines[-60:] if len(lines) > 60 else lines
+        for line in tail:
+            log(f"错误: {line}")
 
 
 def update_priority():
