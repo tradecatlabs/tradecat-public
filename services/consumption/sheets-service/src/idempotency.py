@@ -48,7 +48,7 @@ class PgIdempotencyStore:
 
 class IdempotencyStore:
     """
-    幂等存储统一走 PG（不再支持 sqlite）。
+    幂等存储统一走 PG（sheets_state.sent_keys）。
     """
 
     def __init__(self) -> None:
