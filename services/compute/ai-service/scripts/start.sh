@@ -105,15 +105,16 @@ try:
 except ImportError as e:
     print(f'⚠️  gemini_client: {e}')
 
-# 检查数据库
+# 检查数据库连接串
 try:
-    from src.config import INDICATOR_DB
-    if INDICATOR_DB.exists():
-        print(f'✅ SQLite: {INDICATOR_DB}')
+    import os
+    db_url = os.getenv("DATABASE_URL") or os.getenv("TIMESCALE_DATABASE_URL")
+    if db_url:
+        print("✅ DATABASE_URL")
     else:
-        print(f'⚠️  SQLite 不存在: {INDICATOR_DB}')
+        print("⚠️  未设置 DATABASE_URL / TIMESCALE_DATABASE_URL")
 except Exception as e:
-    print(f'❌ 配置错误: {e}')
+    print(f"❌ 配置错误: {e}")
 
 if errors:
     print(f'\n需要安装: pip install {" ".join(errors)}')

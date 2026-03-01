@@ -24,7 +24,7 @@ ai-service/
 ```
 Telegram 用户 → bot/handler.py (币种/周期选择)
              → pipeline.py
-             → data/fetcher.py (TimescaleDB + SQLite)
+             → data/fetcher.py (TimescaleDB + PG(tg_cards))
              → prompt/builder.py
              → llm/client.py (Gemini CLI)
              → 返回分析结果

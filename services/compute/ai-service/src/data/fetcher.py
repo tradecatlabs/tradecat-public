@@ -386,7 +386,7 @@ def fetch_payload(symbol: str, interval: str) -> Dict[str, Any]:
     包含：
     - K线数据：全部 7 个周期，每个 50 条
     - 期货指标：50 条
-    - tg_cards 指标：全部表的全部数据（按配置过滤；迁移期可回退 SQLite）
+    - tg_cards 指标：全部表的全部数据（按配置过滤）
     - 单币快照数据：基础/合约/高级三面板完整字段
     """
     candles = fetch_candles(symbol, ALL_INTERVALS, limit=50)
@@ -403,7 +403,7 @@ def fetch_payload(symbol: str, interval: str) -> Dict[str, Any]:
         "candles": candles,
         # 期货指标（全量）
         "metrics": metrics,
-        # SQLite 指标（全量）
+        # tg_cards 指标（全量）
         "indicators": indicators,
         # 单币快照数据（复用 telegram-service）
         "snapshot": snapshot,
