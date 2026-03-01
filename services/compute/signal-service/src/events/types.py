@@ -25,7 +25,7 @@ class SignalEvent:
     timestamp: datetime = field(default_factory=datetime.now)
     timeframe: str = "1h"
     price: float = 0.0
-    source: str = "sqlite"  # sqlite / pg
+    source: str = "pg"  # 事件来源（默认：pg）
 
     # 规则信息
     rule_name: str = ""
@@ -75,7 +75,7 @@ class SignalEvent:
             timestamp=ts,
             timeframe=data.get("timeframe", "1h"),
             price=data.get("price", 0.0),
-            source=data.get("source", "sqlite"),
+            source=data.get("source", "pg"),
             rule_name=data.get("rule_name", ""),
             category=data.get("category", ""),
             subcategory=data.get("subcategory", ""),

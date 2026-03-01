@@ -35,7 +35,7 @@ class PgSignalHistory:
         self._lock = threading.Lock()
         self._ensure_table()
 
-        # 启动时清理旧记录（与 SQLite 行为保持一致）
+        # 启动时清理旧记录（与历史行为保持一致）
         self.cleanup()
 
     @contextmanager

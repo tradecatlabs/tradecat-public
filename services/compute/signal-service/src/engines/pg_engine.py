@@ -419,7 +419,7 @@ class PGSignalEngine(BaseEngine):
         self._conn_last_check = 0.0
         self._cooldown_storage = get_cooldown_storage()
         self._history = get_history()
-        # 只加载 PG 前缀的冷却记录，避免与 SQLite 互相干扰
+        # 只加载 pg: 前缀的冷却记录，避免不同来源互相干扰
         self.cooldowns = {
             k: v for k, v in self._cooldown_storage.load_all().items() if k.startswith("pg:")
         }
