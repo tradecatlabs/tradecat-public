@@ -480,3 +480,19 @@ class PgDataWriter:
 # 全局单例
 reader = DataReader()
 pg_writer = PgDataWriter()
+
+
+class WriterCompat:
+    """兼容旧调用：保留 interval 参数但不使用（PG 写入由 df 自带 周期 字段决定）。"""
+
+    def __init__(self, impl: PgDataWriter) -> None:
+        self._impl = impl
+
+    def write(self, table: str, df: pd.DataFrame, interval: str | None = None) -> None:  # noqa: ARG002
+        self._impl.write(table, df)
+
+    def write_batch(self, data: Dict[str, pd.DataFrame], interval: str | None = None) -> None:  # noqa: ARG002
+        self._impl.write_batch(data)
+
+
+writer = WriterCompat(pg_writer)
