@@ -6,7 +6,7 @@
 输出规范:
     - 必须包含: 交易对, 周期, 数据时间
     - 数据时间: ISO8601 格式
-    - 结果写入 SQLite，表名 = meta.name
+    - 结果写入 PostgreSQL（tg_cards schema），表名 = meta.name
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -21,7 +21,7 @@ DEFAULT_MIN_DATA = 5
 @dataclass
 class IndicatorMeta:
     """指标元信息"""
-    name: str                    # 指标名称（SQLite 表名）
+    name: str                    # 指标名称（表名）
     lookback: int = 300          # 所需 K 线窗口
     is_incremental: bool = True  # True=增量计算, False=批量计算
     min_data: int = 5            # 最小数据量要求

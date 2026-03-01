@@ -40,7 +40,7 @@ class Config:
         "postgresql://postgres:postgres@localhost:5433/market_data"
     ))
 
-    # PG 指标 schema（表名严格对齐 SQLite 表名）
+    # PG 指标 schema（表名严格对齐历史指标表名）
     indicator_pg_schema: str = field(default_factory=lambda: (os.getenv("INDICATOR_PG_SCHEMA", "tg_cards") or "tg_cards").strip())
 
     # 计算参数

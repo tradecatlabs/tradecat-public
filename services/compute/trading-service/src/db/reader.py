@@ -280,13 +280,13 @@ class DataReader:
             self._pool = None
 
 
-# ==================== PG 写入（tg_cards schema，严格对齐 SQLite） ====================
+# ==================== PG 写入（tg_cards schema，对齐历史表结构） ====================
 
 class PgDataWriter:
     """
     将指标结果写入 PostgreSQL（tg_cards schema）。
 
-    语义对齐 SQLite DataWriter：
+    语义对齐历史 DataWriter：
     - 对齐列：缺失补 NULL，多余丢弃
     - 幂等：先删同一 (交易对, 周期, 数据时间) 再插入
     - 保留窗口：按 (交易对, 周期) 保留每周期最新 N 条

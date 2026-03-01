@@ -4,7 +4,7 @@
 - incremental/: 真正增量计算（EMA/累加/单行读取）
 - batch/: 需要历史窗口（rolling/全量计算）
 
-计算结果统一写入 SQLite。
+计算结果统一写入 PostgreSQL（tg_cards schema）。
 """
 from .base import (
     Indicator,

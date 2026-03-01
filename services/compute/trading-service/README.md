@@ -158,7 +158,7 @@ PGPASSWORD=postgres psql 'postgresql://postgres:postgres@localhost:5433/market_d
   -f assets/database/db/schema/021_tg_cards_sqlite_parity.sql
 ```
 
-SQLite 表名示例：
+指标表名示例：
 
 | 表名示例 | 说明 |
 |:---|:---|
