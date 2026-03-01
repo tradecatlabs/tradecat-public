@@ -268,7 +268,7 @@ def get_metrics_history(symbol: str, limit: int = 100, interval: str = "5m") -> 
 
 @register
 class FuturesAggregate(Indicator):
-    meta = IndicatorMeta(name="期货情绪聚合表.py", lookback=1, is_incremental=False, min_data=1)
+    meta = IndicatorMeta(name="期货情绪聚合表.py", lookback=1, is_incremental=False, min_data=1, allow_placeholder=False)
 
     def compute(self, df: pd.DataFrame, symbol: str, interval: str) -> pd.DataFrame:
         # 期货数据只有 5m/15m/1h/4h/1d/1w，跳过1m

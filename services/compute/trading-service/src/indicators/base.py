@@ -25,6 +25,7 @@ class IndicatorMeta:
     lookback: int = 300          # 所需 K 线窗口
     is_incremental: bool = True  # True=增量计算, False=批量计算
     min_data: int = 5            # 最小数据量要求
+    allow_placeholder: bool = True  # 是否允许引擎写入“占位空行”（仅三键，其它字段为空）
 
 
 class Indicator(ABC):

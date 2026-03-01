@@ -261,12 +261,12 @@ def get_futures_indicator_latest(interval: str) -> datetime:
         with shared_pg_conn() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
-                    'SELECT MAX("数据时间") AS latest FROM tg_cards."期货情绪元数据.py" WHERE "周期"=%s',
+                    'SELECT MAX("数据时间") AS latest FROM tg_cards."期货情绪元数据.py" WHERE "周期"=%s AND "持仓金额" IS NOT NULL',
                     (interval,),
                 )
                 meta = cur.fetchone()
                 cur.execute(
-                    'SELECT MAX("数据时间") AS latest FROM tg_cards."期货情绪聚合表.py" WHERE "周期"=%s',
+                    'SELECT MAX("数据时间") AS latest FROM tg_cards."期货情绪聚合表.py" WHERE "周期"=%s AND "持仓金额" IS NOT NULL',
                     (interval,),
                 )
                 agg = cur.fetchone()

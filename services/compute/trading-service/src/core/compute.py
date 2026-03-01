@@ -73,20 +73,25 @@ def compute_batch(args: Tuple) -> Dict[str, List[dict]]:
         last_ts = df.index[-1].isoformat() if len(df) > 0 and hasattr(df.index[-1], "isoformat") else None
 
         for name, ind in indicator_instances.items():
-            placeholder = [{"交易对": symbol, "周期": interval, "数据时间": last_ts, "指标": None}]
+            allow_placeholder = getattr(ind.meta, "allow_placeholder", True)
+            placeholder = (
+                [{"交易对": symbol, "周期": interval, "数据时间": last_ts, "指标": None}]
+                if (allow_placeholder and last_ts)
+                else None
+            )
 
             if len(df) < ind.meta.lookback // 2:
-                if last_ts:
+                if placeholder:
                     results[name].append(placeholder)
                 continue
             try:
                 result = ind.compute(df, symbol, interval)
                 if result is not None and not result.empty:
                     results[name].append(result.to_dict("records"))
-                elif last_ts:
+                elif placeholder:
                     results[name].append(placeholder)
             except Exception:
-                if last_ts:
+                if placeholder:
                     results[name].append(placeholder)
 
     return results
