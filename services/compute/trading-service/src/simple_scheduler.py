@@ -205,6 +205,35 @@ def get_source_latest(interval: str) -> datetime:
         return None
 
 
+def get_futures_source_latest(interval: str) -> datetime:
+    """查询期货情绪源数据最新时间（5m=原始表，其他=*_last 物化表）"""
+    if interval == "1m":
+        return None
+
+    try:
+        with shared_pg_conn() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                if interval == "5m":
+                    cur.execute("SELECT MAX(create_time) AS latest FROM market_data.binance_futures_metrics_5m")
+                    row = cur.fetchone()
+                    latest = row["latest"] if row else None
+                else:
+                    table = f"binance_futures_metrics_{interval}_last"
+                    cur.execute(f"SELECT MAX(bucket) AS latest FROM market_data.{table}")
+                    row = cur.fetchone()
+                    latest = row["latest"] if row else None
+
+        if latest is None:
+            return None
+        # 这些列是 timestamp without time zone，统一按 UTC 解释
+        if getattr(latest, "tzinfo", None) is None:
+            return latest.replace(tzinfo=timezone.utc)
+        return latest
+    except Exception as e:
+        log(f"查询期货源最新时间失败({interval}): {e}")
+        return None
+
+
 def get_indicator_latest(interval: str) -> datetime:
     """查询 PG 指标该周期最新数据时间（tg_cards）"""
     try:
@@ -224,14 +253,66 @@ def get_indicator_latest(interval: str) -> datetime:
         return None
 
 
+def get_futures_indicator_latest(interval: str) -> datetime:
+    """查询期货相关指标表该周期最新时间（以 max(meta,agg) 作为有效进度）。"""
+    if interval == "1m":
+        return None
+    try:
+        with shared_pg_conn() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    'SELECT MAX("数据时间") AS latest FROM tg_cards."期货情绪元数据.py" WHERE "周期"=%s',
+                    (interval,),
+                )
+                meta = cur.fetchone()
+                cur.execute(
+                    'SELECT MAX("数据时间") AS latest FROM tg_cards."期货情绪聚合表.py" WHERE "周期"=%s',
+                    (interval,),
+                )
+                agg = cur.fetchone()
+
+        def _parse(v) -> datetime | None:
+            if not v:
+                return None
+            ts_str = str(v).replace("+00:00", "").replace("T", " ")
+            return datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+
+        meta_ts = _parse(meta.get("latest") if meta else None)
+        agg_ts = _parse(agg.get("latest") if agg else None)
+        if meta_ts and agg_ts:
+            return max(meta_ts, agg_ts)
+        return meta_ts or agg_ts
+    except Exception as e:
+        log(f"查询 tg_cards 期货指标 {interval} 最新时间失败: {e}")
+        return None
+
+
+def get_effective_source_latest(interval: str) -> datetime:
+    """综合源最新时间：max(candles, futures)。"""
+    k_ts = get_source_latest(interval)
+    f_ts = get_futures_source_latest(interval)
+    if k_ts and f_ts:
+        return max(k_ts, f_ts)
+    return k_ts or f_ts
+
+
+def get_effective_indicator_latest(interval: str) -> datetime:
+    """综合指标最新时间：max(kline指标进度, 期货指标进度)。"""
+    k_ts = get_indicator_latest(interval)
+    f_ts = get_futures_indicator_latest(interval)
+    if k_ts and f_ts:
+        return max(k_ts, f_ts)
+    return k_ts or f_ts
+
+
 def check_need_calc() -> list:
     """对比数据源和指标库，返回需要计算的周期"""
     need_calc = []
 
     for interval in INTERVALS:
         try:
-            source_ts = get_source_latest(interval)
-            indicator_ts = get_indicator_latest(interval)
+            source_ts = get_effective_source_latest(interval)
+            indicator_ts = get_effective_indicator_latest(interval)
 
             if source_ts is None:
                 continue
@@ -359,7 +440,7 @@ def main():
         to_calc = []
         for interval in INTERVALS:
             try:
-                latest = get_source_latest(interval)
+                latest = get_effective_source_latest(interval)
                 if latest and (last_computed[interval] is None or latest > last_computed[interval]):
                     to_calc.append(interval)
                     last_computed[interval] = latest
