@@ -338,6 +338,8 @@ class PgDataWriter:
                         with conn.cursor() as cur:
                             try:
                                 self._write_table(conn, cur, table, df)
+                            except (OperationalError, InterfaceError):
+                                raise
                             except Exception as exc:
                                 raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
                         conn.commit()
@@ -370,6 +372,8 @@ class PgDataWriter:
                             for table, df in data.items():
                                 try:
                                     self._write_table(conn, cur, table, df)
+                                except (OperationalError, InterfaceError):
+                                    raise
                                 except Exception as exc:
                                     raise RuntimeError(f"写入指标表失败: {self.schema}.{table}") from exc
                         conn.commit()
