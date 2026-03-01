@@ -73,7 +73,8 @@ start() {
     
     echo "启动 signal-service..."
     cd "$PROJECT_DIR"
-    nohup "$PYTHON" -m src --all >> "$LOG_FILE" 2>&1 &
+    # 用 setsid 彻底与当前会话脱钩，避免被调用方会话回收误杀（CI/非交互环境常见）
+    setsid "$PYTHON" -m src >> "$LOG_FILE" 2>&1 < /dev/null &
     echo $! > "$PID_FILE"
     echo "signal-service 已启动 (PID: $!)"
 }
