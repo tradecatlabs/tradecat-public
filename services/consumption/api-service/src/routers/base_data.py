@@ -1,4 +1,4 @@
-"""基础数据路由（优先 PG tg_cards，迁移期兼容 SQLite）"""
+"""基础数据路由（PG tg_cards）"""
 
 from __future__ import annotations
 

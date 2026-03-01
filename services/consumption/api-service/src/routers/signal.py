@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
-from src.config import get_pg_pool, get_settings
+from src.config import get_pg_pool
 from src.utils.errors import ErrorCode, api_response, error_response
 
 router = APIRouter(tags=["signal"])
@@ -12,10 +12,9 @@ router = APIRouter(tags=["signal"])
 @router.get("/signal/cooldown")
 async def get_cooldown_status() -> dict:
     """获取信号冷却状态"""
-    settings = get_settings()
 
     def _fetch_rows():
-        # 优先 PG（单真相源）；迁移期可通过 settings.SQLITE_COOLDOWN_PATH 回退旧逻辑
+        # 单真相源：PG signal_state.cooldown
         pool = get_pg_pool()
         with pool.connection() as conn:
             with conn.cursor() as cur:
