@@ -9,6 +9,7 @@
 """
 import threading
 import logging
+import math
 from typing import Dict, List, Sequence
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -472,6 +473,10 @@ class PgDataWriter:
         for tup in df.itertuples(index=False, name=None):
             out: list[object] = []
             for (_col, typ), val in zip(cols_meta, tup):
+                # 兜底：某些路径仍可能产生 float NaN（PG double 支持 NaN，但我们不希望写入 NaN，更不希望 text 列出现 "nan"）
+                if isinstance(val, float) and math.isnan(val):
+                    out.append(None)
+                    continue
                 if val is None:
                     out.append(None)
                     continue
@@ -483,7 +488,8 @@ class PgDataWriter:
                     continue
                 if typ == "double precision":
                     try:
-                        out.append(float(val))
+                        f = float(val)
+                        out.append(None if math.isnan(f) else f)
                     except Exception:
                         out.append(None)
                     continue
