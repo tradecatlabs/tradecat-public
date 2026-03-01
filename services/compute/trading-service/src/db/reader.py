@@ -378,10 +378,24 @@ class PgDataWriter:
                 inc_pg_write()
 
         # 插入
+        #
+        # ⚠️ 重要：psycopg 的占位符语法使用 `%s`，因此 SQL 文本中的任意 `%` 都会被解析器扫描。
+        # 我们的历史表结构中存在列名包含 `%`（例如 "距离趋势线%" / "持仓变动%"），且这些列名需要出现在 INSERT 列表里；
+        # 若不做转义，驱动会把 `%"` 误判为非法占位符并抛出：
+        #   ProgrammingError: only '%s', '%b', '%t' are allowed as placeholders, got '%"'
+        #
+        # 解决：将 Identifier 渲染为字符串后把 `%` 变为 `%%`（仅用于驱动解析阶段的“字面量%”转义），
+        # 最终发送到 PG 的 SQL 仍会是单个 `%`，不会改变真实列名。
+        def _ident_sql(*parts: str) -> sql.SQL:
+            rendered = sql.Identifier(*parts).as_string(conn)
+            if "%" in rendered:
+                rendered = rendered.replace("%", "%%")
+            return sql.SQL(rendered)
+
         placeholders = sql.SQL(",").join(sql.Placeholder() for _ in pg_cols)
         insert_sql = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
-            sql.Identifier(self.schema, table),
-            sql.SQL(",").join(sql.Identifier(c) for c in pg_cols),
+            _ident_sql(self.schema, table),
+            sql.SQL(",").join(_ident_sql(c) for c in pg_cols),
             placeholders,
         )
 

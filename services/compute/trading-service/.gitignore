@@ -62,3 +62,6 @@ pids/
 # Database (local dev)
 *.db
 *.sqlite3
+
+# Service local artifacts
+data/
