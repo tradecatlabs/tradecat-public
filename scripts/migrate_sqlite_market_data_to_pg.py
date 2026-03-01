@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,6 +122,39 @@ def _sqlite_fetch_sample_df(
     return pd.DataFrame(rows, columns=cols)
 
 
+def _sqlite_stream_rows(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    pg_cols: list[str],
+    sqlite_batch_size: int,
+) -> Iterable[list[tuple[Any, ...]]]:
+    """
+    full 模式：按 PG 列顺序流式读取 SQLite 行。
+
+    - SQLite 缺列：用 NULL 填充
+    - 不做 ORDER BY（避免全表排序开销）
+    """
+    sqlite_cols = set(_sqlite_table_columns(conn, table))
+    safe_table = _sqlite_quote_ident(table)
+
+    exprs: list[str] = []
+    for c in pg_cols:
+        if c in sqlite_cols:
+            exprs.append(_sqlite_quote_ident(c))
+        else:
+            exprs.append(f"NULL AS {_sqlite_quote_ident(c)}")
+    select_sql = f"SELECT {', '.join(exprs)} FROM {safe_table}"
+
+    cur = conn.cursor()
+    cur.execute(select_sql)
+    while True:
+        rows = cur.fetchmany(int(sqlite_batch_size))
+        if not rows:
+            break
+        yield rows
+
+
 @dataclass(frozen=True)
 class PgTarget:
     dsn: str
@@ -204,6 +238,15 @@ def _coerce_value(typ: str, val: Any) -> Any:
         return None
 
 
+def _pg_quote_ident(name: str) -> str:
+    # psycopg 使用 %s 占位符：SQL 文本里出现字面量 % 必须写成 %%
+    return '"' + str(name).replace('"', '""').replace("%", "%%") + '"'
+
+
+def _pg_qual_table(schema: str, table: str) -> str:
+    return f"{_pg_quote_ident(schema)}.{_pg_quote_ident(table)}"
+
+
 def _pg_delete_existing_keys(cur, *, schema: str, table: str, df: "pd.DataFrame", pg_cols: list[str]) -> int:
     if not {"交易对", "周期", "数据时间"}.issubset(set(pg_cols)):
         return 0
@@ -211,7 +254,6 @@ def _pg_delete_existing_keys(cur, *, schema: str, table: str, df: "pd.DataFrame"
         return 0
 
     import pandas as pd
-    from psycopg import sql
 
     keys = df[["交易对", "周期", "数据时间"]].drop_duplicates()
     keys = keys[(keys["交易对"].notna()) & (keys["周期"].notna()) & (keys["数据时间"].notna())]
@@ -219,8 +261,10 @@ def _pg_delete_existing_keys(cur, *, schema: str, table: str, df: "pd.DataFrame"
         return 0
 
     keys = keys.astype(str)
-    delete_sql = sql.SQL('DELETE FROM {} WHERE "交易对"=%s AND "周期"=%s AND "数据时间"=%s').format(
-        sql.Identifier(schema, table)
+    tbl = _pg_qual_table(schema, table)
+    delete_sql = (
+        f"DELETE FROM {tbl} "
+        f"WHERE {_pg_quote_ident('交易对')}=%s AND {_pg_quote_ident('周期')}=%s AND {_pg_quote_ident('数据时间')}=%s"
     )
     cur.executemany(delete_sql, list(keys.itertuples(index=False, name=None)))
     return int(len(keys))
@@ -231,7 +275,6 @@ def _pg_insert_rows(cur, *, schema: str, table: str, cols_meta: list[tuple[str, 
         return 0
 
     import pandas as pd
-    from psycopg import sql
 
     pg_cols = [c for c, _t in cols_meta]
 
@@ -244,12 +287,10 @@ def _pg_insert_rows(cur, *, schema: str, table: str, cols_meta: list[tuple[str, 
     # NaN -> None
     df = df.where(pd.notnull(df), None)
 
-    placeholders = sql.SQL(",").join(sql.Placeholder() for _ in pg_cols)
-    insert_sql = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
-        sql.Identifier(schema, table),
-        sql.SQL(",").join(sql.Identifier(c) for c in pg_cols),
-        placeholders,
-    )
+    tbl = _pg_qual_table(schema, table)
+    cols_sql = ", ".join(_pg_quote_ident(c) for c in pg_cols)
+    placeholders = ", ".join(["%s"] * len(pg_cols))
+    insert_sql = f"INSERT INTO {tbl} ({cols_sql}) VALUES ({placeholders})"
 
     rows: list[tuple[Any, ...]] = []
     for tup in df.itertuples(index=False, name=None):
@@ -262,6 +303,36 @@ def _pg_insert_rows(cur, *, schema: str, table: str, cols_meta: list[tuple[str, 
     return int(len(rows))
 
 
+def _pg_truncate_table(cur, *, schema: str, table: str) -> None:
+    cur.execute(f"TRUNCATE TABLE {_pg_qual_table(schema, table)}")
+
+
+def _pg_insert_many(
+    cur,
+    *,
+    schema: str,
+    table: str,
+    cols_meta: list[tuple[str, str]],
+    rows: list[tuple[Any, ...]],
+) -> int:
+    if not rows:
+        return 0
+
+    pg_cols = [c for c, _t in cols_meta]
+    tbl = _pg_qual_table(schema, table)
+    cols_sql = ", ".join(_pg_quote_ident(c) for c in pg_cols)
+    placeholders = ", ".join(["%s"] * len(pg_cols))
+    insert_sql = f"INSERT INTO {tbl} ({cols_sql}) VALUES ({placeholders})"
+
+    types = [typ for _c, typ in cols_meta]
+    out_rows: list[tuple[Any, ...]] = []
+    for r in rows:
+        out_rows.append(tuple(_coerce_value(t, v) for t, v in zip(types, r)))
+
+    cur.executemany(insert_sql, out_rows)
+    return int(len(out_rows))
+
+
 def _batched(items: list[str], *, batch_size: int) -> Iterable[list[str]]:
     buf: list[str] = []
     for x in items:
@@ -271,6 +342,19 @@ def _batched(items: list[str], *, batch_size: int) -> Iterable[list[str]]:
             buf = []
     if buf:
         yield buf
+
+
+def _normalize_windows_path(raw: str) -> str:
+    s = (raw or "").strip().strip('"').strip("'")
+    if not s:
+        return s
+    # Windows: C:\Users\foo\bar.db -> /mnt/c/Users/foo/bar.db（WSL）
+    m = re.match(r"^([A-Za-z]):\\\\(.*)$", s)
+    if m:
+        drive = m.group(1).lower()
+        rest = m.group(2).replace("\\\\", "/")
+        return f"/mnt/{drive}/{rest}"
+    return s
 
 
 def main() -> int:
@@ -289,10 +373,14 @@ def main() -> int:
     p.add_argument("--schema", default="tg_cards_sample", help="目标 PG schema（默认 tg_cards_sample）")
     p.add_argument("--clone-from-schema", default="tg_cards", help="克隆表结构来源 schema（默认 tg_cards）")
     p.add_argument("--tables", default="", help="仅导入指定表（逗号分隔），默认导入全部表")
+    p.add_argument("--mode", choices=["sample", "full"], default="sample", help="导入模式：sample|full（默认 sample）")
     p.add_argument("--limit", type=int, default=200, help="每张表导入的样本行数（默认 200）")
     p.add_argument("--order", choices=["latest", "oldest"], default="latest", help="样本排序（默认 latest）")
     p.add_argument("--batch-tables", type=int, default=5, help="每批处理多少张表（默认 5）")
     p.add_argument("--sqlite-busy-timeout-ms", type=int, default=5000, help="SQLite busy_timeout 毫秒（默认 5000）")
+    p.add_argument("--sqlite-batch-size", type=int, default=5000, help="full 模式：SQLite fetchmany 批量（默认 5000）")
+    p.add_argument("--pg-batch-size", type=int, default=2000, help="full 模式：PG executemany 批量（默认 2000）")
+    p.add_argument("--truncate", action="store_true", help="full 模式：导入前清空目标表（建议用于新 schema）")
     args = p.parse_args()
 
     repo_root = _resolve_repo_root(Path(__file__).resolve())
@@ -303,7 +391,8 @@ def main() -> int:
         print("❌ 缺少 DATABASE_URL（可用 --database-url 或在 assets/config/.env 中配置）")
         return 2
 
-    sqlite_path = (repo_root / args.sqlite).resolve()
+    sqlite_arg = _normalize_windows_path(str(args.sqlite))
+    sqlite_path = (repo_root / sqlite_arg).resolve() if not os.path.isabs(sqlite_arg) else Path(sqlite_arg).resolve()
     if not sqlite_path.exists():
         print(f"❌ SQLite 文件不存在：{sqlite_path}")
         return 2
@@ -313,6 +402,7 @@ def main() -> int:
     print(f"sqlite={sqlite_path}")
     print(f"pg={_mask_dsn(database_url)}")
     print(f"target_schema={args.schema} clone_from={args.clone_from_schema}")
+    print(f"import_mode={args.mode}")
 
     # ---------- list sqlite tables ----------
     with _sqlite_ro(sqlite_path, busy_timeout_ms=int(args.sqlite_busy_timeout_ms)) as sconn:
@@ -341,6 +431,14 @@ def main() -> int:
                 print(f"❌ clone schema 为空：{args.clone_from_schema}（请先执行 assets/database/db/schema/021_tg_cards_sqlite_parity.sql）")
                 return 2
 
+            # 仅导入 clone schema 已存在的表（避免 lost_and_found 等恢复残留）
+            before_n = len(sqlite_tables)
+            src_set = set(src_tables)
+            sqlite_tables = [t for t in sqlite_tables if t in src_set]
+            dropped = before_n - len(sqlite_tables)
+            if dropped > 0:
+                print(f"[过滤] dropped_tables={dropped}（不在 {args.clone_from_schema} 中）")
+
             if apply:
                 _pg_ensure_schema_and_tables(cur, target_schema=args.schema, clone_from_schema=args.clone_from_schema)
                 pg_conn.commit()
@@ -355,22 +453,40 @@ def main() -> int:
         for batch_tables in _batched(sqlite_tables, batch_size=int(args.batch_tables)):
             with _sqlite_ro(sqlite_path, busy_timeout_ms=int(args.sqlite_busy_timeout_ms)) as sconn:
                 for table in batch_tables:
-                    # 取样本
-                    try:
-                        df = _sqlite_fetch_sample_df(sconn, table=table, limit=int(args.limit), order=args.order)
-                    except Exception as exc:
-                        print(f"⚠️ skip table={table} read_failed: {type(exc).__name__}: {exc}")
+                    if args.mode == "sample":
+                        # 取样本
+                        try:
+                            df = _sqlite_fetch_sample_df(sconn, table=table, limit=int(args.limit), order=args.order)
+                        except Exception as exc:
+                            print(f"⚠️ skip table={table} read_failed: {type(exc).__name__}: {exc}")
+                            continue
+
+                        rows = int(len(df)) if df is not None else 0
+                        if not apply:
+                            print(f"[dry-run] table={table} sample_rows={rows}")
+                            continue
+
+                        if rows <= 0:
+                            print(f"[apply] table={table} empty")
+                            continue
+
+                        with pg_conn.cursor() as cur:
+                            cols_meta = _pg_load_columns(cur, schema=args.schema, table=table)
+                            if not cols_meta:
+                                print(f"⚠️ skip table={table} missing_in_pg: {args.schema}.{table}")
+                                continue
+
+                            pg_cols = [c for c, _t in cols_meta]
+                            deleted = _pg_delete_existing_keys(cur, schema=args.schema, table=table, df=df, pg_cols=pg_cols)
+                            inserted = _pg_insert_rows(cur, schema=args.schema, table=table, cols_meta=cols_meta, df=df)
+
+                        pg_conn.commit()
+                        imported_total += inserted
+                        deleted_keys_total += deleted
+                        print(f"[apply] table={table} deleted_keys={deleted} inserted_rows={inserted}")
                         continue
 
-                    rows = int(len(df)) if df is not None else 0
-                    if not apply:
-                        print(f"[dry-run] table={table} sample_rows={rows}")
-                        continue
-
-                    if rows <= 0:
-                        print(f"[apply] table={table} empty")
-                        continue
-
+                    # full 模式：流式导入全部行
                     with pg_conn.cursor() as cur:
                         cols_meta = _pg_load_columns(cur, schema=args.schema, table=table)
                         if not cols_meta:
@@ -378,13 +494,29 @@ def main() -> int:
                             continue
 
                         pg_cols = [c for c, _t in cols_meta]
-                        deleted = _pg_delete_existing_keys(cur, schema=args.schema, table=table, df=df, pg_cols=pg_cols)
-                        inserted = _pg_insert_rows(cur, schema=args.schema, table=table, cols_meta=cols_meta, df=df)
 
-                    pg_conn.commit()
+                        if not apply:
+                            print(f"[dry-run] table={table} pg_cols={len(pg_cols)}")
+                            continue
+
+                        if args.truncate:
+                            _pg_truncate_table(cur, schema=args.schema, table=table)
+                            pg_conn.commit()
+
+                        inserted = 0
+                        for sqlite_rows in _sqlite_stream_rows(
+                            sconn,
+                            table=table,
+                            pg_cols=pg_cols,
+                            sqlite_batch_size=int(args.sqlite_batch_size),
+                        ):
+                            for i in range(0, len(sqlite_rows), int(args.pg_batch_size)):
+                                chunk = sqlite_rows[i : i + int(args.pg_batch_size)]
+                                inserted += _pg_insert_many(cur, schema=args.schema, table=table, cols_meta=cols_meta, rows=chunk)
+                            pg_conn.commit()
+
                     imported_total += inserted
-                    deleted_keys_total += deleted
-                    print(f"[apply] table={table} deleted_keys={deleted} inserted_rows={inserted}")
+                    print(f"[apply] table={table} inserted_rows={inserted} (full)")
 
     if apply:
         print(f"✅ 完成：imported_rows={imported_total} deleted_keys={deleted_keys_total} target_schema={args.schema}")
