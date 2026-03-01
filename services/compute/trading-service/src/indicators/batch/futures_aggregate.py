@@ -50,7 +50,7 @@ def _fetch_metrics_history_batch(symbols: List[str], limit: int, interval: str) 
                    count_long_short_ratio, sum_taker_long_short_vol_ratio, {closed_col},
                    ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY {time_col} DESC) as rn
             FROM market_data.{table}
-            WHERE symbol = ANY(%s) AND {time_col} > NOW() - INTERVAL '30 days'
+            WHERE symbol = ANY(%s) AND {time_col} > (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'
         )
         SELECT symbol, {time_col}, sum_open_interest, sum_open_interest_value,
                count_toptrader_long_short_ratio, sum_toptrader_long_short_ratio,

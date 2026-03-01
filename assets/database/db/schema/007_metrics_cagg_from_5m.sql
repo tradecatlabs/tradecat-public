@@ -7,6 +7,8 @@ SET search_path TO market_data, public;
 CREATE OR REPLACE FUNCTION market_data._创建指标连续聚合(
     p_view_name       TEXT,
     p_bucket_interval INTERVAL,
+    p_expected_points INTEGER,
+    p_origin          TIMESTAMP WITHOUT TIME ZONE,
     p_end_offset      INTERVAL,
     p_schedule        INTERVAL
 ) RETURNS VOID
@@ -14,6 +16,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     view_exists BOOLEAN;
+    bucket_expr TEXT;
 BEGIN
     SELECT EXISTS (
         SELECT 1 FROM timescaledb_information.continuous_aggregates
@@ -21,26 +24,30 @@ BEGIN
     ) INTO view_exists;
 
     IF NOT view_exists THEN
+        IF p_origin IS NULL THEN
+            bucket_expr := format('time_bucket(%L::interval, create_time)', p_bucket_interval);
+        ELSE
+            bucket_expr := format('time_bucket(%L::interval, create_time, %L::timestamp without time zone)', p_bucket_interval, p_origin);
+        END IF;
+
         EXECUTE format($fmt$
             CREATE MATERIALIZED VIEW market_data.%I
             WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
             SELECT
-                time_bucket(%L::interval, create_time) AS bucket,
+                %s AS bucket,
                 symbol,
                 last(sum_open_interest, create_time) AS sum_open_interest,
                 last(sum_open_interest_value, create_time) AS sum_open_interest_value,
-                sum(count_toptrader_long_short_ratio) AS count_toptrader_long_short_ratio,
-                sum(sum_toptrader_long_short_ratio) AS sum_toptrader_long_short_ratio,
-                sum(count_long_short_ratio) AS count_long_short_ratio,
-                sum(sum_taker_long_short_vol_ratio) AS sum_taker_long_short_vol_ratio,
-                last(source, create_time) AS source,
-                bool_and(is_closed) AS is_closed,
-                max(ingested_at) AS ingested_at,
-                max(updated_at) AS updated_at
+                last(count_toptrader_long_short_ratio, create_time) AS count_toptrader_long_short_ratio,
+                last(sum_toptrader_long_short_ratio, create_time) AS sum_toptrader_long_short_ratio,
+                last(count_long_short_ratio, create_time) AS count_long_short_ratio,
+                last(sum_taker_long_short_vol_ratio, create_time) AS sum_taker_long_short_vol_ratio,
+                count(*) AS points,
+                ((count(*) = %s) AND bool_and(is_closed)) AS complete
             FROM market_data.binance_futures_metrics_5m
             GROUP BY 1,2
             WITH NO DATA;
-        $fmt$, p_view_name, p_bucket_interval, p_bucket_interval);
+        $fmt$, p_view_name, bucket_expr, p_expected_points);
     END IF;
 
     -- 索引
@@ -68,13 +75,13 @@ DECLARE
 BEGIN
     FOR cfg IN
         SELECT * FROM (VALUES
-            ('binance_futures_metrics_15m_last', '15 minutes'::interval, '1 minute'::interval, '5 minutes'::interval),
-            ('binance_futures_metrics_1h_last',  '1 hour'::interval,     '1 minute'::interval, '5 minutes'::interval),
-            ('binance_futures_metrics_4h_last',  '4 hours'::interval,    '1 minute'::interval, '5 minutes'::interval),
-            ('binance_futures_metrics_1d_last',  '1 day'::interval,      '1 minute'::interval, '5 minutes'::interval),
-            ('binance_futures_metrics_1w_last',  '7 days'::interval,     '1 minute'::interval, '5 minutes'::interval)
-        ) AS t(view_name, bucket_interval, end_offset, schedule_interval)
+            ('binance_futures_metrics_15m_last', '15 minutes'::interval, 3,    NULL::timestamp,                   '1 minute'::interval, '5 minutes'::interval),
+            ('binance_futures_metrics_1h_last',  '1 hour'::interval,     12,   NULL::timestamp,                   '1 minute'::interval, '5 minutes'::interval),
+            ('binance_futures_metrics_4h_last',  '4 hours'::interval,    48,   NULL::timestamp,                   '1 minute'::interval, '5 minutes'::interval),
+            ('binance_futures_metrics_1d_last',  '1 day'::interval,      288,  NULL::timestamp,                   '1 minute'::interval, '5 minutes'::interval),
+            ('binance_futures_metrics_1w_last',  '7 days'::interval,     2016, '1970-01-05 00:00:00'::timestamp, '1 minute'::interval, '5 minutes'::interval)
+        ) AS t(view_name, bucket_interval, expected_points, origin, end_offset, schedule_interval)
     LOOP
-        PERFORM market_data._创建指标连续聚合(cfg.view_name, cfg.bucket_interval, cfg.end_offset, cfg.schedule_interval);
+        PERFORM market_data._创建指标连续聚合(cfg.view_name, cfg.bucket_interval, cfg.expected_points, cfg.origin, cfg.end_offset, cfg.schedule_interval);
     END LOOP;
 END$$;

@@ -84,7 +84,7 @@ def _load_all_metrics(interval: str = "5m"):
                         count_toptrader_long_short_ratio, sum_toptrader_long_short_ratio,
                         count_long_short_ratio, sum_taker_long_short_vol_ratio
                     FROM market_data.{table}
-                    WHERE {time_col} > NOW() - INTERVAL '30 days'
+                    WHERE {time_col} > (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'
                     ORDER BY symbol, {time_col} DESC
                 """)
                 _METRICS_CACHE[interval] = {}
