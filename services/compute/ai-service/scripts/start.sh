@@ -96,7 +96,7 @@ try:
     print('✅ python-dotenv')
 except ImportError:
     print('❌ python-dotenv')
-    errors.append('dotenv')
+    errors.append('python-dotenv')
 
 # 检查 gemini_client
 try:
