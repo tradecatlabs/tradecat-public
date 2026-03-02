@@ -427,37 +427,45 @@ daemon_loop() {
                     local now_epoch
                     now_epoch="$(date +%s)"
                     local ws_uptime
-                    ws_uptime=$((now_epoch - ws_last_start_epoch))
+	                    ws_uptime=$((now_epoch - ws_last_start_epoch))
 
-                    if [ "$ws_uptime" -ge "$WS_DB_SELF_HEAL_WARMUP_SECONDS" ]; then
-                        if [ "${WS_DB_SELF_HEAL_SKIP_ON_BAN:-0}" = "1" ]; then
-                            local ban_remain
-                            ban_remain="$(ban_remaining_seconds 2>/dev/null || echo "")"
-                            if is_uint "$ban_remain" && [ "$ban_remain" -gt 0 ]; then
-                                log "ws DB 自愈跳过: 检测到 ban 剩余 ${ban_remain}s"
-                                ws_db_stale_count=0
-                                sleep "$CHECK_INTERVAL"
-                                continue
-                            fi
-                        fi
-
-                        local age
-                        if age="$(db_latest_candle_age_seconds)"; then
-                            if [ "$age" -ge "$WS_DB_STALE_MAX_AGE_SECONDS" ]; then
-                                ws_db_stale_count=$((ws_db_stale_count + 1))
-                                log "ws DB 新鲜度陈旧: age=${age}s 连续=${ws_db_stale_count}/${WS_DB_STALE_CONSECUTIVE}"
-                                if [ "$ws_db_stale_count" -ge "$WS_DB_STALE_CONSECUTIVE" ]; then
-                                    log "ws DB 连续陈旧，执行自愈重启 ws..."
-                                    stop_component ws >/dev/null
-                                    start_component ws >/dev/null
-                                    ws_db_stale_count=0
-                                    ws_last_start_epoch="${WS_LAST_START_EPOCH:-$(date +%s)}"
-                                fi
-                            else
-                                ws_db_stale_count=0
-                            fi
-                        else
-                            # DB 检查失败：不做“强动作”，只记录日志，避免 DB/网络抖动导致重启风暴
+	                    if [ "$ws_uptime" -ge "$WS_DB_SELF_HEAL_WARMUP_SECONDS" ]; then
+	                        local age
+	                        if age="$(db_latest_candle_age_seconds)"; then
+	                            if [ "$age" -ge "$WS_DB_STALE_MAX_AGE_SECONDS" ]; then
+	                                if [ "${WS_DB_SELF_HEAL_SKIP_ON_BAN:-0}" = "1" ]; then
+	                                    local ban_remain
+	                                    ban_remain="$(ban_remaining_seconds 2>/dev/null || echo "")"
+	                                    if is_uint "$ban_remain" && [ "$ban_remain" -gt 0 ]; then
+	                                        log "ws DB 自愈跳过: DB陈旧(age=${age}s) 但 ban 剩余 ${ban_remain}s"
+	                                        ws_db_stale_count=0
+	                                    else
+	                                        ws_db_stale_count=$((ws_db_stale_count + 1))
+	                                        log "ws DB 新鲜度陈旧: age=${age}s 连续=${ws_db_stale_count}/${WS_DB_STALE_CONSECUTIVE}"
+	                                        if [ "$ws_db_stale_count" -ge "$WS_DB_STALE_CONSECUTIVE" ]; then
+	                                            log "ws DB 连续陈旧，执行自愈重启 ws..."
+	                                            stop_component ws >/dev/null
+	                                            start_component ws >/dev/null
+	                                            ws_db_stale_count=0
+	                                            ws_last_start_epoch="${WS_LAST_START_EPOCH:-$(date +%s)}"
+	                                        fi
+	                                    fi
+	                                else
+	                                    ws_db_stale_count=$((ws_db_stale_count + 1))
+	                                    log "ws DB 新鲜度陈旧: age=${age}s 连续=${ws_db_stale_count}/${WS_DB_STALE_CONSECUTIVE}"
+	                                    if [ "$ws_db_stale_count" -ge "$WS_DB_STALE_CONSECUTIVE" ]; then
+	                                        log "ws DB 连续陈旧，执行自愈重启 ws..."
+	                                        stop_component ws >/dev/null
+	                                        start_component ws >/dev/null
+	                                        ws_db_stale_count=0
+	                                        ws_last_start_epoch="${WS_LAST_START_EPOCH:-$(date +%s)}"
+	                                    fi
+	                                fi
+	                            else
+	                                ws_db_stale_count=0
+	                            fi
+	                        else
+	                            # DB 检查失败：不做“强动作”，只记录日志，避免 DB/网络抖动导致重启风暴
                             log "ws DB 新鲜度检查失败，跳过本轮自愈"
                         fi
                     fi
