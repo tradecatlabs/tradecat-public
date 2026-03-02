@@ -1,0 +1,14 @@
+# 开发依赖
+# 安装: pip install -r requirements-dev.txt
+
+# 测试
+pytest>=8.0.0
+pytest-cov>=4.1.0
+httpx>=0.25.0
+
+# 代码质量
+ruff>=0.4.0
+mypy>=1.10.0
+
+# 调试
+ipython>=8.0.0
