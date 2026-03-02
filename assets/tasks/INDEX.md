@@ -19,6 +19,7 @@
 | 0015 | unify-all-storage-to-postgres | Not Started | P0 | 数据库归一完全转型：彻底废弃 SQLite（指标库/状态库/幂等库），统一迁移到 `DATABASE_URL` 指向的 PostgreSQL（`tg_cards` + `signal_state` + `sheets_state`），并提供灰度切换与可回滚策略 | ./0015-unify-all-storage-to-postgres/ |
 | 0016 | remove-sqlite-from-services | Done | P0 | SQLite 彻底出清（服务侧）：清理核心服务的 SQLite 残留（测试/默认值/文档/遗留 .db 文件），确保运行时只依赖 PostgreSQL；迁移脚本保留为工具 | ./0016-remove-sqlite-from-services/ |
 | 0017 | migrate-consumption-to-query-service | Not Started | P0 | 统一数据消费为 Query Service（/api/v1）：消费层禁止直连 DB，仅通过稳定契约读取（并支持多数据源扩展） | ./0017-migrate-consumption-to-query-service/ |
+| 0018 | stabilize-data-service-ban-backoff | Not Started | P0 | 修复 data-service 因 418 ban 触发的写库停滞与 ws 自愈重启风暴：统一识别 ban 并全局退避、收敛 backfill 并发、让守护逻辑对 ban 友好 | ./0018-stabilize-data-service-ban-backoff/ |
 
 ## 相关索引（单点入口）
 
