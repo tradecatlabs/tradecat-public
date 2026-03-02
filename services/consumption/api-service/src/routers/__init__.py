@@ -9,6 +9,7 @@ from .futures_metrics import router as futures_metrics_router
 from .base_data import router as base_data_router
 from .indicator import router as indicator_router
 from .signal import router as signal_router
+from .query_v1 import router as query_v1_router
 
 __all__ = [
     "health_router",
@@ -20,4 +21,5 @@ __all__ = [
     "base_data_router",
     "indicator_router",
     "signal_router",
+    "query_v1_router",
 ]

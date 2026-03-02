@@ -16,6 +16,7 @@ from src.routers import (
     base_data_router,
     indicator_router,
     signal_router,
+    query_v1_router,
 )
 from src.utils.errors import ErrorCode
 
@@ -83,3 +84,4 @@ app.include_router(futures_metrics_router, prefix="/api/futures")
 app.include_router(base_data_router, prefix="/api/futures")
 app.include_router(indicator_router, prefix="/api")
 app.include_router(signal_router, prefix="/api")
+app.include_router(query_v1_router, prefix="/api/v1")

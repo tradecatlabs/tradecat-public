@@ -3,46 +3,16 @@
 from __future__ import annotations
 
 import os
-import sys
-from functools import lru_cache
-import importlib.util
-from pathlib import Path
 
 from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 
 from src.config import get_pg_pool
+from src.query import service as query_service
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["indicator"])
-
-
-def _ensure_telegram_imports() -> None:
-    """确保可导入 telegram-service 的数据查询模块。"""
-    project_root = Path(__file__).resolve().parents[5]
-    telegram_src = project_root / "services" / "consumption" / "telegram-service" / "src"
-    if str(telegram_src) not in sys.path:
-        sys.path.insert(0, str(telegram_src))
-
-
-@lru_cache
-def _get_snapshot_provider():
-    project_root = Path(__file__).resolve().parents[5]
-    data_provider_path = (
-        project_root / "services" / "consumption" / "telegram-service" / "src" / "cards" / "data_provider.py"
-    )
-    if not data_provider_path.exists():
-        raise RuntimeError(f"data_provider 不存在: {data_provider_path}")
-    spec = importlib.util.spec_from_file_location("tg_data_provider", data_provider_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("无法加载 data_provider 模块")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    get_provider = getattr(module, "get_ranking_provider", None)
-    if callable(get_provider):
-        return get_provider()
-    raise RuntimeError("data_provider 缺少 get_ranking_provider（无法构建 snapshot）")
 
 
 def _indicator_pg_schema() -> str:
@@ -235,8 +205,6 @@ TABLE_ALIAS: dict[str, dict[str, str]] = {
 
 def _build_snapshot(symbol: str, panels: list[str], periods: list[str], include_base: bool,
                     include_pattern: bool) -> dict:
-    provider = _get_snapshot_provider()
-
     raw_symbol = (symbol or "").strip().upper()
     if not raw_symbol:
         return {"error": "symbol 不能为空"}
@@ -246,58 +214,26 @@ def _build_snapshot(symbol: str, panels: list[str], periods: list[str], include_
     period_set = {p.lower() for p in periods} if periods else set()
     normalized_panels = _normalize_panels(panels)
 
-    snapshot: dict = {
-        "symbol": raw_symbol,
-        "base_symbol": base_symbol,
-        "source_db": str(getattr(provider, "db_path", "")),
-        "panels": {},
-    }
+    # periods 参数名保持兼容（历史字段）；内部统一称 intervals
+    if period_set:
+        picked = {p for p in period_set if p in allowed_periods}
+        interval_list = _ordered_periods(ALL_PERIODS, picked)
+    else:
+        interval_list = list(ALL_PERIODS)
 
-    for panel in normalized_panels:
-        default_periods = FUTURES_PERIODS if panel == "futures" else ALL_PERIODS
-        if period_set:
-            picked = {p for p in period_set if p in allowed_periods}
-            panel_periods = _ordered_periods(ALL_PERIODS, picked)
-        else:
-            panel_periods = list(default_periods)
+    # 仅保留允许的面板
+    panel_list = [p for p in normalized_panels if p in ("basic", "futures", "advanced")]
 
-        tables = TABLE_FIELDS.get(panel, {})
-        panel_payload = {
-            "periods": panel_periods,
-            "tables": {},
-        }
-
-        for table in tables.keys():
-            base_table = TABLE_ALIAS.get(panel, {}).get(table, table)
-            fields = [
-                {"id": col_id, "label": label}
-                for col_id, label in tables.get(table, ())
-            ]
-            table_payload = {
-                "table": base_table,
-                "fields": fields,
-                "periods": {},
-            }
-            for period in panel_periods:
-                table_payload["periods"][period] = provider.fetch_row(base_table, period, raw_symbol)
-            panel_payload["tables"][table] = table_payload
-        snapshot["panels"][panel] = panel_payload
-
-    if include_base:
-        base_periods = _ordered_periods(ALL_PERIODS, period_set) if period_set else list(ALL_PERIODS)
-        base_payload = {"table": "基础数据同步器.py", "periods": {}}
-        for period in base_periods:
-            base_payload["periods"][period] = provider.fetch_row("基础数据", period, raw_symbol)
-        snapshot["base"] = base_payload
-
-    if include_pattern:
-        pattern_periods = _ordered_periods(ALL_PERIODS, period_set) if period_set else list(ALL_PERIODS)
-        pattern_payload = {"table": "K线形态扫描器.py", "periods": {}}
-        for period in pattern_periods:
-            pattern_payload["periods"][period] = provider.fetch_row("K线形态扫描器", period, raw_symbol)
-        snapshot["pattern"] = pattern_payload
-
-    return snapshot
+    # 复用 query 层实现：不再依赖 telegram-service 路径/模块
+    return query_service.symbol_snapshot_payload(
+        symbol=raw_symbol,
+        panels=panel_list,
+        intervals=interval_list,
+        include_base=include_base,
+        include_pattern=include_pattern,
+        table_fields=TABLE_FIELDS,
+        table_alias=TABLE_ALIAS,
+    )
 
 
 @router.get("/indicator/list")
