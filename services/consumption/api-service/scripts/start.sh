@@ -22,7 +22,9 @@ start() {
     fi
 
     echo "启动 API Service (端口: $PORT)..."
-    nohup .venv/bin/python -m src >> "$LOG_FILE" 2>&1 &
+    # 必须 setsid 脱钩，避免在非交互/CI 执行器中被“会话回收”误杀
+    # 并在子 shell 内 exec，确保 PID 文件指向真实的 Python 进程（而不是 bash 包装器）
+    setsid bash -c "exec .venv/bin/python -m src" >> "$LOG_FILE" 2>&1 < /dev/null &
     echo $! > "$PID_FILE"
     sleep 2
 

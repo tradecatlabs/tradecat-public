@@ -57,7 +57,8 @@ HOST="${VIS_SERVICE_HOST:-0.0.0.0}"
 PORT="${VIS_SERVICE_PORT:-8087}"
 TOKEN="${VIS_SERVICE_TOKEN:-}"
 
-START_CMD="uvicorn src.main:app --host $HOST --port $PORT"
+PYTHON_BIN="$SERVICE_DIR/.venv/bin/python3"
+START_CMD="$PYTHON_BIN -m uvicorn src.main:app --host $HOST --port $PORT"
 
 # ==================== 工具函数 ====================
 init_dirs() {
@@ -89,9 +90,10 @@ start_service() {
         return 1
     fi
 
-    source .venv/bin/activate
     export PYTHONPATH=src
-    nohup $START_CMD >> "$SERVICE_LOG" 2>&1 &
+    # 必须 setsid 脱钩，避免在非交互/CI 执行器中被“会话回收”误杀
+    # 并在子 shell 内 exec，确保 pidfile 指向真实的 Python 进程（而不是 bash 包装器）
+    setsid bash -c "exec $START_CMD" >> "$SERVICE_LOG" 2>&1 < /dev/null &
     local new_pid=$!
     echo "$new_pid" > "$SERVICE_PID"
     sleep 1
