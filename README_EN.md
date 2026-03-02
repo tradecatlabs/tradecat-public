@@ -195,9 +195,11 @@ vim assets/config/.env
 ```
 
 > Note: top-level `./scripts/start.sh` manages `ai-service`, `signal-service`, `telegram-service`, `trading-service` (ai-service is a sub-module; readiness check only, no standalone process).  
+> **Important**: since 2026-03, the consumption layer (Telegram/Sheets/visualization) is no longer allowed to read DB directly. All reads go through **Query Service** (`api-service`, `/api/v1`). Start `api-service` before running Telegram/Sheets.
 > Legacy ingestion service (low-frequency 1m/5m): `services/ingestion/data-service/` (not enabled by default).  
+> Required services (manual start):  
+> - `cd services/consumption/api-service && ./scripts/start.sh start` (Query Service, default port 8088; required by Telegram/Sheets)  
 > Optional services (manual start):  
-> - `cd services/consumption/api-service && ./scripts/start.sh start` (REST API, default port 8088)  
 > - `cd services/consumption/sheets-service && ./scripts/start.sh start` (Google Sheets dashboard sync, daemon by default)
 
 ### ⚙️ Configuration (required)
@@ -206,6 +208,8 @@ vim assets/config/.env
 - Default ports (repo examples are written for this): LF TimescaleDB = `5433` (`DATABASE_URL`), HF TimescaleDB = `15432` (`BINANCE_VISION_DATABASE_URL`). If you customize ports, update scripts and examples consistently.
 - Key fields:  
   - `DATABASE_URL` (TimescaleDB, see port note below)  
+  - `QUERY_SERVICE_BASE_URL` (Query Service base URL; default `http://127.0.0.1:8088`, see `assets/config/.env.example`)  
+  - `QUERY_SERVICE_TOKEN` (optional internal token for Query Service; empty = auth disabled)  
   - `BOT_TOKEN` (Telegram Bot Token)  
   - `TELEGRAM_GROUP_WHITELIST` (comma-separated group IDs; empty = private chats only; group messages require `/` or `!` prefix + @bot mention)  
   - `HTTP_PROXY` / `HTTPS_PROXY` (if proxy needed)  

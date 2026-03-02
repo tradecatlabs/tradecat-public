@@ -181,9 +181,11 @@ vim assets/config/.env
 ```
 
 > 说明：顶层 `./scripts/start.sh` 管理 `ai-service`、`signal-service`、`telegram-service`、`trading-service`（ai-service 为子模块，仅做就绪检查，无独立进程）。  
+> **重要**：从 2026-03 起，consumption 层（Telegram/Sheets/可视化）不再允许直连数据库，统一通过 **Query Service（api-service，`/api/v1`）** 读取数据；因此在运行 Telegram/Sheets 前，请先启动 `api-service`。
 > 低频/分时采集服务 data-service：`services/ingestion/data-service/`（兼容链路，不在默认启动链路）。  
+> 必须服务需手动启动：  
+> - `cd services/consumption/api-service && ./scripts/start.sh start`（Query Service，默认端口 8088；Telegram/Sheets 依赖它）  
 > 可选服务需手动启动：  
-> - `cd services/consumption/api-service && ./scripts/start.sh start`（REST API，默认端口 8088）  
 > - `cd services/consumption/sheets-service && ./scripts/start.sh start`（Google Sheets 公共看板同步，默认 daemon）
 
 ### ⚙️ 配置（必须）
@@ -195,6 +197,8 @@ vim assets/config/.env
   - 若你在私有环境使用其它端口（例如历史文档曾提及 5434）：请全局统一端口与脚本/命令；仓库当前示例以 5433/15432 为准。<!-- TODO: 若仓库正式迁移到其它端口，请补“统一替换列表与执行顺序” -->
 - 核心字段：  
   - `DATABASE_URL`（TimescaleDB，见下方端口说明）  
+  - `QUERY_SERVICE_BASE_URL`（Query Service 基地址；默认 `http://127.0.0.1:8088`，见 `assets/config/.env.example`）  
+  - `QUERY_SERVICE_TOKEN`（可选：Query Service 内网 token；留空=不启用鉴权）  
   - `BOT_TOKEN`（Telegram Bot Token）  
   - `TELEGRAM_GROUP_WHITELIST`（群聊白名单，逗号分隔；为空仅私聊；群聊仅响应 `/` 或 `!` 开头且需 @bot）  
   - `HTTP_PROXY` / `HTTPS_PROXY`（需要代理时填写）  

@@ -44,6 +44,11 @@ cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
 vim assets/config/.env
 
 # 3) 启动核心服务
+#
+# ⚠️ 重要：consumption 层禁止直连数据库，必须先启动 Query Service（api-service，/api/v1）。
+cd services/consumption/api-service && ./scripts/start.sh start
+cd -
+
 ./scripts/start.sh start
 ./scripts/start.sh status
 
@@ -80,12 +85,13 @@ make start|stop|status
 ### 架构分层（单向依赖）
 
 ```text
-ingestion  -> TimescaleDB (LF/HF) -> compute -> PG(tg_cards.*) -> consumption
+ingestion  -> TimescaleDB (LF/HF) -> compute -> PG(tg_cards.*) -> Query Service (/api/v1) -> consumption
 ```
 
 - ingestion：写 TimescaleDB（事实/原始数据）
 - compute：读 TimescaleDB，计算指标，写 PostgreSQL 指标库（`tg_cards.*`）
-- consumption：读 `tg_cards.*`，导出卡片并写 Sheets/API/Telegram
+- Query Service（api-service）：**唯一读出口**（多数据源 DSN）；对外提供 `/api/v1/*`
+- consumption：通过 Query Service HTTP 读取数据，导出卡片并写 Sheets/Telegram（**禁止直连 DB**）
 
 ### 服务边界（来自仓库结构 `services/`）
 
@@ -102,6 +108,7 @@ ingestion  -> TimescaleDB (LF/HF) -> compute -> PG(tg_cards.*) -> consumption
 - 数据库端口（模板默认，来源：`assets/config/.env.example`）：
   - LF：`DATABASE_URL` 默认 `localhost:5433/market_data`
   - HF（可选）：`BINANCE_VISION_DATABASE_URL` 默认 `localhost:15432/market_data`
+  - Query Service（消费层必需）：`QUERY_SERVICE_BASE_URL` 默认 `http://127.0.0.1:8088`（可选 `QUERY_SERVICE_TOKEN` 开启内网鉴权）
 
 ### 依赖添加规则
 
