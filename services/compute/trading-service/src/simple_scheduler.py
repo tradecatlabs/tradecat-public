@@ -48,6 +48,45 @@ from src.db.reader import shared_pg_conn
 def log(msg: str):
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}", flush=True)
 
+_TIME_DEBUG = os.environ.get("SCHEDULER_TIME_DEBUG", "").strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _normalize_utc(ts: datetime | None) -> datetime | None:
+    """把 datetime 统一归一为 UTC tz-aware。"""
+    if ts is None:
+        return None
+    if getattr(ts, "tzinfo", None) is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc)
+
+
+def _parse_tg_ts(v: object) -> datetime | None:
+    """
+    解析 tg_cards.* 的 "数据时间"（text）为 UTC tz-aware datetime。
+
+    兼容：
+    - 2026-03-01T19:45:00+00:00
+    - 2026-03-01 19:45:00+00:00
+    - 2026-03-01T19:45:00Z
+    - 2026-03-01 19:45:00   （无时区视为 UTC）
+    """
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return _normalize_utc(v)
+
+    s = str(v).strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    s = s.replace("T", " ")
+    try:
+        dt = datetime.fromisoformat(s)
+    except Exception:
+        return None
+    return _normalize_utc(dt)
+
 
 # 使用共享币种模块（仓库内 assets/common/symbols.py）
 from assets.common.symbols import get_configured_symbols
@@ -118,7 +157,7 @@ def _query_futures_priority(top_n: int = 30) -> set:
                         sum_taker_long_short_vol_ratio as taker_ratio,
                         count_long_short_ratio as ls_ratio
                     FROM market_data.binance_futures_metrics_5m 
-                    WHERE create_time > NOW() - INTERVAL '7 days'
+                    WHERE create_time > (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'
                     ORDER BY symbol, create_time DESC
                 """)
                 rows = cur.fetchall()
@@ -199,7 +238,7 @@ def get_source_latest(interval: str) -> datetime:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(f"SELECT MAX(bucket_ts) as latest FROM market_data.{table}")
                 row = cur.fetchone()
-                return row["latest"] if row else None
+                return _normalize_utc(row["latest"] if row else None)
     except Exception as e:
         log(f"查询 {table} 最新时间失败: {e}")
         return None
@@ -223,12 +262,7 @@ def get_futures_source_latest(interval: str) -> datetime:
                     row = cur.fetchone()
                     latest = row["latest"] if row else None
 
-        if latest is None:
-            return None
-        # 这些列是 timestamp without time zone，统一按 UTC 解释
-        if getattr(latest, "tzinfo", None) is None:
-            return latest.replace(tzinfo=timezone.utc)
-        return latest
+        return _normalize_utc(latest)
     except Exception as e:
         log(f"查询期货源最新时间失败({interval}): {e}")
         return None
@@ -245,8 +279,7 @@ def get_indicator_latest(interval: str) -> datetime:
                 )
                 row = cur.fetchone()
                 if row and row.get("latest"):
-                    ts_str = str(row["latest"]).replace("+00:00", "").replace("T", " ")
-                    return datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
+                    return _parse_tg_ts(row["latest"])
         return None
     except Exception as e:
         log(f"查询 tg_cards 指标 {interval} 最新时间失败: {e}")
@@ -271,14 +304,8 @@ def get_futures_indicator_latest(interval: str) -> datetime:
                 )
                 agg = cur.fetchone()
 
-        def _parse(v) -> datetime | None:
-            if not v:
-                return None
-            ts_str = str(v).replace("+00:00", "").replace("T", " ")
-            return datetime.fromisoformat(ts_str).replace(tzinfo=timezone.utc)
-
-        meta_ts = _parse(meta.get("latest") if meta else None)
-        agg_ts = _parse(agg.get("latest") if agg else None)
+        meta_ts = _parse_tg_ts(meta.get("latest") if meta else None)
+        agg_ts = _parse_tg_ts(agg.get("latest") if agg else None)
         if meta_ts and agg_ts:
             return max(meta_ts, agg_ts)
         return meta_ts or agg_ts
@@ -316,6 +343,15 @@ def check_need_calc() -> list:
 
             if source_ts is None:
                 continue
+
+            if _TIME_DEBUG:
+                delta = None
+                if indicator_ts is not None:
+                    try:
+                        delta = (source_ts - indicator_ts).total_seconds()
+                    except Exception:
+                        delta = None
+                log(f"[TIME_DEBUG] {interval} source={source_ts} indicator={indicator_ts} delta_s={delta}")
 
             if indicator_ts is None or source_ts > indicator_ts:
                 need_calc.append(interval)
