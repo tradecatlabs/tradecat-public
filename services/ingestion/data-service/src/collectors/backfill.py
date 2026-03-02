@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import sys
 import time
 import zipfile
@@ -134,9 +135,18 @@ class GapScanner:
 class RestBackfiller:
     """REST API 分页补齐 (用于小缺口) - 并行版"""
 
-    def __init__(self, ts: TimescaleAdapter, workers: int = 8):
+    def __init__(self, ts: TimescaleAdapter, workers: Optional[int] = None):
         self._ts = ts
-        self._workers = workers
+        if workers is None:
+            raw = (os.getenv("DATA_SERVICE_REST_BACKFILL_WORKERS") or "").strip()
+            if raw:
+                try:
+                    workers = int(raw)
+                except ValueError:
+                    workers = 2
+            else:
+                workers = 2
+        self._workers = max(1, min(int(workers), 20))
 
     def fill_kline_gap(self, symbol: str, gap: GapInfo, interval: str = "1m") -> int:
         """补齐单个 K 线缺口 - 收集后一次性写入"""

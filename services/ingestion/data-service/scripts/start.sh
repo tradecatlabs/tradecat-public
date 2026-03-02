@@ -109,6 +109,7 @@ WS_DB_SELF_HEAL_ENABLED="${DATA_SERVICE_WS_DB_SELF_HEAL_ENABLED:-1}"
 WS_DB_STALE_MAX_AGE_SECONDS="${DATA_SERVICE_WS_DB_STALE_MAX_AGE_SECONDS:-240}"
 WS_DB_STALE_CONSECUTIVE="${DATA_SERVICE_WS_DB_STALE_CONSECUTIVE:-3}"
 WS_DB_SELF_HEAL_WARMUP_SECONDS="${DATA_SERVICE_WS_DB_SELF_HEAL_WARMUP_SECONDS:-300}"
+WS_DB_SELF_HEAL_SKIP_ON_BAN="${DATA_SERVICE_WS_DB_SELF_HEAL_SKIP_ON_BAN:-1}"
 export DATA_SERVICE_WS_DB_CHECK_CONNECT_TIMEOUT_SECONDS="${DATA_SERVICE_WS_DB_CHECK_CONNECT_TIMEOUT_SECONDS:-3}"
 
 # 校验 SYMBOLS_* 格式
@@ -217,6 +218,22 @@ log() {
 
 is_uint() {
     [[ "${1:-}" =~ ^[0-9]+$ ]]
+}
+
+ban_remaining_seconds() {
+    # rate_limiter.py 使用 $SERVICE_ROOT/logs/.ban_until；这里用 LOG_DIR 对齐
+    local file="$LOG_DIR/.ban_until"
+    [ -f "$file" ] || return 1
+
+    local until
+    until="$(head -n 1 "$file" 2>/dev/null | tr -d ' \t\r\n')"
+    [ -z "$until" ] && return 1
+
+    local now
+    now="$(date +%s)"
+
+    # until 可能是 float；用 awk 做浮点比较与取整差值
+    awk -v until="$until" -v now="$now" 'BEGIN { if (until > now) printf "%d", (until - now); else printf "0" }'
 }
 
 init_dirs() {
@@ -413,6 +430,17 @@ daemon_loop() {
                     ws_uptime=$((now_epoch - ws_last_start_epoch))
 
                     if [ "$ws_uptime" -ge "$WS_DB_SELF_HEAL_WARMUP_SECONDS" ]; then
+                        if [ "${WS_DB_SELF_HEAL_SKIP_ON_BAN:-0}" = "1" ]; then
+                            local ban_remain
+                            ban_remain="$(ban_remaining_seconds 2>/dev/null || echo "")"
+                            if is_uint "$ban_remain" && [ "$ban_remain" -gt 0 ]; then
+                                log "ws DB 自愈跳过: 检测到 ban 剩余 ${ban_remain}s"
+                                ws_db_stale_count=0
+                                sleep "$CHECK_INTERVAL"
+                                continue
+                            fi
+                        fi
+
                         local age
                         if age="$(db_latest_candle_age_seconds)"; then
                             if [ "$age" -ge "$WS_DB_STALE_MAX_AGE_SECONDS" ]; then
