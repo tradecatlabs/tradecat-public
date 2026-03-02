@@ -161,7 +161,6 @@ assets/repo/
 assets/services-preview/
 services/ingestion/predict-service/
 services/compute/fate-service/
-services/consumption/vis-service/
 services/consumption/nofx-dev/
 dist/
 polymarket-bot.out
