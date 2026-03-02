@@ -24,7 +24,7 @@ src/
 │   ├── basic/                  # 基础指标卡片
 │   ├── futures/                # 合约指标卡片
 │   ├── advanced/               # 高级指标卡片
-│   ├── data_provider.py        # PG 数据读取（tg_cards）
+│   ├── data_provider.py        # Query Service 数据读取（/api/v1）
 │   ├── 排行榜服务.py           # 排行榜生成
 │   └── registry.py             # 卡片注册表
 ├── utils/
@@ -38,7 +38,7 @@ src/
 ### 环境要求
 
 - Python >= 3.10
-- 指标数据源：PostgreSQL（`DATABASE_URL` 指向的库内 `tg_cards.*`）
+- 指标数据源：Query Service（`QUERY_SERVICE_BASE_URL` → `/api/v1`）
 
 ### 安装
 
@@ -83,8 +83,10 @@ cd /path/to/tradecat
 | 变量 | 必填 | 说明 |
 |:---|:---:|:---|
 | `TELEGRAM_BOT_TOKEN` | ✓ | Bot Token |
-| `DATABASE_URL` | ✓ | PostgreSQL/TimescaleDB 连接串（需包含 `tg_cards.*`） |
-| `INDICATOR_PG_SCHEMA` | - | PG 指标 schema（默认 `tg_cards`，可覆盖） |
+| `QUERY_SERVICE_BASE_URL` | ✓ | Query Service 基地址（例如 http://127.0.0.1:8088） |
+| `QUERY_SERVICE_TOKEN` | - | Query Service 内网 token（Header: X-Internal-Token） |
+| `QUERY_SERVICE_TIMEOUT_SECONDS` | - | Query Service 请求超时（秒，默认 6） |
+| `QUERY_SERVICE_CACHE_TTL_SECONDS` | - | Query Service 请求缓存 TTL（秒，默认 2） |
 | `HTTP_PROXY` | - | HTTP 代理地址 |
 | `HTTPS_PROXY` | - | HTTPS 代理地址 |
 | `BINANCE_API_DISABLED` | - | 禁用 Binance API (1=禁用) |
@@ -96,8 +98,10 @@ cd /path/to/tradecat
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
-DATABASE_URL=postgresql://user:pass@localhost:5432/market_data
-INDICATOR_PG_SCHEMA=tg_cards
+QUERY_SERVICE_BASE_URL=http://127.0.0.1:8088
+QUERY_SERVICE_TOKEN=
+QUERY_SERVICE_TIMEOUT_SECONDS=6
+QUERY_SERVICE_CACHE_TTL_SECONDS=2
 HTTP_PROXY=http://127.0.0.1:7890
 HTTPS_PROXY=http://127.0.0.1:7890
 BINANCE_API_DISABLED=1
@@ -134,8 +138,11 @@ FALLBACK_LOCALE=zh-CN
 
 ```
 Indicator Store
-  └─ tg_cards.* (PostgreSQL)
-        │
+  └─ PostgreSQL/TimescaleDB (tg_cards.*)
+        │ (read)
+        ▼
+    Query Service (/api/v1)
+        │ (HTTP)
         ▼
     data_provider.py (读取)
         │
@@ -150,7 +157,7 @@ Indicator Store
 
 Bot 的排行榜/币种查询数据来自指标库（38 张表）：
 
-- PG：`DATABASE_URL` 指向的库内 `tg_cards.*`
+- Query Service：`QUERY_SERVICE_BASE_URL`（内部读取 `tg_cards.*`）
 
 ## 日志
 
@@ -174,9 +181,9 @@ python -m src.main
 
 ### 数据读取为空
 
-1. 确认 `DATABASE_URL` 可连接且存在 `tg_cards.*`（表结构需执行 `assets/database/db/schema/021_tg_cards_sqlite_parity.sql`）
-2. 确认 trading-service 已运行并写入数据
-3. 查看日志中的 PG 查询错误
+1. 确认 Query Service 可用：`curl http://127.0.0.1:8088/api/v1/health`
+2. 确认 trading-service 已运行并写入指标库（`tg_cards.*`）
+3. 查看 telegram-service 日志中的 Query Service 请求错误（超时/401/网络）
 
 ### 代理问题
 

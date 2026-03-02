@@ -59,14 +59,6 @@ if __name__ == "__main__":
 
 from cards import RankingRegistry
 
-# ==== 数据库指标服务（可选） ==============================================
-# 前端仅消费本地 CSV/文件缓存时不需要连接 Postgres/Timescale。
-# 为避免未安装 psycopg 导致启动失败，这里使用安全降级导入。
-try:  # noqa: SIM105
-    from services.币安数据库指标服务 import 币安数据库指标服务 as _MetricService
-except Exception as exc:  # pragma: no cover - 环境缺依赖时降级
-    _MetricService = None
-    logger.warning("⚠️ 已禁用数据库指标服务（未安装 psycopg 或不需要PG）: %s", exc)
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ChatAction
 from telegram.request import HTTPXRequest

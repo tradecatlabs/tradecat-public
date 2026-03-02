@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cards.base import RankingCard
-from cards.data_provider import format_symbol
+from cards.data_provider import format_symbol, get_ranking_provider
 from cards.i18n import btn_auto as _btn_auto, gettext as _t, resolve_lang, format_sort_field, translate_field
 from cards.排行榜服务 import POSITION_PERIODS, normalize_period
 
@@ -18,6 +18,7 @@ class PositionRankingCard(RankingCard):
     """🦅 持仓量排行 - 持仓量排行榜"""
 
     FALLBACK = "card.oi.fallback"
+    provider = get_ranking_provider()
 
     def __init__(self) -> None:
         super().__init__(
@@ -55,9 +56,9 @@ class PositionRankingCard(RankingCard):
             ("price", "价格", False),
         ]
         self.special_display_fields: List[Tuple[str, str, bool]] = [
-            ("position", "持仓占比", False),
-            ("long", "多头", False),
-            ("short", "空头", False),
+            ("position", "持仓金额", False),
+            ("long", "大户多空比", False),
+            ("short", "全体多空比", False),
         ]
 
     def handles_callback(self, callback_data: str) -> bool:
@@ -247,25 +248,29 @@ class PositionRankingCard(RankingCard):
         field_state: Dict[str, bool],
         lang: str | None = None,
     ) -> Tuple[List[List[str]], str]:
-        data = handler.get_position_ranking(limit=limit, sort_order=sort_order, period=period, sort_field=sort_field)
+        try:
+            metrics = self.provider.merge_with_base("期货情绪聚合表.py", period, base_fields=["数据时间"])
+        except Exception:
+            metrics = []
+
         items = []
-        if isinstance(data, str):
-            return [], _t("card.header.rank_symbol", lang=lang)
-        for row in data or []:
-            sym = (row.get("symbol") or "").upper()
+        for row in metrics or []:
+            sym = str(row.get("symbol") or "").strip().upper()
             if not sym:
                 continue
-            items.append({
-                "symbol": sym,
-                "position": float(row.get("position") or row.get("current_oi_usd") or 0),
-                "long": float(row.get("long") or 0),
-                "short": float(row.get("short") or 0),
-                "price": float(row.get("price") or row.get("last_close") or 0),
-                "quote_volume": float(row.get("quote_volume") or 0),
-                "振幅": float(row.get("振幅") or 0),
-                "成交笔数": float(row.get("成交笔数") or row.get("交易次数") or 0),
-                "主动买卖比": float(row.get("主动买卖比") or 0),
-            })
+            items.append(
+                {
+                    "symbol": sym,
+                    "position": float(row.get("持仓金额") or 0),
+                    "long": float(row.get("大户多空比") or 0),
+                    "short": float(row.get("全体多空比") or 0),
+                    "price": float(row.get("price") or 0),
+                    "quote_volume": float(row.get("quote_volume") or 0),
+                    "振幅": float(row.get("振幅") or 0),
+                    "成交笔数": float(row.get("成交笔数") or row.get("交易次数") or 0),
+                    "主动买卖比": float(row.get("主动买卖比") or 0),
+                }
+            )
 
         reverse = sort_order != "asc"
         items.sort(key=lambda x: x.get(sort_field, 0), reverse=reverse)

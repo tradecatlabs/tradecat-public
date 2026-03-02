@@ -6,7 +6,7 @@
 - 等宽对齐：首列左对齐，其余右对齐（沿用 docs/数据对齐.md 算法）
 
 注意：本文件只负责数据聚合与文本渲染，不修改消息路由。
-数据源：PostgreSQL 指标库（`DATABASE_URL` → `tg_cards.*`）。
+数据源：Query Service（`QUERY_SERVICE_BASE_URL` → `/api/v1`）。
 """
 
 from __future__ import annotations
