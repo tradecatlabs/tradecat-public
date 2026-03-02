@@ -11,7 +11,7 @@
 - `SHEETS_WRITE_MODE`：写入模式 `webhook|sa`（默认 `webhook`）
 - `SHEETS_SYNC_MODE`：同步模式 `dashboard|snapshot|append`
   - `dashboard`（SA 推荐，默认）：每轮 **reset 看板并全量重绘**，紧凑排布，不依赖 slot 预留高度，不会出现“卡片间空洞/错位/堆叠”。
-  - `snapshot`：走 outbox + 幂等，只写“新卡片事件”；适合需要事实表 append 的场景。
+  - `snapshot`：走 outbox + 幂等，只写“新卡片事件”；适合需要事实表 append 的场景（幂等状态写入 Sheets 隐藏 tab 或本地文件）。
   - `append`：保留口径（目前与 `snapshot` 行为一致，历史兼容）。
 - `SHEETS_FORCE_RENDER`：`1` 表示强制重渲染（忽略幂等，用于版式/样式大改后刷新）
 
@@ -37,12 +37,15 @@
 - `SHEETS_BLOB_THRESHOLD_CHARS`：raw 超长阈值（默认 20000；超长会落 Drive 并在表内存引用）
 - `SHEETS_SA_WRITE_RPM`：SA 写入限流（写请求/分钟，默认 55；配额为 60 时建议 50）
 
-### 指标数据源（PG）
+### 指标数据源（Query Service）
 
-sheets-service 复用 telegram-service 的卡片导出逻辑，指标数据固定读取 `DATABASE_URL` 指向的库内 `tg_cards.*`。
+sheets-service 复用 telegram-service 的卡片导出逻辑，指标/行情快照一律通过 Query Service（`/api/v1`）读取。
 
-- `DATABASE_URL`：PostgreSQL/TimescaleDB 连接串（必填；需已执行 `assets/database/db/schema/021_tg_cards_sqlite_parity.sql`）
-- `INDICATOR_PG_SCHEMA=tg_cards`：可覆盖 schema
+- `QUERY_SERVICE_BASE_URL`：Query Service 基地址（必填，例如 `http://127.0.0.1:8088`）
+- `QUERY_SERVICE_TOKEN`：可选，内网 token（Header: `X-Internal-Token`）
+- `QUERY_SERVICE_TIMEOUT_SECONDS` / `QUERY_SERVICE_CACHE_TTL_SECONDS`：可选，HTTP 超时/缓存 TTL
+
+说明：Query Service 内部直连数据库完成查询，消费端只需要配置 Query Service 的地址与 token。
 
 ### 导出与运行
 - `SHEETS_EXPORT_LANG`：默认 `zh_CN`
