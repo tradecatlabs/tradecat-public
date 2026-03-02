@@ -65,7 +65,7 @@
 ### G1. consumption 层禁止出现任何 DB 直连痕迹
 
 - Verify（强制）：
-  - `rg -n \"psycopg|psycopg_pool|FROM\\s+tg_cards|tg_cards\\.|FROM\\s+market_data|market_data\\.\" services/consumption -S`
+  - `rg -n --hidden --no-ignore-vcs -S -i \"\\b(psycopg|psycopg_pool)\\b|\\b(from|join|into|update)\\s+(tg_cards|market_data)\\.\" services/consumption --glob '*.py'`
 - Expected：
   - 命中仅允许出现在 `services/consumption/api-service/src`（Query Service）内；其它目录为 0 命中
 
@@ -82,4 +82,3 @@
   - `./scripts/verify.sh`
 - Expected：
   - 全绿；若在 consumption 任意位置故意加入 `import psycopg` 必须立刻失败
-

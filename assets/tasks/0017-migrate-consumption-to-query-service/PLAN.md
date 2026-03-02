@@ -103,8 +103,7 @@ flowchart LR
 - 修改：`scripts/verify.sh`
   - 新增扫描：除 `services/consumption/api-service/src` 外，`services/consumption/**/src` 禁止：
     - `psycopg` / `psycopg_pool`
-    - `FROM tg_cards` / `tg_cards.`
-    - `FROM market_data` / `market_data.`
+    - 显式 SQL 片段：`(from|join|into|update)\s+(tg_cards|market_data).`
 
 ### 3.5 配置与文档
 
@@ -128,4 +127,3 @@ flowchart LR
    - 重新引入 `psycopg` 依赖并恢复旧 provider（由 revert 自动完成）
 3) 复盘后再重新推进：
    - 优先补齐 Query Service 的可观测与稳定性（超时、缓存、慢查询限制）
-

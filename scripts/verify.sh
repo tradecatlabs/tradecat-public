@@ -75,6 +75,44 @@ else
     warn "rg 未安装，跳过 SQLite 引用检查"
 fi
 
+# 0.2) consumption 直连 PG/SQL 守护（除 Query Service 外必须 HTTP-only）
+echo ""
+echo "0.2 consumption 直连 PG/SQL 守护..."
+if command -v rg &> /dev/null; then
+    # 注意：
+    # - 仅扫描核心消费链路（TG/Sheets/Vis），不扫 nofx-dev 等外部镜像项目
+    # - 禁止出现 psycopg/psycopg_pool，以及显式 SQL 片段（tg_cards/market_data）
+    CONSUMPTION_PG_SCAN_DIRS=()
+    for d in services/consumption/telegram-service/src services/consumption/sheets-service/src services/consumption/vis-service/src; do
+        if [ -d "$d" ]; then
+            CONSUMPTION_PG_SCAN_DIRS+=("$d")
+        fi
+    done
+    if [ "${#CONSUMPTION_PG_SCAN_DIRS[@]}" -eq 0 ]; then
+        warn "未找到可扫描的 consumption/src 目录，跳过 PG/SQL 守护"
+    else
+    PG_HITS="$(
+        rg -n --hidden --no-ignore-vcs -S "\\b(psycopg|psycopg_pool)\\b" "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'from\\s+tg_cards\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'join\\s+tg_cards\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'into\\s+tg_cards\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'update\\s+tg_cards\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'from\\s+market_data\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'join\\s+market_data\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'into\\s+market_data\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        rg -n --hidden --no-ignore-vcs -S -i 'update\\s+market_data\\.' "${CONSUMPTION_PG_SCAN_DIRS[@]}" --glob '*.py' --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+    )"
+    if [ -n "${PG_HITS:-}" ]; then
+        echo "$PG_HITS"
+        fail "发现 consumption 直连 PG/SQL（必须仅走 Query Service）"
+    else
+        success "consumption 无 PG 直连与 SQL 片段"
+    fi
+    fi
+else
+    warn "rg 未安装，跳过 consumption PG/SQL 守护"
+fi
+
 # 1. 检查 Python 环境
 echo ""
 echo "1. 检查 Python 环境..."
