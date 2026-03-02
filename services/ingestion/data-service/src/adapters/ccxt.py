@@ -18,6 +18,7 @@ _clients: Dict[str, ccxt.Exchange] = {}
 _symbols: Dict[str, List[str]] = {}
 DEFAULT_PROXY = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
 
+
 def _maybe_set_ban_from_error(err_str: str) -> bool:
     """从异常文本中识别 418/429/ban，并写入全局 ban。
 
