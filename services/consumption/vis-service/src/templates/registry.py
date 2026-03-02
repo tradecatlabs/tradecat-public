@@ -807,7 +807,13 @@ def _interval_table(interval: str) -> str:
 @lru_cache(maxsize=2)
 def _load_envelope_template() -> str:
     """加载外部包络可视化 HTML 模板（原样复用）。"""
-    template_path = Path(__file__).resolve().parents[4] / "libs" / "external" / "Financial-Fractal-KLine-main" / "multi_period_kline_static.html"
+    template_path = (
+        Path(__file__).resolve().parents[5]
+        / "assets"
+        / "repo"
+        / "Financial-Fractal-KLine-main"
+        / "multi_period_kline_static.html"
+    )
     if not template_path.exists():
         raise ValueError(f"未找到模板文件: {template_path}")
     return template_path.read_text(encoding="utf-8")
