@@ -8,13 +8,19 @@ from threading import Lock
 from dotenv import load_dotenv
 from psycopg_pool import ConnectionPool
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+# repo 根目录（.../tradecat/tradecat）
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 # 优先加载 assets/config/.env；兼容旧路径 config/.env（只读回退）
 ENV_FILE = PROJECT_ROOT / "assets" / "config" / ".env"
 if not ENV_FILE.exists():
     ENV_FILE = PROJECT_ROOT / "config" / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE, override=False)
+
+# 兜底：未显式配置时，仍提供可用的默认 DATABASE_URL（供 Query Service datasources 使用）。
+# 注意：这里的默认值仅面向本机开发环境（localhost），避免影响生产配置。
+if not (os.getenv("DATABASE_URL") or "").strip():
+    os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@localhost:5433/market_data"
 
 def _resolve_repo_path(env_key: str, default: Path) -> Path:
     raw = (os.getenv(env_key) or "").strip()
