@@ -18,6 +18,7 @@
 | 0014 | fix-ci-and-pypi-build | Done | P0 | 资产迁移后收敛“可运行/可测试/可打包”：修复 CI ruff 失绿、pytest 误扫外部仓库、PyPI 包缺失 `src/tradecat` 的结构性断裂 | ./0014-fix-ci-and-pypi-build/ |
 | 0015 | unify-all-storage-to-postgres | Not Started | P0 | 数据库归一完全转型：彻底废弃 SQLite（指标库/状态库/幂等库），统一迁移到 `DATABASE_URL` 指向的 PostgreSQL（`tg_cards` + `signal_state` + `sheets_state`），并提供灰度切换与可回滚策略 | ./0015-unify-all-storage-to-postgres/ |
 | 0016 | remove-sqlite-from-services | Done | P0 | SQLite 彻底出清（服务侧）：清理核心服务的 SQLite 残留（测试/默认值/文档/遗留 .db 文件），确保运行时只依赖 PostgreSQL；迁移脚本保留为工具 | ./0016-remove-sqlite-from-services/ |
+| 0017 | migrate-consumption-to-query-service | Not Started | P0 | 统一数据消费为 Query Service（/api/v1）：消费层禁止直连 DB，仅通过稳定契约读取（并支持多数据源扩展） | ./0017-migrate-consumption-to-query-service/ |
 
 ## 相关索引（单点入口）
 
