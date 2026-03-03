@@ -44,7 +44,13 @@ venv:
 
 install: venv
 	@echo "安装依赖..."
-	$(PIP) install -q -r requirements.txt
+	@if [ -f "requirements.lock.txt" ]; then \
+		echo "使用 requirements.lock.txt 安装依赖..."; \
+		$(PIP) install -q -r requirements.lock.txt; \
+	else \
+		echo "使用 requirements.txt 安装依赖..."; \
+		$(PIP) install -q -r requirements.txt; \
+	fi
 	@echo "✅ 依赖安装完成"
 
 install-dev: install
@@ -67,7 +73,13 @@ reset: clean
 	rm -rf .venv
 	python3 -m venv .venv
 	$(PIP) install -q --upgrade pip
-	$(PIP) install -q -r requirements.txt
+	@if [ -f "requirements.lock.txt" ]; then \
+		echo "使用 requirements.lock.txt 安装依赖..."; \
+		$(PIP) install -q -r requirements.lock.txt; \
+	else \
+		echo "使用 requirements.txt 安装依赖..."; \
+		$(PIP) install -q -r requirements.txt; \
+	fi
 	@echo "✅ 虚拟环境重建完成"
 
 lock:

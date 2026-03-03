@@ -73,7 +73,11 @@ init_service() {
     source .venv/bin/activate
     pip install -q --upgrade pip
     
-    if [ -f "requirements.txt" ]; then
+    if [ -f "requirements.lock.txt" ]; then
+        pip install -q -r requirements.lock.txt 2>/dev/null || {
+            warn "部分依赖安装失败，请检查 requirements.lock.txt"
+        }
+    elif [ -f "requirements.txt" ]; then
         pip install -q -r requirements.txt 2>/dev/null || {
             warn "部分依赖安装失败，请检查 requirements.txt"
         }
