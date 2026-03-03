@@ -209,7 +209,8 @@ vim assets/config/.env
 - Key fields:  
   - `DATABASE_URL` (TimescaleDB, see port note below)  
   - `QUERY_SERVICE_BASE_URL` (Query Service base URL; default `http://127.0.0.1:8088`, see `assets/config/.env.example`)  
-  - `QUERY_SERVICE_TOKEN` (optional internal token for Query Service; empty = auth disabled)  
+  - `QUERY_SERVICE_TOKEN` (optional internal token for Query Service; empty = auth disabled; but `/api/v1/indicators/*` debug endpoints remain disabled)  
+  - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC` (optional: market_data table-existence TTL cache seconds; default 30)  
   - `BOT_TOKEN` (Telegram Bot Token)  
   - `TELEGRAM_GROUP_WHITELIST` (comma-separated group IDs; empty = private chats only; group messages require `/` or `!` prefix + @bot mention)  
   - `HTTP_PROXY` / `HTTPS_PROXY` (if proxy needed)  
