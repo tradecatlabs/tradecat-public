@@ -21,7 +21,8 @@
 | 0017 | migrate-consumption-to-query-service | Not Started | P0 | 统一数据消费为 Query Service（/api/v1）：消费层禁止直连 DB，仅通过稳定契约读取（并支持多数据源扩展） | ./0017-migrate-consumption-to-query-service/ |
 | 0018 | stabilize-data-service-ban-backoff | Not Started | P0 | 修复 data-service 因 418 ban 触发的写库停滞与 ws 自愈重启风暴：统一识别 ban 并全局退避、收敛 backfill 并发、让守护逻辑对 ban 友好 | ./0018-stabilize-data-service-ban-backoff/ |
 | 0019 | stabilize-data-service-ws-write | Done | P0 | 修复 data-service WS 1m K线不持续落库问题：修复 flush 窗口逻辑、回调桥接与写入覆盖策略，并收敛依赖漂移风险 | ./0019-stabilize-data-service-ws-write/ |
-| 0020 | data-api-contract-hardening | Not Started | P0 | 将 api-service 升级为“稳定数据契约层”：新增 capabilities/cards/dashboard 稳定端点，迁移 TG/Sheets/Vis 消费，逐步清退表名直通接口以彻底遮蔽底层实现变动 | ./0020-data-api-contract-hardening/ |
+| 0020 | data-api-contract-hardening | In Progress | P0 | 将 api-service 升级为“稳定数据契约层”：新增 capabilities/cards/dashboard 稳定端点，迁移 TG/Sheets/Vis 消费，逐步清退表名直通接口以彻底遮蔽底层实现变动 | ./0020-data-api-contract-hardening/ |
+| 0021 | harden-futures-datasources-fallback | Done | P0 | 对 futures 路由做 QueryService 化收口：统一改用 datasources(MARKET) 连接池、对 *_last 缺表做降级不 500、并将 /api/v1/indicators 表名直通端点标记 deprecated + 强制内网 token | ./0021-harden-futures-datasources-fallback/ |
 
 ## 相关索引（单点入口）
 

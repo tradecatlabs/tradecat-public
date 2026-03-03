@@ -28,4 +28,6 @@
 ## 待办（P1+）
 
 - futures 路由统一改用 `src/query/datasources.py`（减少 `get_pg_pool()` 的直连散落）
+  - 已拆分为独立任务：`assets/tasks/0021-harden-futures-datasources-fallback/`
 - 旧端点（table 直通）deprecated/token 保护策略完善
+  - 已拆分为独立任务：`assets/tasks/0021-harden-futures-datasources-fallback/`

@@ -32,6 +32,16 @@ def _require_token(x_internal_token: str | None) -> bool:
     return (x_internal_token or "").strip() == expected
 
 
+def _require_indicators_token(x_internal_token: str | None) -> bool:
+    """indicators 表名直通端点属于调试接口：默认必须鉴权。"""
+    import os
+
+    expected = (os.environ.get("QUERY_SERVICE_TOKEN") or "").strip()
+    if not expected:
+        return False
+    return (x_internal_token or "").strip() == expected
+
+
 @router.get("/health")
 async def health(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> dict:
     if not _require_token(x_internal_token):
@@ -210,7 +220,7 @@ async def indicators(
     limit: int = Query(default=1000, ge=1, le=5000, description="raw 模式 limit"),
     x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
 ) -> dict:
-    if not _require_token(x_internal_token):
+    if not _require_indicators_token(x_internal_token):
         return error_response(ErrorCode.PARAM_ERROR, "unauthorized")
     mode = (mode or "").strip()
     if mode not in {"latest_per_symbol", "latest_at_max_ts", "single_latest", "raw"}:
@@ -228,7 +238,14 @@ async def indicators(
             field_nonempty=field_nonempty,
             limit=limit,
         )
-        payload = {"table": table, "interval": interval or "", "mode": mode, "rows": rows}
+        payload = {
+            "deprecated": True,
+            "deprecated_hint": "请改用 /api/v1/cards/{card_id} 或 /api/v1/dashboard；该接口仅用于内网调试。",
+            "table": table,
+            "interval": interval or "",
+            "mode": mode,
+            "rows": rows,
+        }
         if latest_dt:
             from src.query.time import format_ts_bundle
 

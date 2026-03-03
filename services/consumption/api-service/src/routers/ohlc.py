@@ -1,11 +1,12 @@
 """K线数据路由 (对齐 CoinGlass /api/futures/ohlc/history)"""
 
 import psycopg
+from psycopg import sql
 
 from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 
-from src.config import get_pg_pool
+from src.query import market_dao
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
@@ -57,33 +58,43 @@ async def get_ohlc_history(
         return error_response(ErrorCode.TABLE_NOT_FOUND, f"未配置 interval: {interval}")
 
     def _fetch_rows():
-        with get_pg_pool().connection() as conn:
+        schema, table_name = market_dao.split_qualified_table(table)
+        if not market_dao.table_exists(schema, table_name):
+            return ("table_missing", [])
+
+        pool = market_dao.get_market_pool()
+        tbl = sql.Identifier(schema, table_name)
+
+        with pool.connection() as conn:
             with conn.cursor() as cursor:
                 exchange_code = _normalize_exchange(exchange)
 
-                # 构建查询
-                query = f"""
+                query = sql.SQL(
+                    """
                     SELECT symbol, bucket_ts, open, high, low, close, volume, quote_volume
-                    FROM {table}
+                    FROM {tbl}
                     WHERE symbol = %s AND exchange = %s
-                """
-                params: list = [symbol, exchange_code]
+                    """
+                ).format(tbl=tbl)
+                params: list[object] = [symbol, exchange_code]
 
                 if startTime:
-                    query += " AND bucket_ts >= to_timestamp(%s / 1000.0)"
+                    query += sql.SQL(" AND bucket_ts >= to_timestamp(%s / 1000.0)")
                     params.append(startTime)
                 if endTime:
-                    query += " AND bucket_ts <= to_timestamp(%s / 1000.0)"
+                    query += sql.SQL(" AND bucket_ts <= to_timestamp(%s / 1000.0)")
                     params.append(endTime)
 
-                query += " ORDER BY bucket_ts DESC LIMIT %s"
+                query += sql.SQL(" ORDER BY bucket_ts DESC LIMIT %s")
                 params.append(limit)
 
                 cursor.execute(query, params)
-                return cursor.fetchall()
+                return ("ok", cursor.fetchall())
 
     try:
-        rows = await run_in_threadpool(_fetch_rows)
+        status, rows = await run_in_threadpool(_fetch_rows)
+        if status == "table_missing":
+            return error_response(ErrorCode.TABLE_NOT_FOUND, f"表不存在: {table}")
         # 转换为 CoinGlass 格式
         data = []
         for row in reversed(rows):
