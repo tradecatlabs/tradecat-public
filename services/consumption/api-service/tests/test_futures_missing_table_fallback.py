@@ -16,6 +16,7 @@ def test_futures_metrics_missing_table_returns_table_not_found(client, monkeypat
     assert payload["success"] is False
     assert payload["code"] == ErrorCode.TABLE_NOT_FOUND.value
     assert "表不存在" in payload["msg"]
+    assert payload["missing_table"] == {"schema": "market_data", "table": "binance_futures_metrics_15m_last"}
 
 
 def test_open_interest_missing_table_returns_table_not_found(client, monkeypatch):
@@ -30,6 +31,7 @@ def test_open_interest_missing_table_returns_table_not_found(client, monkeypatch
     assert payload["success"] is False
     assert payload["code"] == ErrorCode.TABLE_NOT_FOUND.value
     assert "表不存在" in payload["msg"]
+    assert payload["missing_table"] == {"schema": "market_data", "table": "binance_futures_metrics_15m_last"}
 
 
 def test_funding_rate_missing_table_returns_table_not_found(client, monkeypatch):
@@ -44,6 +46,7 @@ def test_funding_rate_missing_table_returns_table_not_found(client, monkeypatch)
     assert payload["success"] is False
     assert payload["code"] == ErrorCode.TABLE_NOT_FOUND.value
     assert "表不存在" in payload["msg"]
+    assert payload["missing_table"] == {"schema": "market_data", "table": "binance_futures_metrics_15m_last"}
 
 
 def test_ohlc_missing_table_returns_table_not_found(client, monkeypatch):
@@ -58,3 +61,4 @@ def test_ohlc_missing_table_returns_table_not_found(client, monkeypatch):
     assert payload["success"] is False
     assert payload["code"] == ErrorCode.TABLE_NOT_FOUND.value
     assert "表不存在" in payload["msg"]
+    assert payload["missing_table"] == {"schema": "market_data", "table": "candles_6h"}

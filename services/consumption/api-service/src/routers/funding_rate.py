@@ -50,9 +50,10 @@ async def get_funding_rate_history(
     if not table:
         return error_response(ErrorCode.TABLE_NOT_FOUND, f"未配置 interval: {interval}")
 
+    time_col = "create_time" if interval == "5m" else "bucket"
+    schema, table_name = market_dao.split_qualified_table(table)
+
     def _fetch_rows():
-        time_col = "create_time" if interval == "5m" else "bucket"
-        schema, table_name = market_dao.split_qualified_table(table)
         if not market_dao.table_exists(schema, table_name):
             return ("table_missing", [])
 
@@ -93,7 +94,11 @@ async def get_funding_rate_history(
     try:
         status, rows = await run_in_threadpool(_fetch_rows)
         if status == "table_missing":
-            return error_response(ErrorCode.TABLE_NOT_FOUND, f"表不存在: {table}")
+            return error_response(
+                ErrorCode.TABLE_NOT_FOUND,
+                f"表不存在: {table}",
+                extra={"missing_table": {"schema": schema, "table": table_name}},
+            )
         # CoinGlass FR 格式 (OHLC style)
         data = []
         for row in reversed(rows):

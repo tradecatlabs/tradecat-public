@@ -25,11 +25,17 @@ def api_response(data: Any, code: str = "0", msg: str = "success") -> dict:
     }
 
 
-def error_response(code: ErrorCode, msg: str) -> dict:
+def error_response(code: ErrorCode, msg: str, extra: dict[str, Any] | None = None) -> dict:
     """统一错误响应格式"""
-    return {
+    payload: dict[str, Any] = {
         "code": code.value,
         "msg": msg,
         "data": None,
         "success": False
     }
+    if extra:
+        for key, value in extra.items():
+            if key in payload:
+                continue
+            payload[key] = value
+    return payload
