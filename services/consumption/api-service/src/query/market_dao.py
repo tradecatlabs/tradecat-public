@@ -26,10 +26,8 @@ def split_qualified_table(qualified: str) -> tuple[str, str]:
     if "." not in q:
         raise ValueError("missing_schema")
     schema, table = q.split(".", 1)
-    # 对齐 PostgreSQL 的“未加引号标识符”规则：默认折叠为小写。
-    # 旧实现通过 f-string 拼接（未加引号）查询表名，因此 `candles_1M` 实际等价于 `candles_1m`。
-    schema = schema.strip().lower()
-    table = table.strip().lower()
+    schema = schema.strip()
+    table = table.strip()
     if not schema or not table:
         raise ValueError("invalid_table")
     return schema, table
@@ -58,13 +56,21 @@ def _table_exists_ttl_sec() -> int:
 def _table_exists_cached(schema: str, table: str, bucket: int) -> bool:
     """带 TTL bucket 的表存在性检查（避免每次走信息_schema）。"""
     pool = get_market_pool()
-    qualified = _qualified_name(schema, table)
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            # 使用 to_regclass 以模拟 SQL 解析/大小写折叠行为，避免 `candles_1M` 等大小写差异误判。
-            cur.execute("SELECT to_regclass(%s) IS NOT NULL", (qualified,))
-            row = cur.fetchone()
-            return bool(row[0]) if row else False
+            # 这里用 information_schema 做“精确存在性”判断，和 sql.Identifier(会加引号) 的语义对齐：
+            # - 支持大小写敏感表名（例如 "candles_1M"）
+            # - 不依赖 search_path
+            cur.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema=%s AND table_name=%s
+                LIMIT 1
+                """,
+                (schema, table),
+            )
+            return cur.fetchone() is not None
 
 
 def table_exists(schema: str, table: str) -> bool:
