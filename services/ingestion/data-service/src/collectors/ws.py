@@ -48,6 +48,7 @@ class WSCollector:
         self._buffer_lock = asyncio.Lock()
         self._last_candle_time: float = 0  # 最后一条 K 线到达时间
         self._flush_task: Optional[asyncio.Task] = None
+        self._last_logged_bucket_ts: Optional[datetime] = None
 
     def _load_symbols(self) -> Dict[str, str]:
         raw = load_symbols(settings.ccxt_exchange)
@@ -91,11 +92,15 @@ class WSCollector:
 
     async def _delayed_flush(self) -> None:
         """延迟刷新：等待时间窗口后批量写入"""
-        await asyncio.sleep(self.FLUSH_WINDOW)
-        async with self._buffer_lock:
-            # 检查是否有新数据到达（窗口内）
-            if time.monotonic() - self._last_candle_time >= self.FLUSH_WINDOW:
-                await self._flush()
+        # 以“最后一条K线到达时间”为基准，等待窗口内不再有新数据后再批量写入。
+        # 注意：同一分钟会有多币种/多条推送，若只 sleep 一次可能永远满足不了 idle>=window。
+        while True:
+            await asyncio.sleep(self.FLUSH_WINDOW)
+            async with self._buffer_lock:
+                idle_s = time.monotonic() - self._last_candle_time
+                if idle_s >= self.FLUSH_WINDOW:
+                    await self._flush()
+                    return
 
     async def _flush(self) -> None:
         """刷新缓冲区到数据库"""
@@ -109,7 +114,15 @@ class WSCollector:
             # 异步执行同步写入
             n = await asyncio.to_thread(self._ts.upsert_candles, "1m", rows)
             metrics.inc("rows_written", n)
-            logger.debug("批量写入 %d 条 K 线", n)
+            max_bucket_ts = None
+            try:
+                max_bucket_ts = max((r.get("bucket_ts") for r in rows if r.get("bucket_ts")), default=None)
+            except Exception:
+                max_bucket_ts = None
+
+            if max_bucket_ts and (self._last_logged_bucket_ts is None or max_bucket_ts > self._last_logged_bucket_ts):
+                self._last_logged_bucket_ts = max_bucket_ts
+                logger.info("WS写入: %d 条 | bucket_ts_max=%s", n, max_bucket_ts.isoformat())
         except Exception as e:
             logger.error("批量写入失败: %s", e)
 
@@ -127,7 +140,7 @@ class WSCollector:
 
         # 启动 WebSocket
         ws = BinanceWSAdapter(http_proxy=settings.http_proxy)
-        ws.subscribe(list(self._symbols.keys()), self._on_candle_sync)
+        ws.subscribe(list(self._symbols.keys()), self._on_candle)
 
         try:
             ws.run()

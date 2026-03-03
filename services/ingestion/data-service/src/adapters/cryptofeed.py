@@ -1,10 +1,11 @@
 """Cryptofeed WebSocket 适配器"""
 from __future__ import annotations
 
+import inspect
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Callable, List, Optional
+from typing import Awaitable, Callable, List, Optional, Union
 
 from config import settings
 
@@ -33,24 +34,31 @@ class BinanceWSAdapter:
     def __init__(self, http_proxy: Optional[str] = None):
         self._proxy = http_proxy
         self._handler = None
-        self._callback: Optional[Callable[[CandleEvent], None]] = None
+        self._callback: Optional[Callable[[CandleEvent], Union[None, Awaitable[None]]]] = None
         self._symbols: List[str] = []
 
-    def subscribe(self, symbols: List[str], callback: Callable[[CandleEvent], None]) -> None:
+    def subscribe(self, symbols: List[str], callback: Callable[[CandleEvent], Union[None, Awaitable[None]]]) -> None:
         self._symbols = symbols
         self._callback = callback
 
     async def _on_candle(self, candle, receipt_ts: float) -> None:
-        if not candle.closed or not self._callback:
+        cb = self._callback
+        if not candle.closed or not cb:
             return
         raw = getattr(candle, "raw", {}) or {}
         k = raw.get("k", {})
-        self._callback(CandleEvent(
+        evt = CandleEvent(
             symbol=candle.symbol, timestamp=candle.start,
             open=candle.open, high=candle.high, low=candle.low, close=candle.close, volume=candle.volume,
             quote_volume=Decimal(k.get("q", "0")), taker_buy_volume=Decimal(k.get("V", "0")),
             taker_buy_quote_volume=Decimal(k.get("Q", "0")), trade_count=candle.trades,
-        ))
+        )
+        try:
+            ret = cb(evt)
+            if inspect.isawaitable(ret):
+                await ret
+        except Exception as e:
+            logger.warning("Candle 回调执行失败: %s", e)
 
     def run(self) -> None:
         from cryptofeed import FeedHandler

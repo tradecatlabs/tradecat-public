@@ -71,7 +71,14 @@ class TimescaleAdapter:
         with self.pool.connection() as conn:
             yield conn
 
-    def upsert_candles(self, interval: str, rows: Sequence[dict], batch_size: int = 2000) -> int:
+    def upsert_candles(
+        self,
+        interval: str,
+        rows: Sequence[dict],
+        batch_size: int = 2000,
+        *,
+        update_on_conflict: bool = True,
+    ) -> int:
         """
         使用 COPY 命令批量 upsert K线，实现最高性能。
 
@@ -103,23 +110,35 @@ class TimescaleAdapter:
             target_table=sql.Identifier(self.schema, table_name)
         )
 
-        # ON CONFLICT 更新的列（排除冲突键）
-        update_cols = [col for col in cols if col not in ("exchange", "symbol", "bucket_ts")]
-        sql_upsert_from_temp = sql.SQL("""
-            INSERT INTO {target_table} ({cols})
-            SELECT {cols} FROM {temp_table}
-            ON CONFLICT (exchange, symbol, bucket_ts) DO UPDATE SET
-                {update_assignments},
-                updated_at = NOW();
-        """).format(
-            target_table=sql.Identifier(self.schema, table_name),
-            cols=sql.SQL(", ").join(map(sql.Identifier, cols)),
-            temp_table=sql.Identifier(temp_table_name),
-            update_assignments=sql.SQL(", ").join(
-                sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
-                for col in update_cols
+        if update_on_conflict:
+            # ON CONFLICT 更新的列（排除冲突键）
+            update_cols = [col for col in cols if col not in ("exchange", "symbol", "bucket_ts")]
+            sql_upsert_from_temp = sql.SQL("""
+                INSERT INTO {target_table} ({cols})
+                SELECT {cols} FROM {temp_table}
+                ON CONFLICT (exchange, symbol, bucket_ts) DO UPDATE SET
+                    {update_assignments},
+                    updated_at = NOW();
+            """).format(
+                target_table=sql.Identifier(self.schema, table_name),
+                cols=sql.SQL(", ").join(map(sql.Identifier, cols)),
+                temp_table=sql.Identifier(temp_table_name),
+                update_assignments=sql.SQL(", ").join(
+                    sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
+                    for col in update_cols
+                )
             )
-        )
+        else:
+            # 缺口补齐/历史导入：只插入，不覆盖已有行（避免 REST/ZIP 覆盖 WS 行）
+            sql_upsert_from_temp = sql.SQL("""
+                INSERT INTO {target_table} ({cols})
+                SELECT {cols} FROM {temp_table}
+                ON CONFLICT (exchange, symbol, bucket_ts) DO NOTHING;
+            """).format(
+                target_table=sql.Identifier(self.schema, table_name),
+                cols=sql.SQL(", ").join(map(sql.Identifier, cols)),
+                temp_table=sql.Identifier(temp_table_name),
+            )
 
         total_inserted = 0
         with self.connection() as conn:

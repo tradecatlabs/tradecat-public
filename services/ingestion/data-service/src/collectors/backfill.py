@@ -174,7 +174,7 @@ class RestBackfiller:
 
         # 一次性写入
         if all_rows:
-            self._ts.upsert_candles(interval, all_rows)
+            self._ts.upsert_candles(interval, all_rows, update_on_conflict=False)
         return len(all_rows)
 
     def fill_gaps(self, gaps: Dict[str, List[GapInfo]], interval: str = "1m") -> int:
@@ -567,7 +567,7 @@ class ZipBackfiller:
             return 0
 
         if rows:
-            return self._ts.upsert_candles(interval, rows)
+            return self._ts.upsert_candles(interval, rows, update_on_conflict=False)
         return 0
 
     def _import_metrics_zip(self, path: Path, symbol: str, filter_date: date = None) -> int:
