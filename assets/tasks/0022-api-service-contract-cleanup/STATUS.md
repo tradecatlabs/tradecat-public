@@ -2,8 +2,8 @@
 
 ## 状态机
 
-- Status: Not Started
-- Owner: (待分配)
+- Status: In Progress
+- Owner: Codex CLI
 - Updated: 2026-03-03
 
 ## 已执行命令记录（Evidence Log）
@@ -20,4 +20,3 @@
 ## 当前阻塞（Blocked）
 
 - 无。
-

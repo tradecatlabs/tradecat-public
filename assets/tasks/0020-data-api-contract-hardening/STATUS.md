@@ -17,7 +17,7 @@
 - `curl -s -m 6 "http://127.0.0.1:8088/api/v1/cards/atr_ranking?interval=15m&limit=5" | head`
   - 响应中不包含 `.py` / `tg_cards` / `market_data` / `交易对` / `周期`
 - `cd services/consumption/api-service && make test`
-  - `4 passed`
+  - `9 passed`
 - `services/consumption/api-service/.venv/bin/ruff check services/ --ignore E501,E402 --select E,F`
   - `All checks passed!`
 
