@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
-from src.config import get_pg_pool
+from src.query import datasources
 from src.utils.errors import ErrorCode, api_response, error_response
 
 router = APIRouter(tags=["signal"])
@@ -15,7 +15,7 @@ async def get_cooldown_status() -> dict:
 
     def _fetch_rows():
         # 单真相源：PG signal_state.cooldown
-        pool = get_pg_pool()
+        pool = datasources.get_pool(datasources.INDICATORS)
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT to_regclass(%s)", ("signal_state.cooldown",))

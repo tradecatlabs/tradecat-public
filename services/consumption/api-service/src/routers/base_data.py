@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 from psycopg import sql
 
-from src.config import get_pg_pool
+from src.query import datasources
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
@@ -66,7 +66,7 @@ async def get_base_data(
     input_interval = interval.strip()
 
     def _fetch_rows_pg():
-        pool = get_pg_pool()
+        pool = datasources.get_pool(datasources.INDICATORS)
         schema = _indicator_pg_schema()
 
         resolved_symbol = normalize_symbol(input_symbol)

@@ -7,7 +7,7 @@ import os
 from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 
-from src.config import get_pg_pool
+from src.query import datasources
 from src.query import service as query_service
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
@@ -240,7 +240,7 @@ async def get_indicator_list() -> dict:
     """获取可用的指标表列表"""
     def _fetch_tables_pg():
         schema = _indicator_pg_schema()
-        pool = get_pg_pool()
+        pool = datasources.get_pool(datasources.INDICATORS)
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -275,7 +275,7 @@ async def get_indicator_data(
         from psycopg.rows import dict_row  # type: ignore
 
         schema = _indicator_pg_schema()
-        pool = get_pg_pool()
+        pool = datasources.get_pool(datasources.INDICATORS)
 
         with pool.connection() as conn:
             # 1) 检查表是否存在

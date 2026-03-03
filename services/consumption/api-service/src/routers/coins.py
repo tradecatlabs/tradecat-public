@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from psycopg import sql
 
-from src.config import get_pg_pool
+from src.query import datasources
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import to_base_symbol
 
@@ -39,7 +39,7 @@ async def get_supported_coins() -> dict:
     schema = (os.environ.get("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
 
     def _fetch_symbols_pg():
-        pool = get_pg_pool()
+        pool = datasources.get_pool(datasources.INDICATORS)
         with pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
