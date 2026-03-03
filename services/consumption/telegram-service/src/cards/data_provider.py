@@ -32,6 +32,7 @@ _repo_root = str(_Path(__file__).resolve().parents[5])
 if _repo_root not in _sys.path:
     _sys.path.insert(0, _repo_root)
 from assets.common.symbols import get_configured_symbols_set  # noqa: E402
+from assets.common.contracts.cards_contract import resolve_card_id  # noqa: E402
 
 
 # 缓存配置的币种（延迟初始化）
@@ -88,33 +89,6 @@ def _parse_timestamp(ts_str: str) -> datetime:
         return dt
     except Exception:
         return datetime.min.replace(tzinfo=UTC)
-
-
-# 表名映射（简称 -> 实际表名）
-TABLE_NAME_MAP = {
-    # 基础
-    "基础数据": "基础数据同步器.py",
-    # 指标
-    "ATR波幅榜单": "ATR波幅扫描器.py",
-    "BB榜单": "布林带扫描器.py",
-    "布林带榜单": "布林带扫描器.py",
-    "CVD榜单": "CVD信号排行榜.py",
-    "KDJ随机指标榜单": "KDJ随机指标扫描器.py",
-    "K线形态榜单": "K线形态扫描器.py",
-    "MACD柱状榜单": "MACD柱状扫描器.py",
-    "MFI资金流量榜单": "MFI资金流量扫描器.py",
-    "OBV能量潮榜单": "OBV能量潮扫描器.py",
-    "VPVR榜单": "VPVR排行生成器.py",
-    "VWAP榜单": "VWAP离线信号扫描.py",
-    "主动买卖比榜单": "主动买卖比扫描器.py",
-    "成交量比率榜单": "成交量比率扫描器.py",
-    "支撑阻力榜单": "全量支撑阻力扫描器.py",
-    "收敛发散榜单": "G，C点扫描器.py",
-    "流动性榜单": "流动性扫描器.py",
-    "谐波信号榜单": "谐波信号扫描器.py",
-    "趋势线榜单": "趋势线榜单.py",
-    "期货情绪聚合榜单": "期货情绪聚合表.py",
-}
 
 
 def format_symbol(sym: str) -> str:
@@ -181,28 +155,55 @@ class QueryServiceClient:
     def _cache_set(self, key: str, value: Any) -> None:
         self._cache[key] = _CacheEntry(ts=time.time(), value=value)
 
-    def get_indicators(
+    def get_card(
         self,
         *,
-        table: str,
+        card_id: str,
         interval: str | None,
-        mode: str,
-        symbol: str | None = None,
         symbols: list[str] | None = None,
-        field_nonempty: str | None = None,
         limit: int = 1000,
     ) -> dict[str, Any]:
-        table_q = quote(table, safe="")
-        url = f"{self._base}/api/v1/indicators/{table_q}"
-        params: dict[str, Any] = {"mode": mode, "limit": int(limit)}
+        card_q = quote(card_id, safe="")
+        url = f"{self._base}/api/v1/cards/{card_q}"
+        params: dict[str, Any] = {"limit": int(limit)}
         if interval:
             params["interval"] = _normalize_period_value(interval)
-        if symbol:
-            params["symbol"] = symbol
         if symbols:
             params["symbols"] = ",".join(symbols)
-        if field_nonempty:
-            params["field_nonempty"] = field_nonempty
+
+        cache_key = f"{url}?{sorted(params.items())}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        resp = self._client.get(url, params=params, headers=self._headers())
+        resp.raise_for_status()
+        payload = resp.json()
+        if not payload or not payload.get("success"):
+            raise RuntimeError(f"query_failed:{payload.get('msg') if isinstance(payload, dict) else 'unknown'}")
+        data = payload.get("data") or {}
+        self._cache_set(cache_key, data)
+        return data
+
+    def get_symbol_snapshot(
+        self,
+        *,
+        symbol: str,
+        panels: list[str] | None,
+        intervals: list[str] | None,
+        include_base: bool,
+        include_pattern: bool,
+    ) -> dict[str, Any]:
+        sym_q = quote(symbol, safe="")
+        url = f"{self._base}/api/v1/symbol/{sym_q}/snapshot"
+        params: dict[str, Any] = {
+            "include_base": bool(include_base),
+            "include_pattern": bool(include_pattern),
+        }
+        if panels:
+            params["panels"] = ",".join(panels)
+        if intervals:
+            params["intervals"] = ",".join([_normalize_period_value(i) for i in intervals])
 
         cache_key = f"{url}?{sorted(params.items())}"
         cached = self._cache_get(cache_key)
@@ -231,20 +232,10 @@ def _get_client() -> QueryServiceClient:
 
 
 class HttpRankingDataProvider:
-    """HTTP 读取端：通过 Query Service 获取指标表数据。"""
+    """HTTP 读取端：通过 Query Service 获取卡片/快照数据。"""
 
     def __init__(self) -> None:
         self._client = _get_client()
-
-    def _resolve_table(self, name: str) -> str:
-        if name in TABLE_NAME_MAP:
-            return TABLE_NAME_MAP[name]
-        if not name.endswith(".py"):
-            with_py = name + ".py"
-            if with_py in TABLE_NAME_MAP:
-                return TABLE_NAME_MAP[with_py]
-            return with_py
-        return name
 
     def _allowed_symbols_list(self) -> list[str] | None:
         allowed = _get_allowed_symbols()
@@ -252,46 +243,55 @@ class HttpRankingDataProvider:
             return None
         return sorted({s.strip().upper() for s in allowed if s and s.strip()})
 
-    def fetch_base(self, period: str) -> Dict[str, Dict]:
-        allowed_vals = self._allowed_symbols_list()
-        data = self._client.get_indicators(
-            table="基础数据同步器.py",
-            interval=period,
-            mode="latest_at_max_ts",
-            symbols=allowed_vals,
-            limit=5000,
-        )
-        rows = list(data.get("rows") or [])
-        if ts := data.get("latest_ts_utc"):
-            _update_latest(_parse_timestamp(str(ts)))
-        latest: Dict[str, Dict] = {}
-        for r in rows:
-            sym = str(r.get("交易对") or r.get("币种") or r.get("symbol") or "").upper()
-            if not sym:
-                continue
-            allowed = _get_allowed_symbols()
-            if allowed and sym not in allowed:
-                continue
-            if sym not in latest:
-                latest[sym] = dict(r)
-        return latest
+    @staticmethod
+    def _compat_alias_fields(row: dict[str, Any]) -> dict[str, Any]:
+        """为历史卡片逻辑补齐常用别名（不影响新契约字段）。"""
+        # symbol aliases
+        sym = str(row.get("symbol") or row.get("交易对") or "").upper()
+        base_sym = str(row.get("base_symbol") or row.get("币种") or "").upper()
+        if sym and "交易对" not in row:
+            row["交易对"] = sym
+        if base_sym and "币种" not in row:
+            row["币种"] = base_sym
 
-    def fetch_base_with_field(self, period: str, field: str) -> Dict[str, Dict]:
-        allowed_vals = self._allowed_symbols_list()
-        data = self._client.get_indicators(
-            table="基础数据同步器.py",
-            interval=period,
-            mode="latest_at_max_ts",
-            symbols=allowed_vals,
-            field_nonempty=(field or "").strip(),
-            limit=5000,
-        )
+        # base aliases
+        if "quote_volume" in row and "成交额" not in row:
+            row["成交额"] = row.get("quote_volume")
+        if "price" in row and "当前价格" not in row:
+            row["当前价格"] = row.get("price")
+        if "updated_at" in row and "数据时间" not in row:
+            row["数据时间"] = row.get("updated_at")
+        if "change_percent" in row and "变化率" not in row:
+            row["变化率"] = row.get("change_percent")
+        return row
+
+    def _flatten_card_rows(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         rows = list(data.get("rows") or [])
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            fields = dict(r.get("fields") or {})
+            fields["symbol"] = r.get("symbol") or ""
+            fields["base_symbol"] = r.get("base_symbol") or ""
+            if r.get("rank") is not None:
+                fields["排名"] = r.get("rank")
+            out.append(self._compat_alias_fields(fields))
+        return out
+
+    def _resolve_card(self, key: str) -> str:
+        cid = resolve_card_id(key)
+        if not cid:
+            raise ValueError(f"unknown_card:{key}")
+        return cid
+
+    def fetch_base(self, period: str) -> Dict[str, Dict]:
+        """基础数据（按 max_ts 一次取全）。"""
+        allowed_vals = self._allowed_symbols_list()
+        data = self._client.get_card(card_id="volume_ranking", interval=period, symbols=allowed_vals, limit=5000)
         if ts := data.get("latest_ts_utc"):
             _update_latest(_parse_timestamp(str(ts)))
         latest: Dict[str, Dict] = {}
-        for r in rows:
-            sym = str(r.get("交易对") or r.get("币种") or r.get("symbol") or "").upper()
+        for r in self._flatten_card_rows(data):
+            sym = str(r.get("交易对") or r.get("symbol") or "").upper()
             if not sym:
                 continue
             allowed = _get_allowed_symbols()
@@ -302,36 +302,26 @@ class HttpRankingDataProvider:
         return latest
 
     def fetch_metric(self, table: str, period: str) -> List[Dict]:
-        table = self._resolve_table(table)
+        """排行榜指标数据（按 latest_per_symbol）。"""
+        card_id = self._resolve_card(table)
         allowed_vals = self._allowed_symbols_list()
-        data = self._client.get_indicators(
-            table=table,
-            interval=period,
-            mode="latest_per_symbol",
-            symbols=allowed_vals,
-            limit=5000,
-        )
-        rows = list(data.get("rows") or [])
+        data = self._client.get_card(card_id=card_id, interval=period, symbols=allowed_vals, limit=5000)
         if ts := data.get("latest_ts_utc"):
             _update_latest(_parse_timestamp(str(ts)))
-        return [dict(r) for r in rows]
+        return [dict(r) for r in self._flatten_card_rows(data)]
 
     def fetch_base_row(self, period: str, symbol: str) -> Dict:
-        return self._fetch_single_row("基础数据同步器.py", period, symbol)
-
-    def _fetch_single_row(self, table: str, period: str, symbol: str) -> Dict:
-        table = self._resolve_table(table)
-        data = self._client.get_indicators(
-            table=table,
-            interval=period,
-            mode="single_latest",
+        snap = self._client.get_symbol_snapshot(
             symbol=symbol,
-            limit=1,
+            panels=None,
+            intervals=[period],
+            include_base=True,
+            include_pattern=False,
         )
-        rows = list(data.get("rows") or [])
-        if ts := data.get("latest_ts_utc"):
+        if ts := snap.get("latest_ts_utc"):
             _update_latest(_parse_timestamp(str(ts)))
-        return dict(rows[0]) if rows else {}
+        base = ((snap.get("base") or {}).get("intervals") or {}).get(period) or {}
+        return dict(base) if base else {}
 
     def fetch_row(
         self,
@@ -342,25 +332,41 @@ class HttpRankingDataProvider:
         symbol_keys: tuple = ("交易对", "币种", "symbol"),
         base_fields: Optional[List[str]] = None,
     ) -> Dict:
-        row = self._fetch_single_row(table, period, symbol)
-        if not row:
-            return {}
-        base = self.fetch_base_row(period, symbol) or {}
-        sym = (symbol or "").strip().upper()
-        merged = dict(row)
-        merged["symbol"] = sym
-        merged["price"] = float(base.get("当前价格", row.get("当前价格", 0)) or 0)
-        merged["quote_volume"] = float(base.get("成交额", row.get("成交额", 0)) or 0)
-        merged["change_percent"] = float(base.get("变化率", 0) or 0)
-        merged["updated_at"] = base.get("数据时间") or row.get("数据时间")
-        for k in ["振幅", "交易次数", "成交笔数", "主动买入量", "主动卖出量", "主动买额", "主动卖额", "主动买卖比"]:
-            if k in base:
-                merged[k] = base.get(k)
-        if base_fields:
-            for bf in base_fields:
-                if bf in base:
-                    merged[bf] = base.get(bf)
-        return merged
+        # 统一从 Query Service 的结构化快照读取（避免消费端直连/表名直通）
+        snap = self._client.get_symbol_snapshot(
+            symbol=symbol,
+            panels=["basic", "futures", "advanced"],
+            intervals=[period],
+            include_base=True,
+            include_pattern=True,
+        )
+        if ts := snap.get("latest_ts_utc"):
+            _update_latest(_parse_timestamp(str(ts)))
+
+        def _norm(name: str) -> str:
+            n = (name or "").strip()
+            if n.endswith(".py"):
+                n = n[: -3]
+            return n
+
+        target = _norm(table)
+        if target in {"基础数据同步器", "基础数据"}:
+            base = ((snap.get("base") or {}).get("intervals") or {}).get(period) or {}
+            return dict(base) if base else {}
+
+        if target in {"K线形态扫描器", "K线形态扫描器.py"}:
+            pat = ((snap.get("pattern") or {}).get("intervals") or {}).get(period) or {}
+            return dict(pat) if pat else {}
+
+        panels = snap.get("panels") or {}
+        for panel_payload in panels.values():
+            tables = panel_payload.get("tables") or {}
+            for tp in tables.values():
+                tname = _norm(str(tp.get("table") or ""))
+                if tname == target:
+                    row = (tp.get("intervals") or {}).get(period) or {}
+                    return dict(row) if row else {}
+        return {}
 
     def merge_with_base(
         self,
@@ -369,36 +375,14 @@ class HttpRankingDataProvider:
         symbol_keys: tuple = ("交易对", "币种", "symbol"),
         base_fields: Optional[List[str]] = None,
     ) -> List[Dict]:
-        metrics = self.fetch_metric(table, period)
-        if not metrics:
-            return []
-        base_map = self.fetch_base(period)
-        merged: List[Dict] = []
-        for r in metrics:
-            sym = ""
-            for key in symbol_keys:
-                val = r.get(key)
-                if val:
-                    sym = str(val).upper()
-                    break
-            if not sym:
-                continue
-            base = base_map.get(sym, {})
-            row = dict(r)
-            row["symbol"] = sym
-            row["price"] = float(base.get("当前价格", r.get("当前价格", 0)) or 0)
-            row["quote_volume"] = float(base.get("成交额", r.get("成交额", 0)) or 0)
-            row["change_percent"] = float(base.get("变化率", 0) or 0)
-            row["updated_at"] = base.get("数据时间") or r.get("数据时间")
-            for k in ["振幅", "交易次数", "成交笔数", "主动买入量", "主动卖出量", "主动买额", "主动卖额", "主动买卖比"]:
-                if k in base:
-                    row[k] = base.get(k)
-            if base_fields:
-                for bf in base_fields:
-                    if bf in base:
-                        row[bf] = base.get(bf)
-            merged.append(row)
-        return merged
+        # 新契约端点 /api/v1/cards 已经在服务端合并基础数据，消费端不再做 join。
+        # base_fields 仅用于兼容历史卡片逻辑：这里确保别名字段存在即可。
+        rows = self.fetch_metric(table, period)
+        if base_fields:
+            for r in rows:
+                # fetch_metric 已经通过 _compat_alias_fields 补齐
+                _ = r
+        return rows
 
     # 兼容旧接口（部分卡片直接调用）
     def get_volume_rows(self, period: str) -> List[Dict]:
@@ -455,4 +439,3 @@ def get_ranking_provider() -> HttpRankingDataProvider:
 
 
 __all__ = ["HttpRankingDataProvider", "get_ranking_provider", "format_symbol", "get_latest_data_time", "reset_symbols_cache"]
-

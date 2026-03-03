@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from src.query.cards import build_card_payload
 from src.query.dao import fetch_indicator_rows
 from src.query.time import format_ts_bundle, parse_ts_any
 
@@ -18,58 +19,69 @@ def health_payload(*, sources: list[dict[str, Any]] | None = None) -> dict[str, 
     }
 
 
-def dashboard_payload(*, intervals: list[str], symbols: list[str] | None, shape: str) -> dict[str, Any]:
-    """MVP：先返回基础数据（按周期的 latest_at_max_ts）。"""
+def dashboard_payload(
+    *,
+    cards: list[str],
+    intervals: list[str],
+    symbols: list[str] | None,
+    shape: str,
+    limit: int,
+) -> dict[str, Any]:
+    """看板聚合输出（多卡片 × 多周期）。
+
+    shape:
+    - wide: symbol -> interval -> row
+    - long: rows[] 每条带 interval
+    """
     now = datetime.now(tz=timezone.utc)
     ts = format_ts_bundle(now)
-
-    base_by_interval: dict[str, list[dict[str, Any]]] = {}
-    latest_dt = None
-    for itv in intervals:
-        rows, dt = fetch_indicator_rows(
-            table="基础数据同步器.py",
-            interval=itv,
-            mode="latest_at_max_ts",
-            symbols=symbols,
-            limit=5000,
-        )
-        base_by_interval[itv] = rows
-        if dt and (latest_dt is None or dt > latest_dt):
-            latest_dt = dt
 
     data: dict[str, Any] = {
         "ts_utc": ts.ts_utc,
         "ts_ms": ts.ts_ms,
         "ts_shanghai": ts.ts_shanghai,
-        "table": "基础数据同步器.py",
+        "cards": cards,
         "intervals": intervals,
         "shape": shape,
     }
+
+    latest_dt = None
+    out_cards: dict[str, Any] = {}
+    for cid in cards:
+        per_interval: dict[str, Any] = {}
+        for itv in intervals:
+            payload = build_card_payload(card_id=cid, interval=itv, symbols=symbols, limit=limit)
+            per_interval[itv] = payload
+
+            dt = parse_ts_any(payload.get("latest_ts_utc"))
+            if dt and (latest_dt is None or dt > latest_dt):
+                latest_dt = dt
+
+        if shape == "wide":
+            wide: dict[str, dict[str, Any]] = {}
+            for itv, p in per_interval.items():
+                for r in (p.get("rows") or []):
+                    sym = str(r.get("symbol") or "").upper()
+                    if not sym:
+                        continue
+                    wide.setdefault(sym, {})[itv] = r
+            out_cards[cid] = {"card_id": cid, "intervals": intervals, "rows": wide}
+        else:
+            long_rows: list[dict[str, Any]] = []
+            for itv, p in per_interval.items():
+                for r in (p.get("rows") or []):
+                    rr = dict(r)
+                    rr["interval"] = itv
+                    long_rows.append(rr)
+            out_cards[cid] = {"card_id": cid, "intervals": intervals, "rows": long_rows}
+
+    data["data"] = out_cards
 
     if latest_dt:
         latest_ts = format_ts_bundle(latest_dt)
         data["latest_ts_utc"] = latest_ts.ts_utc
         data["latest_ts_ms"] = latest_ts.ts_ms
         data["latest_ts_shanghai"] = latest_ts.ts_shanghai
-
-    if shape == "wide":
-        # wide：symbol -> interval -> row
-        wide: dict[str, dict[str, dict[str, Any]]] = {}
-        for itv, rows in base_by_interval.items():
-            for r in rows:
-                sym = str(r.get("交易对") or r.get("币种") or r.get("symbol") or "").upper()
-                if not sym:
-                    continue
-                wide.setdefault(sym, {})[itv] = r
-        data["rows"] = wide
-    else:
-        long_rows: list[dict[str, Any]] = []
-        for itv, rows in base_by_interval.items():
-            for r in rows:
-                rr = dict(r)
-                rr["interval"] = itv
-                long_rows.append(rr)
-        data["rows"] = long_rows
 
     return data
 
@@ -182,4 +194,3 @@ def symbol_snapshot_payload(
         snapshot["latest_ts_shanghai"] = lt.ts_shanghai
 
     return snapshot
-
