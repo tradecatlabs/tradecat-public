@@ -95,7 +95,7 @@ def _load_all_metrics(interval: str = "5m"):
                         "tlsr": row[5], "lsr": row[6], "tlsvr": row[7],
                     }
                 _CACHE_TS[interval] = time.time()
-    except Exception as exc:
+    except Exception:
         now = time.time()
         last = _ERROR_TS.get(interval, 0)
         if (now - last) >= _ERROR_LOG_TTL_SECONDS:

@@ -4,7 +4,6 @@
 对外提供 get_settings()，统一读取环境变量并做最小校验。
 """
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional

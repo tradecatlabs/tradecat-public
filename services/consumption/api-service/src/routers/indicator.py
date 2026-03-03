@@ -209,7 +209,6 @@ def _build_snapshot(symbol: str, panels: list[str], periods: list[str], include_
     if not raw_symbol:
         return {"error": "symbol 不能为空"}
 
-    base_symbol = raw_symbol.replace("USDT", "")
     allowed_periods = set(ALL_PERIODS)
     period_set = {p.lower() for p in periods} if periods else set()
     normalized_panels = _normalize_panels(panels)

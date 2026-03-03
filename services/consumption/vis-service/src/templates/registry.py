@@ -1531,14 +1531,14 @@ def _fetch_ridge_data_from_query_service(
             ts = int(it.get("time") or 0)
             o = float(it.get("open") or 0.0)
             h = float(it.get("high") or 0.0)
-            l = float(it.get("low") or 0.0)
+            low = float(it.get("low") or 0.0)
             c = float(it.get("close") or 0.0)
             v = float(it.get("volume") or 0.0)
         except Exception:
             continue
         if not ts:
             continue
-        parsed.append({"time": ts, "open": o, "high": h, "low": l, "close": c, "volume": v})
+        parsed.append({"time": ts, "open": o, "high": h, "low": low, "close": c, "volume": v})
 
     if len(parsed) < max(5, min(total, 1000)):
         return [], []
