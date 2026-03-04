@@ -164,30 +164,88 @@ check_config() {
     echo "=== 配置文件 ==="
     
     local config_file="$ROOT/assets/config/.env"
+    if [ ! -f "$config_file" ] && [ -f "$ROOT/config/.env" ]; then
+        # 兼容旧路径（只读回退）
+        config_file="$ROOT/config/.env"
+    fi
     
     if [ -f "$config_file" ]; then
+        get_kv() {
+            local key="$1"
+            local value=""
+            value=$(grep "^${key}=" "$config_file" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+            if [ -z "$value" ]; then
+                value="${!key:-}"
+            fi
+            echo "$value"
+        }
+
         # 权限检查
+        local rel_path="${config_file#$ROOT/}"
         local perms=$(stat -c %a "$config_file" 2>/dev/null || stat -f %Lp "$config_file" 2>/dev/null)
         if [ "$perms" = "600" ] || [ "$perms" = "400" ]; then
-            success "assets/config/.env: 权限 $perms"
+            success "$rel_path: 权限 $perms"
         else
-            warn "assets/config/.env: 权限 $perms (建议 600)"
+            warn "$rel_path: 权限 $perms (建议 600)"
         fi
         
         # 必填字段检查
         local required_keys=(BOT_TOKEN DATABASE_URL)
         for key in "${required_keys[@]}"; do
-            local value=$(grep "^${key}=" "$config_file" | cut -d= -f2- | tr -d '"' | tr -d "'")
+            local value
+            value="$(get_kv "$key")"
             if [ -n "$value" ] && [ "$value" != "your_token_here" ]; then
                 success "$key: 已配置"
             else
                 fail "$key: 未配置或为默认值"
             fi
         done
+
+        # Query Service / 消费端配置（禁止漏配导致裸奔/全挂）
+        local query_base_url
+        query_base_url="$(get_kv "QUERY_SERVICE_BASE_URL")"
+        if [ -n "$query_base_url" ]; then
+            success "QUERY_SERVICE_BASE_URL: 已配置"
+        else
+            fail "QUERY_SERVICE_BASE_URL: 未配置"
+        fi
+
+        local query_auth_mode
+        query_auth_mode="$(get_kv "QUERY_SERVICE_AUTH_MODE")"
+        query_auth_mode="$(echo "${query_auth_mode:-required}" | tr '[:upper:]' '[:lower:]' | xargs)"
+        [ -z "$query_auth_mode" ] && query_auth_mode="required"
+
+        if [ "$query_auth_mode" = "disabled" ] || [ "$query_auth_mode" = "off" ]; then
+            warn "QUERY_SERVICE_AUTH_MODE: $query_auth_mode (已关闭鉴权，仅限本地/受控环境)"
+        else
+            if [ "$query_auth_mode" != "required" ]; then
+                warn "QUERY_SERVICE_AUTH_MODE: $query_auth_mode (未知值，按 required 处理)"
+            else
+                success "QUERY_SERVICE_AUTH_MODE: required"
+            fi
+
+            local query_token
+            query_token="$(get_kv "QUERY_SERVICE_TOKEN")"
+            if [ -n "$query_token" ] && [ "$query_token" != "dev-token-change-me" ] && [ "$query_token" != "your_token_here" ]; then
+                success "QUERY_SERVICE_TOKEN: 已配置"
+            else
+                fail "QUERY_SERVICE_TOKEN: 未配置或为默认值"
+            fi
+        fi
+
+        local cors_allow
+        cors_allow="$(get_kv "API_CORS_ALLOW_ORIGINS")"
+        if [ -n "$cors_allow" ]; then
+            success "API_CORS_ALLOW_ORIGINS: 已配置"
+        else
+            info "API_CORS_ALLOW_ORIGINS: 未配置（默认不下发 CORS 头）"
+        fi
         
         # 代理配置
-        local http_proxy=$(grep "^HTTP_PROXY=" "$config_file" | cut -d= -f2- | tr -d '"' | tr -d "'")
-        local telegram_api_base=$(grep "^TELEGRAM_API_BASE=" "$config_file" | cut -d= -f2- | tr -d '"' | tr -d "'")
+        local http_proxy
+        http_proxy="$(get_kv "HTTP_PROXY")"
+        local telegram_api_base
+        telegram_api_base="$(get_kv "TELEGRAM_API_BASE")"
         [ -z "$telegram_api_base" ] && telegram_api_base="${TELEGRAM_API_BASE:-}"
         if [ -n "$http_proxy" ]; then
             if [ -n "$telegram_api_base" ] && curl -s --connect-timeout 3 -x "$http_proxy" "$telegram_api_base" -o /dev/null 2>/dev/null; then
@@ -200,21 +258,23 @@ check_config() {
         fi
 
         # 信号服务新鲜度/冷却（可选）
-        local signal_age=$(grep "^SIGNAL_DATA_MAX_AGE=" "$config_file" | cut -d= -f2- | tr -d '"' | tr -d "'")
+        local signal_age
+        signal_age="$(get_kv "SIGNAL_DATA_MAX_AGE")"
         if [ -n "$signal_age" ]; then
             success "SIGNAL_DATA_MAX_AGE: $signal_age 秒"
         else
             warn "SIGNAL_DATA_MAX_AGE: 未配置，默认 600 秒"
         fi
 
-        local pg_cooldown=$(grep "^COOLDOWN_SECONDS=" "$config_file" | cut -d= -f2- | tr -d '"' | tr -d "'")
+        local pg_cooldown
+        pg_cooldown="$(get_kv "COOLDOWN_SECONDS")"
         if [ -n "$pg_cooldown" ]; then
             success "COOLDOWN_SECONDS: $pg_cooldown 秒"
         else
             info "COOLDOWN_SECONDS: 未配置，使用代码默认值"
         fi
     else
-        fail "assets/config/.env 不存在"
+        fail "配置文件不存在（assets/config/.env 或 config/.env）"
         echo "      创建: cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env"
     fi
 }
@@ -225,6 +285,10 @@ check_database() {
     echo "=== 数据库连接 ==="
     
     local config_file="$ROOT/assets/config/.env"
+    if [ ! -f "$config_file" ] && [ -f "$ROOT/config/.env" ]; then
+        # 兼容旧路径（只读回退）
+        config_file="$ROOT/config/.env"
+    fi
     if [ ! -f "$config_file" ]; then
         info "跳过 (assets/config/.env 不存在)"
         return 0
@@ -341,6 +405,10 @@ check_network() {
     echo "=== 网络连接 ==="
     
     local config_file="$ROOT/assets/config/.env"
+    if [ ! -f "$config_file" ] && [ -f "$ROOT/config/.env" ]; then
+        # 兼容旧路径（只读回退）
+        config_file="$ROOT/config/.env"
+    fi
     local proxy=""
     
     if [ -f "$config_file" ]; then

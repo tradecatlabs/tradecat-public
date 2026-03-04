@@ -4,7 +4,7 @@
 
 ## P0（阻塞/高风险）
 
-- [ ] P0: 更新 `check_env.sh` 增加 Query Service/消费端必配校验 | Verify: `./scripts/check_env.sh` | Gate: 缺 `QUERY_SERVICE_BASE_URL`/required 模式缺 token 时脚本失败（exit!=0）
+- [x] P0: 更新 `check_env.sh` 增加 Query Service/消费端必配校验 | Verify: `./scripts/check_env.sh` | Gate: 缺 `QUERY_SERVICE_BASE_URL`/required 模式缺 token 时脚本失败（exit!=0）
 - [ ] P0: 错误语义统一为 HTTP 200（validation/general exception） | Verify: `cd services/consumption/api-service && pytest -q` | Gate: 新增测试断言所有错误 HTTP 200
 - [ ] P0: 文档同步（README/README_EN）补齐鉴权与门禁口径 | Verify: `rg -n \"QUERY_SERVICE_AUTH_MODE\" README.md README_EN.md` | Gate: 文档与 `.env.example` 一致
 
@@ -24,4 +24,3 @@
 ## 并行建议（Parallelizable）
 
 - P1 的 telegram 与 compute 可并行推进，但必须在合并前分别跑各自门禁。
-
