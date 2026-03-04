@@ -58,7 +58,7 @@ def update_market_share():
                     SELECT SUM(oiv) FROM (
                         SELECT DISTINCT ON (symbol) sum_open_interest_value as oiv
                         FROM market_data.binance_futures_metrics_5m
-                        WHERE create_time > NOW() - INTERVAL '1 hour'
+                        WHERE create_time > (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 hour'
                         ORDER BY symbol, create_time DESC
                     ) t
                 """)

@@ -253,7 +253,7 @@ def _get_futures_priority(top_n: int = 15) -> tuple[set, dict]:
                         sum_taker_long_short_vol_ratio as taker_ratio,
                         count_long_short_ratio as ls_ratio
                     FROM market_data.binance_futures_metrics_5m 
-                    WHERE create_time > NOW() - INTERVAL '7 days'
+                    WHERE create_time > (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'
                     ORDER BY symbol, create_time DESC
                 """)
                 rows = cur.fetchall()
