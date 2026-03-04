@@ -26,6 +26,7 @@
 | 0022 | api-service-contract-cleanup | Done | P0 | 完成契约层收口与一致性：补齐缺表结构化诊断字段、清理 api-service 路由的 get_pg_pool 直连散落（统一 datasources）、并对齐 tasks/文档状态避免运维漂移 | ./0022-api-service-contract-cleanup/ |
 | 0023 | query-service-v1-hardening-cagg | Done | P0 | 发布 Query Service v1：补齐期货指标高周期 CAGG（*_last 创建/回填）、收尾 0020/0017（输出规范/消费只走 /api/v1）、清理 OTHER 健康噪音、统一 scheduler UTC 口径、并完成全仓门禁 | ./0023-query-service-v1-hardening-cagg/ |
 | 0024 | query-service-security-reliability-hardening | In Progress | P0 | 修复 Query Service 的安全默认值与语义正确性：止血 funding-rate 假数据、收敛 CORS/鉴权为 fail-closed、杜绝 DSN/异常泄露，并为 dashboard/snapshot 加硬上限与缓存；同步加固 telegram-service/compute 的并发与失败语义 | ./0024-query-service-security-reliability-hardening/ |
+| 0025 | query-service-production-hardening | Not Started | P0 | 在 0024(P0) 基础上完成“可长期跑”的生产化收敛：环境变量门禁、错误语义唯一化、数值精度与类型口径、dashboard/snapshot 缓存与放大治理、telegram 客户端抗抖动、compute 缺口监控并发/失败语义、statement_timeout 与路径黑魔法收敛 | ./0025-query-service-production-hardening/ |
 
 ## 相关索引（单点入口）
 
