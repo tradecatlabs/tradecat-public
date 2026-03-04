@@ -38,6 +38,19 @@
 - `curl -s -m 4 "http://127.0.0.1:8088/api/futures/open-interest/history?symbol=BTC&interval=1h&limit=5" | head`
   - `success=true` 且 `data` 非空
 
+### 已执行命令（核心服务 make check）
+
+- `cd services/consumption/api-service && make check`
+  - `9 passed`
+- `cd services/consumption/telegram-service && make check`
+  - `1 passed`
+- `cd services/consumption/sheets-service && make check`
+  - `8 passed`
+- `cd services/compute/signal-service && make check`
+  - `15 passed`
+- `cd services/compute/trading-service && make check`
+  - `2 passed, 1 skipped`
+
 ### 关键观察（摘要）
 
 - 已执行 `assets/database/db/schema/007_metrics_cagg_from_5m.sql` 并完成首次刷新/可读（本地与服务器均可查到）。
