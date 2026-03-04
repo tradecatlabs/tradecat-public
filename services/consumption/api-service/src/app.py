@@ -62,7 +62,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         msg = "参数校验失败"
     
     return JSONResponse(
-        status_code=400,
+        status_code=200,
         content={
             "code": ErrorCode.PARAM_ERROR.value,
             "msg": msg,
@@ -78,7 +78,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     trace_id = (request.headers.get("x-request-id") or request.headers.get("x-correlation-id") or "").strip() or uuid4().hex
     LOG.error("未捕获异常 trace_id=%s method=%s path=%s", trace_id, request.method, request.url.path, exc_info=True)
     return JSONResponse(
-        status_code=500,
+        status_code=200,
         content={
             "code": ErrorCode.INTERNAL_ERROR.value,
             "msg": "服务器内部错误",
