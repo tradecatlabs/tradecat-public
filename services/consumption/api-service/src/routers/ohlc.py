@@ -1,5 +1,6 @@
 """K线数据路由 (对齐 CoinGlass /api/futures/ohlc/history)"""
 
+import logging
 import psycopg
 from psycopg import sql
 
@@ -11,6 +12,8 @@ from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["futures"])
+
+LOG = logging.getLogger("tradecat.api.ohlc")
 
 VALID_INTERVALS = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w", "1M"]
 
@@ -79,10 +82,10 @@ async def get_ohlc_history(
                 ).format(tbl=tbl)
                 params: list[object] = [symbol, exchange_code]
 
-                if startTime:
+                if startTime is not None:
                     query += sql.SQL(" AND bucket_ts >= to_timestamp(%s / 1000.0)")
                     params.append(startTime)
-                if endTime:
+                if endTime is not None:
                     query += sql.SQL(" AND bucket_ts <= to_timestamp(%s / 1000.0)")
                     params.append(endTime)
 
@@ -116,7 +119,9 @@ async def get_ohlc_history(
                 }
             )
         return api_response(data)
-    except psycopg.OperationalError as e:
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, f"数据库连接失败: {e}")
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except psycopg.OperationalError:
+        LOG.warning("K线数据库连接失败", exc_info=True)
+        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "数据库连接失败")
+    except Exception:
+        LOG.warning("查询K线失败 symbol=%s exchange=%s interval=%s", symbol, exchange, interval, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

@@ -1,5 +1,6 @@
 """信号数据路由"""
 
+import logging
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
@@ -7,6 +8,8 @@ from src.query import datasources
 from src.utils.errors import ErrorCode, api_response, error_response
 
 router = APIRouter(tags=["signal"])
+
+LOG = logging.getLogger("tradecat.api.signal")
 
 
 @router.get("/signal/cooldown")
@@ -35,5 +38,6 @@ async def get_cooldown_status() -> dict:
     try:
         data = await run_in_threadpool(_fetch_rows)
         return api_response(data)
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except Exception:
+        LOG.warning("查询信号冷却失败", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

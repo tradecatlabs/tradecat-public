@@ -198,7 +198,8 @@ vim assets/config/.env
 - 核心字段：  
   - `DATABASE_URL`（TimescaleDB，见下方端口说明）  
   - `QUERY_SERVICE_BASE_URL`（Query Service 基地址；默认 `http://127.0.0.1:8088`，见 `assets/config/.env.example`）  
-  - `QUERY_SERVICE_TOKEN`（可选：Query Service 内网 token；留空=不启用鉴权；但 `/api/v1/indicators/*` 调试端点仍会被禁用）  
+  - `QUERY_SERVICE_AUTH_MODE`（Query Service 鉴权模式；默认 `required`；`disabled` 仅限本地/受控环境调试）  
+  - `QUERY_SERVICE_TOKEN`（Query Service 内网 token；Header: `X-Internal-Token`；`required` 模式必须设置；`/api/v1/indicators/*` 调试端点始终要求 token）  
   - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC`（可选：market_data 表存在性检查缓存 TTL 秒数；默认 30）  
   - `BOT_TOKEN`（Telegram Bot Token）  
   - `TELEGRAM_GROUP_WHITELIST`（群聊白名单，逗号分隔；为空仅私聊；群聊仅响应 `/` 或 `!` 开头且需 @bot）  

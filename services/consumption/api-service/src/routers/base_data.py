@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 
@@ -14,6 +15,8 @@ from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["futures"])
+
+LOG = logging.getLogger("tradecat.api.base_data")
 
 BASE_TABLE = "基础数据同步器.py"
 BASE_FIELDS: tuple[str, ...] = (
@@ -171,5 +174,6 @@ async def get_base_data(
     try:
         payload = await run_in_threadpool(_fetch_rows_pg)
         return api_response(payload)
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except Exception:
+        LOG.warning("查询基础数据失败", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import APIRouter, Header, Query
@@ -13,6 +14,8 @@ from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["indicator"])
+
+LOG = logging.getLogger("tradecat.api.indicator")
 
 def _require_debug_token(x_internal_token: str | None) -> bool:
     """旧端点仅用于内网调试：默认必须鉴权。"""
@@ -268,8 +271,9 @@ async def get_indicator_list(x_internal_token: str | None = Header(default=None,
     try:
         tables = await run_in_threadpool(_fetch_tables_pg)
         return api_response(tables)
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except Exception:
+        LOG.warning("查询指标表列表失败", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")
 
 
 @router.get("/indicator/data")
@@ -341,8 +345,9 @@ async def get_indicator_data(
             return error_response(ErrorCode.TABLE_NOT_FOUND, f"表 '{table}' 不存在")
 
         return api_response(data)
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except Exception:
+        LOG.warning("查询指标数据失败 table=%s symbol=%s interval=%s", table, symbol, interval, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")
 
 
 @router.get("/indicator/snapshot")
@@ -372,5 +377,6 @@ async def get_indicator_snapshot(
         if "error" in data:
             return error_response(ErrorCode.PARAM_ERROR, data["error"])
         return api_response(data)
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except Exception:
+        LOG.warning("查询指标快照失败 symbol=%s panels=%s periods=%s", raw_symbol, panel_list, period_list, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

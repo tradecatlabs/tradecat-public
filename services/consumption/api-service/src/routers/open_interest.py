@@ -1,5 +1,6 @@
 """Open Interest 路由 (对齐 CoinGlass /api/futures/open-interest/history)"""
 
+import logging
 import psycopg
 from psycopg import sql
 
@@ -12,6 +13,8 @@ from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["futures"])
+
+LOG = logging.getLogger("tradecat.api.open_interest")
 
 VALID_INTERVALS = ["5m", "15m", "1h", "4h", "1d", "1w"]
 
@@ -79,12 +82,12 @@ async def get_open_interest_history(
                     query += sql.SQL(" AND exchange = %s")
                     params.append(exchange_code)
 
-                if startTime:
+                if startTime is not None:
                     query += sql.SQL(" AND {time_col} >= (to_timestamp(%s / 1000.0) AT TIME ZONE 'UTC')").format(
                         time_col=time_ident
                     )
                     params.append(startTime)
-                if endTime:
+                if endTime is not None:
                     query += sql.SQL(" AND {time_col} <= (to_timestamp(%s / 1000.0) AT TIME ZONE 'UTC')").format(
                         time_col=time_ident
                     )
@@ -119,7 +122,9 @@ async def get_open_interest_history(
                 }
             )
         return api_response(data)
-    except psycopg.OperationalError as e:
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, f"数据库连接失败: {e}")
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except psycopg.OperationalError:
+        LOG.warning("持仓数据库连接失败", exc_info=True)
+        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "数据库连接失败")
+    except Exception:
+        LOG.warning("查询持仓失败 symbol=%s exchange=%s interval=%s", symbol, exchange, interval, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

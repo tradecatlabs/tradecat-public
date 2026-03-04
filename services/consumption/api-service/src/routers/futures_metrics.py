@@ -1,5 +1,6 @@
 """期货综合指标路由"""
 
+import logging
 import psycopg
 from psycopg import sql
 
@@ -12,6 +13,8 @@ from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["futures"])
+
+LOG = logging.getLogger("tradecat.api.futures_metrics")
 
 VALID_INTERVALS = ["5m", "15m", "1h", "4h", "1d", "1w"]
 
@@ -113,7 +116,9 @@ async def get_futures_metrics(
                 }
             )
         return api_response(data)
-    except psycopg.OperationalError as e:
-        return error_response(ErrorCode.SERVICE_UNAVAILABLE, f"数据库连接失败: {e}")
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except psycopg.OperationalError:
+        LOG.warning("期货指标数据库连接失败", exc_info=True)
+        return error_response(ErrorCode.SERVICE_UNAVAILABLE, "数据库连接失败")
+    except Exception:
+        LOG.warning("查询期货指标失败", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

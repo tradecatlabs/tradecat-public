@@ -207,11 +207,12 @@ vim assets/config/.env
 - Location: `assets/config/.env` (create by copying `assets/config/.env.example`, or run `./scripts/install.sh` to generate), must be chmod 600, startup scripts will enforce this.  
 - Default ports (repo examples are written for this): LF TimescaleDB = `5433` (`DATABASE_URL`), HF TimescaleDB = `15432` (`BINANCE_VISION_DATABASE_URL`). If you customize ports, update scripts and examples consistently.
 - Key fields:  
-  - `DATABASE_URL` (TimescaleDB, see port note below)  
-  - `QUERY_SERVICE_BASE_URL` (Query Service base URL; default `http://127.0.0.1:8088`, see `assets/config/.env.example`)  
-  - `QUERY_SERVICE_TOKEN` (optional internal token for Query Service; empty = auth disabled; but `/api/v1/indicators/*` debug endpoints remain disabled)  
-  - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC` (optional: market_data table-existence TTL cache seconds; default 30)  
-  - `BOT_TOKEN` (Telegram Bot Token)  
+	  - `DATABASE_URL` (TimescaleDB, see port note below)  
+	  - `QUERY_SERVICE_BASE_URL` (Query Service base URL; default `http://127.0.0.1:8088`, see `assets/config/.env.example`)  
+	  - `QUERY_SERVICE_AUTH_MODE` (Query Service auth mode; default `required`; use `disabled` only for local/controlled debugging)  
+	  - `QUERY_SERVICE_TOKEN` (internal token for Query Service; header: `X-Internal-Token`; required when auth mode is `required`; `/api/v1/indicators/*` debug endpoints always require a token)  
+	  - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC` (optional: market_data table-existence TTL cache seconds; default 30)  
+	  - `BOT_TOKEN` (Telegram Bot Token)  
   - `TELEGRAM_GROUP_WHITELIST` (comma-separated group IDs; empty = private chats only; group messages require `/` or `!` prefix + @bot mention)  
   - `HTTP_PROXY` / `HTTPS_PROXY` (if proxy needed)  
   - External endpoints: `BINANCE_WEB_BASE`, `BINANCE_PING_URL`, `SYMBOLS_ALL_URL`, `TELEGRAM_API_BASE`, `POLYMARKET_WEB_BASE`, `KALSHI_WEB_BASE`, `OPINION_WEB_BASE`, `NODEJS_SETUP_URL`, `NOFX_*`

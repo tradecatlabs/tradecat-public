@@ -1,5 +1,6 @@
 """支持币种路由 (对齐 CoinGlass /api/futures/supported-coins)"""
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -20,6 +21,8 @@ if str(repo_root) not in sys.path:
 from assets.common.symbols import get_configured_symbols
 
 router = APIRouter(tags=["futures"])
+
+LOG = logging.getLogger("tradecat.api.coins")
 
 BASE_TABLE = "基础数据同步器.py"
 
@@ -58,5 +61,6 @@ async def get_supported_coins() -> dict:
     try:
         symbols = await run_in_threadpool(_fetch_symbols_pg)
         return api_response(symbols)
-    except Exception as e:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"查询失败: {e}")
+    except Exception:
+        LOG.warning("查询支持币种失败", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "查询失败")

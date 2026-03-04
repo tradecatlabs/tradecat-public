@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+import re
 from dataclasses import dataclass
 from threading import Lock
 from urllib.parse import urlsplit, urlunsplit
@@ -28,6 +30,8 @@ ALL_SOURCES: tuple[DataSourceSpec, ...] = (INDICATORS, MARKET, OTHER)
 _POOLS: dict[str, ConnectionPool] = {}
 _LOCK = Lock()
 
+LOG = logging.getLogger("tradecat.api.datasources")
+
 
 def _resolve_dsn(spec: DataSourceSpec) -> str:
     raw = (os.getenv(spec.env_key) or "").strip()
@@ -44,19 +48,38 @@ def redact_dsn(dsn: str) -> str:
     if not dsn:
         return ""
     try:
-        p = urlsplit(dsn)
-        if not p.scheme or not p.hostname:
+        # libpq: "host=.. user=.. password=.. dbname=.."
+        if re.search(r"(?i)\bpassword\s*=", dsn):
+            return re.sub(
+                r"(?i)(\bpassword\s*=\s*)(\"[^\"]*\"|'[^']*'|\S+)",
+                r"\1***",
+                dsn,
+            )
+
+        # URL DSN: postgresql://user:pass@host:port/db?sslmode=...
+        if "://" not in dsn:
             return dsn
-        # 仅保留 username@host:port/db
+
+        p = urlsplit(dsn)
+        if not p.scheme:
+            return "***"
+
+        # 仅保留 username@host:port/path（不回显 password/query/fragment）
         netloc = ""
         if p.username:
-            netloc += p.username + "@"
-        netloc += p.hostname
-        if p.port:
+            netloc += p.username
+            # host 可能为空（postgresql://user:pass@/db）
+            if p.hostname is None:
+                netloc += "@"
+        if p.hostname:
+            if netloc and not netloc.endswith("@"):
+                netloc += "@"
+            netloc += p.hostname
+        if p.port and p.hostname:
             netloc += f":{p.port}"
-        return urlunsplit((p.scheme, netloc, p.path or "", p.query or "", p.fragment or ""))
+        return urlunsplit((p.scheme, netloc, p.path or "", "", ""))
     except Exception:
-        return dsn
+        return "***"
 
 
 def get_pool(spec: DataSourceSpec) -> ConnectionPool:
@@ -99,5 +122,6 @@ def check_sources() -> list[dict[str, str | bool]]:
                     cur.fetchone()
             out.append({"id": spec.id, "ok": True, "dsn": redact_dsn(dsn)})
         except Exception as exc:
-            out.append({"id": spec.id, "ok": False, "dsn": redact_dsn(dsn), "error": str(exc)})
+            LOG.warning("数据源探测失败 source=%s", spec.id, exc_info=True)
+            out.append({"id": spec.id, "ok": False, "dsn": redact_dsn(dsn), "error": type(exc).__name__})
     return out

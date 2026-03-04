@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Header, Query
 from fastapi.concurrency import run_in_threadpool
 
@@ -15,6 +17,7 @@ from assets.common.contracts.cards_contract import ALL_CARD_CONTRACTS, CARD_ID_T
 
 
 router = APIRouter(tags=["query_v1"])
+LOG = logging.getLogger("tradecat.api.query_v1")
 
 
 def _parse_csv(value: str | None) -> list[str]:
@@ -24,12 +27,14 @@ def _parse_csv(value: str | None) -> list[str]:
 
 
 def _require_token(x_internal_token: str | None) -> bool:
-    # 为空 = 不启用鉴权
     import os
 
+    mode = (os.environ.get("QUERY_SERVICE_AUTH_MODE") or "required").strip().lower()
+    if mode in {"disabled", "off"}:
+        return True
     expected = (os.environ.get("QUERY_SERVICE_TOKEN") or "").strip()
     if not expected:
-        return True
+        return False
     return (x_internal_token or "").strip() == expected
 
 
@@ -57,8 +62,9 @@ async def health(x_internal_token: str | None = Header(default=None, alias="X-In
     try:
         data = await run_in_threadpool(_build)
         return api_response(data)
-    except Exception as exc:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"health_failed: {exc}")
+    except Exception:
+        LOG.error("health_failed", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "health_failed")
 
 
 @router.get("/capabilities")
@@ -93,8 +99,9 @@ async def capabilities(x_internal_token: str | None = Header(default=None, alias
     try:
         data = await run_in_threadpool(_build)
         return api_response(data)
-    except Exception as exc:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"capabilities_failed: {exc}")
+    except Exception:
+        LOG.error("capabilities_failed", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "capabilities_failed")
 
 @router.get("/ohlc/history")
 async def ohlc_history(
@@ -152,8 +159,9 @@ async def card(
                 return error_response(ErrorCode.PARAM_ERROR, "card_offline")
             return error_response(ErrorCode.INTERNAL_ERROR, f"card_failed:{status}")
         return api_response(payload)
-    except Exception as exc:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"card_failed: {exc}")
+    except Exception:
+        LOG.error("card_failed card_id=%s", card_id, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "card_failed")
 
 
 @router.get("/dashboard")
@@ -171,6 +179,14 @@ async def dashboard(
     card_list = _parse_csv(cards) or ["volume_ranking"]
     interval_list = _parse_csv(intervals) or ["5m", "15m", "1h", "4h", "1d", "1w"]
     sym_list = _parse_csv(symbols) or None
+
+    # 防滥用：硬上限（避免 N×M×K 查询放大打爆 DB/线程池）
+    card_list = list(dict.fromkeys(card_list))
+    interval_list = list(dict.fromkeys(interval_list))
+    if sym_list:
+        sym_list = list(dict.fromkeys(sym_list))
+    if len(card_list) > 20 or len(interval_list) > 7 or (sym_list and len(sym_list) > 200):
+        return error_response(ErrorCode.PARAM_ERROR, "too_many_items")
     shape = (shape or "wide").strip().lower()
     if shape not in {"wide", "long"}:
         return error_response(ErrorCode.PARAM_ERROR, "invalid_shape")
@@ -187,8 +203,9 @@ async def dashboard(
     try:
         data = await run_in_threadpool(_build)
         return api_response(data)
-    except Exception as exc:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"dashboard_failed: {exc}")
+    except Exception:
+        LOG.error("dashboard_failed", exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "dashboard_failed")
 
 
 @router.get("/symbol/{symbol}/snapshot")
@@ -209,8 +226,12 @@ async def symbol_snapshot(
     panel_list = _parse_csv(panels)
     if not panel_list:
         panel_list = ["basic", "futures", "advanced"]
-    panel_list = [p.lower() for p in panel_list]
-    interval_list = _parse_csv(intervals) or ["5m", "15m", "1h", "4h", "1d", "1w"]
+    panel_list = list(dict.fromkeys([p.lower() for p in panel_list]))
+    interval_list = list(dict.fromkeys(_parse_csv(intervals) or ["5m", "15m", "1h", "4h", "1d", "1w"]))
+
+    # 防滥用：硬上限（snapshot 是 panels×tables×intervals 的嵌套查询）
+    if len(panel_list) > 10 or len(interval_list) > 7:
+        return error_response(ErrorCode.PARAM_ERROR, "too_many_items")
 
     # 复用 indicator router 的字段映射（不再 import TG provider）
     from src.routers.indicator import TABLE_FIELDS, TABLE_ALIAS
@@ -229,8 +250,9 @@ async def symbol_snapshot(
     try:
         data = await run_in_threadpool(_build)
         return api_response(data)
-    except Exception as exc:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"snapshot_failed: {exc}")
+    except Exception:
+        LOG.error("snapshot_failed symbol=%s", raw_symbol, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "snapshot_failed")
 
 
 @router.get("/indicators/{table}")
@@ -282,5 +304,6 @@ async def indicators(
     try:
         data = await run_in_threadpool(_fetch)
         return api_response(data)
-    except Exception as exc:
-        return error_response(ErrorCode.INTERNAL_ERROR, f"indicators_failed: {exc}")
+    except Exception:
+        LOG.error("indicators_failed table=%s", table, exc_info=True)
+        return error_response(ErrorCode.INTERNAL_ERROR, "indicators_failed")
