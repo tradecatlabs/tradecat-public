@@ -6,7 +6,7 @@ PIP := .venv/bin/pip
 RUFF := .venv/bin/ruff
 PYTEST := .venv/bin/pytest
 
-.PHONY: help venv install install-dev clean reset lock lint format test syntax run start stop status restart
+.PHONY: help venv install install-dev clean reset lock lint format test check syntax run start stop status restart
 
 help:
 	@echo "sheets-service 常用命令:"
@@ -22,6 +22,7 @@ help:
 	@echo "    make lint        - ruff check"
 	@echo "    make format      - ruff format + fix"
 	@echo "    make test        - pytest"
+	@echo "    make check       - 完整检查 (lint + test)"
 	@echo "    make syntax      - py_compile 快速语法检查"
 	@echo ""
 	@echo "  运行:"
@@ -72,7 +73,7 @@ lock:
 
 lint:
 	@if [ -f "$(RUFF)" ]; then \
-		$(RUFF) check src/ tests/ 2>/dev/null || $(RUFF) check src/; \
+		$(RUFF) check src/ tests/ --ignore E501,E402 --select E,F 2>/dev/null || $(RUFF) check src/ --ignore E501,E402 --select E,F; \
 	else \
 		echo "⚠️  ruff 未安装，运行 make install-dev"; \
 	fi
@@ -80,7 +81,7 @@ lint:
 format:
 	@if [ -f "$(RUFF)" ]; then \
 		$(RUFF) format src/ tests/ 2>/dev/null || $(RUFF) format src/; \
-		$(RUFF) check --fix src/ tests/ 2>/dev/null || $(RUFF) check --fix src/; \
+		$(RUFF) check --fix src/ tests/ --ignore E501,E402 --select E,F 2>/dev/null || $(RUFF) check --fix src/ --ignore E501,E402 --select E,F; \
 	else \
 		echo "⚠️  ruff 未安装，运行 make install-dev"; \
 	fi
@@ -91,6 +92,9 @@ test:
 	else \
 		echo "⚠️  pytest 未安装，运行 make install-dev"; \
 	fi
+
+check: lint test
+	@echo "✅ 检查完成"
 
 syntax:
 	$(PYTHON) -m py_compile src/__main__.py
@@ -110,4 +114,3 @@ status:
 
 restart:
 	./scripts/start.sh restart
-

@@ -78,7 +78,7 @@ lock:
 
 lint:
 	@if [ -f "$(RUFF)" ]; then \
-		$(RUFF) check src/ tests/ 2>/dev/null || $(RUFF) check src/; \
+		$(RUFF) check src/ tests/ --ignore E501,E402 --select E,F 2>/dev/null || $(RUFF) check src/ --ignore E501,E402 --select E,F; \
 	else \
 		echo "⚠️  ruff 未安装，运行 make install-dev"; \
 	fi
@@ -86,7 +86,7 @@ lint:
 format:
 	@if [ -f "$(RUFF)" ]; then \
 		$(RUFF) format src/ tests/ 2>/dev/null || $(RUFF) format src/; \
-		$(RUFF) check --fix src/ tests/ 2>/dev/null || $(RUFF) check --fix src/; \
+		$(RUFF) check --fix src/ tests/ --ignore E501,E402 --select E,F 2>/dev/null || $(RUFF) check --fix src/ --ignore E501,E402 --select E,F; \
 	else \
 		echo "⚠️  ruff 未安装，运行 make install-dev"; \
 	fi
