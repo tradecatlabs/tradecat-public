@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query
 from fastapi.concurrency import run_in_threadpool
 
 from src.query import datasources
@@ -13,6 +13,13 @@ from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
 router = APIRouter(tags=["indicator"])
+
+def _require_debug_token(x_internal_token: str | None) -> bool:
+    """旧端点仅用于内网调试：默认必须鉴权。"""
+    expected = (os.environ.get("QUERY_SERVICE_TOKEN") or "").strip()
+    if not expected:
+        return False
+    return (x_internal_token or "").strip() == expected
 
 
 def _indicator_pg_schema() -> str:
@@ -236,8 +243,11 @@ def _build_snapshot(symbol: str, panels: list[str], periods: list[str], include_
 
 
 @router.get("/indicator/list")
-async def get_indicator_list() -> dict:
+async def get_indicator_list(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> dict:
     """获取可用的指标表列表"""
+    if not _require_debug_token(x_internal_token):
+        return error_response(ErrorCode.PARAM_ERROR, "unauthorized")
+
     def _fetch_tables_pg():
         schema = _indicator_pg_schema()
         pool = datasources.get_pool(datasources.INDICATORS)
@@ -268,8 +278,12 @@ async def get_indicator_data(
     symbol: str | None = Query(default=None, description="交易对"),
     interval: str | None = Query(default=None, description="周期"),
     limit: int = Query(default=100, ge=1, le=1000, description="返回数量"),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
 ) -> dict:
     """获取指标数据"""
+    if not _require_debug_token(x_internal_token):
+        return error_response(ErrorCode.PARAM_ERROR, "unauthorized")
+
     def _fetch_rows_pg():
         from psycopg import sql  # type: ignore
         from psycopg.rows import dict_row  # type: ignore
@@ -338,8 +352,12 @@ async def get_indicator_snapshot(
     periods: str | None = Query(default=None, description="周期列表，逗号分隔 1m,5m,15m,1h,4h,1d,1w"),
     include_base: bool = Query(default=True, description="是否包含基础数据表"),
     include_pattern: bool = Query(default=False, description="是否包含K线形态表"),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
 ) -> dict:
     """结构化返回单币种完整数据（复用 TG 查询逻辑）"""
+    if not _require_debug_token(x_internal_token):
+        return error_response(ErrorCode.PARAM_ERROR, "unauthorized")
+
     raw_symbol = (symbol or "").strip()
     if not raw_symbol:
         return error_response(ErrorCode.PARAM_ERROR, "symbol 不能为空")

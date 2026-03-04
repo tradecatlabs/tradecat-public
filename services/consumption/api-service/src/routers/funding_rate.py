@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 
 from src.query import market_dao
+from src.query.time import normalize_utc
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
@@ -79,10 +80,14 @@ async def get_funding_rate_history(
                     params.append(exchange_code)
 
                 if startTime:
-                    query += sql.SQL(" AND {time_col} >= to_timestamp(%s / 1000.0)").format(time_col=time_ident)
+                    query += sql.SQL(" AND {time_col} >= (to_timestamp(%s / 1000.0) AT TIME ZONE 'UTC')").format(
+                        time_col=time_ident
+                    )
                     params.append(startTime)
                 if endTime:
-                    query += sql.SQL(" AND {time_col} <= to_timestamp(%s / 1000.0)").format(time_col=time_ident)
+                    query += sql.SQL(" AND {time_col} <= (to_timestamp(%s / 1000.0) AT TIME ZONE 'UTC')").format(
+                        time_col=time_ident
+                    )
                     params.append(endTime)
 
                 query += sql.SQL(" ORDER BY {time_col} DESC LIMIT %s").format(time_col=time_ident)
@@ -103,9 +108,10 @@ async def get_funding_rate_history(
         data = []
         for row in reversed(rows):
             fr_value = float(row[2]) if row[2] is not None else None
+            dt = normalize_utc(row[1])
             data.append(
                 {
-                    "time": int(row[1].timestamp() * 1000),
+                    "time": int((dt.timestamp() if dt else 0) * 1000),
                     "open": str(fr_value) if fr_value is not None else None,
                     "high": str(fr_value) if fr_value is not None else None,
                     "low": str(fr_value) if fr_value is not None else None,

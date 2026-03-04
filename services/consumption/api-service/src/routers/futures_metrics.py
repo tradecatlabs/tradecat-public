@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 
 from src.query import market_dao
+from src.query.time import normalize_utc
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import normalize_symbol
 
@@ -101,9 +102,10 @@ async def get_futures_metrics(
             oi = row[2] if row[2] is not None else None
             ls = row[3] if row[3] is not None else None
             tl = row[4] if row[4] is not None else None
+            dt = normalize_utc(row[1])
             data.append(
                 {
-                    "time": int(row[1].timestamp() * 1000),
+                    "time": int((dt.timestamp() if dt else 0) * 1000),
                     "symbol": row[0],
                     "openInterest": str(oi) if oi is not None else None,
                     "longShortRatio": str(ls) if ls is not None else None,

@@ -113,6 +113,33 @@ else
     warn "rg 未安装，跳过 consumption PG/SQL 守护"
 fi
 
+# 0.3) consumption legacy API 路径守护（必须只走 /api/v1/*）
+echo ""
+echo "0.3 consumption API 路径守护..."
+if command -v rg &> /dev/null; then
+    CONSUMPTION_API_SCAN_DIRS=()
+    for d in services/consumption/telegram-service/src services/consumption/sheets-service/src services/consumption/vis-service/src; do
+        if [ -d "$d" ]; then
+            CONSUMPTION_API_SCAN_DIRS+=("$d")
+        fi
+    done
+    if [ "${#CONSUMPTION_API_SCAN_DIRS[@]}" -eq 0 ]; then
+        warn "未找到可扫描的 consumption/src 目录，跳过 API 路径守护"
+    else
+        LEGACY_API_HITS="$(
+            rg -n --hidden --no-ignore-vcs -S "/api/futures/" "${CONSUMPTION_API_SCAN_DIRS[@]}" --glob '!**/.venv/**' --glob '!**/node_modules/**' || true
+        )"
+        if [ -n "${LEGACY_API_HITS:-}" ]; then
+            echo "$LEGACY_API_HITS"
+            fail "发现 consumption 引用 legacy /api/futures/（必须只走 /api/v1/*）"
+        else
+            success "consumption 未引用 legacy /api/futures/"
+        fi
+    fi
+else
+    warn "rg 未安装，跳过 consumption API 路径守护"
+fi
+
 # 1. 检查 Python 环境
 echo ""
 echo "1. 检查 Python 环境..."

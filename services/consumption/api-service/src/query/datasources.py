@@ -15,11 +15,12 @@ class DataSourceSpec:
     id: str
     env_key: str
     default_from_env: str | None = None
+    optional: bool = False
 
 
 INDICATORS = DataSourceSpec(id="indicators", env_key="QUERY_PG_INDICATORS_URL", default_from_env="DATABASE_URL")
 MARKET = DataSourceSpec(id="market", env_key="QUERY_PG_MARKET_URL", default_from_env="DATABASE_URL")
-OTHER = DataSourceSpec(id="other", env_key="QUERY_PG_OTHER_URL", default_from_env=None)
+OTHER = DataSourceSpec(id="other", env_key="QUERY_PG_OTHER_URL", default_from_env=None, optional=True)
 
 ALL_SOURCES: tuple[DataSourceSpec, ...] = (INDICATORS, MARKET, OTHER)
 
@@ -86,6 +87,8 @@ def check_sources() -> list[dict[str, str | bool]]:
     for spec in ALL_SOURCES:
         dsn = _resolve_dsn(spec)
         if not dsn:
+            if spec.optional:
+                continue
             out.append({"id": spec.id, "ok": False, "dsn": "", "error": f"missing_env:{spec.env_key}"})
             continue
         try:
@@ -98,4 +101,3 @@ def check_sources() -> list[dict[str, str | bool]]:
         except Exception as exc:
             out.append({"id": spec.id, "ok": False, "dsn": redact_dsn(dsn), "error": str(exc)})
     return out
-

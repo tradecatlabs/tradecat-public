@@ -340,7 +340,7 @@ def _qs_ohlc_history(
         params["startTime"] = int(start_ms)
     if end_ms is not None:
         params["endTime"] = int(end_ms)
-    data = _qs_get_json("/api/futures/ohlc/history", params=params)
+    data = _qs_get_json("/api/v1/ohlc/history", params=params)
     if not isinstance(data, list):
         raise ValueError("Query Service ohlc/history 返回格式非法（非 list）")
     return [d for d in data if isinstance(d, dict)]

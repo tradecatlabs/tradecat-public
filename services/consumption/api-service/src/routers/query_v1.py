@@ -8,6 +8,7 @@ from src.query import service as query_service
 from src.query.cards import build_card_payload
 from src.query.dao import fetch_indicator_rows
 from src.query.datasources import check_sources
+from src.routers.ohlc import get_ohlc_history as _get_futures_ohlc_history
 from src.utils.errors import ErrorCode, api_response, error_response
 
 from assets.common.contracts.cards_contract import ALL_CARD_CONTRACTS, CARD_ID_TO_CONTRACT
@@ -94,6 +95,29 @@ async def capabilities(x_internal_token: str | None = Header(default=None, alias
         return api_response(data)
     except Exception as exc:
         return error_response(ErrorCode.INTERNAL_ERROR, f"capabilities_failed: {exc}")
+
+@router.get("/ohlc/history")
+async def ohlc_history(
+    symbol: str = Query(..., description="交易对 (BTC 或 BTCUSDT)"),
+    exchange: str = Query(default="Binance", description="交易所"),
+    interval: str = Query(default="1h", description="K线周期"),
+    limit: int = Query(default=100, ge=1, le=1000, description="返回数量"),
+    startTime: int | None = Query(default=None, description="开始时间 (毫秒)"),
+    endTime: int | None = Query(default=None, description="结束时间 (毫秒)"),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+) -> dict:
+    """Query Service v1: K线历史数据（消费侧稳定契约）。"""
+    if not _require_token(x_internal_token):
+        return error_response(ErrorCode.PARAM_ERROR, "unauthorized")
+    # 复用 CoinGlass 风格实现，避免重复 SQL/格式化逻辑。
+    return await _get_futures_ohlc_history(
+        symbol=symbol,
+        exchange=exchange,
+        interval=interval,
+        limit=limit,
+        startTime=startTime,
+        endTime=endTime,
+    )
 
 
 @router.get("/cards/{card_id}")

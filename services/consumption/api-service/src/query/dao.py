@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal
 from functools import lru_cache
 from typing import Any, Iterable
 
@@ -194,6 +195,14 @@ def fetch_indicator_rows(
     tbl = sql.Identifier(schema, table)
     ts_ident = sql.Identifier(ts_col)
 
+    def _normalize_value(v: Any) -> Any:
+        if isinstance(v, Decimal):
+            return float(v)
+        return v
+
+    def _normalize_row(r: dict[str, Any]) -> dict[str, Any]:
+        return {k: _normalize_value(v) for k, v in r.items()}
+
     rows: list[dict[str, Any]] = []
     latest_ts_val: Any = None
 
@@ -208,7 +217,7 @@ def fetch_indicator_rows(
             params2 = list(params) + [latest_ts_val]
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(sql.SQL("SELECT * FROM {}{}").format(tbl, where2), params2)
-                rows = [dict(r) for r in (cur.fetchall() or [])]
+                rows = [_normalize_row(dict(r)) for r in (cur.fetchall() or [])]
 
         elif mode == "single_latest":
             if not symbol:
@@ -217,14 +226,14 @@ def fetch_indicator_rows(
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(sql.SQL("SELECT * FROM {}{}{}").format(tbl, where_sql, order_sql), params)
                 one = cur.fetchone()
-                rows = [dict(one)] if one else []
+                rows = [_normalize_row(dict(one))] if one else []
 
         elif mode == "raw":
             lim = max(1, min(int(limit), 5000))
             order_sql = sql.SQL(" ORDER BY {} DESC LIMIT %s").format(ts_ident)
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(sql.SQL("SELECT * FROM {}{}{}").format(tbl, where_sql, order_sql), list(params) + [lim])
-                rows = [dict(r) for r in (cur.fetchall() or [])]
+                rows = [_normalize_row(dict(r)) for r in (cur.fetchall() or [])]
 
         else:  # latest_per_symbol default
             if not sym_col:
@@ -235,7 +244,7 @@ def fetch_indicator_rows(
             ).format(sym=sym_ident, tbl=tbl, where=where_sql, ts=ts_ident)
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(query, params)
-                rows = [dict(r) for r in (cur.fetchall() or [])]
+                rows = [_normalize_row(dict(r)) for r in (cur.fetchall() or [])]
 
     # 过滤占位行
     key_cols: list[str] = []
@@ -256,4 +265,3 @@ def fetch_indicator_rows(
         if latest_dt is None or dt > latest_dt:
             latest_dt = dt
     return rows, latest_dt
-
