@@ -36,17 +36,21 @@ def _fetch_metrics_times_batch(symbols: List[str], limit: int, interval: str = "
         table = f"binance_futures_metrics_{interval}_last"
         time_col = "bucket"
 
-	    sql = f"""
-	        WITH ranked AS (
-	            SELECT symbol, {time_col},
-	                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY {time_col} DESC) as rn
-	            FROM market_data.{table}
-	            WHERE symbol = ANY(%s) AND {time_col} > (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'
-	        )
-	        SELECT symbol, {time_col}
-	        FROM ranked WHERE rn <= %s
-	        ORDER BY symbol, {time_col} ASC
-	    """
+    sql = f"""
+        WITH ranked AS (
+            SELECT
+                symbol,
+                {time_col},
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY {time_col} DESC) as rn
+            FROM market_data.{table}
+            WHERE symbol = ANY(%s)
+              AND {time_col} > (NOW() AT TIME ZONE 'UTC') - INTERVAL '30 days'
+        )
+        SELECT symbol, {time_col}
+        FROM ranked
+        WHERE rn <= %s
+        ORDER BY symbol, {time_col} ASC
+    """
 
     result: Dict[str, List[datetime]] = {s: [] for s in symbols}
     try:
