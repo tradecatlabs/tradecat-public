@@ -24,6 +24,7 @@
 | 0020 | data-api-contract-hardening | In Progress | P0 | 将 api-service 升级为“稳定数据契约层”：新增 capabilities/cards/dashboard 稳定端点，迁移 TG/Sheets/Vis 消费，逐步清退表名直通接口以彻底遮蔽底层实现变动 | ./0020-data-api-contract-hardening/ |
 | 0021 | harden-futures-datasources-fallback | Done | P0 | 对 futures 路由做 QueryService 化收口：统一改用 datasources(MARKET) 连接池、对 *_last 缺表做降级不 500、并将 /api/v1/indicators 表名直通端点标记 deprecated + 强制内网 token | ./0021-harden-futures-datasources-fallback/ |
 | 0022 | api-service-contract-cleanup | Done | P0 | 完成契约层收口与一致性：补齐缺表结构化诊断字段、清理 api-service 路由的 get_pg_pool 直连散落（统一 datasources）、并对齐 tasks/文档状态避免运维漂移 | ./0022-api-service-contract-cleanup/ |
+| 0023 | query-service-v1-hardening-cagg | Not Started | P0 | 发布 Query Service v1：补齐期货指标高周期 CAGG（*_last 创建/回填）、收尾 0020/0017（输出规范/消费只走 /api/v1）、清理 OTHER 健康噪音、统一 scheduler UTC 口径、并完成全仓门禁 | ./0023-query-service-v1-hardening-cagg/ |
 
 ## 相关索引（单点入口）
 
