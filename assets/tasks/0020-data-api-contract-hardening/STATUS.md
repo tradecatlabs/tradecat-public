@@ -2,9 +2,9 @@
 
 ## 状态机
 
-- Status: In Progress（P0 已完成）
+- Status: Done（P0/P1 已完成；P2 可选）
 - Owner: Codex CLI
-- Updated: 2026-03-03
+- Updated: 2026-03-04
 
 ## 已执行命令记录（Evidence Log）
 
@@ -25,9 +25,7 @@
 
 - 无。
 
-## 待办（P1+）
+## 待办（P2，可选）
 
-- futures 路由统一改用 `src/query/datasources.py`（减少 `get_pg_pool()` 的直连散落）
-  - 已拆分为独立任务：`assets/tasks/0021-harden-futures-datasources-fallback/`
-- 旧端点（table 直通）deprecated/token 保护策略完善
-  - 已拆分为独立任务：`assets/tasks/0021-harden-futures-datasources-fallback/`
+- 服务端缓存/请求合并（降低多周期/多卡片 N+1）
+- OpenAPI 文档补齐（契约端点）

@@ -18,13 +18,13 @@
 | 0014 | fix-ci-and-pypi-build | Done | P0 | 资产迁移后收敛“可运行/可测试/可打包”：修复 CI ruff 失绿、pytest 误扫外部仓库、PyPI 包缺失 `src/tradecat` 的结构性断裂 | ./0014-fix-ci-and-pypi-build/ |
 | 0015 | unify-all-storage-to-postgres | In Progress | P0 | 数据库归一完全转型：彻底废弃 SQLite（指标库/状态库/幂等库），统一迁移到 `DATABASE_URL` 指向的 PostgreSQL（`tg_cards` + `signal_state` + `sheets_state`），并提供灰度切换与可回滚策略 | ./0015-unify-all-storage-to-postgres/ |
 | 0016 | remove-sqlite-from-services | Done | P0 | SQLite 彻底出清（服务侧）：清理核心服务的 SQLite 残留（测试/默认值/文档/遗留 .db 文件），确保运行时只依赖 PostgreSQL；迁移脚本保留为工具 | ./0016-remove-sqlite-from-services/ |
-| 0017 | migrate-consumption-to-query-service | Not Started | P0 | 统一数据消费为 Query Service（/api/v1）：消费层禁止直连 DB，仅通过稳定契约读取（并支持多数据源扩展） | ./0017-migrate-consumption-to-query-service/ |
+| 0017 | migrate-consumption-to-query-service | Done | P0 | 统一数据消费为 Query Service（/api/v1）：消费层禁止直连 DB，仅通过稳定契约读取（并支持多数据源扩展） | ./0017-migrate-consumption-to-query-service/ |
 | 0018 | stabilize-data-service-ban-backoff | Not Started | P0 | 修复 data-service 因 418 ban 触发的写库停滞与 ws 自愈重启风暴：统一识别 ban 并全局退避、收敛 backfill 并发、让守护逻辑对 ban 友好 | ./0018-stabilize-data-service-ban-backoff/ |
 | 0019 | stabilize-data-service-ws-write | Done | P0 | 修复 data-service WS 1m K线不持续落库问题：修复 flush 窗口逻辑、回调桥接与写入覆盖策略，并收敛依赖漂移风险 | ./0019-stabilize-data-service-ws-write/ |
-| 0020 | data-api-contract-hardening | In Progress | P0 | 将 api-service 升级为“稳定数据契约层”：新增 capabilities/cards/dashboard 稳定端点，迁移 TG/Sheets/Vis 消费，逐步清退表名直通接口以彻底遮蔽底层实现变动 | ./0020-data-api-contract-hardening/ |
+| 0020 | data-api-contract-hardening | Done | P0 | 将 api-service 升级为“稳定数据契约层”：新增 capabilities/cards/dashboard 稳定端点，迁移 TG/Sheets/Vis 消费，逐步清退表名直通接口以彻底遮蔽底层实现变动 | ./0020-data-api-contract-hardening/ |
 | 0021 | harden-futures-datasources-fallback | Done | P0 | 对 futures 路由做 QueryService 化收口：统一改用 datasources(MARKET) 连接池、对 *_last 缺表做降级不 500、并将 /api/v1/indicators 表名直通端点标记 deprecated + 强制内网 token | ./0021-harden-futures-datasources-fallback/ |
 | 0022 | api-service-contract-cleanup | Done | P0 | 完成契约层收口与一致性：补齐缺表结构化诊断字段、清理 api-service 路由的 get_pg_pool 直连散落（统一 datasources）、并对齐 tasks/文档状态避免运维漂移 | ./0022-api-service-contract-cleanup/ |
-| 0023 | query-service-v1-hardening-cagg | Not Started | P0 | 发布 Query Service v1：补齐期货指标高周期 CAGG（*_last 创建/回填）、收尾 0020/0017（输出规范/消费只走 /api/v1）、清理 OTHER 健康噪音、统一 scheduler UTC 口径、并完成全仓门禁 | ./0023-query-service-v1-hardening-cagg/ |
+| 0023 | query-service-v1-hardening-cagg | Done | P0 | 发布 Query Service v1：补齐期货指标高周期 CAGG（*_last 创建/回填）、收尾 0020/0017（输出规范/消费只走 /api/v1）、清理 OTHER 健康噪音、统一 scheduler UTC 口径、并完成全仓门禁 | ./0023-query-service-v1-hardening-cagg/ |
 
 ## 相关索引（单点入口）
 

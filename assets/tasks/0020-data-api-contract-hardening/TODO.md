@@ -18,8 +18,8 @@
 
 [x] P1: futures 路由改用 datasources 多 DSN 抽象 | Verify: `rg -n \"get_pg_pool\\(\" services/consumption/api-service/src/routers -S` | Gate: futures 路由不再调用 `get_pg_pool`
 [x] P1: futures `*_last` 缺表降级策略 | Verify: 断表/空表时接口返回 4xx/可诊断错误码 | Gate: 不出现 500
-[ ] P1: 输出类型/单位标准化（decimal/string） | Verify: `services/consumption/api-service/docs/API_EXAMPLES.md` 更新 | Gate: 文档与实际一致
-[ ] P1: 旧端点标记 deprecated + token 保护（仅内网调试） | Verify: 未带 token 调用被拒 | Gate: 对外不可误用
+[x] P1: 输出类型/单位标准化（decimal/string） | Verify: `services/consumption/api-service/docs/API_EXAMPLES.md` 更新 | Gate: 文档与实际一致
+[x] P1: 旧端点标记 deprecated + token 保护（仅内网调试） | Verify: 未带 token 调用被拒 | Gate: 对外不可误用
 
 ## P2（优化）
 
