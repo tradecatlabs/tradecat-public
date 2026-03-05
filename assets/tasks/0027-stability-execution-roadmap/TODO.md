@@ -6,12 +6,12 @@
 
 ## P0（必须优先）
 
-- [ ] P0: 基线冻结（Phase 0） | Verify: `git rev-parse --short HEAD` | Gate: 把 HEAD 写入 `assets/tasks/0027-stability-execution-roadmap/STATUS.md`
-- [ ] P0: 基线服务门禁 | Verify: `./scripts/verify.sh` | Gate: ✅ 通过；输出片段写入 `assets/tasks/0027-stability-execution-roadmap/STATUS.md`
-- [ ] P0: 基线核心服务 check | Verify: `cd services/consumption/api-service && make check` | Gate: ✅ 通过（其余服务按各自任务门禁执行）
+- [x] P0: 基线冻结（Phase 0） | Verify: `git rev-parse --short HEAD` | Gate: 把 HEAD 写入 `assets/tasks/0027-stability-execution-roadmap/STATUS.md`
+- [x] P0: 基线服务门禁 | Verify: `./scripts/verify.sh` | Gate: ✅ 通过；输出片段写入 `assets/tasks/0027-stability-execution-roadmap/STATUS.md`
+- [x] P0: 基线核心服务 check | Verify: `cd services/consumption/api-service && make check` | Gate: ✅ 通过（其余服务按各自任务门禁执行）
 
-- [ ] P0: 执行 `0018`（ban/backoff）P0 清单 | Verify: `sed -n '1,40p' assets/tasks/0018-stabilize-data-service-ban-backoff/TODO.md` | Gate: `0018` 的 P0 项全部勾选 + `STATUS.md` 有证据
-- [ ] P0: 执行 `0012`（Sheets 加固）P0 清单 | Verify: `sed -n '1,60p' assets/tasks/0012-sheets-service-hardening/TODO.md` | Gate: `0012` 的 P0 项全部勾选 + `STATUS.md` 有证据
+- [x] P0: 执行 `0018`（ban/backoff）P0 清单 | Verify: `sed -n '1,40p' assets/tasks/0018-stabilize-data-service-ban-backoff/TODO.md` | Gate: `0018` 的 P0 项全部勾选 + `STATUS.md` 有证据
+- [x] P0: 执行 `0012`（Sheets 加固）P0 清单 | Verify: `sed -n '1,60p' assets/tasks/0012-sheets-service-hardening/TODO.md` | Gate: `0012` 的 P0 项全部勾选 + `STATUS.md` 有证据
 
 ## P1（重要）
 
@@ -33,4 +33,3 @@
 
 - `0018`（采集 ban/backoff）与 `0012`（Sheets 加固）可并行推进，但最终必须串行过全仓门禁。
 - `0015 P2` 与 `0025 P2` 可并行推进（一个偏存储清理，一个偏 Query Service 生产化）。
-
