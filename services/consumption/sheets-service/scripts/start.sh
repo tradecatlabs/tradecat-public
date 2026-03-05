@@ -67,6 +67,48 @@ fi
 safe_load_env "$ENV_FILE"
 safe_load_env "$SERVICE_DIR/.env"
 
+# ==================== Query Service 预检（fail-fast，防“假运行”） ====================
+preflight_query_service() {
+    local base="${QUERY_SERVICE_BASE_URL:-}"
+    if [ -z "$base" ]; then
+        echo "❌ 错误: QUERY_SERVICE_BASE_URL 未配置"
+        echo "   请编辑: $PROJECT_ROOT/assets/config/.env"
+        exit 1
+    fi
+    base="${base%/}"
+
+    local mode="${QUERY_SERVICE_AUTH_MODE:-required}"
+    mode="$(echo "$mode" | tr '[:upper:]' '[:lower:]' | xargs)"
+    [ -z "$mode" ] && mode="required"
+
+    local url="$base/api/v1/health"
+    local resp=""
+    if [ "$mode" = "disabled" ] || [ "$mode" = "off" ]; then
+        echo "⚠️  QUERY_SERVICE_AUTH_MODE=$mode（已关闭鉴权，仅限本地/受控环境）"
+        resp="$(curl -s --max-time 2 "$url" || true)"
+    else
+        if [ -z "${QUERY_SERVICE_TOKEN:-}" ] || [ "${QUERY_SERVICE_TOKEN:-}" = "dev-token-change-me" ] || [ "${QUERY_SERVICE_TOKEN:-}" = "your_token_here" ]; then
+            echo "❌ 错误: QUERY_SERVICE_TOKEN 未配置或为默认占位值"
+            echo "   请编辑: $PROJECT_ROOT/assets/config/.env"
+            echo "   并重启 Query Service: cd services/consumption/api-service && ./scripts/start.sh restart"
+            exit 1
+        fi
+        resp="$(curl -s --max-time 2 -H "X-Internal-Token: $QUERY_SERVICE_TOKEN" "$url" || true)"
+    fi
+
+    if echo "$resp" | grep -q '\"success\":true'; then
+        echo "✓ Query Service 就绪: $base"
+        return 0
+    fi
+
+    echo "❌ Query Service 不可用或鉴权失败: $base"
+    echo "   建议："
+    echo "   1) 确认 assets/config/.env 的 QUERY_SERVICE_*"
+    echo "   2) 重启 api-service: cd services/consumption/api-service && ./scripts/start.sh restart"
+    echo "   3) 再重启本服务"
+    exit 1
+}
+
 init_dirs() {
     mkdir -p "$RUN_DIR" "$LOG_DIR" "$SERVICE_DIR/data"
 }
@@ -156,9 +198,10 @@ status_svc() {
 }
 
 case "${1:-status}" in
-    start) start_svc ;;
+    start) preflight_query_service; start_svc ;;
     stop) stop_svc ;;
     status) status_svc ;;
-    restart) stop_svc; sleep 2; start_svc ;;
+    # 预检放在 stop 前，避免“Query Service 掉线导致 restart 先停服务”造成额外不可用
+    restart) preflight_query_service; stop_svc; sleep 2; start_svc ;;
     *) echo "用法: $0 {start|stop|status|restart}"; exit 1 ;;
 esac

@@ -14,10 +14,11 @@ cd "$ROOT"
 # 注意：采集层服务默认不在核心启动链路（避免采集任务“长跑”污染开发机）
 # - 低频/分时（1m K线、5m 指标）: ./scripts/init.sh data-service
 # - 高频/HFT 原子事实（trades/book*）: ./scripts/init.sh binance-vision-service
-CORE_SERVICES=(trading-service telegram-service ai-service signal-service)
+# Query Service（api-service）已成为 consumption 的唯一读出口：纳入核心初始化链路
+CORE_SERVICES=(trading-service api-service telegram-service ai-service signal-service)
 
 # 可选服务（默认不在核心启动链）
-OPTIONAL_SERVICES=(api-service sheets-service)
+OPTIONAL_SERVICES=(sheets-service)
 
 # ==================== 工具函数 ====================
 success() { echo -e "\033[0;32m✓ $1\033[0m"; }

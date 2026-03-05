@@ -120,8 +120,8 @@ check_venvs() {
     echo ""
     echo "=== 虚拟环境 ==="
     
-    local core_services=(trading-service telegram-service ai-service signal-service)
-    local optional_services=(binance-vision-service api-service)
+    local core_services=(trading-service api-service telegram-service ai-service signal-service)
+    local optional_services=(binance-vision-service)
 
     check_one() {
         local svc="$1"

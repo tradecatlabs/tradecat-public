@@ -9,7 +9,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 核心服务（与 init.sh 保持一致）
 # ai-service 提供就绪检查（非独立进程）
 # 注意：采集层服务（data-service / binance-vision-service）不在本脚本默认启动链路内，需手动运行各自脚本/CLI
-SERVICES=(ai-service signal-service telegram-service trading-service)
+# Query Service（api-service）是 consumption 唯一读出口：必须先于 telegram/sheets 启动
+SERVICES=(ai-service signal-service api-service telegram-service trading-service)
 
 # ==================== 服务目录发现（兼容分层） ====================
 find_service_dir() {
