@@ -30,6 +30,11 @@
   - `cd services/consumption/sheets-service && make check`：✅ 通过（pytest：`8 passed`）
   - 结果：`0012` 已标记 Done（见 `assets/tasks/0012-sheets-service-hardening/STATUS.md`）
 
+- 2026-03-05（完成 0025 query-service-production-hardening）
+  - 相关提交：`0e3d4a1d`
+  - `sed -n '1,60p' assets/tasks/0025-query-service-production-hardening/TODO.md`：✅ P2 两项已勾选
+  - 结果：`0025` 已标记 Done（见 `assets/tasks/0025-query-service-production-hardening/STATUS.md`）
+
 ## 阻塞详情（如有）
 
 - Blocked by: _None_

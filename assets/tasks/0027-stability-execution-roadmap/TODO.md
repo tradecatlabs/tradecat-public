@@ -18,7 +18,7 @@
 - [x] P1: `0015` 补齐 P0“SQLite 真实表结构提取”证据 | Verify: `sed -n '1,60p' assets/tasks/0015-unify-all-storage-to-postgres/TODO.md` | Gate: `assets/tasks/0015-unify-all-storage-to-postgres/TODO.md:8` 勾选且清单落盘
 - [ ] P1: `0015` 完成 P2（移除 sqlite 残留/清理 .db/文档同步） | Verify: `sed -n '18,40p' assets/tasks/0015-unify-all-storage-to-postgres/TODO.md` | Gate: P2 三项勾选 + `./scripts/verify.sh` 通过
 
-- [ ] P1: `0025` 完成 P2（statement_timeout + sys.path 收敛） | Verify: `sed -n '1,60p' assets/tasks/0025-query-service-production-hardening/TODO.md` | Gate: `assets/tasks/0025-query-service-production-hardening/TODO.md:21` 两项勾选 + `STATUS.md` 有故障注入证据
+- [x] P1: `0025` 完成 P2（statement_timeout + sys.path 收敛） | Verify: `sed -n '1,60p' assets/tasks/0025-query-service-production-hardening/TODO.md` | Gate: `assets/tasks/0025-query-service-production-hardening/TODO.md:21` 两项勾选 + `STATUS.md` 有故障注入证据
 
 - [ ] P1: 对齐 `0020`（避免 INDEX=Done 但 TODO 未闭环） | Verify: `nl -ba assets/tasks/0020-data-api-contract-hardening/TODO.md | sed -n '1,40p'` | Gate: P0:7、P2:26-27 要么补齐并勾选，要么把 INDEX 状态回退为 In Progress 并在 `STATUS.md` 写清原因
 
