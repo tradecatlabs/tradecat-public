@@ -99,6 +99,8 @@ def _query_kline_priority(top_n: int = 30) -> set:
     symbols = set()
     try:
         with shared_pg_conn() as conn:
+            # candles_5m.bucket_ts = timestamptz（UTC 语义由数据库保证）
+            # 对 timestamptz 列比较应使用 NOW()（timestamptz），避免不必要的时区/类型隐式转换。
             sql = """
                 WITH base AS (
                     SELECT symbol, 
