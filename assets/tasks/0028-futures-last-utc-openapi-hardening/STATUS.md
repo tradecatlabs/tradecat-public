@@ -40,6 +40,9 @@
 - 抽样读取最新 bucket：
   - `psql "$DATABASE_URL" -c "SELECT bucket, symbol FROM market_data.binance_futures_metrics_1h_last ORDER BY bucket DESC LIMIT 5;"`
   - 输出：`2026-03-05 05:00:00`（BTCUSDT/ETHUSDT/SOLUSDT/BNBUSDT）
+- compute 冒烟（直接调用 futures_sentiment 的缓存加载）：
+  - `cd services/compute/trading-service && .venv/bin/python3 -c "from src.indicators.incremental.futures_sentiment import get_latest_metrics; print(get_latest_metrics('BTCUSDT','1h'))"`
+  - 断言：返回非空，且 `datetime` 与 *_last bucket 对齐（示例：`2026-03-05 05:00:00+00:00`）
 
 ### P1（UTC 时间口径统一）
 
