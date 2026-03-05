@@ -1,21 +1,20 @@
 """
 Signal Service 适配器
 """
-import sys
 import logging
 import threading
 import asyncio
-from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-# 添加 signal-service 到路径
-_SERVICE_ROOT = Path(__file__).resolve().parents[2]
-_REPO_ROOT = _SERVICE_ROOT.parents[2]
-_SIGNAL_SERVICE_SRC = _REPO_ROOT / "services" / "compute" / "signal-service" / "src"
-if str(_SIGNAL_SERVICE_SRC) not in sys.path:
-    sys.path.insert(0, str(_SIGNAL_SERVICE_SRC))
+# 统一路径注入：由 path_setup 收敛处理（signal-service/src 等）
+try:
+    from path_setup import ensure_runtime_sys_path  # type: ignore
+except Exception:  # pragma: no cover
+    from src.path_setup import ensure_runtime_sys_path  # type: ignore
+
+ensure_runtime_sys_path()
 
 # 导入 signal-service
 from engines import get_pg_engine as _get_pg_engine

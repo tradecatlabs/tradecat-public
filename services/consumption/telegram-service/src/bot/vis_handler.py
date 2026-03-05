@@ -9,23 +9,23 @@ UI 流程：
 
 import io
 import logging
-import sys
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-# 添加 vis-service 路径（可选）
-_repo_root = Path(__file__).resolve().parents[5]
-_vis_service_src = _repo_root / "services" / "consumption" / "vis-service" / "src"
-if _vis_service_src.is_dir() and str(_vis_service_src) not in sys.path:
-    sys.path.insert(0, str(_vis_service_src))
-else:
-    logger = logging.getLogger(__name__)
-    logger.info("vis-service 未安装，已禁用可视化功能（期望路径：%s）", _vis_service_src)
-
 logger = logging.getLogger(__name__)
+
+# 统一路径注入：由 path_setup 收敛处理（vis-service/src、trading-service/src 等）
+try:
+    from path_setup import ensure_runtime_sys_path  # type: ignore
+except Exception:  # pragma: no cover
+    from src.path_setup import ensure_runtime_sys_path  # type: ignore
+
+_repo_root = ensure_runtime_sys_path()
+_vis_service_src = _repo_root / "services" / "consumption" / "vis-service" / "src"
+if not _vis_service_src.is_dir():
+    logger.info("vis-service 未安装，已禁用可视化功能（期望路径：%s）", _vis_service_src)
 
 # 延迟导入 app 模块的 i18n 工具，避免循环导入
 _app_module = None
@@ -347,10 +347,6 @@ class VisHandler:
         """获取全市场 VPVR 数据（从 trading-service 计算）"""
         try:
             # 尝试从 trading-service 获取 VPVR 数据
-            trading_service_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "trading-service" / "src"
-            if str(trading_service_path) not in sys.path:
-                sys.path.insert(0, str(trading_service_path))
-
             from indicators.batch.vpvr import compute_vpvr_zone
 
             market_data = []

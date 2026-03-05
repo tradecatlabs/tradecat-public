@@ -2,20 +2,19 @@
 信号开关管理 - 按表开关
 """
 import os
-import sys
 import logging
-from pathlib import Path
 from typing import Dict
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cards.i18n import btn as _btn, gettext as _t, lang_context, resolve_lang, resolve_lang_by_user_id
 
-# 从 signal-service 导入
-_SERVICE_ROOT = Path(__file__).resolve().parents[2]
-_REPO_ROOT = _SERVICE_ROOT.parents[2]
-_SIGNAL_SERVICE_SRC = _REPO_ROOT / "services" / "compute" / "signal-service" / "src"
-if str(_SIGNAL_SERVICE_SRC) not in sys.path:
-    sys.path.insert(0, str(_SIGNAL_SERVICE_SRC))
+# 统一路径注入：由 path_setup 收敛处理（signal-service/src 等）
+try:
+    from path_setup import ensure_runtime_sys_path  # type: ignore
+except Exception:  # pragma: no cover
+    from src.path_setup import ensure_runtime_sys_path  # type: ignore
+
+ensure_runtime_sys_path()
 
 from rules import RULES_BY_TABLE
 from storage.history import get_history

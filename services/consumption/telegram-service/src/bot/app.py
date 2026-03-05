@@ -25,16 +25,17 @@ from typing import Dict, List, Optional
 SRC_ROOT = Path(__file__).resolve().parent.parent  # .../src
 PROJECT_ROOT = SRC_ROOT.parent                    # .../telegram-service
 REPO_ROOT = PROJECT_ROOT.parents[2]               # 顶层项目根目录（tradecat/）
-REPO_SRC_ROOT = REPO_ROOT                         # 兼容旧变量名：用于补齐 sys.path
 ASSETS_DIR = PROJECT_ROOT / "assets"
 ANIMATION_DIR = ASSETS_DIR / "animations"
 LOCALE_STORE = PROJECT_ROOT / "data" / "user_locale.json"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
-if str(REPO_SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_SRC_ROOT))
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+
+# 统一路径注入：收敛到单点（path_setup），避免散落在各模块里。
+try:
+    from path_setup import ensure_runtime_sys_path  # type: ignore
+except Exception:  # pragma: no cover - 兼容包方式运行（python -m src.bot.app）
+    from src.path_setup import ensure_runtime_sys_path  # type: ignore
+
+REPO_ROOT = ensure_runtime_sys_path()
 
 # ================== 提前加载 .env（必须在 cards 导入前）==================
 # cards/i18n.py 在导入时会初始化 I18N，需要先加载环境变量
@@ -348,12 +349,6 @@ def _period_text_lang(lang: str, period: str) -> str:
         return period
     return text
 
-# 统一 sys.path 优先级：本服务 src 放最前，并移除不存在的占位路径
-sys.path = [p for p in sys.path if p != str(SRC_ROOT)]
-sys.path.insert(0, str(SRC_ROOT))
-sys.path = [p for p in sys.path if not (p.endswith('/src') and not Path(p).exists())]
-
-
 # 数据库指标服务（可选）
 BINANCE_DB_METRIC_SERVICE = None
 
@@ -539,16 +534,6 @@ async def send_help_message(update_or_query, context, *, via_query: bool = False
     except Exception as e:
         logger.error(f"发送帮助消息失败: {e}")
 
-def _ensure_ranking_sys_path():
-    """保障排行榜卡片依赖路径完整，避免注册表为空"""
-    added_paths = []
-    for path in (REPO_ROOT, REPO_SRC_ROOT, SRC_ROOT):
-        if str(path) not in sys.path:
-            sys.path.insert(0, str(path))
-            added_paths.append(str(path))
-    if added_paths:
-        logger.info("🔧 已补充排行榜依赖路径: %s", added_paths)
-
 # 全局排行榜注册表
 ranking_registry = None
 
@@ -559,7 +544,6 @@ def ensure_ranking_registry() -> Optional[RankingRegistry]:
         return ranking_registry
 
     try:
-        _ensure_ranking_sys_path()
         registry = RankingRegistry("cards")
         registry.load_cards()
         if registry.card_count() == 0:

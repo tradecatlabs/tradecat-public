@@ -6,7 +6,8 @@ import sys
 import os
 
 # 添加路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_service_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path[:] = [_service_root] + [p for p in sys.path if p != _service_root]
 
 from src.signals import (
     RULES_BY_TABLE, RULES_BY_CATEGORY,

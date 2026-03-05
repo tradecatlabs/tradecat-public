@@ -65,9 +65,13 @@ class RankingRegistry:
         parents = package_path.parents
         # parents[4] -> 仓库根目录（tradecat/）；parents[0] -> src 目录
         for path in (parents[4] if len(parents) > 4 else None, parents[0] if len(parents) > 0 else None):
-            if path and str(path) not in sys.path:
-                sys.path.insert(0, str(path))
-                added_paths.append(str(path))
+            if not path:
+                continue
+            s = str(path)
+            if s and s not in added_paths:
+                added_paths.append(s)
+        if added_paths:
+            sys.path[:] = added_paths + [p for p in sys.path if p not in added_paths]
         if added_paths:
             self._logger.info("🔧 补齐排行榜卡片依赖路径: %s", added_paths)
 

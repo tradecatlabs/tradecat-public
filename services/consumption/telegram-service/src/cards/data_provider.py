@@ -13,12 +13,10 @@ import atexit
 import logging
 import os
 import random
-import sys as _sys
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path as _Path
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote
 
@@ -30,9 +28,14 @@ UTC = timezone.utc
 
 
 # ============ 币种过滤（使用共享模块）============
-_repo_root = str(_Path(__file__).resolve().parents[5])
-if _repo_root not in _sys.path:
-    _sys.path.insert(0, _repo_root)
+# 统一路径注入：由 path_setup 收敛处理（repo root 等）
+try:
+    from path_setup import ensure_runtime_sys_path  # type: ignore
+except Exception:  # pragma: no cover
+    from src.path_setup import ensure_runtime_sys_path  # type: ignore
+
+ensure_runtime_sys_path()
+
 from assets.common.symbols import get_configured_symbols_set  # noqa: E402
 from assets.common.contracts.cards_contract import resolve_card_id  # noqa: E402
 
