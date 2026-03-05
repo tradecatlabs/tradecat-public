@@ -1,6 +1,8 @@
 """期货情绪缺口监控 - 检测5m情绪数据缺口"""
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional, TypedDict
+import threading
 
 import pandas as pd
 
@@ -22,6 +24,11 @@ _TIMES_CACHE: Dict[str, Dict[str, List[datetime]]] = {}
 _CACHE_TS: Dict[str, float] = {}
 _CACHE_SYMBOLS: Dict[str, set] = {}
 _CACHE_TTL_SECONDS = 60
+_CACHE_LOCK = threading.Lock()
+_LAST_FETCH_ERROR: Dict[str, str] = {}
+_LAST_FETCH_ERROR_TS: Dict[str, float] = {}
+
+LOG = logging.getLogger(__name__)
 
 def _fetch_metrics_times_batch(symbols: List[str], limit: int, interval: str = "5m") -> Dict[str, List[datetime]]:
     """批量读取期货时间序列"""
@@ -53,17 +60,14 @@ def _fetch_metrics_times_batch(symbols: List[str], limit: int, interval: str = "
     """
 
     result: Dict[str, List[datetime]] = {s: [] for s in symbols}
-    try:
-        with shared_pg_conn() as conn:
-            with conn.cursor() as cur:
-                inc_pg_query()
-                cur.execute(sql, (symbols, limit))
-                for row in cur.fetchall():
-                    ts = row[1].replace(tzinfo=timezone.utc) if row[1] else None
-                    if ts:
-                        result[row[0]].append(ts)
-    except Exception:
-        return {}
+    with shared_pg_conn() as conn:
+        with conn.cursor() as cur:
+            inc_pg_query()
+            cur.execute(sql, (symbols, limit))
+            for row in cur.fetchall():
+                ts = row[1].replace(tzinfo=timezone.utc) if row[1] else None
+                if ts:
+                    result[row[0]].append(ts)
     return result
 
 
@@ -76,26 +80,40 @@ def _ensure_times_cache(symbols: List[str], interval: str, limit: int):
         return
 
     now = time.time()
-    stale = (now - _CACHE_TS.get(interval, 0)) >= _CACHE_TTL_SECONDS
-    if stale:
-        _TIMES_CACHE[interval] = {}
-        _CACHE_SYMBOLS[interval] = set()
+    with _CACHE_LOCK:
+        stale = (now - _CACHE_TS.get(interval, 0)) >= _CACHE_TTL_SECONDS
+        cached_symbols = set(_CACHE_SYMBOLS.get(interval, set()))
 
-    cached_symbols = _CACHE_SYMBOLS.get(interval, set())
-    missing_symbols = [s for s in symbols if s not in cached_symbols]
+    fetch_symbols = symbols if stale else [s for s in symbols if s not in cached_symbols]
+    if not fetch_symbols:
+        return
 
-    if stale or missing_symbols:
-        batch = _fetch_metrics_times_batch(missing_symbols or symbols, limit, interval)
-        if batch:
+    try:
+        batch = _fetch_metrics_times_batch(fetch_symbols, limit, interval)
+    except Exception:
+        LOG.warning("期货情绪缺口监控读库失败 interval=%s", interval, exc_info=True)
+        with _CACHE_LOCK:
+            _LAST_FETCH_ERROR[interval] = "db_read_failed"
+            _LAST_FETCH_ERROR_TS[interval] = now
+        return
+
+    with _CACHE_LOCK:
+        _LAST_FETCH_ERROR.pop(interval, None)
+        _LAST_FETCH_ERROR_TS.pop(interval, None)
+        if stale:
+            _TIMES_CACHE[interval] = batch
+            _CACHE_SYMBOLS[interval] = set(batch.keys())
+        else:
             _TIMES_CACHE.setdefault(interval, {}).update(batch)
             _CACHE_SYMBOLS[interval] = cached_symbols.union(batch.keys())
-            _CACHE_TS[interval] = now
+        _CACHE_TS[interval] = now
 
 
 def get_times_cache(symbols: List[str], interval: str = "5m", limit: int = 240) -> Dict[str, Dict[str, List[datetime]]]:
     """预取时间序列缓存（供引擎使用）"""
     _ensure_times_cache(symbols, interval, limit)
-    interval_cache = _TIMES_CACHE.get(interval, {})
+    with _CACHE_LOCK:
+        interval_cache = dict(_TIMES_CACHE.get(interval, {}))
     return {interval: {s: interval_cache.get(s, []) for s in symbols}}
 
 
@@ -103,18 +121,25 @@ def set_times_cache(cache: Dict[str, Dict[str, List[datetime]]]):
     """设置时间序列缓存（用于跨进程传递）"""
     import time
     global _TIMES_CACHE, _CACHE_TS, _CACHE_SYMBOLS
-    _TIMES_CACHE = cache or {}
-    _CACHE_TS = {iv: time.time() for iv in _TIMES_CACHE}
-    _CACHE_SYMBOLS = {iv: set(_TIMES_CACHE[iv].keys()) for iv in _TIMES_CACHE}
+    with _CACHE_LOCK:
+        _TIMES_CACHE = cache or {}
+        _CACHE_TS = {iv: time.time() for iv in _TIMES_CACHE}
+        _CACHE_SYMBOLS = {iv: set(_TIMES_CACHE[iv].keys()) for iv in _TIMES_CACHE}
 
 
 def get_metrics_times(symbol: str, limit: int = 240, interval: str = "5m") -> List[datetime]:
     """从 PostgreSQL 获取时间戳列表"""
     _ensure_times_cache([symbol], interval, limit)
-    times = _TIMES_CACHE.get(interval, {}).get(symbol, [])
+    with _CACHE_LOCK:
+        times = list(_TIMES_CACHE.get(interval, {}).get(symbol, []))
     if limit and len(times) > limit:
         return times[-limit:]
     return times
+
+
+def get_last_fetch_error(interval: str = "5m") -> Optional[str]:
+    with _CACHE_LOCK:
+        return _LAST_FETCH_ERROR.get(interval)
 
 
 def detect_gaps(times: List[datetime], interval_sec: int = 300) -> GapInfo:
@@ -171,6 +196,24 @@ class FuturesGapMonitor(Indicator):
             )
 
         times = get_metrics_times(symbol, 240, interval)
+        if err := get_last_fetch_error(interval):
+            ts = df.index[-1] if not df.empty else None
+            ts_str = ts.isoformat() if hasattr(ts, "isoformat") else (str(ts) if ts is not None else None)
+            return pd.DataFrame(
+                [
+                    {
+                        "交易对": symbol,
+                        "周期": interval,
+                        "数据时间": ts_str,
+                        "信号": err,
+                        "已加载根数": None,
+                        "最新时间": None,
+                        "缺失根数": None,
+                        "首缺口起": None,
+                        "首缺口止": None,
+                    }
+                ]
+            )
         gap_info = detect_gaps(times, 300)
 
         latest_ts = gap_info.get("最新时间")
