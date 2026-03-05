@@ -197,7 +197,7 @@ async def dashboard(
         ignored = [c for c in card_list if c not in CARD_ID_TO_CONTRACT]
         payload = query_service.dashboard_payload(cards=picked, intervals=interval_list, symbols=sym_list, shape=shape, limit=limit)
         if ignored:
-            payload["ignored_cards"] = ignored
+            payload = {**payload, "ignored_cards": ignored}
         return payload
 
     try:

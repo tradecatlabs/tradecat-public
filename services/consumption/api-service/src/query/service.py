@@ -1,11 +1,95 @@
 from __future__ import annotations
 
+from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
+import threading
+import time
 from typing import Any
 
 from src.query.cards import build_card_payload
 from src.query.dao import fetch_indicator_rows
 from src.query.time import format_ts_bundle, parse_ts_any
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True)
+class _CacheEntry:
+    expires_at: float
+    value: Any
+
+
+_CACHE_LOCK = threading.Lock()
+_INFLIGHT_LOCKS: dict[str, threading.Lock] = {}
+
+_DASHBOARD_CACHE: OrderedDict[str, _CacheEntry] = OrderedDict()
+_SNAPSHOT_CACHE: OrderedDict[str, _CacheEntry] = OrderedDict()
+
+
+def _cache_max_entries() -> int:
+    return max(16, min(_env_int("QUERY_CACHE_MAX_ENTRIES", 256), 4096))
+
+
+def _cache_get(cache: OrderedDict[str, _CacheEntry], key: str) -> Any | None:
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        ent = cache.get(key)
+        if not ent:
+            return None
+        if ent.expires_at <= now:
+            cache.pop(key, None)
+            return None
+        cache.move_to_end(key)
+        return ent.value
+
+
+def _cache_set(cache: OrderedDict[str, _CacheEntry], key: str, value: Any, ttl_sec: float) -> None:
+    ttl = max(0.0, float(ttl_sec))
+    if ttl <= 0:
+        return
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        cache[key] = _CacheEntry(expires_at=now + ttl, value=value)
+        cache.move_to_end(key)
+        max_entries = _cache_max_entries()
+        while len(cache) > max_entries:
+            evicted, _ = cache.popitem(last=False)
+            _INFLIGHT_LOCKS.pop(evicted, None)
+        if len(_INFLIGHT_LOCKS) > max_entries * 2:
+            _INFLIGHT_LOCKS.clear()
+
+
+def _get_inflight_lock(key: str) -> threading.Lock:
+    with _CACHE_LOCK:
+        lock = _INFLIGHT_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _INFLIGHT_LOCKS[key] = lock
+        return lock
+
+
+def _numeric_mode_key() -> str:
+    return (os.environ.get("QUERY_NUMERIC_MODE") or "float").strip().lower() or "float"
 
 
 def health_payload(*, sources: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -33,6 +117,38 @@ def dashboard_payload(
     - wide: symbol -> interval -> row
     - long: rows[] 每条带 interval
     """
+    ttl_sec = _env_float("QUERY_DASHBOARD_CACHE_TTL_SEC", 2.0)
+    cacheable = symbols is None
+    cache_key = ""
+    if ttl_sec > 0 and cacheable:
+        cache_key = (
+            f"dashboard|shape={shape}|limit={limit}|numeric={_numeric_mode_key()}|cards={','.join(cards)}|"
+            f"intervals={','.join(intervals)}|symbols=*"
+        )
+        cached = _cache_get(_DASHBOARD_CACHE, cache_key)
+        if cached is not None:
+            return cached
+
+        lock = _get_inflight_lock(cache_key)
+        with lock:
+            cached2 = _cache_get(_DASHBOARD_CACHE, cache_key)
+            if cached2 is not None:
+                return cached2
+            out = _dashboard_payload_uncached(cards=cards, intervals=intervals, symbols=symbols, shape=shape, limit=limit)
+            _cache_set(_DASHBOARD_CACHE, cache_key, out, ttl_sec=ttl_sec)
+            return out
+
+    return _dashboard_payload_uncached(cards=cards, intervals=intervals, symbols=symbols, shape=shape, limit=limit)
+
+
+def _dashboard_payload_uncached(
+    *,
+    cards: list[str],
+    intervals: list[str],
+    symbols: list[str] | None,
+    shape: str,
+    limit: int,
+) -> dict[str, Any]:
     now = datetime.now(tz=timezone.utc)
     ts = format_ts_bundle(now)
 
@@ -99,6 +215,55 @@ def _merge_with_base(row: dict[str, Any], base: dict[str, Any]) -> dict[str, Any
 
 
 def symbol_snapshot_payload(
+    *,
+    symbol: str,
+    panels: list[str],
+    intervals: list[str],
+    include_base: bool,
+    include_pattern: bool,
+    table_fields: dict[str, dict[str, tuple[tuple[str, str], ...]]],
+    table_alias: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    ttl_sec = _env_float("QUERY_SNAPSHOT_CACHE_TTL_SEC", 2.0)
+    cache_key = ""
+    if ttl_sec > 0:
+        cache_key = (
+            f"snapshot|symbol={symbol.upper()}|panels={','.join(panels)}|intervals={','.join(intervals)}|"
+            f"include_base={int(include_base)}|include_pattern={int(include_pattern)}|numeric={_numeric_mode_key()}"
+        )
+        cached = _cache_get(_SNAPSHOT_CACHE, cache_key)
+        if cached is not None:
+            return cached
+
+        lock = _get_inflight_lock(cache_key)
+        with lock:
+            cached2 = _cache_get(_SNAPSHOT_CACHE, cache_key)
+            if cached2 is not None:
+                return cached2
+            out = _symbol_snapshot_payload_uncached(
+                symbol=symbol,
+                panels=panels,
+                intervals=intervals,
+                include_base=include_base,
+                include_pattern=include_pattern,
+                table_fields=table_fields,
+                table_alias=table_alias,
+            )
+            _cache_set(_SNAPSHOT_CACHE, cache_key, out, ttl_sec=ttl_sec)
+            return out
+
+    return _symbol_snapshot_payload_uncached(
+        symbol=symbol,
+        panels=panels,
+        intervals=intervals,
+        include_base=include_base,
+        include_pattern=include_pattern,
+        table_fields=table_fields,
+        table_alias=table_alias,
+    )
+
+
+def _symbol_snapshot_payload_uncached(
     *,
     symbol: str,
     panels: list[str],
