@@ -9237,19 +9237,6 @@ class SaSheetsWriter:
         - 失败时返回空 dict：自动 fallback 为按 card_type 排序
         """
         try:
-            import sys
-            from pathlib import Path
-
-            from src.repo import find_repo_root, find_telegram_service_src
-
-            start = Path(__file__).resolve()
-            repo_root = find_repo_root(start)
-            tg_src = find_telegram_service_src(repo_root)
-            if str(repo_root) not in sys.path:
-                sys.path.insert(0, str(repo_root))
-            if str(tg_src) not in sys.path:
-                sys.path.insert(0, str(tg_src))
-
             from cards.registry import RankingRegistry  # type: ignore
 
             reg = RankingRegistry()

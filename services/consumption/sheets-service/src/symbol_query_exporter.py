@@ -2,26 +2,9 @@
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
-
-from src.repo import find_repo_root, find_telegram_service_src
-
-
-def _ensure_import_path() -> None:
-    start = Path(__file__).resolve()
-    repo_root = find_repo_root(start)
-    tg_src = find_telegram_service_src(repo_root)
-
-    # 让 `import libs.*` 可用
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-    # 让 `import bot.*` / `import cards.*` 可用（telegram-service 的 src 包）
-    if str(tg_src) not in sys.path:
-        sys.path.insert(0, str(tg_src))
 
 
 @dataclass(frozen=True)
@@ -105,8 +88,6 @@ def _raw_value(*, val: object, display: object) -> float | int | None:
 
 
 def export_symbol_query_sheet(*, symbol: str, lang: str = "zh_CN") -> SymbolQuerySheet:
-    _ensure_import_path()
-
     # 复用 telegram-service 的数据口径（同一 provider / 同一字段配置 / 同一翻译逻辑）
     from bot.single_token_txt import (  # type: ignore
         ALL_PERIODS,
@@ -302,7 +283,6 @@ def export_symbol_full_txt(*, symbol: str, lang: str = "zh_CN") -> str:
     - symbol: 允许 BTC / BTCUSDT
     - 返回：多行文本（psql 风格）
     """
-    _ensure_import_path()
     from bot.single_token_txt import export_single_token_txt  # type: ignore
 
     sym = (symbol or "").strip()

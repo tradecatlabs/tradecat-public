@@ -4,27 +4,16 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 from src.card_event import CardEvent, CardHeader, CardHint, CardRaw, CardTable
-from src.repo import find_repo_root, find_telegram_service_src
 
 _RE_UPDATE = re.compile(r"^⏰\s*更新\s+(?P<val>.+)$")
 _RE_SORT = re.compile(r"^📊\s*排序\s+(?P<val>.+)$")
 _RE_HINT = re.compile(r"^💡\s*(?P<val>.+)$")
 _RE_LAST = re.compile(r"^⏰\s*最后更新\s+(?P<val>.+)$")
-
-
-def _repo_root() -> Path:
-    return find_repo_root(Path(__file__).resolve())
-
-
-def _telegram_service_src() -> Path:
-    return find_telegram_service_src(_repo_root())
 
 
 class _DummyHandler:
@@ -359,19 +348,7 @@ class TgCardsExporter:
         self._include_blacklist = include_blacklist
         self._lang = lang
 
-    def _prepare_import_path(self) -> None:
-        tg_src = _telegram_service_src()
-        root = _repo_root()
-        # 让 `import libs.*` 可用
-        if str(root) not in sys.path:
-            sys.path.insert(0, str(root))
-        # 让 `import cards.*` 可用（telegram-service 的 src 包）
-        if str(tg_src) not in sys.path:
-            sys.path.insert(0, str(tg_src))
-
     async def export(self, *, only_cards: list[str] | None = None) -> list[ExportResult]:
-        self._prepare_import_path()
-
         # ==================== 币种范围（导出侧强控） ====================
         # 默认行为：
         # - telegram-service 的 cards.data_provider 会按 libs/common/symbols.py 做币种过滤
