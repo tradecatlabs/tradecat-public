@@ -51,6 +51,11 @@ def _parse_args() -> argparse.Namespace:
         help="SA 模式：仅生成看板变体（不重绘主看板；用于避免写入配额压力）",
     )
     p.add_argument(
+        "--snapshot-col-widths",
+        action="store_true",
+        help="SA 模式：读取 看板/币种查询/Polymarket 三表 当前列宽并输出 env 配置行（只读，不写入）",
+    )
+    p.add_argument(
         "--snapshot-polymarket-col-widths",
         action="store_true",
         help="SA 模式：读取 Polymarket 三表当前列宽并输出 env 配置行（只读，不写入）",
@@ -699,6 +704,58 @@ def main() -> None:
         print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15={','.join(str(x) for x in w_top15)}")
         print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TIMESLOT={','.join(str(x) for x in w_timeslot)}")
         print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_CATEGORY={','.join(str(x) for x in w_category)}")
+        sys.exit(0)
+
+    if args.snapshot_col_widths:
+        if settings.write_mode != "sa":
+            print("❌ --snapshot-col-widths 仅支持 SA 模式：设置 SHEETS_WRITE_MODE=sa 或 --write-mode sa")
+            sys.exit(2)
+        writer = SaSheetsWriter(
+            spreadsheet_id=settings.spreadsheet_id,
+            credentials_path=settings.sa_credentials_path,
+            dashboard_col_l=settings.dashboard_col_l,
+            dashboard_col_r=settings.dashboard_col_r,
+            dashboard_mode=settings.dashboard_mode,
+            dashboard_slot_height=settings.dashboard_slot_height,
+            facts_mode=settings.facts_mode,
+            share_email=settings.share_email,
+            public_read=settings.public_read,
+            drive_folder_id=settings.drive_folder_id,
+            blob_threshold_chars=settings.blob_threshold_chars,
+            timeout_seconds=settings.webhook_timeout_seconds,
+            schema_mode=settings.schema_mode,
+            local_meta_path=settings.local_meta_path,
+        )
+
+        def snap(title: str, key: str) -> str:
+            try:
+                w = writer.snapshot_column_widths(title)
+                return ",".join(str(x) for x in w)
+            except Exception as exc:
+                print(f"⚠️ snapshot_column_widths 失败 key={key} tab={title}: {type(exc).__name__}: {exc}", file=sys.stderr)
+                return ""
+
+        tab_dashboard = (os.environ.get("SHEETS_TAB_DASHBOARD", "看板") or "看板").strip()
+        sym0 = settings.symbol_tabs[0] if settings.symbol_tabs else "BTCUSDT"
+        tab_symbol_query = normalize_symbol_tab_title(symbol=sym0, prefix=settings.symbol_tab_prefix)
+
+        tab_top15 = (os.environ.get("SHEETS_TAB_POLYMARKET_TOP15", "PolymarketTop15") or "PolymarketTop15").strip()
+        tab_timeslot = (
+            os.environ.get("SHEETS_TAB_POLYMARKET_TIMESLOT", "Polymarket时段分布") or "Polymarket时段分布"
+        ).strip()
+        tab_category = (
+            os.environ.get("SHEETS_TAB_POLYMARKET_CATEGORY", "Polymarket类别偏好") or "Polymarket类别偏好"
+        ).strip()
+
+        print(f"SHEETS_DASHBOARD_FIXED_COL_WIDTHS={snap(tab_dashboard, 'SHEETS_DASHBOARD_FIXED_COL_WIDTHS')}")
+        print(f"SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS={snap(tab_symbol_query, 'SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS')}")
+        print(f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15={snap(tab_top15, 'SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TOP15')}")
+        print(
+            f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TIMESLOT={snap(tab_timeslot, 'SHEETS_POLYMARKET_FIXED_COL_WIDTHS_TIMESLOT')}"
+        )
+        print(
+            f"SHEETS_POLYMARKET_FIXED_COL_WIDTHS_CATEGORY={snap(tab_category, 'SHEETS_POLYMARKET_FIXED_COL_WIDTHS_CATEGORY')}"
+        )
         sys.exit(0)
 
     if args.dry_run:
