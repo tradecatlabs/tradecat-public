@@ -213,6 +213,9 @@ vim assets/config/.env
 	  - `QUERY_SERVICE_TOKEN` (internal token for Query Service; header: `X-Internal-Token`; required when auth mode is `required`; `/api/v1/indicators/*` debug endpoints always require a token; `./scripts/check_env.sh` treats `dev-token-change-me`/`your_token_here` as placeholders and fails in `required` mode)  
 	  - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC` (optional: market_data table-existence TTL cache seconds; default 30)  
 	  - `QUERY_NUMERIC_MODE` (optional: numeric output mode for indicator values; `float|string`; default `float`; `string` preserves Decimal precision)  
+	  - `QUERY_CACHE_MAX_ENTRIES` (optional: in-memory cache max entries; default 256)  
+	  - `QUERY_DASHBOARD_CACHE_TTL_SEC` (optional: dashboard cache TTL seconds; default 2; 0=disable)  
+	  - `QUERY_SNAPSHOT_CACHE_TTL_SEC` (optional: snapshot cache TTL seconds; default 2; 0=disable)  
 	  - **Error semantics**: Query Service follows CoinGlass style: failures still return HTTP 200; always check `success/code/msg` in the response body.  
 	  - `BOT_TOKEN` (Telegram Bot Token)  
   - `TELEGRAM_GROUP_WHITELIST` (comma-separated group IDs; empty = private chats only; group messages require `/` or `!` prefix + @bot mention)  
