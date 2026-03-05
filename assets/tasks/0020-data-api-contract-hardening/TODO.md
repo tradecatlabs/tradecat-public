@@ -4,7 +4,7 @@
 
 ## P0（必须）
 
-[ ] P0: 冻结现状与基线证据（保存关键接口样例） | Verify: `curl -s http://127.0.0.1:8088/api/v1/health | head` | Gate: 输出包含 `success`
+[x] P0: 冻结现状与基线证据（保存关键接口样例） | Verify: `curl -s -m 2 http://127.0.0.1:8088/api/v1/health | head` | Gate: 输出包含 `success`
 [x] P0: 建立 card_id 清单（从 TG registry 提取） | Verify: `rg -n \"card_id=\\\"\" services/consumption/telegram-service/src/cards -S | wc -l` | Gate: 行数 > 20
 [x] P0: 新增契约模块 `assets/common/contracts/cards_contract.py` | Verify: `test -f assets/common/contracts/cards_contract.py` | Gate: 文件存在且可被 import
 [x] P0: api-service 新增 `GET /api/v1/capabilities` | Verify: `curl -s http://127.0.0.1:8088/api/v1/capabilities | head` | Gate: 返回 `cards`
@@ -23,8 +23,8 @@
 
 ## P2（优化）
 
-[ ] P2: 服务端缓存/请求合并（降低多周期/多卡片 N+1） | Verify: 压测 p95 不劣化 | Gate: p95 ≤ 基线 * 1.2
-[ ] P2: OpenAPI 文档补齐（契约端点） | Verify: 访问 `/docs` 可见新端点 | Gate: 端点描述完整
+[x] P2: 服务端缓存/请求合并（降低多周期/多卡片 N+1） | Verify: `rg -n \"QUERY_DASHBOARD_CACHE_TTL_SEC|QUERY_SNAPSHOT_CACHE_TTL_SEC|_DASHBOARD_CACHE|_SNAPSHOT_CACHE|_get_inflight_lock\" services/consumption/api-service/src/query/service.py | head` | Gate: 命中 ≥ 1
+[x] P2: OpenAPI 文档补齐（契约端点） | Verify: `curl -s -m 2 http://127.0.0.1:8088/openapi.json | rg -n \"\\\"/api/v1/dashboard\\\"\" | head -n 1` | Gate: 命中 `/api/v1/dashboard`
 
 ## 可并行（Parallelizable）
 

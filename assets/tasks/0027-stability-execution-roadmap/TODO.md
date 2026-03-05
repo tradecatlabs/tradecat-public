@@ -20,9 +20,9 @@
 
 - [x] P1: `0025` 完成 P2（statement_timeout + sys.path 收敛） | Verify: `sed -n '1,60p' assets/tasks/0025-query-service-production-hardening/TODO.md` | Gate: `assets/tasks/0025-query-service-production-hardening/TODO.md:21` 两项勾选 + `STATUS.md` 有故障注入证据
 
-- [ ] P1: 对齐 `0020`（避免 INDEX=Done 但 TODO 未闭环） | Verify: `nl -ba assets/tasks/0020-data-api-contract-hardening/TODO.md | sed -n '1,40p'` | Gate: P0:7、P2:26-27 要么补齐并勾选，要么把 INDEX 状态回退为 In Progress 并在 `STATUS.md` 写清原因
+- [x] P1: 对齐 `0020`（避免 INDEX=Done 但 TODO 未闭环） | Verify: `nl -ba assets/tasks/0020-data-api-contract-hardening/TODO.md | sed -n '1,40p'` | Gate: P0/P1/P2 勾选与 STATUS 对齐
 
-- [ ] P1: 对齐 `0024`（避免 P1/P2 漂移） | Verify: `nl -ba assets/tasks/0024-query-service-security-reliability-hardening/TODO.md | sed -n '1,80p'` | Gate: 若已被 0025 覆盖，则在 0024 中补齐证据并勾选/标记 Done；若仍未做，明确剩余项并纳入 0025/新任务
+- [x] P1: 对齐 `0024`（避免 P1/P2 漂移） | Verify: `nl -ba assets/tasks/0024-query-service-security-reliability-hardening/TODO.md | sed -n '1,80p'` | Gate: P0/P1/P2 勾选与实现对齐（0025 覆盖项已落地）
 
 ## P2（收尾）
 

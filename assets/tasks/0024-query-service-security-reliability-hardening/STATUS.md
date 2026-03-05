@@ -1,21 +1,26 @@
-# STATUS - 进度真相源
+# STATUS - 0024 query-service-security-reliability-hardening
 
 ## 当前状态
 
-- 状态：In Progress
-- 最后更新：2026-03-04
-- 基线提交：afbcad19a86446ed01bc01efa24e6d5364e4f91a
-- Owner：TBD
+- 状态：Done（P0/P1/P2 已对齐；生产化收敛见 `0025`）
+- 最后更新：2026-03-05
+- 基线提交：9e3ed7dd
+- Owner：Codex CLI
 
 ## 证据存证（执行过程中填写）
 
 > 记录所有已执行命令与关键输出片段；必要时记录文件 hash。
 
-- `git rev-parse HEAD`: `3e8f1d1f8c305ec7af8ec68ce3b729bb1fa5bee4`
-- `./scripts/verify.sh`: ✅ 通过（目录结构守护 / SQLite 依赖守护 / consumption 直连守护 / 语法 / i18n / 文档链接）
-- `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`19 passed`）
+- `./scripts/verify.sh`: ✅ 通过（目录结构守护 / 核心链路无 SQLite / consumption 不直连 PG / 无 legacy /api/futures/）
+- `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`26 passed`）
+- `cd services/consumption/telegram-service && make check`: ✅ 通过（ruff + pytest，`3 passed`）
+- `cd services/compute/trading-service && make check`: ✅ 通过（ruff + pytest，`2 passed, 1 skipped`）
 
 ## 阻塞详情（如有）
 
 - Blocked by: _None_
 - Required Action: _None_
+
+## 说明
+
+- 本任务的“安全默认值 + 失败语义”已闭环；其后续生产化（statement_timeout、sys.path 收敛、缓存/放大治理等）统一由 `0025-query-service-production-hardening` 承接并留证。
