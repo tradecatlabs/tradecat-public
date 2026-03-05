@@ -30,6 +30,7 @@
 | 0026 | closeout-cagg-consumption-contract | Done | P0 | 关闭“运行库漂移”导致的高周期缺表/缺数据：对齐服务实际使用 DSN，在运行库创建并回填期货 metrics CAGG（*_last），复核消费层只走 /api/v1 契约，并收尾 API 示例与门禁证据 | ./0026-closeout-cagg-consumption-contract/ |
 | 0027 | stability-execution-roadmap | Done | P0 | 将剩余 P0/P1 稳定性工作收敛为可执行路线图：优先完成 data-service ban/backoff 与 sheets-service 加固，收尾“单 PG”与 Query Service 生产化 P2，并用全仓门禁保证端到端可长期跑 | ./0027-stability-execution-roadmap/ |
 | 0028 | futures-last-utc-openapi-hardening | Done | P0 | 下一轮稳定性收敛：补齐运行库期货高周期 *_last（生成/回填/复核），统一 scheduler 对 timestamp without time zone 的 UTC 比较口径，并完善 /api/v1 OpenAPI + 示例对齐 | ./0028-futures-last-utc-openapi-hardening/ |
+| 0029 | query-service-auth-guardrails | Not Started | P0 | 修复 Query Service 鉴权配置缺失导致 /api/v1 全面 401（或临时关鉴权裸奔）的“假健康”问题：补齐 .env 必需键 + 启动顺序与 preflight guardrails，确保消费端稳定且默认安全 | ./0029-query-service-auth-guardrails/ |
 
 ## 相关索引（单点入口）
 
