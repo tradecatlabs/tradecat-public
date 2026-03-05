@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-- 状态：In Progress
+- 状态：Done
 - 最后更新：2026-03-05
 - Owner：TBD
 
@@ -14,15 +14,13 @@
 
 ### 基线证据（当前环境）
 
-- `.env` 缺失键（只记录是否存在，不记录值）：
-  - `grep -q '^QUERY_SERVICE_TOKEN=' assets/config/.env && echo yes || echo no` → `no`
-  - `grep -q '^QUERY_SERVICE_AUTH_MODE=' assets/config/.env && echo yes || echo no` → `no`
-- `.env` 当前未配置 Query Service 三件套（仅记录“无匹配”，不记录值）：
-  - `grep -E '^(QUERY_SERVICE_BASE_URL|QUERY_SERVICE_AUTH_MODE|QUERY_SERVICE_TOKEN)=' -n assets/config/.env || true`
-  - 输出：无匹配（空输出）
-- Query Service 鉴权行为（示例，可能因当前进程启动参数而不同）：
+- `.env` Query Service 三件套存在性（只记录是否存在，不记录值）：
+  - `grep -q '^QUERY_SERVICE_TOKEN=' assets/config/.env && echo yes || echo no` → `yes`
+  - `grep -q '^QUERY_SERVICE_AUTH_MODE=' assets/config/.env && echo yes || echo no` → `yes`
+  - `grep -q '^QUERY_SERVICE_BASE_URL=' assets/config/.env && echo yes || echo no` → `yes`
+- Query Service 鉴权行为（示例，可能因当前进程启动参数而不同；不回显 token）：
   - 默认 required 场景：`curl -s -m 2 http://127.0.0.1:8088/api/v1/health` → `unauthorized`
-  - 若临时设置 `QUERY_SERVICE_AUTH_MODE=disabled`：上述请求可能返回 `success=true`（风险：裸奔）
+  - 若临时设置 `QUERY_SERVICE_AUTH_MODE=disabled`：上述请求可能返回 `success=true`（风险：裸奔，仅限本地/受控调试）
 
 ### P0 执行记录（留空待填）
 
@@ -38,7 +36,6 @@
   - 无 token：`curl -s -m 2 http://127.0.0.1:8088/api/v1/health` → `success=false msg=unauthorized`
   - 有 token：`curl -s -m 2 -H "X-Internal-Token: $QUERY_SERVICE_TOKEN" http://127.0.0.1:8088/api/v1/health` → `success=true msg=success`
 - `cd services/consumption/telegram-service && ./scripts/start.sh restart`：✅ 已执行（Bot PID 更新）
-  - 备注：启动日志出现 `PG信号服务启动失败: cannot import name 'COOLDOWN_SECONDS' from 'config'`（疑似 sys.path + 模块名冲突；需单独修复/建任务）
 - `./scripts/verify.sh`：✅ 通过
 
 ### P1 执行记录（防复发：启动顺序与 preflight guardrails）
@@ -61,6 +58,15 @@
     - `205:restart) preflight_query_service; stop_svc; ...`
 - 一键冒烟脚本已创建并通过（不回显 token）：
   - `./scripts/smoke_query_service.sh` → `✅ smoke ok`
+
+### P1.1 执行记录（修复：telegram-service 内嵌 PG 信号引擎导入冲突）
+
+- 现象（修复前）：telegram-service 启动日志出现 `PG信号服务启动失败: cannot import name 'COOLDOWN_SECONDS' from 'config'`（`config` 命名冲突）
+- 根因：`ensure_runtime_sys_path()` 将 `telegram-service/src` 置于 `sys.path` 首位，导致 signal-service 的 `from config import ...` 被 telegram 的 `config/` 包“抢占”
+- 修复：调整路径注入顺序（repo_root + 依赖服务在前，telegram 自身路径最后），避免 `config` 冲突
+  - 证据：`sed -n '1,200p' services/consumption/telegram-service/src/path_setup.py`（可见 candidates 顺序与冲突说明）
+- 验证（不依赖真实 TG 网络；仅验证模块可导入）：
+  - `cd services/consumption/telegram-service && .venv/bin/python -c "import sys; sys.path.insert(0,'src'); import signals.adapter as a; print('adapter_import_ok'); a.get_pg_engine(); print('pg_engine_ok')"` → `adapter_import_ok` / `pg_engine_ok`
 
 ## 阻塞详情（如有）
 

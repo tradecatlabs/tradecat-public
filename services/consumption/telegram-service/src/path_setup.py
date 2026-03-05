@@ -40,18 +40,23 @@ def _prepend_sys_path(paths: list[Path]) -> None:
 def ensure_runtime_sys_path() -> Path:
     """
     统一注入运行时依赖路径（幂等）：
-    - telegram-service/src：允许 `import bot/cards/signals`
     - repo root：允许 `import assets.*`
     - ai-service：允许 `import src.pipeline`（ai-service 的 src 包）
     - signal-service/src：允许 `import rules/engines/events/...`
     - vis-service/src：允许 `import core/templates/...`（vis-service 的模块根）
     - trading-service/src：允许 `import indicators/...`（供 vis_handler 复用指标计算）
+    - telegram-service/src：允许 `import bot/cards/signals`
+
+    ⚠️ 重要：路径注入顺序必须避免模块名冲突。
+    例如 signal-service 的 `config.py` 与 telegram-service 的 `config/` 包同名，
+    若 telegram 路径优先，会导致 signal-service 误导入 telegram 的 config 并启动失败。
     """
     here = Path(__file__).resolve()
     telegram_src = here.parent
     repo_root = find_repo_root(here)
 
-    candidates: list[Path] = [telegram_src, repo_root]
+    # 先放 repo_root（assets.*），再放其它 service 依赖，最后放 telegram 自身模块根。
+    candidates: list[Path] = [repo_root]
 
     # ai-service（包名为 src）
     for p in (
@@ -89,6 +94,7 @@ def ensure_runtime_sys_path() -> Path:
             candidates.append(p)
             break
 
+    candidates.append(telegram_src)
+
     _prepend_sys_path(candidates)
     return repo_root
-
