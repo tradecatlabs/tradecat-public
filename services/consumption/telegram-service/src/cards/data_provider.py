@@ -12,7 +12,9 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import random
 import sys as _sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -129,6 +131,10 @@ class QueryServiceClient:
         self._token = (os.environ.get("QUERY_SERVICE_TOKEN") or "").strip()
         self._timeout = float(os.environ.get("QUERY_SERVICE_TIMEOUT_SECONDS", "6"))
         self._cache_ttl = float(os.environ.get("QUERY_SERVICE_CACHE_TTL_SECONDS", "2"))
+        self._stale_ttl = float(os.environ.get("QUERY_SERVICE_STALE_TTL_SECONDS", "30"))
+        self._net_max_retries = int(os.environ.get("QUERY_SERVICE_NET_MAX_RETRIES", "2"))
+        self._net_retry_base_sec = float(os.environ.get("QUERY_SERVICE_NET_RETRY_BASE_SECONDS", "0.2"))
+        self._lock = threading.Lock()
         self._cache: dict[str, _CacheEntry] = {}
         self._client = httpx.Client(timeout=self._timeout)
 
@@ -143,17 +149,62 @@ class QueryServiceClient:
             return {}
         return {"X-Internal-Token": self._token}
 
-    def _cache_get(self, key: str):
-        ent = self._cache.get(key)
-        if not ent:
+    def _cache_get(self, key: str, *, allow_stale: bool) -> Any | None:
+        now = time.time()
+        with self._lock:
+            ent = self._cache.get(key)
+            if not ent:
+                return None
+            age = now - ent.ts
+            if age <= self._cache_ttl:
+                return ent.value
+            if allow_stale and age <= max(self._stale_ttl, self._cache_ttl):
+                return ent.value
+            if age > max(self._stale_ttl, self._cache_ttl):
+                self._cache.pop(key, None)
             return None
-        if (time.time() - ent.ts) > self._cache_ttl:
-            self._cache.pop(key, None)
-            return None
-        return ent.value
 
     def _cache_set(self, key: str, value: Any) -> None:
-        self._cache[key] = _CacheEntry(ts=time.time(), value=value)
+        with self._lock:
+            self._cache[key] = _CacheEntry(ts=time.time(), value=value)
+
+    def _sleep_backoff(self, attempt: int) -> None:
+        base = max(0.0, float(self._net_retry_base_sec))
+        if base <= 0:
+            return
+        sleep = base * (2**max(0, attempt))
+        sleep += random.random() * base * 0.2
+        time.sleep(sleep)
+
+    def _request_json(self, *, url: str, params: dict[str, Any]) -> dict[str, Any]:
+        last_exc: Exception | None = None
+        tries = max(0, int(self._net_max_retries)) + 1
+        for attempt in range(tries):
+            try:
+                resp = self._client.get(url, params=params, headers=self._headers())
+                resp.raise_for_status()
+                payload = resp.json()
+                if isinstance(payload, dict) and payload.get("success"):
+                    return payload
+
+                if isinstance(payload, dict):
+                    code = str(payload.get("code") or "")
+                    msg = str(payload.get("msg") or "unknown")
+                    # Query Service 对齐 CoinGlass：HTTP 200 也可能是失败，需要识别并重试。
+                    if code in {"50001", "50002"} and attempt < tries - 1:
+                        last_exc = RuntimeError(f"query_failed:{msg}")
+                        self._sleep_backoff(attempt)
+                        continue
+                    raise RuntimeError(f"query_failed:{msg}")
+
+                raise RuntimeError("query_failed:invalid_payload")
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                last_exc = e
+                if attempt < tries - 1:
+                    self._sleep_backoff(attempt)
+                    continue
+                raise
+        raise RuntimeError("query_failed") from last_exc
 
     def get_card(
         self,
@@ -172,18 +223,21 @@ class QueryServiceClient:
             params["symbols"] = ",".join(symbols)
 
         cache_key = f"{url}?{sorted(params.items())}"
-        cached = self._cache_get(cache_key)
+        cached = self._cache_get(cache_key, allow_stale=False)
         if cached is not None:
             return cached
 
-        resp = self._client.get(url, params=params, headers=self._headers())
-        resp.raise_for_status()
-        payload = resp.json()
-        if not payload or not payload.get("success"):
-            raise RuntimeError(f"query_failed:{payload.get('msg') if isinstance(payload, dict) else 'unknown'}")
-        data = payload.get("data") or {}
-        self._cache_set(cache_key, data)
-        return data
+        try:
+            payload = self._request_json(url=url, params=params)
+            data = payload.get("data") or {}
+            self._cache_set(cache_key, data)
+            return data
+        except Exception:
+            stale = self._cache_get(cache_key, allow_stale=True)
+            if stale is not None:
+                LOGGER.warning("Query Service 失败，回退 stale cache card_id=%s interval=%s", card_id, interval, exc_info=True)
+                return stale
+            raise
 
     def get_symbol_snapshot(
         self,
@@ -206,18 +260,21 @@ class QueryServiceClient:
             params["intervals"] = ",".join([_normalize_period_value(i) for i in intervals])
 
         cache_key = f"{url}?{sorted(params.items())}"
-        cached = self._cache_get(cache_key)
+        cached = self._cache_get(cache_key, allow_stale=False)
         if cached is not None:
             return cached
 
-        resp = self._client.get(url, params=params, headers=self._headers())
-        resp.raise_for_status()
-        payload = resp.json()
-        if not payload or not payload.get("success"):
-            raise RuntimeError(f"query_failed:{payload.get('msg') if isinstance(payload, dict) else 'unknown'}")
-        data = payload.get("data") or {}
-        self._cache_set(cache_key, data)
-        return data
+        try:
+            payload = self._request_json(url=url, params=params)
+            data = payload.get("data") or {}
+            self._cache_set(cache_key, data)
+            return data
+        except Exception:
+            stale = self._cache_get(cache_key, allow_stale=True)
+            if stale is not None:
+                LOGGER.warning("Query Service 失败，回退 stale cache symbol=%s", symbol, exc_info=True)
+                return stale
+            raise
 
 
 _CLIENT: QueryServiceClient | None = None
