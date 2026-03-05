@@ -10,7 +10,7 @@
 
 ## P1（稳定性/正确性）
 
-- [ ] P1: open_interest 去 float 漂移（Decimal 保真） | Verify: `cd services/consumption/api-service && pytest -q -k open_interest` | Gate: 返回字符串稳定，不出现科学计数法
+- [x] P1: open_interest 去 float 漂移（Decimal 保真） | Verify: `cd services/consumption/api-service && make check` | Gate: 返回字符串稳定，不出现科学计数法
 - [ ] P1: 引入 `QUERY_NUMERIC_MODE`（float|string）并补单测 | Verify: `cd services/consumption/api-service && pytest -q -k numeric_mode` | Gate: 两种模式均通过
 - [ ] P1: dashboard/snapshot 加短 TTL 缓存+上限+击穿锁 | Verify: `cd services/consumption/api-service && pytest -q -k cache` | Gate: 同参数二次请求不重复计算
 - [ ] P1: telegram QueryServiceClient 加锁+重试+stale-if-error | Verify: `cd services/consumption/telegram-service && make check` | Gate: 故障注入下仍可返回 stale（或不崩溃）
