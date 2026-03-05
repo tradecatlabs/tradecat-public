@@ -79,6 +79,19 @@ def _env_bool(key: str, default: str = "0") -> bool:
     return raw not in {"0", "off", "false", "no", ""}
 
 
+def _log_level() -> str:
+    return (os.environ.get("SHEETS_LOG_LEVEL", "info") or "info").strip().lower()
+
+
+def _debug_enabled() -> bool:
+    return _log_level() in {"debug", "trace"}
+
+
+def _debug_print(msg: str) -> None:
+    if _debug_enabled():
+        print(str(msg))
+
+
 def _sleep_backoff(attempt: int, *, base: float, max_seconds: float) -> None:
     # attempt: 1..N
     delay = min(base * (2 ** (attempt - 1)), max_seconds)
@@ -313,7 +326,25 @@ async def _run_once(
             for sym in settings.symbol_tabs or []:
                 keep_symbol_tabs.append(normalize_symbol_tab_title(symbol=sym, prefix=settings.symbol_tab_prefix))
             try:
-                sa_writer.prune_tabs(symbol_tab_prefix=settings.symbol_tab_prefix, keep_symbol_tabs=keep_symbol_tabs)
+                t0 = time.time()
+                res = sa_writer.prune_tabs(symbol_tab_prefix=settings.symbol_tab_prefix, keep_symbol_tabs=keep_symbol_tabs)
+                elapsed_ms = int((time.time() - t0) * 1000.0)
+
+                skipped = int(res.get("skipped") or 0)
+                ok = bool(res.get("ok", True))
+                deleted = int(res.get("deleted") or 0)
+                reason = str(res.get("reason") or "").strip() or "run"
+                err = str(res.get("error") or "").strip()
+
+                msg = f"prune_tabs {'skip' if skipped else 'run'} ok={int(ok)} deleted={deleted} reason={reason} ms={elapsed_ms}"
+                if err:
+                    msg = f"{msg} error={err[:200]}"
+
+                # 默认安静：skip 只在 debug 输出；异常/失败一律输出
+                if skipped and ok and (not err):
+                    _debug_print(msg)
+                else:
+                    print(msg)
             except Exception as exc:
                 print(f"⚠️ prune_tabs 失败（将继续执行）：{type(exc).__name__}: {exc}")
 

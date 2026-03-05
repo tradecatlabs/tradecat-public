@@ -186,6 +186,19 @@ def _env_int_list(key: str) -> list[int]:
     return out2
 
 
+def _log_level() -> str:
+    return (os.environ.get("SHEETS_LOG_LEVEL", "info") or "info").strip().lower()
+
+
+def _debug_enabled() -> bool:
+    return _log_level() in {"debug", "trace"}
+
+
+def _debug_print(msg: str) -> None:
+    if _debug_enabled():
+        print(str(msg))
+
+
 def _hidden_periods() -> set[str]:
     """
     需要在 Google Sheets 里“移除（删除列）”的周期列（仅展示层，不影响数据生成）。
@@ -5012,7 +5025,7 @@ class SaSheetsWriter:
 
         if data_updates:
             ex = data_updates[0].get("range", "")
-            print(f"[DEBUG] pmtab.hyperlinks_prepare tab={tab_title} count={len(data_updates)} example={ex}")
+            _debug_print(f"[DEBUG] pmtab.hyperlinks_prepare tab={tab_title} count={len(data_updates)} example={ex}")
             try:
                 self._exec(
                     self._sheets.spreadsheets()
@@ -5023,7 +5036,7 @@ class SaSheetsWriter:
                     ),
                     is_write=True,
                 )
-                print(f"[DEBUG] pmtab.hyperlinks_applied tab={tab_title} count={len(data_updates)}")
+                _debug_print(f"[DEBUG] pmtab.hyperlinks_applied tab={tab_title} count={len(data_updates)}")
             except Exception as exc:
                 print(f"⚠️ pmtab.hyperlinks_failed tab={tab_title} {type(exc).__name__}: {exc}")
 
@@ -6254,7 +6267,7 @@ class SaSheetsWriter:
             data_updates.append({"range": cell, "values": [[formula]]})
         if data_updates:
             try:
-                print(f"[DEBUG] pmtab.report_hyperlinks_prepare tab={tab_title} count={len(data_updates)}")
+                _debug_print(f"[DEBUG] pmtab.report_hyperlinks_prepare tab={tab_title} count={len(data_updates)}")
                 self._exec(
                     self._sheets.spreadsheets()
                     .values()
@@ -9898,6 +9911,9 @@ class SaSheetsWriter:
         - 看板（SHEETS_TAB_DASHBOARD）
         - 交易对子表（默认：title 以 symbol_tab_prefix 开头；可选：仅保留 keep_symbol_tabs）
         """
+        keep_hash = ""
+        decision_reason = "run"
+
         # daemon 场景下 prune_tabs 可能每分钟触发一次；如果网络/代理偶发抖动，会导致日志刷屏。
         # 这里加“节流”：minimal schema 下默认每 6 小时最多尝试一次（可通过 env 调整/关闭）。
         # 同时引入 keep hash：只有当“保留集合”发生变化时才会绕过节流并立即执行。
@@ -9905,6 +9921,7 @@ class SaSheetsWriter:
         # - 记录：写入 local_meta（minimal 模式的单一真相源）
         minimal_throttle = self._schema_mode == "minimal"
         if minimal_throttle:
+            now = int(time.time())
             try:
                 interval = int(
                     (os.environ.get("SHEETS_PRUNE_TABS_INTERVAL_SECONDS", "21600") or "21600").strip() or "21600"
@@ -9922,7 +9939,6 @@ class SaSheetsWriter:
 
             # keep hash：完全基于“期望保留集合”的确定性输入，不依赖网络/Sheet 读取。
             # 目的：当用户改了 symbol tabs / tab 命名 / keep 开关时，下一轮应立即 prune，而不是等 interval。
-            keep_hash = ""
             if keep_symbol_tabs is not None:
                 parts: list[str] = [
                     f"dash={self._tab_dashboard}",
@@ -9943,24 +9959,29 @@ class SaSheetsWriter:
                     parts.append(f"pm_category={_env_text('SHEETS_TAB_POLYMARKET_CATEGORY', 'Polymarket类别偏好')}")
                 keep_hash = _sha256_hex("\n".join(parts))[:16]
 
-            if interval > 0:
+            if interval <= 0:
+                decision_reason = "interval_off"
+            else:
                 try:
                     meta = self._local_meta_get()
                     last = int(str(meta.get("prune_tabs_last_epoch") or "0").strip() or "0")
                     prev_hash = str(meta.get("prune_tabs_keep_hash") or "").strip()
                 except Exception:
                     last, prev_hash = 0, ""
-                now = int(time.time())
+
                 if keep_hash and keep_hash != prev_hash:
-                    # keep 变更（或首次接入 keep hash）：绕过节流立即执行
-                    pass
-                elif int(last) > 0 and (now - int(last)) < int(interval):
+                    decision_reason = "keep_changed"
+                elif int(last) <= 0:
+                    decision_reason = "first"
+                elif (now - int(last)) >= int(interval):
+                    decision_reason = "interval_due"
+                else:
                     return {"deleted": 0, "kept": [], "skipped": 1, "reason": "throttled"}
 
         # 先落盘“本次尝试时间”，确保即便后续网络/代理抖动失败，也不会每分钟刷屏
         if minimal_throttle:
             try:
-                kv = {"prune_tabs_last_epoch": str(int(time.time()))}
+                kv = {"prune_tabs_last_epoch": str(int(now))}
                 if keep_hash:
                     kv["prune_tabs_keep_hash"] = keep_hash
                 self._local_meta_set(kv)
@@ -9976,7 +9997,13 @@ class SaSheetsWriter:
                     self._local_meta_set({"prune_tabs_last_error": f"{type(exc).__name__}:{exc}"[:2000]})
                 except Exception:
                     pass
-                return {"deleted": 0, "kept": [], "ok": False, "error": f"{type(exc).__name__}:{exc}"}
+                return {
+                    "deleted": 0,
+                    "kept": [],
+                    "ok": False,
+                    "reason": decision_reason,
+                    "error": f"{type(exc).__name__}:{exc}",
+                }
             raise
         keep: set[str] = {self._tab_dashboard}
 
@@ -10038,7 +10065,7 @@ class SaSheetsWriter:
                     self._local_meta_set({"prune_tabs_last_error": ""})
                 except Exception:
                     pass
-            return {"deleted": 0, "kept": sorted(keep)}
+            return {"deleted": 0, "kept": sorted(keep), "reason": decision_reason}
 
         reqs = [{"deleteSheet": {"sheetId": int(sid)}} for sid in delete_ids]
         try:
@@ -10055,14 +10082,20 @@ class SaSheetsWriter:
                     self._local_meta_set({"prune_tabs_last_error": ""})
                 except Exception:
                     pass
-            return {"deleted": len(delete_ids), "kept": sorted(keep)}
+            return {"deleted": len(delete_ids), "kept": sorted(keep), "reason": decision_reason}
         except Exception as exc:
             if minimal_throttle:
                 try:
                     self._local_meta_set({"prune_tabs_last_error": f"{type(exc).__name__}:{exc}"[:2000]})
                 except Exception:
                     pass
-                return {"deleted": 0, "kept": sorted(keep), "ok": False, "error": f"{type(exc).__name__}:{exc}"}
+                return {
+                    "deleted": 0,
+                    "kept": sorted(keep),
+                    "ok": False,
+                    "reason": decision_reason,
+                    "error": f"{type(exc).__name__}:{exc}",
+                }
             raise
 
     def delete_tab_if_exists(self, *, title: str) -> dict[str, Any]:
