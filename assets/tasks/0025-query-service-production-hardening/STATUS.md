@@ -9,10 +9,10 @@
 
 ## 证据存证（执行过程中填写）
 
-- `git rev-parse HEAD`: `febf8275d998303c3c5ff34cbb47b3a1b41b9603`
+- `git rev-parse HEAD`: `5015cfe3564067f403044c37c5b596cd86550344`
 - `./scripts/check_env.sh`: ✅ 已执行（本机环境输出缺失 `QUERY_SERVICE_BASE_URL`/`QUERY_SERVICE_TOKEN`，符合 fail-fast 门禁预期）
 - `rg -n "QUERY_SERVICE_AUTH_MODE" README.md README_EN.md`: ✅ 已补齐（文档与 `.env.example` 同步）
-- `./scripts/verify.sh`: _TBD_
+- `./scripts/verify.sh`: ✅ 通过（本机无顶层 `.venv`/`ruff`，脚本按预期跳过）
 - `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`26 passed`；新增 dashboard/snapshot TTL 缓存 + 防“ignored_cards 污染缓存”测试用例）
 - statement_timeout 故障注入：✅ `QUERY_PG_STATEMENT_TIMEOUT_MS=1200` + `SELECT pg_sleep(5)` → `QueryCanceled`（≈1.2s）
 - `cd services/consumption/telegram-service && make check`: ✅ 通过（ruff + pytest，`3 passed`；覆盖 retry + stale-if-error）
