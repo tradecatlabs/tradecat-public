@@ -28,6 +28,7 @@
 | 0024 | query-service-security-reliability-hardening | In Progress | P0 | 修复 Query Service 的安全默认值与语义正确性：止血 funding-rate 假数据、收敛 CORS/鉴权为 fail-closed、杜绝 DSN/异常泄露，并为 dashboard/snapshot 加硬上限与缓存；同步加固 telegram-service/compute 的并发与失败语义 | ./0024-query-service-security-reliability-hardening/ |
 | 0025 | query-service-production-hardening | In Progress | P0 | 在 0024(P0) 基础上完成“可长期跑”的生产化收敛：环境变量门禁、错误语义唯一化、数值精度与类型口径、dashboard/snapshot 缓存与放大治理、telegram 客户端抗抖动、compute 缺口监控并发/失败语义、statement_timeout 与路径黑魔法收敛 | ./0025-query-service-production-hardening/ |
 | 0026 | closeout-cagg-consumption-contract | Done | P0 | 关闭“运行库漂移”导致的高周期缺表/缺数据：对齐服务实际使用 DSN，在运行库创建并回填期货 metrics CAGG（*_last），复核消费层只走 /api/v1 契约，并收尾 API 示例与门禁证据 | ./0026-closeout-cagg-consumption-contract/ |
+| 0027 | stability-execution-roadmap | Not Started | P0 | 将剩余 P0/P1 稳定性工作收敛为可执行路线图：优先完成 data-service ban/backoff 与 sheets-service 加固，收尾“单 PG”与 Query Service 生产化 P2，并用全仓门禁保证端到端可长期跑 | ./0027-stability-execution-roadmap/ |
 
 ## 相关索引（单点入口）
 
