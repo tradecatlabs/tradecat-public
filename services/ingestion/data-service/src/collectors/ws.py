@@ -227,7 +227,7 @@ class WSCollector:
         # 复检 + REST 补齐
         remaining = scanner.scan_klines(list(filtered.keys()), start, end, "1m", 0.95)
         if remaining:
-            rest_bf = RestBackfiller(self._ts, workers=2)
+            rest_bf = RestBackfiller(self._ts, workers=2, source_tag="ws_gapfill")
             filled += rest_bf.fill_gaps(remaining, "1m")
 
             # 再次复检，记录无法补齐的

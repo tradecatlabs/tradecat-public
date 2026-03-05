@@ -20,7 +20,7 @@ _symbols: dict[str, list[str]] = {}
 DEFAULT_PROXY = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
 
 
-def _maybe_set_ban_from_error(err_str: str) -> bool:
+def _maybe_set_ban_from_error(err_str: str, source: str | None = None) -> bool:
     """从异常文本中识别 418/429/ban，并写入全局 ban。
 
     背景：部分 ccxt 版本/适配层会把 Binance 的 418/ban 归类为 NetworkError，
@@ -33,12 +33,12 @@ def _maybe_set_ban_from_error(err_str: str) -> bool:
     # 有些异常文本可能不包含 418，但包含 banned until / IP banned
     if ("418" in s) or ("banned until" in s) or ("IP banned" in s):
         ban_time = parse_ban(s)
-        set_ban(ban_time if ban_time > now else now + 120)
+        set_ban(ban_time if ban_time > now else now + 120, source=source)
         return True
 
     # 429: too many requests
     if ("429" in s) or ("Too many requests" in s):
-        set_ban(now + 60)
+        set_ban(now + 60, source=source)
         return True
 
     return False
@@ -109,7 +109,12 @@ def load_symbols(exchange: str = "binance") -> list[str]:
 
 
 def fetch_ohlcv(
-    exchange: str, symbol: str, interval: str = "1m", since_ms: int | None = None, limit: int = 1000
+    exchange: str,
+    symbol: str,
+    interval: str = "1m",
+    since_ms: int | None = None,
+    limit: int = 1000,
+    ban_source: str | None = None,
 ) -> list[list]:
     symbol = symbol.upper()
     if not symbol.endswith("USDT"):
@@ -132,6 +137,8 @@ def fetch_ohlcv(
                     if raw:
                         return raw
             except Exception as e:
+                if _maybe_set_ban_from_error(str(e), source=ban_source):
+                    return []
                 if attempt == 2:
                     logger.warning("binance 原生 klines 失败: %s", e)
             finally:
@@ -143,13 +150,13 @@ def fetch_ohlcv(
             return get_client(exchange).fetch_ohlcv(ccxt_sym, interval, since=since_ms, limit=limit)
         except ccxt.RateLimitExceeded as e:
             # ccxt 可能抛出 429/418；一旦触发应立即进入全局冷却，避免继续消耗权重
-            _maybe_set_ban_from_error(str(e))
+            _maybe_set_ban_from_error(str(e), source=ban_source)
             if attempt == 2:
                 logger.warning("fetch_ohlcv 限流: %s", e)
             return []
         except (ccxt.NetworkError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as e:
             # 某些情况下 418/ban 会被归类为 NetworkError：必须同样进入全局冷却
-            if _maybe_set_ban_from_error(str(e)):
+            if _maybe_set_ban_from_error(str(e), source=ban_source):
                 return []
             if attempt == 2:
                 logger.warning("fetch_ohlcv 网络错误: %s", e)

@@ -143,8 +143,9 @@ class GapScanner:
 class RestBackfiller:
     """REST API 分页补齐 (用于小缺口) - 并行版"""
 
-    def __init__(self, ts: TimescaleAdapter, workers: int | None = None):
+    def __init__(self, ts: TimescaleAdapter, workers: int | None = None, source_tag: str = "rest_gapfill"):
         self._ts = ts
+        self._source_tag = source_tag
         if workers is None:
             raw = (os.getenv("DATA_SERVICE_REST_BACKFILL_WORKERS") or "").strip()
             if raw:
@@ -167,7 +168,14 @@ class RestBackfiller:
         max_iterations = 100
 
         for _ in range(max_iterations):
-            candles = fetch_ohlcv(settings.ccxt_exchange, symbol, interval, since_ms, 1000)
+            candles = fetch_ohlcv(
+                settings.ccxt_exchange,
+                symbol,
+                interval,
+                since_ms,
+                1000,
+                ban_source=self._source_tag,
+            )
             if not candles:
                 break
 

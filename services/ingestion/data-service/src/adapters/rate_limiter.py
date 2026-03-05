@@ -60,12 +60,19 @@ class GlobalLimiter:
         except Exception:
             pass
 
-    def set_ban(self, until: float):
+    def set_ban(self, until: float, source: str | None = None):
         with self._ban_lock:
             if until > self._ban_until:
                 self._ban_until = until
                 self._save_ban()
-                logger.warning("IP ban 至 %s", time.strftime("%H:%M:%S", time.localtime(until)))
+                if source:
+                    logger.warning(
+                        "IP ban 至 %s | 来源=%s",
+                        time.strftime("%H:%M:%S", time.localtime(until)),
+                        source,
+                    )
+                else:
+                    logger.warning("IP ban 至 %s", time.strftime("%H:%M:%S", time.localtime(until)))
 
     def _wait_ban(self):
         self._load_ban()
@@ -139,8 +146,8 @@ def release():
     _g.release()
 
 
-def set_ban(until: float):
-    _g.set_ban(until)
+def set_ban(until: float, source: str | None = None):
+    _g.set_ban(until, source=source)
 
 
 def parse_ban(msg: str) -> float:

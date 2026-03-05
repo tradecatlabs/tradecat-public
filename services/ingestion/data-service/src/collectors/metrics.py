@@ -59,7 +59,7 @@ class MetricsCollector:
             if r.status_code == 429:
                 # 429: 警告，立即停止，解析 Retry-After
                 retry_after = int(r.headers.get("Retry-After", 60))
-                set_ban(time.time() + retry_after)
+                set_ban(time.time() + retry_after, source="metrics")
                 logger.warning("429 限流警告，等待 %ds", retry_after)
                 metrics.inc("requests_failed")
                 return None
@@ -67,7 +67,7 @@ class MetricsCollector:
                 # 418: 已被 ban，解析 ban 结束时间
                 retry_after = int(r.headers.get("Retry-After", 0))
                 ban_time = parse_ban(r.text) if not retry_after else time.time() + retry_after
-                set_ban(ban_time if ban_time > time.time() else time.time() + 120)
+                set_ban(ban_time if ban_time > time.time() else time.time() + 120, source="metrics")
                 logger.warning("418 IP 被 ban")
                 metrics.inc("requests_failed")
                 return None
