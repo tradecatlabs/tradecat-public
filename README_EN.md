@@ -210,8 +210,9 @@ vim assets/config/.env
 	  - `DATABASE_URL` (TimescaleDB, see port note below)  
 	  - `QUERY_SERVICE_BASE_URL` (Query Service base URL; default `http://127.0.0.1:8088`, see `assets/config/.env.example`)  
 	  - `QUERY_SERVICE_AUTH_MODE` (Query Service auth mode; default `required`; use `disabled` only for local/controlled debugging)  
-	  - `QUERY_SERVICE_TOKEN` (internal token for Query Service; header: `X-Internal-Token`; required when auth mode is `required`; `/api/v1/indicators/*` debug endpoints always require a token)  
+	  - `QUERY_SERVICE_TOKEN` (internal token for Query Service; header: `X-Internal-Token`; required when auth mode is `required`; `/api/v1/indicators/*` debug endpoints always require a token; `./scripts/check_env.sh` treats `dev-token-change-me`/`your_token_here` as placeholders and fails in `required` mode)  
 	  - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC` (optional: market_data table-existence TTL cache seconds; default 30)  
+	  - **Error semantics**: Query Service follows CoinGlass style: failures still return HTTP 200; always check `success/code/msg` in the response body.  
 	  - `BOT_TOKEN` (Telegram Bot Token)  
   - `TELEGRAM_GROUP_WHITELIST` (comma-separated group IDs; empty = private chats only; group messages require `/` or `!` prefix + @bot mention)  
   - `HTTP_PROXY` / `HTTPS_PROXY` (if proxy needed)  
