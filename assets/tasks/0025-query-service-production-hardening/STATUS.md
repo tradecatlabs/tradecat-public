@@ -9,11 +9,11 @@
 
 ## 证据存证（执行过程中填写）
 
-- `git rev-parse HEAD`: `37311e32ab9c7aa4d9d28a1d9b551d490171eabb`
+- `git rev-parse HEAD`: `d73534989d61f8d47af260256fa9658251068756`
 - `./scripts/check_env.sh`: ✅ 已执行（本机环境输出缺失 `QUERY_SERVICE_BASE_URL`/`QUERY_SERVICE_TOKEN`，符合 fail-fast 门禁预期）
 - `rg -n "QUERY_SERVICE_AUTH_MODE" README.md README_EN.md`: ✅ 已补齐（文档与 `.env.example` 同步）
 - `./scripts/verify.sh`: _TBD_
-- `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`24 passed`；新增 Decimal 精度断言 + `QUERY_NUMERIC_MODE` 双模式单测）
+- `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`26 passed`；新增 dashboard/snapshot TTL 缓存 + 防“ignored_cards 污染缓存”测试用例）
 - `cd services/consumption/telegram-service && make check`: _TBD_
 - `cd services/compute/trading-service && make check`: _TBD_
 
