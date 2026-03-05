@@ -9,7 +9,9 @@
 公共服务
 
 预测市场数据警报；https://t.me/predictcat_ai_bot
+
 交易猫行情查询；https://t.me/tradecat_ai_bot
+
 命理agent；https://t.me/cs_cat_bot
 
 本项目ai解读仓库（可能不完全准确）：https://zread.ai/tukuaiai/tradecat
