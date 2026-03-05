@@ -979,9 +979,36 @@ class SaSheetsWriter:
         while True:
             try:
                 return req.execute()
-            except TimeoutError:
-                if attempt >= read_retries:
+            except Exception as exc:
+                status = int(getattr(getattr(exc, "resp", None), "status", 0) or 0)
+
+                def is_transient_read_error(exc: Exception, status: int) -> bool:
+                    # read 是幂等的：允许对弱网/代理抖动做“有限重试”
+                    if status == 429:
+                        return True
+                    if status and 500 <= status <= 599:
+                        return True
+                    if isinstance(exc, TimeoutError):
+                        return True
+                    if isinstance(exc, ConnectionResetError):
+                        return True
+                    name = type(exc).__name__
+                    if name == "SSLError":
+                        return True
+                    msg = str(exc)
+                    if "DECRYPTION_FAILED_OR_BAD_RECORD_MAC" in msg:
+                        return True
+                    if "bad record mac" in msg.lower():
+                        return True
+                    if "connection reset by peer" in msg.lower():
+                        return True
+                    if "eof occurred in violation of protocol" in msg.lower():
+                        return True
+                    return False
+
+                if attempt >= read_retries or (not is_transient_read_error(exc, status)):
                     raise
+
                 # 简单指数退避：1s,2s,4s...（上限 8s），避免瞬时抖动导致整轮失败
                 delay = min(1.0 * (2**attempt), 8.0)
                 time.sleep(delay)
