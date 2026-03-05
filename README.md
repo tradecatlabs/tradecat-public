@@ -201,6 +201,7 @@ vim assets/config/.env
   - `QUERY_SERVICE_AUTH_MODE`（Query Service 鉴权模式；默认 `required`；`disabled` 仅限本地/受控环境调试）  
   - `QUERY_SERVICE_TOKEN`（Query Service 内网 token；Header: `X-Internal-Token`；`required` 模式必须设置；`/api/v1/indicators/*` 调试端点始终要求 token；`./scripts/check_env.sh` 会将 `dev-token-change-me`/`your_token_here` 视为占位值并判定为未配置）  
   - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC`（可选：market_data 表存在性检查缓存 TTL 秒数；默认 30）  
+  - `QUERY_NUMERIC_MODE`（可选：指标数值输出模式；`float|string`；默认 `float`；`string` 保留 Decimal 精度）  
   - **错误语义**：Query Service 对齐 CoinGlass 风格：即使失败也返回 HTTP 200；请始终通过响应体的 `success/code/msg` 判断成功与否。  
   - `BOT_TOKEN`（Telegram Bot Token）  
   - `TELEGRAM_GROUP_WHITELIST`（群聊白名单，逗号分隔；为空仅私聊；群聊仅响应 `/` 或 `!` 开头且需 @bot）  
