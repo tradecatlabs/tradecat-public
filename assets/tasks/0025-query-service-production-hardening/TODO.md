@@ -19,7 +19,7 @@
 ## P2（工程化/可维护性）
 
 - [x] P2: datasources 引入 statement_timeout（可配置） | Verify: 故障注入 `pg_sleep` | Gate: 请求在预算内失败，不拖死
-- [ ] P2: sys.path 注入收敛到单点入口 | Verify: `rg -n \"sys\\.path\\.insert\" services | wc -l` | Gate: 数量显著减少且 imports 不回归
+- [x] P2: sys.path 注入收敛到单点入口 | Verify: `rg -n \"sys\\.path\\.insert\" services | wc -l` | Gate: 数量显著减少且 imports 不回归
 
 ## 并行建议（Parallelizable）
 
