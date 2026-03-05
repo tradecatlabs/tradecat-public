@@ -21,9 +21,9 @@
 
 ## P2（最后做：OpenAPI/示例/可观测）
 
-- [ ] P2: 补齐 /api/v1 端点 OpenAPI 元数据（summary/description/response_model） | Verify: 启动 api-service 后 `curl -s http://127.0.0.1:8088/openapi.json | head` | Gate: JSON 可读；包含关键 /api/v1 路由
-- [ ] P2: 更新 `services/consumption/api-service/docs/API_EXAMPLES.md` 与真实响应一致 | Verify: 以 `curl` 抽样对比（脱敏落盘） | Gate: examples 与实际字段一致
-- [ ] P2: 全仓门禁复验 | Verify: `./scripts/verify.sh` | Gate: ✅ 通过
+- [x] P2: 补齐 /api/v1 端点 OpenAPI 元数据（summary/description/response_model） | Verify: 启动 api-service 后 `curl -s http://127.0.0.1:8088/openapi.json | head` | Gate: JSON 可读；包含关键 /api/v1 路由
+- [x] P2: 更新 `services/consumption/api-service/docs/API_EXAMPLES.md` 与真实响应一致 | Verify: 以 `curl` 抽样对比（脱敏落盘） | Gate: examples 与实际字段一致
+- [x] P2: 全仓门禁复验 | Verify: `./scripts/verify.sh` | Gate: ✅ 通过
 
 ## Parallelizable（可并行）
 

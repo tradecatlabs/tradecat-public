@@ -3,7 +3,23 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+
+class ApiEnvelope(BaseModel):
+    """统一响应封套（对齐 CoinGlass V4 风格）。
+
+    说明：
+    - 允许附加字段（例如 `trace_id` / `missing_table` / `ignored_cards`），避免 response_model 过滤掉诊断信息。
+    - `data` 的具体结构由各端点负责定义（本模型仅做统一外壳）。
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    code: str
+    msg: str
+    success: bool
+    data: Any | None = None
 
 
 class HealthResponse(BaseModel):

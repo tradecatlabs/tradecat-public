@@ -8,8 +8,10 @@
 
 Query Service v1 端点支持通过 `X-Internal-Token` 做内网鉴权：
 
-- 若 **未设置** 服务端环境变量 `QUERY_SERVICE_TOKEN`：v1 端点默认不鉴权（可直接访问）。
-- 若 **已设置** `QUERY_SERVICE_TOKEN`：客户端必须携带 Header，否则返回 `unauthorized`。
+- 默认（推荐）：`QUERY_SERVICE_AUTH_MODE=required`（默认值）  
+  - 必须设置服务端 `QUERY_SERVICE_TOKEN`，客户端也必须携带 `X-Internal-Token`，否则返回 `unauthorized`。
+- 本地调试（可选）：`QUERY_SERVICE_AUTH_MODE=disabled`  
+  - 显式关闭鉴权（不校验 token），仅建议在本机开发环境使用。
 
 ```bash
 export BASE_URL="http://localhost:8088"
@@ -115,6 +117,8 @@ curl -s "$BASE_URL/api/v1/dashboard?cards=atr_ranking&intervals=5m,15m,1h&shape=
 
 ```json
 {
+  "code": "0",
+  "msg": "success",
   "success": true,
   "data": {
     "cards": ["atr_ranking"],
@@ -154,6 +158,8 @@ curl -s "$BASE_URL/api/v1/ohlc/history?symbol=BTC&exchange=Binance&interval=2h&l
 
 ```json
 {
+  "code": "0",
+  "msg": "success",
   "success": true,
   "data": [
     {"time": 1768501320000, "open": "96059.1", "high": "96066.8", "low": "96006.0", "close": "96013.0", "volume": "122.24", "volume_usd": "0"}

@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-- 状态：In Progress
+- 状态：Done
 - 最后更新：2026-03-05
 - Owner：TBD
 
@@ -54,6 +54,24 @@
   - 在 `services/compute/trading-service/src/simple_scheduler.py` 为 timestamptz 场景补充注释：对 timestamptz 使用 NOW()，对 timestamp(UTC 语义) 使用 `NOW() AT TIME ZONE 'UTC'`
 - 门禁：
   - `cd services/compute/trading-service && make check`：✅ `2 passed, 1 skipped`
+
+### P2（OpenAPI/示例对齐）
+
+- OpenAPI：为 `/api/v1/*` 端点补齐 `summary/description/response_model`
+  - 代码：
+    - `services/consumption/api-service/src/schemas/models.py`：新增 `ApiEnvelope`（extra=allow，避免过滤诊断字段）
+    - `services/consumption/api-service/src/routers/query_v1.py`：为 v1 端点挂载 `response_model=ApiEnvelope`
+  - 验证：
+    - `cd services/consumption/api-service && make start`
+    - `curl -s http://127.0.0.1:8088/openapi.json | head`
+    - 断言：JSON 可读；`/api/v1/*` 路由存在；响应 schema 引用 `ApiEnvelope`
+- API 示例对齐：
+  - 更新：`services/consumption/api-service/docs/API_EXAMPLES.md`
+  - 关键修正：
+    - v1 默认鉴权为 fail-closed（需 `QUERY_SERVICE_TOKEN`，或显式 `QUERY_SERVICE_AUTH_MODE=disabled`）
+    - dashboard/ohlc 示例补齐 `code/msg/success/data` 统一封套
+- 全仓门禁：
+  - `./scripts/verify.sh`：✅ 通过
 
 ## 阻塞详情（如有）
 

@@ -11,6 +11,7 @@ from src.query.cards import build_card_payload
 from src.query.dao import fetch_indicator_rows
 from src.query.datasources import check_sources
 from src.routers.ohlc import get_ohlc_history as _get_futures_ohlc_history
+from src.schemas.models import ApiEnvelope
 from src.utils.errors import ErrorCode, api_response, error_response
 
 from assets.common.contracts.cards_contract import ALL_CARD_CONTRACTS, CARD_ID_TO_CONTRACT
@@ -48,7 +49,12 @@ def _require_indicators_token(x_internal_token: str | None) -> bool:
     return (x_internal_token or "").strip() == expected
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    response_model=ApiEnvelope,
+    summary="Query Service v1 健康检查",
+    description="包含数据源探测（sources）与版本信息（version）。",
+)
 async def health(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> dict:
     if not _require_token(x_internal_token):
         return error_response(ErrorCode.PARAM_ERROR, "unauthorized")
@@ -67,7 +73,12 @@ async def health(x_internal_token: str | None = Header(default=None, alias="X-In
         return error_response(ErrorCode.INTERNAL_ERROR, "health_failed")
 
 
-@router.get("/capabilities")
+@router.get(
+    "/capabilities",
+    response_model=ApiEnvelope,
+    summary="能力发现（cards/intervals/sources）",
+    description="返回卡片列表、支持周期与当前数据源可用性（sources）。",
+)
 async def capabilities(x_internal_token: str | None = Header(default=None, alias="X-Internal-Token")) -> dict:
     """能力发现：cards/intervals/sources。"""
     if not _require_token(x_internal_token):
@@ -103,7 +114,12 @@ async def capabilities(x_internal_token: str | None = Header(default=None, alias
         LOG.error("capabilities_failed", exc_info=True)
         return error_response(ErrorCode.INTERNAL_ERROR, "capabilities_failed")
 
-@router.get("/ohlc/history")
+@router.get(
+    "/ohlc/history",
+    response_model=ApiEnvelope,
+    summary="K线历史（v1）",
+    description="消费侧稳定契约。复用 CoinGlass 风格 OHLC 返回格式（数值字段为字符串）。",
+)
 async def ohlc_history(
     symbol: str = Query(..., description="交易对 (BTC 或 BTCUSDT)"),
     exchange: str = Query(default="Binance", description="交易所"),
@@ -127,7 +143,12 @@ async def ohlc_history(
     )
 
 
-@router.get("/cards/{card_id}")
+@router.get(
+    "/cards/{card_id}",
+    response_model=ApiEnvelope,
+    summary="卡片数据（单卡片）",
+    description="返回指定卡片在某一周期下的结构化 rows 数据。",
+)
 async def card(
     card_id: str,
     interval: str | None = Query(default=None, description="周期"),
@@ -164,7 +185,12 @@ async def card(
         return error_response(ErrorCode.INTERNAL_ERROR, "card_failed")
 
 
-@router.get("/dashboard")
+@router.get(
+    "/dashboard",
+    response_model=ApiEnvelope,
+    summary="看板聚合（多卡片 × 多周期）",
+    description="用于 Sheets/Vis 等消费层统一读取：支持 wide/long 两种结构。",
+)
 async def dashboard(
     cards: str | None = Query(default=None, description="卡片列表(card_id)，逗号分隔"),
     intervals: str | None = Query(default=None, description="周期列表，逗号分隔 5m,15m,1h,4h,1d,1w"),
@@ -208,7 +234,12 @@ async def dashboard(
         return error_response(ErrorCode.INTERNAL_ERROR, "dashboard_failed")
 
 
-@router.get("/symbol/{symbol}/snapshot")
+@router.get(
+    "/symbol/{symbol}/snapshot",
+    response_model=ApiEnvelope,
+    summary="单币快照（结构化币种查询）",
+    description="为币种查询表提供数据源：按 panels×intervals 组装结构化数据。",
+)
 async def symbol_snapshot(
     symbol: str,
     panels: str | None = Query(default=None, description="面板列表 basic,futures,advanced"),
@@ -255,7 +286,12 @@ async def symbol_snapshot(
         return error_response(ErrorCode.INTERNAL_ERROR, "snapshot_failed")
 
 
-@router.get("/indicators/{table}")
+@router.get(
+    "/indicators/{table}",
+    response_model=ApiEnvelope,
+    summary="指标表名直通（Deprecated, token-only）",
+    description="调试接口：表名直通读取。生产消费方禁止依赖，优先使用 /cards 或 /dashboard。",
+)
 async def indicators(
     table: str,
     interval: str | None = Query(default=None, description="周期"),
