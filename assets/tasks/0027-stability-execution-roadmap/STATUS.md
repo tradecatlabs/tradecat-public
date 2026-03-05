@@ -22,6 +22,14 @@
   - `cd services/consumption/sheets-service && make check`: ✅ 通过（pytest：`8 passed`）
   - `cd services/ingestion/data-service && make check`: ✅ 通过（pytest：`6 passed`；含 `tests/test_ban_backoff.py`）
 
+## 进展记录
+
+- 2026-03-05（完成 0012 sheets-service-hardening）
+  - 相关提交：`24265767`
+  - `./scripts/verify.sh`：✅ 通过（同样提示：顶层 `.venv`/ruff 缺失不影响各服务门禁）
+  - `cd services/consumption/sheets-service && make check`：✅ 通过（pytest：`8 passed`）
+  - 结果：`0012` 已标记 Done（见 `assets/tasks/0012-sheets-service-hardening/STATUS.md`）
+
 ## 阻塞详情（如有）
 
 - Blocked by: _None_
