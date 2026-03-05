@@ -16,7 +16,7 @@
 ## P1（重要）
 
 - [x] P1: `0015` 补齐 P0“SQLite 真实表结构提取”证据 | Verify: `sed -n '1,60p' assets/tasks/0015-unify-all-storage-to-postgres/TODO.md` | Gate: `assets/tasks/0015-unify-all-storage-to-postgres/TODO.md:8` 勾选且清单落盘
-- [ ] P1: `0015` 完成 P2（移除 sqlite 残留/清理 .db/文档同步） | Verify: `sed -n '18,40p' assets/tasks/0015-unify-all-storage-to-postgres/TODO.md` | Gate: P2 三项勾选 + `./scripts/verify.sh` 通过
+- [x] P1: `0015` 完成 P2（移除 sqlite 残留/清理 .db/文档同步） | Verify: `sed -n '18,40p' assets/tasks/0015-unify-all-storage-to-postgres/TODO.md` | Gate: P2 三项勾选 + `./scripts/verify.sh` 通过
 
 - [x] P1: `0025` 完成 P2（statement_timeout + sys.path 收敛） | Verify: `sed -n '1,60p' assets/tasks/0025-query-service-production-hardening/TODO.md` | Gate: `assets/tasks/0025-query-service-production-hardening/TODO.md:21` 两项勾选 + `STATUS.md` 有故障注入证据
 
@@ -26,8 +26,8 @@
 
 ## P2（收尾）
 
-- [ ] P2: 更新 `assets/tasks/INDEX.md` 状态与真实进度一致 | Verify: `rg -n \"\\| 00(12|15|18|20|24|25|27) \\|\" assets/tasks/INDEX.md` | Gate: 每个 Done 任务都有对应 `STATUS.md` 证据
-- [ ] P2: 统一“端到端冒烟清单”并落盘到 `assets/tasks/0027-stability-execution-roadmap/STATUS.md` | Verify: `ls -la assets/tasks/0027-stability-execution-roadmap` | Gate: `STATUS.md` 含 ≥10 条关键命令与断言
+- [x] P2: 更新 `assets/tasks/INDEX.md` 状态与真实进度一致 | Verify: `rg -n \"\\| 00(12|15|18|20|24|25|27) \\|\" assets/tasks/INDEX.md` | Gate: 每个 Done 任务都有对应 `STATUS.md` 证据
+- [x] P2: 统一“端到端冒烟清单”并落盘到 `assets/tasks/0027-stability-execution-roadmap/STATUS.md` | Verify: `ls -la assets/tasks/0027-stability-execution-roadmap` | Gate: `STATUS.md` 含 ≥10 条关键命令与断言
 
 ## Parallelizable（可并行）
 
