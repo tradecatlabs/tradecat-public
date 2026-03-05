@@ -5,7 +5,7 @@
 ## P0（必须做）
 
 - [x] P0: 冻结现状清单（SQLite/PG 使用点盘点） | Verify: `rg -n "import sqlite3|sqlite3\\.connect" services` | Gate: 输出文件清单与用途分层（指标/状态/幂等/外部仓库）
-- [ ] P0: 提取 SQLite 真实表结构（指标库 + 状态库） | Verify: `sqlite3 assets/database/services/telegram-service/market_data.db ".tables"` | Gate: 生成 “表名→字段→类型” 清单（落到 `assets/docs/analysis/` 或任务目录）
+- [x] P0: 提取 SQLite 真实表结构（指标库 + 状态库） | Verify: `sqlite3 assets/database/services/telegram-service/market_data.db ".tables"` | Gate: 生成 “表名→字段→类型” 清单（落到 `assets/docs/analysis/` 或任务目录）
 - [x] P0: 设计并新增 `signal_state` DDL | Verify: `psql "$DATABASE_URL" -f assets/database/db/schema/022_signal_state.sql` | Gate: `\\dt signal_state.*` 可见且含必要索引
 - [x] P0: 设计并新增 `sheets_state` DDL | Verify: `psql "$DATABASE_URL" -f assets/database/db/schema/023_sheets_state.sql` | Gate: `\\dt sheets_state.*` 可见
 - [x] P0: 实现 state/幂等 PG 存储模块（接口不变，内部换后端） | Verify: 单元测试/最小脚本写入+读取 | Gate: 不依赖任何 `.db` 文件即可跑通
