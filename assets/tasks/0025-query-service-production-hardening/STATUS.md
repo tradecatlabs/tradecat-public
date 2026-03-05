@@ -9,8 +9,9 @@
 
 ## 证据存证（执行过程中填写）
 
-- `git rev-parse HEAD`: `6ee554df5e6b363711d63348ddc6924106240efc`
+- `git rev-parse HEAD`: `4e4b02b714d699809779a51397d8924ad35ea712`
 - `./scripts/check_env.sh`: ✅ 已执行（本机环境输出缺失 `QUERY_SERVICE_BASE_URL`/`QUERY_SERVICE_TOKEN`，符合 fail-fast 门禁预期）
+- `rg -n "QUERY_SERVICE_AUTH_MODE" README.md README_EN.md`: ✅ 已补齐（文档与 `.env.example` 同步）
 - `./scripts/verify.sh`: _TBD_
 - `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`21 passed`）
 - `cd services/consumption/telegram-service && make check`: _TBD_
