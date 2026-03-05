@@ -18,6 +18,27 @@ def _indicator_schema() -> str:
     return (os.environ.get("INDICATOR_PG_SCHEMA") or "tg_cards").strip() or "tg_cards"
 
 
+def _numeric_mode() -> str:
+    mode = (os.environ.get("QUERY_NUMERIC_MODE") or "float").strip().lower()
+    return "string" if mode in {"string", "str"} else "float"
+
+
+def normalize_numeric_value(v: Any) -> Any:
+    """将 DB 数值类型标准化为 JSON 友好格式。
+
+    - `QUERY_NUMERIC_MODE=float`（默认）：Decimal -> float（兼容旧消费端，但可能丢精度）
+    - `QUERY_NUMERIC_MODE=string`：Decimal -> 定点字符串（不丢精度，不出现科学计数法）
+    """
+    if isinstance(v, Decimal):
+        if _numeric_mode() == "string":
+            s = format(v, "f")
+            if "." in s:
+                s = s.rstrip("0").rstrip(".")
+            return s or "0"
+        return float(v)
+    return v
+
+
 def _normalize_period_value(period: str) -> str:
     p = (period or "").strip().lower()
     if p in ("24h", "1day"):
@@ -195,13 +216,8 @@ def fetch_indicator_rows(
     tbl = sql.Identifier(schema, table)
     ts_ident = sql.Identifier(ts_col)
 
-    def _normalize_value(v: Any) -> Any:
-        if isinstance(v, Decimal):
-            return float(v)
-        return v
-
     def _normalize_row(r: dict[str, Any]) -> dict[str, Any]:
-        return {k: _normalize_value(v) for k, v in r.items()}
+        return {k: normalize_numeric_value(v) for k, v in r.items()}
 
     rows: list[dict[str, Any]] = []
     latest_ts_val: Any = None
