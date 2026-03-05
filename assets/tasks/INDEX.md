@@ -13,7 +13,7 @@
 | 0009 | futures-cm-book-metrics-ingestion | Not Started | P2 | 在 UM 成熟实现基础上对称补齐 futures/cm 的 bookTicker/bookDepth/metrics（下载回填为主） | ./0009-futures-cm-book-metrics-ingestion/ |
 | 0010 | option-bvol-eoh-ingestion | Not Started | P2 | 补齐 option 的 BVOLIndex/EOHSummary（下载回填），并完成字段解析与审计闭环 | ./0010-option-bvol-eoh-ingestion/ |
 | 0011 | tg-cards-sheets-dashboard | Done | P0 | 将 telegram-service 现有 TG 卡片同步到 Google Sheets 公共看板：卡片块 x,y 渲染 + 全字段无遗漏审计 + 幂等/outbox/可重建 | ./0011-tg-cards-sheets-dashboard/ |
-| 0012 | sheets-service-hardening | Not Started | P1 | 对 sheets-service 做可靠性/可观测/配额与运维体验加固：减少无意义写入、抖动重试、prune 调度化、列宽快照固化 | ./0012-sheets-service-hardening/ |
+| 0012 | sheets-service-hardening | Done | P1 | 对 sheets-service 做可靠性/可观测/配额与运维体验加固：减少无意义写入、抖动重试、prune 调度化、列宽快照固化 | ./0012-sheets-service-hardening/ |
 | 0013 | rename-libs-to-assets | Done | P1 | 将仓库内“共享库/资源”目录从 `libs/` 逐步迁移为 `assets/`：先 `libs/external` → `assets/repo`，再通过兼容层完成 `libs/` → `assets/`（最少破坏、可回滚） | ./0013-rename-libs-to-assets/ |
 | 0014 | fix-ci-and-pypi-build | Done | P0 | 资产迁移后收敛“可运行/可测试/可打包”：修复 CI ruff 失绿、pytest 误扫外部仓库、PyPI 包缺失 `src/tradecat` 的结构性断裂 | ./0014-fix-ci-and-pypi-build/ |
 | 0015 | unify-all-storage-to-postgres | In Progress | P0 | 数据库归一完全转型：彻底废弃 SQLite（指标库/状态库/幂等库），统一迁移到 `DATABASE_URL` 指向的 PostgreSQL（`tg_cards` + `signal_state` + `sheets_state`），并提供灰度切换与可回滚策略 | ./0015-unify-all-storage-to-postgres/ |
@@ -28,7 +28,7 @@
 | 0024 | query-service-security-reliability-hardening | In Progress | P0 | 修复 Query Service 的安全默认值与语义正确性：止血 funding-rate 假数据、收敛 CORS/鉴权为 fail-closed、杜绝 DSN/异常泄露，并为 dashboard/snapshot 加硬上限与缓存；同步加固 telegram-service/compute 的并发与失败语义 | ./0024-query-service-security-reliability-hardening/ |
 | 0025 | query-service-production-hardening | In Progress | P0 | 在 0024(P0) 基础上完成“可长期跑”的生产化收敛：环境变量门禁、错误语义唯一化、数值精度与类型口径、dashboard/snapshot 缓存与放大治理、telegram 客户端抗抖动、compute 缺口监控并发/失败语义、statement_timeout 与路径黑魔法收敛 | ./0025-query-service-production-hardening/ |
 | 0026 | closeout-cagg-consumption-contract | Done | P0 | 关闭“运行库漂移”导致的高周期缺表/缺数据：对齐服务实际使用 DSN，在运行库创建并回填期货 metrics CAGG（*_last），复核消费层只走 /api/v1 契约，并收尾 API 示例与门禁证据 | ./0026-closeout-cagg-consumption-contract/ |
-| 0027 | stability-execution-roadmap | Not Started | P0 | 将剩余 P0/P1 稳定性工作收敛为可执行路线图：优先完成 data-service ban/backoff 与 sheets-service 加固，收尾“单 PG”与 Query Service 生产化 P2，并用全仓门禁保证端到端可长期跑 | ./0027-stability-execution-roadmap/ |
+| 0027 | stability-execution-roadmap | In Progress | P0 | 将剩余 P0/P1 稳定性工作收敛为可执行路线图：优先完成 data-service ban/backoff 与 sheets-service 加固，收尾“单 PG”与 Query Service 生产化 P2，并用全仓门禁保证端到端可长期跑 | ./0027-stability-execution-roadmap/ |
 
 ## 相关索引（单点入口）
 
