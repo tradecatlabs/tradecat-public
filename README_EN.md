@@ -189,18 +189,17 @@ Restart WSL: `wsl --shutdown`, then use the AI installation prompt above.
 cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
 vim assets/config/.env
 
-# 3) Start core services (ai + signal + telegram + trading)
+# 3) Start core services (ai + signal + api + telegram + trading)
 ./scripts/start.sh start
 ./scripts/start.sh status
 ```
 
-> Note: top-level `./scripts/start.sh` manages `ai-service`, `signal-service`, `telegram-service`, `trading-service` (ai-service is a sub-module; readiness check only, no standalone process).  
-> **Important**: since 2026-03, the consumption layer (Telegram/Sheets/visualization) is no longer allowed to read DB directly. All reads go through **Query Service** (`api-service`, `/api/v1`). Start `api-service` before running Telegram/Sheets.
+> Note: top-level `./scripts/start.sh` manages `ai-service`, `signal-service`, `api-service`, `telegram-service`, `trading-service` by default (ai-service is a sub-module; readiness check only, no standalone process; and `api-service` starts before telegram/sheets).  
+> **Important**: since 2026-03, the consumption layer (Telegram/Sheets/visualization) is no longer allowed to read DB directly. All reads go through **Query Service** (`api-service`, `/api/v1`). Do **not** stop `api-service` while running Telegram/Sheets.  
 > Legacy ingestion service (low-frequency 1m/5m): `services/ingestion/data-service/` (not enabled by default).  
-> Required services (manual start):  
-> - `cd services/consumption/api-service && ./scripts/start.sh start` (Query Service, default port 8088; required by Telegram/Sheets)  
 > Optional services (manual start):  
 > - `cd services/consumption/sheets-service && ./scripts/start.sh start` (Google Sheets dashboard sync, daemon by default)
+> Optional check: `./scripts/smoke_query_service.sh` (validates Query Service auth + availability; does not print token)
 
 ### ⚙️ Configuration (required)
 
@@ -887,7 +886,7 @@ tradecat/
 │   │
 │   └── 📂 consumption/             # Consumption layer (Telegram/API/Sheets/Visualization)
 │       ├── 📂 telegram-service/    # Telegram Bot (cards/subscriptions/snapshots)
-│       ├── 📂 api-service/         # REST API (optional)
+│       ├── 📂 api-service/         # Query Service (REST API; started by top-level start.sh by default)
 │       ├── 📂 sheets-service/      # Google Sheets dashboard sync (optional)
 │       ├── 📂 vis-service/         # Visualization rendering (optional)
 │       └── 📂 nofx-dev/            # Preview: external mirror (not core chain)
@@ -955,7 +954,7 @@ cd services/compute/trading-service  # or services/consumption/telegram-service
 ./scripts/start.sh stop     # Stop
 ./scripts/start.sh status   # Status
 
-# api-service (optional)
+# api-service (Query Service; started by top-level start.sh by default)
 cd services/consumption/api-service
 ./scripts/start.sh start
 ./scripts/start.sh status

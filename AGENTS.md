@@ -44,13 +44,12 @@ cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
 vim assets/config/.env
 
 # 3) 启动核心服务
-#
-# ⚠️ 重要：consumption 层禁止直连数据库，必须先启动 Query Service（api-service，/api/v1）。
-cd services/consumption/api-service && ./scripts/start.sh start
-cd -
-
+# ⚠️ 重要：consumption 层禁止直连数据库；顶层 start.sh 默认包含 Query Service（api-service，/api/v1），并保证其先于 telegram/sheets 启动。
 ./scripts/start.sh start
 ./scripts/start.sh status
+
+# （可选）冒烟检查（不回显 token）
+./scripts/smoke_query_service.sh
 
 # 4) 修改代码后验证
 ./scripts/verify.sh

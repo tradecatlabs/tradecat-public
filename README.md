@@ -175,18 +175,17 @@ cp assets/config/.env.example assets/config/.env && chmod 600 assets/config/.env
 # 端口：默认 LF=5433（K线/指标）、HF=15432（原子事实），见 assets/config/.env.example
 vim assets/config/.env
 
-# 3) 启动核心服务（ai + signal + telegram + trading）
+# 3) 启动核心服务（ai + signal + api + telegram + trading）
 ./scripts/start.sh start
 ./scripts/start.sh status
 ```
 
-> 说明：顶层 `./scripts/start.sh` 管理 `ai-service`、`signal-service`、`telegram-service`、`trading-service`（ai-service 为子模块，仅做就绪检查，无独立进程）。  
-> **重要**：从 2026-03 起，consumption 层（Telegram/Sheets/可视化）不再允许直连数据库，统一通过 **Query Service（api-service，`/api/v1`）** 读取数据；因此在运行 Telegram/Sheets 前，请先启动 `api-service`。
+> 说明：顶层 `./scripts/start.sh` 默认管理 `ai-service`、`signal-service`、`api-service`、`telegram-service`、`trading-service`（ai-service 为子模块，仅做就绪检查，无独立进程；并保证 api-service 先于 telegram/sheets 启动）。  
+> **重要**：从 2026-03 起，consumption 层（Telegram/Sheets/可视化）不再允许直连数据库，统一通过 **Query Service（api-service，`/api/v1`）** 读取数据；因此在运行 Telegram/Sheets 时 **不要停掉 `api-service`**。  
 > 低频/分时采集服务 data-service：`services/ingestion/data-service/`（兼容链路，不在默认启动链路）。  
-> 必须服务需手动启动：  
-> - `cd services/consumption/api-service && ./scripts/start.sh start`（Query Service，默认端口 8088；Telegram/Sheets 依赖它）  
 > 可选服务需手动启动：  
 > - `cd services/consumption/sheets-service && ./scripts/start.sh start`（Google Sheets 公共看板同步，默认 daemon）
+> 可选校验：`./scripts/smoke_query_service.sh`（验证 Query Service 鉴权与可用性；不回显 token）
 
 ### ⚙️ 配置（必须）
 
@@ -875,7 +874,7 @@ tradecat/
 │   │
 │   └── 📂 consumption/             # 消费层：对外呈现（Telegram/API/Sheets/可视化）
 │       ├── 📂 telegram-service/    # Telegram Bot（卡片/订阅/快照）
-│       ├── 📂 api-service/         # REST API（可选）
+│       ├── 📂 api-service/         # Query Service（REST API，默认随顶层启动）
 │       ├── 📂 sheets-service/      # Google Sheets 公共看板同步（可选）
 │       ├── 📂 vis-service/         # 可视化渲染（可选）
 │       └── 📂 nofx-dev/            # 预览：外部工程镜像（非核心链路）
@@ -940,7 +939,7 @@ cd services/compute/trading-service  # 或 services/consumption/telegram-service
 ./scripts/start.sh stop     # 停止
 ./scripts/start.sh status   # 状态
 
-# api-service（可选）
+# api-service（Query Service，默认随顶层启动）
 cd services/consumption/api-service
 ./scripts/start.sh start
 ./scripts/start.sh status
