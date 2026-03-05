@@ -1,5 +1,6 @@
 """Open Interest 路由 (对齐 CoinGlass /api/futures/open-interest/history)"""
 
+from decimal import Decimal
 import logging
 import psycopg
 from psycopg import sql
@@ -26,6 +27,14 @@ TABLE_BY_INTERVAL = {
     "1d": "market_data.binance_futures_metrics_1d_last",
     "1w": "market_data.binance_futures_metrics_1w_last",
 }
+
+def _num_to_str(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        # 禁止科学计数法/漂移：对齐 Decimal 的“定点字符串”表示。
+        return format(value, "f")
+    return str(value)
 
 
 def _normalize_exchange(exchange: str) -> str:
@@ -110,15 +119,15 @@ async def get_open_interest_history(
         # CoinGlass OI 格式 (OHLC style)
         data = []
         for row in reversed(rows):
-            oi_value = float(row[2]) if row[2] is not None else None
+            oi_str = _num_to_str(row[2])
             dt = normalize_utc(row[1])
             data.append(
                 {
                     "time": int((dt.timestamp() if dt else 0) * 1000),
-                    "open": str(oi_value) if oi_value is not None else None,
-                    "high": str(oi_value) if oi_value is not None else None,
-                    "low": str(oi_value) if oi_value is not None else None,
-                    "close": str(oi_value) if oi_value is not None else None,
+                    "open": oi_str,
+                    "high": oi_str,
+                    "low": oi_str,
+                    "close": oi_str,
                 }
             )
         return api_response(data)
