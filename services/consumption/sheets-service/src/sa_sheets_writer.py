@@ -9899,29 +9899,71 @@ class SaSheetsWriter:
         - 交易对子表（默认：title 以 symbol_tab_prefix 开头；可选：仅保留 keep_symbol_tabs）
         """
         # daemon 场景下 prune_tabs 可能每分钟触发一次；如果网络/代理偶发抖动，会导致日志刷屏。
-        # 这里加“节流”：minimal schema 下默认每小时最多尝试一次（可通过 env 调整/关闭）。
-        # - env: SHEETS_PRUNE_TABS_INTERVAL_SECONDS（默认 3600；<=0 表示每次都尝试）
+        # 这里加“节流”：minimal schema 下默认每 6 小时最多尝试一次（可通过 env 调整/关闭）。
+        # 同时引入 keep hash：只有当“保留集合”发生变化时才会绕过节流并立即执行。
+        # - env: SHEETS_PRUNE_TABS_INTERVAL_SECONDS（默认 21600；<=0 表示每次都尝试）
         # - 记录：写入 local_meta（minimal 模式的单一真相源）
         minimal_throttle = self._schema_mode == "minimal"
         if minimal_throttle:
             try:
-                interval = int((os.environ.get("SHEETS_PRUNE_TABS_INTERVAL_SECONDS", "3600") or "3600").strip() or "3600")
+                interval = int(
+                    (os.environ.get("SHEETS_PRUNE_TABS_INTERVAL_SECONDS", "21600") or "21600").strip() or "21600"
+                )
             except Exception:
-                interval = 3600
+                interval = 21600
+
+            keep_data = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_DATA", "1") or "1").strip() != "0"
+            keep_history = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_HISTORY", "1") or "1").strip() != "0"
+            keep_meta = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_META", "1") or "1").strip() != "0"
+            keep_polymarket = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_STATS", "1") or "1").strip() != "0"
+            split_enabled = (os.environ.get("SHEETS_POLYMARKET_STATS_SPLIT", "1") or "1").strip() != "0"
+            keep_polymarket_events = (os.environ.get("SHEETS_PRUNE_KEEP_POLYMARKET_EVENTS", "0") or "0").strip() != "0"
+            keep_variants = (os.environ.get("SHEETS_PRUNE_KEEP_DASHBOARD_VARIANTS", "0") or "0").strip() == "1"
+
+            # keep hash：完全基于“期望保留集合”的确定性输入，不依赖网络/Sheet 读取。
+            # 目的：当用户改了 symbol tabs / tab 命名 / keep 开关时，下一轮应立即 prune，而不是等 interval。
+            keep_hash = ""
+            if keep_symbol_tabs is not None:
+                parts: list[str] = [
+                    f"dash={self._tab_dashboard}",
+                    f"keep_data={int(keep_data)}:{self._tab_dashboard_data}",
+                    f"keep_history={int(keep_history)}:{self._tab_dashboard_history}",
+                    f"keep_meta={int(keep_meta)}:{self._tab_dashboard_meta}",
+                    f"keep_pm={int(keep_polymarket)}:{self._tab_polymarket_stats}",
+                    f"pm_split={int(split_enabled)}",
+                    f"keep_pm_events={int(keep_polymarket_events)}:{self._tab_polymarket_events}",
+                    f"keep_variants={int(keep_variants)}",
+                    f"symbol_prefix={str(symbol_tab_prefix or '').strip()}",
+                ]
+                for t in sorted({str(x).strip() for x in (keep_symbol_tabs or []) if str(x).strip()}):
+                    parts.append(f"symtab={t}")
+                if keep_polymarket and split_enabled:
+                    parts.append(f"pm_top15={_env_text('SHEETS_TAB_POLYMARKET_TOP15', 'PolymarketTop15')}")
+                    parts.append(f"pm_timeslot={_env_text('SHEETS_TAB_POLYMARKET_TIMESLOT', 'Polymarket时段分布')}")
+                    parts.append(f"pm_category={_env_text('SHEETS_TAB_POLYMARKET_CATEGORY', 'Polymarket类别偏好')}")
+                keep_hash = _sha256_hex("\n".join(parts))[:16]
+
             if interval > 0:
                 try:
                     meta = self._local_meta_get()
                     last = int(str(meta.get("prune_tabs_last_epoch") or "0").strip() or "0")
+                    prev_hash = str(meta.get("prune_tabs_keep_hash") or "").strip()
                 except Exception:
-                    last = 0
+                    last, prev_hash = 0, ""
                 now = int(time.time())
-                if int(last) > 0 and (now - int(last)) < int(interval):
+                if keep_hash and keep_hash != prev_hash:
+                    # keep 变更（或首次接入 keep hash）：绕过节流立即执行
+                    pass
+                elif int(last) > 0 and (now - int(last)) < int(interval):
                     return {"deleted": 0, "kept": [], "skipped": 1, "reason": "throttled"}
 
         # 先落盘“本次尝试时间”，确保即便后续网络/代理抖动失败，也不会每分钟刷屏
         if minimal_throttle:
             try:
-                self._local_meta_set({"prune_tabs_last_epoch": str(int(time.time()))})
+                kv = {"prune_tabs_last_epoch": str(int(time.time()))}
+                if keep_hash:
+                    kv["prune_tabs_keep_hash"] = keep_hash
+                self._local_meta_set(kv)
             except Exception:
                 pass
 
