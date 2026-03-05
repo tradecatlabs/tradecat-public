@@ -200,6 +200,11 @@ vim assets/config/.env
   - `QUERY_SERVICE_BASE_URL`（Query Service 基地址；默认 `http://127.0.0.1:8088`，见 `assets/config/.env.example`）  
   - `QUERY_SERVICE_AUTH_MODE`（Query Service 鉴权模式；默认 `required`；`disabled` 仅限本地/受控环境调试）  
   - `QUERY_SERVICE_TOKEN`（Query Service 内网 token；Header: `X-Internal-Token`；`required` 模式必须设置；`/api/v1/indicators/*` 调试端点始终要求 token；`./scripts/check_env.sh` 会将 `dev-token-change-me`/`your_token_here` 视为占位值并判定为未配置）  
+  - `QUERY_SERVICE_TIMEOUT_SECONDS`（可选：消费端请求超时秒数；默认 8，见 `assets/config/.env.example`）  
+  - `QUERY_SERVICE_CACHE_TTL_SECONDS`（可选：消费端（telegram/sheets）本地缓存 TTL 秒；默认 2）  
+  - `QUERY_SERVICE_STALE_TTL_SECONDS`（可选：消费端 stale-if-error 窗口秒；默认 30）  
+  - `QUERY_SERVICE_NET_MAX_RETRIES`（可选：消费端网络重试次数；默认 2；总尝试=1+retries）  
+  - `QUERY_SERVICE_NET_RETRY_BASE_SECONDS`（可选：消费端重试退避 base 秒；默认 0.2；0=不 sleep）  
   - `QUERY_MARKET_TABLE_EXISTS_TTL_SEC`（可选：market_data 表存在性检查缓存 TTL 秒数；默认 30）  
   - `QUERY_NUMERIC_MODE`（可选：指标数值输出模式；`float|string`；默认 `float`；`string` 保留 Decimal 精度）  
   - `QUERY_CACHE_MAX_ENTRIES`（可选：Query Service 内存缓存最大条数；默认 256）  
