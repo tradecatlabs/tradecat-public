@@ -20,9 +20,9 @@
   - `cd services/consumption/telegram-service && make check`: ✅ 通过（pytest：`3 passed`）
   - `cd services/compute/trading-service && make check`: ✅ 通过（pytest：`2 passed, 1 skipped`）
   - `cd services/consumption/sheets-service && make check`: ✅ 通过（pytest：`8 passed`）
-  - `cd services/ingestion/data-service && make check`: ❌ 失败（ruff lint：`Found 148 errors`；含 `UP035/E402/UP006/UP045` 等；`126` 可 `--fix` 自动修复）
+  - `cd services/ingestion/data-service && make check`: ✅ 通过（pytest：`6 passed`；含 `tests/test_ban_backoff.py`）
 
 ## 阻塞详情（如有）
 
-- Blocked by: data-service `make check` 当前不绿（lint 失败）
-- Required Action: 按 `0018-stabilize-data-service-ban-backoff` 执行时同步修复 lint（至少做到 `make check` 通过），再继续后续 Phase
+- Blocked by: _None_
+- Required Action: _None_
