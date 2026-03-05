@@ -5,6 +5,7 @@
 - 使用时间窗口批量写入：收集 3 秒内的数据后一次性写入
 - 避免 300 次单独 DB 操作 → 1 次批量操作
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -12,9 +13,8 @@ import logging
 import sys
 import threading
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Set
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -34,23 +34,23 @@ class WSCollector:
     写入策略：收集 FLUSH_WINDOW 秒内的数据后批量写入
     """
 
-    FLUSH_WINDOW = 3.0   # 时间窗口：3 秒（覆盖网络延迟）
-    MAX_BUFFER = 1000    # 最大缓冲：> 606 币种，确保一次性写入
+    FLUSH_WINDOW = 3.0  # 时间窗口：3 秒（覆盖网络延迟）
+    MAX_BUFFER = 1000  # 最大缓冲：> 606 币种，确保一次性写入
 
     def __init__(self):
         self._ts = TimescaleAdapter()
         self._symbols = self._load_symbols()
         self._gap_stop = threading.Event()
-        self._gap_thread: Optional[threading.Thread] = None
+        self._gap_thread: threading.Thread | None = None
 
         # 批量写入缓冲
-        self._buffer: List[dict] = []
+        self._buffer: list[dict] = []
         self._buffer_lock = asyncio.Lock()
         self._last_candle_time: float = 0  # 最后一条 K 线到达时间
-        self._flush_task: Optional[asyncio.Task] = None
-        self._last_logged_bucket_ts: Optional[datetime] = None
+        self._flush_task: asyncio.Task | None = None
+        self._last_logged_bucket_ts: datetime | None = None
 
-    def _load_symbols(self) -> Dict[str, str]:
+    def _load_symbols(self) -> dict[str, str]:
         raw = load_symbols(settings.ccxt_exchange)
         if not raw:
             raise RuntimeError("未加载到交易对")
@@ -70,11 +70,18 @@ class WSCollector:
             return
 
         row = {
-            "exchange": settings.db_exchange, "symbol": sym,
-            "bucket_ts": datetime.fromtimestamp(e.timestamp, tz=timezone.utc),
-            "open": e.open, "high": e.high, "low": e.low, "close": e.close, "volume": e.volume,
+            "exchange": settings.db_exchange,
+            "symbol": sym,
+            "bucket_ts": datetime.fromtimestamp(e.timestamp, tz=UTC),
+            "open": e.open,
+            "high": e.high,
+            "low": e.low,
+            "close": e.close,
+            "volume": e.volume,
             "quote_volume": float(e.quote_volume) if e.quote_volume else None,
-            "trade_count": e.trade_count or 0, "is_closed": True, "source": settings.ws_source,
+            "trade_count": e.trade_count or 0,
+            "is_closed": True,
+            "source": settings.ws_source,
             "taker_buy_volume": float(e.taker_buy_volume) if e.taker_buy_volume else None,
             "taker_buy_quote_volume": float(e.taker_buy_quote_volume) if e.taker_buy_quote_volume else None,
         }
@@ -170,7 +177,7 @@ class WSCollector:
     def _gap_loop(self) -> None:
         """智能缺口巡检 - 增量检查 + 自适应回溯"""
         lookback_days = 2  # 固定回溯 2 天 (今天+昨天+前天)
-        unfillable: Set[tuple] = set()  # 缓存无法补齐的缺口 (symbol, date)
+        unfillable: set[tuple] = set()  # 缓存无法补齐的缺口 (symbol, date)
 
         while not self._gap_stop.wait(settings.ws_gap_interval):
             try:
@@ -183,7 +190,7 @@ class WSCollector:
             except Exception as e:
                 logger.error("周期缺口检查失败: %s", e)
 
-    def _smart_backfill(self, lookback_days: int, unfillable: Set[tuple]) -> tuple:
+    def _smart_backfill(self, lookback_days: int, unfillable: set[tuple]) -> tuple:
         """智能补齐 - 返回 (是否有缺口, 建议回溯天数)"""
         from collectors.backfill import GapScanner, RestBackfiller, ZipBackfiller
 

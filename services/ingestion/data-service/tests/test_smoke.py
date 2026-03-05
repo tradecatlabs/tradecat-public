@@ -25,4 +25,3 @@ def test_settings_database_url_from_env(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@localhost:5433/market_data")
     s = Settings()
     assert s.database_url.startswith("postgresql://")
-

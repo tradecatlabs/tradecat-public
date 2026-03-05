@@ -1,4 +1,5 @@
 """入口: python -m src 或 python src/__main__.py"""
+
 from __future__ import annotations
 
 import argparse
@@ -8,14 +9,13 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
 
 # 确保 src 在路径中
 SRC_DIR = Path(__file__).parent
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from config import settings
+from config import settings  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,10 @@ class Scheduler:
     """进程调度器"""
 
     def __init__(self):
-        self._procs: Dict[str, dict] = {}
+        self._procs: dict[str, dict] = {}
         self._running = False
 
-    def add(self, name: str, cmd: List[str]) -> None:
+    def add(self, name: str, cmd: list[str]) -> None:
         self._procs[name] = {"cmd": cmd, "proc": None, "restarts": 0}
 
     def run(self) -> None:

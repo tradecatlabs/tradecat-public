@@ -7,6 +7,7 @@
 4. 补齐后复检
 5. 持续巡检模式
 """
+
 from __future__ import annotations
 
 import argparse
@@ -16,12 +17,12 @@ import os
 import sys
 import time
 import zipfile
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
 
 import requests
 
@@ -37,13 +38,14 @@ logger = logging.getLogger(__name__)
 
 BINANCE_DATA_URL = settings.binance_data_base
 EXPECTED_1M_PER_DAY = 1440  # 1分钟 * 1440 = 1天
-EXPECTED_5M_PER_DAY = 288   # 5分钟 * 288 = 1天
+EXPECTED_5M_PER_DAY = 288  # 5分钟 * 288 = 1天
 
 
 # ==================== 缺口检测 ====================
 @dataclass
 class GapInfo:
     """缺口信息"""
+
     symbol: str
     date: date
     expected: int
@@ -60,10 +62,15 @@ class GapScanner:
     def __init__(self, ts: TimescaleAdapter):
         self._ts = ts
 
-    def scan_klines(self, symbols: Sequence[str], start: date, end: date,
-                    interval: str = "1m", threshold: float = 0.95) -> Dict[str, List[GapInfo]]:
+    def scan_klines(
+        self, symbols: Sequence[str], start: date, end: date, interval: str = "1m", threshold: float = 0.95
+    ) -> dict[str, list[GapInfo]]:
         """扫描 K 线缺口，返回 {symbol: [GapInfo]}"""
-        expected = EXPECTED_1M_PER_DAY if interval == "1m" else int(EXPECTED_1M_PER_DAY / INTERVAL_TO_MS.get(interval, 60000) * 60000)
+        expected = (
+            EXPECTED_1M_PER_DAY
+            if interval == "1m"
+            else int(EXPECTED_1M_PER_DAY / INTERVAL_TO_MS.get(interval, 60000) * 60000)
+        )
         min_count = int(expected * threshold)
 
         table = f"{self._ts.schema}.candles_{interval}"
@@ -74,17 +81,17 @@ class GapScanner:
               AND bucket_ts >= %s AND bucket_ts < %s
             GROUP BY symbol, DATE(bucket_ts AT TIME ZONE 'UTC')
         """
-        start_ts = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-        end_ts = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        start_ts = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+        end_ts = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
 
-        counts: Dict[tuple, int] = {}
+        counts: dict[tuple, int] = {}
         with self._ts.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (settings.db_exchange, list(symbols), start_ts, end_ts))
                 for sym, d, c in cur.fetchall():
                     counts[(sym, d)] = c
 
-        gaps: Dict[str, List[GapInfo]] = {}
+        gaps: dict[str, list[GapInfo]] = {}
         for sym in symbols:
             sym_gaps = []
             for i in range((end - start).days + 1):
@@ -96,8 +103,9 @@ class GapScanner:
                 gaps[sym] = sym_gaps
         return gaps
 
-    def scan_metrics(self, symbols: Sequence[str], start: date, end: date,
-                     threshold: float = 0.95) -> Dict[str, List[GapInfo]]:
+    def scan_metrics(
+        self, symbols: Sequence[str], start: date, end: date, threshold: float = 0.95
+    ) -> dict[str, list[GapInfo]]:
         """扫描期货指标缺口"""
         min_count = int(EXPECTED_5M_PER_DAY * threshold)
 
@@ -108,17 +116,17 @@ class GapScanner:
             WHERE symbol = ANY(%s) AND create_time >= %s AND create_time < %s
             GROUP BY symbol, DATE(create_time)
         """
-        start_ts = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-        end_ts = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        start_ts = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+        end_ts = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
 
-        counts: Dict[tuple, int] = {}
+        counts: dict[tuple, int] = {}
         with self._ts.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, (list(symbols), start_ts, end_ts))
                 for sym, d, c in cur.fetchall():
                     counts[(sym, d)] = c
 
-        gaps: Dict[str, List[GapInfo]] = {}
+        gaps: dict[str, list[GapInfo]] = {}
         for sym in symbols:
             sym_gaps = []
             for i in range((end - start).days + 1):
@@ -135,7 +143,7 @@ class GapScanner:
 class RestBackfiller:
     """REST API 分页补齐 (用于小缺口) - 并行版"""
 
-    def __init__(self, ts: TimescaleAdapter, workers: Optional[int] = None):
+    def __init__(self, ts: TimescaleAdapter, workers: int | None = None):
         self._ts = ts
         if workers is None:
             raw = (os.getenv("DATA_SERVICE_REST_BACKFILL_WORKERS") or "").strip()
@@ -150,8 +158,8 @@ class RestBackfiller:
 
     def fill_kline_gap(self, symbol: str, gap: GapInfo, interval: str = "1m") -> int:
         """补齐单个 K 线缺口 - 收集后一次性写入"""
-        start_ts = datetime.combine(gap.date, datetime.min.time(), tzinfo=timezone.utc)
-        end_ts = datetime.combine(gap.date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        start_ts = datetime.combine(gap.date, datetime.min.time(), tzinfo=UTC)
+        end_ts = datetime.combine(gap.date + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
         since_ms = int(start_ts.timestamp() * 1000)
         target_ms = int(end_ts.timestamp() * 1000)
 
@@ -163,8 +171,11 @@ class RestBackfiller:
             if not candles:
                 break
 
-            rows = [r for r in to_rows(settings.db_exchange, symbol, candles, "ccxt_gap")
-                    if start_ts <= r["bucket_ts"] < end_ts]
+            rows = [
+                r
+                for r in to_rows(settings.db_exchange, symbol, candles, "ccxt_gap")
+                if start_ts <= r["bucket_ts"] < end_ts
+            ]
             all_rows.extend(rows)
 
             last_ms = int(candles[-1][0])
@@ -177,7 +188,7 @@ class RestBackfiller:
             self._ts.upsert_candles(interval, all_rows, update_on_conflict=False)
         return len(all_rows)
 
-    def fill_gaps(self, gaps: Dict[str, List[GapInfo]], interval: str = "1m") -> int:
+    def fill_gaps(self, gaps: dict[str, list[GapInfo]], interval: str = "1m") -> int:
         """并行批量补齐缺口"""
         tasks = [(sym, gap, interval) for sym, sym_gaps in gaps.items() for gap in sym_gaps]
         if not tasks:
@@ -210,7 +221,7 @@ class MetricsRestBackfiller:
         self._proxies = {"http": settings.http_proxy, "https": settings.http_proxy} if settings.http_proxy else {}
         self._session = requests.Session()
 
-    def _get(self, url: str, params: dict) -> Optional[list]:
+    def _get(self, url: str, params: dict) -> list | None:
         """REST 请求"""
         acquire(1)
         try:
@@ -232,17 +243,37 @@ class MetricsRestBackfiller:
         finally:
             release()
 
-    def _fetch_day(self, symbol: str, d: date) -> List[dict]:
+    def _fetch_day(self, symbol: str, d: date) -> list[dict]:
         """获取单日 Metrics 数据 (5个API)"""
-        start_ms = int(datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+        start_ms = int(datetime.combine(d, datetime.min.time(), tzinfo=UTC).timestamp() * 1000)
         end_ms = start_ms + 86400000 - 1  # 当天结束
 
         apis = [
-            ("oi", f"{self.FAPI}/futures/data/openInterestHist", {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500}),
-            ("pos", f"{self.FAPI}/futures/data/topLongShortPositionRatio", {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500}),
-            ("acc", f"{self.FAPI}/futures/data/topLongShortAccountRatio", {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500}),
-            ("glb", f"{self.FAPI}/futures/data/globalLongShortAccountRatio", {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500}),
-            ("taker", f"{self.FAPI}/futures/data/takerlongshortRatio", {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500}),
+            (
+                "oi",
+                f"{self.FAPI}/futures/data/openInterestHist",
+                {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500},
+            ),
+            (
+                "pos",
+                f"{self.FAPI}/futures/data/topLongShortPositionRatio",
+                {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500},
+            ),
+            (
+                "acc",
+                f"{self.FAPI}/futures/data/topLongShortAccountRatio",
+                {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500},
+            ),
+            (
+                "glb",
+                f"{self.FAPI}/futures/data/globalLongShortAccountRatio",
+                {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500},
+            ),
+            (
+                "taker",
+                f"{self.FAPI}/futures/data/takerlongshortRatio",
+                {"symbol": symbol, "period": "5m", "startTime": start_ms, "endTime": end_ms, "limit": 500},
+            ),
         ]
 
         results = {}
@@ -269,19 +300,33 @@ class MetricsRestBackfiller:
             glb = glb_map.get(ts, {})
             taker = taker_map.get(ts, {})
 
-            rows.append({
-                "create_time": datetime.fromtimestamp(ts_aligned / 1000, tz=timezone.utc).replace(tzinfo=None),
-                "symbol": symbol.upper(),
-                "exchange": settings.db_exchange,
-                "sum_open_interest": Decimal(str(oi.get("sumOpenInterest", 0))) if oi.get("sumOpenInterest") else None,
-                "sum_open_interest_value": Decimal(str(oi.get("sumOpenInterestValue", 0))) if oi.get("sumOpenInterestValue") else None,
-                "count_toptrader_long_short_ratio": Decimal(str(acc.get("longShortRatio", 0))) if acc.get("longShortRatio") else None,
-                "sum_toptrader_long_short_ratio": Decimal(str(pos.get("longShortRatio", 0))) if pos.get("longShortRatio") else None,
-                "count_long_short_ratio": Decimal(str(glb.get("longShortRatio", 0))) if glb.get("longShortRatio") else None,
-                "sum_taker_long_short_vol_ratio": Decimal(str(taker.get("buySellRatio", 0))) if taker.get("buySellRatio") else None,
-                "source": "binance_rest",
-                "is_closed": True,
-            })
+            rows.append(
+                {
+                    "create_time": datetime.fromtimestamp(ts_aligned / 1000, tz=UTC).replace(tzinfo=None),
+                    "symbol": symbol.upper(),
+                    "exchange": settings.db_exchange,
+                    "sum_open_interest": Decimal(str(oi.get("sumOpenInterest", 0)))
+                    if oi.get("sumOpenInterest")
+                    else None,
+                    "sum_open_interest_value": Decimal(str(oi.get("sumOpenInterestValue", 0)))
+                    if oi.get("sumOpenInterestValue")
+                    else None,
+                    "count_toptrader_long_short_ratio": Decimal(str(acc.get("longShortRatio", 0)))
+                    if acc.get("longShortRatio")
+                    else None,
+                    "sum_toptrader_long_short_ratio": Decimal(str(pos.get("longShortRatio", 0)))
+                    if pos.get("longShortRatio")
+                    else None,
+                    "count_long_short_ratio": Decimal(str(glb.get("longShortRatio", 0)))
+                    if glb.get("longShortRatio")
+                    else None,
+                    "sum_taker_long_short_vol_ratio": Decimal(str(taker.get("buySellRatio", 0)))
+                    if taker.get("buySellRatio")
+                    else None,
+                    "source": "binance_rest",
+                    "is_closed": True,
+                }
+            )
         return rows
 
     def fill_gap(self, symbol: str, gap: GapInfo) -> int:
@@ -292,7 +337,7 @@ class MetricsRestBackfiller:
             return len(rows)
         return 0
 
-    def fill_gaps(self, gaps: Dict[str, List[GapInfo]]) -> int:
+    def fill_gaps(self, gaps: dict[str, list[GapInfo]]) -> int:
         """并行批量补齐"""
         tasks = [(sym, gap) for sym, sym_gaps in gaps.items() for gap in sym_gaps]
         if not tasks:
@@ -377,13 +422,13 @@ class ZipBackfiller:
         finally:
             release()
 
-    def fill_kline_gaps(self, gaps: Dict[str, List[GapInfo]], interval: str = "1m") -> int:
+    def fill_kline_gaps(self, gaps: dict[str, list[GapInfo]], interval: str = "1m") -> int:
         """批量补齐 K 线缺口 - 按月分组避免重复下载"""
         if not gaps:
             return 0
 
         # 按 (symbol, month) 分组，避免重复下载月度 ZIP
-        month_groups: Dict[tuple, List[date]] = {}
+        month_groups: dict[tuple, list[date]] = {}
         for sym, sym_gaps in gaps.items():
             for gap in sym_gaps:
                 key = (sym, gap.date.strftime("%Y-%m"))
@@ -395,7 +440,10 @@ class ZipBackfiller:
 
         total = 0
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
-            futures = {pool.submit(self._download_kline_month, sym, month, dates, iv): (sym, month) for sym, month, dates, iv in tasks}
+            futures = {
+                pool.submit(self._download_kline_month, sym, month, dates, iv): (sym, month)
+                for sym, month, dates, iv in tasks
+            }
             for future in as_completed(futures):
                 sym, month = futures[future]
                 try:
@@ -408,7 +456,7 @@ class ZipBackfiller:
 
         return total
 
-    def _download_kline_month(self, symbol: str, month: str, dates: List[date], interval: str) -> int:
+    def _download_kline_month(self, symbol: str, month: str, dates: list[date], interval: str) -> int:
         """下载并导入一个月的 K 线数据"""
         sym = symbol.upper()
         total = 0
@@ -454,13 +502,13 @@ class ZipBackfiller:
 
         return total
 
-    def fill_metrics_gaps(self, gaps: Dict[str, List[GapInfo]]) -> int:
+    def fill_metrics_gaps(self, gaps: dict[str, list[GapInfo]]) -> int:
         """批量补齐期货指标缺口 - 按月分组避免重复下载"""
         if not gaps:
             return 0
 
         # 按 (symbol, month) 分组
-        month_groups: Dict[tuple, List[date]] = {}
+        month_groups: dict[tuple, list[date]] = {}
         for sym, sym_gaps in gaps.items():
             for gap in sym_gaps:
                 key = (sym, gap.date.strftime("%Y-%m"))
@@ -471,7 +519,10 @@ class ZipBackfiller:
 
         total = 0
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
-            futures = {pool.submit(self._download_metrics_month, sym, month, dates): (sym, month) for sym, month, dates in tasks}
+            futures = {
+                pool.submit(self._download_metrics_month, sym, month, dates): (sym, month)
+                for sym, month, dates in tasks
+            }
             for future in as_completed(futures):
                 sym, month = futures[future]
                 try:
@@ -484,7 +535,7 @@ class ZipBackfiller:
 
         return total
 
-    def _download_metrics_month(self, symbol: str, month: str, dates: List[date]) -> int:
+    def _download_metrics_month(self, symbol: str, month: str, dates: list[date]) -> int:
         """下载并导入一个月的 Metrics 数据"""
         sym = symbol.upper()
         total = 0
@@ -542,24 +593,28 @@ class ZipBackfiller:
                             if len(row) < 6:
                                 continue
                             try:
-                                ts = datetime.fromtimestamp(int(row[0]) / 1000, tz=timezone.utc)
+                                ts = datetime.fromtimestamp(int(row[0]) / 1000, tz=UTC)
                                 # 月度ZIP时只导入指定日期
                                 if filter_date and ts.date() != filter_date:
                                     continue
-                                rows.append({
-                                    "exchange": settings.db_exchange,
-                                    "symbol": symbol.upper(),
-                                    "bucket_ts": ts,
-                                    "open": float(row[1]), "high": float(row[2]),
-                                    "low": float(row[3]), "close": float(row[4]),
-                                    "volume": float(row[5]),
-                                    "quote_volume": float(row[7]) if len(row) > 7 and row[7] else None,
-                                    "trade_count": int(row[8]) if len(row) > 8 and row[8] else None,
-                                    "is_closed": True,
-                                    "source": "binance_zip",
-                                    "taker_buy_volume": float(row[9]) if len(row) > 9 and row[9] else None,
-                                    "taker_buy_quote_volume": float(row[10]) if len(row) > 10 and row[10] else None,
-                                })
+                                rows.append(
+                                    {
+                                        "exchange": settings.db_exchange,
+                                        "symbol": symbol.upper(),
+                                        "bucket_ts": ts,
+                                        "open": float(row[1]),
+                                        "high": float(row[2]),
+                                        "low": float(row[3]),
+                                        "close": float(row[4]),
+                                        "volume": float(row[5]),
+                                        "quote_volume": float(row[7]) if len(row) > 7 and row[7] else None,
+                                        "trade_count": int(row[8]) if len(row) > 8 and row[8] else None,
+                                        "is_closed": True,
+                                        "source": "binance_zip",
+                                        "taker_buy_volume": float(row[9]) if len(row) > 9 and row[9] else None,
+                                        "taker_buy_quote_volume": float(row[10]) if len(row) > 10 and row[10] else None,
+                                    }
+                                )
                             except (ValueError, IndexError):
                                 pass
         except Exception as e:
@@ -591,23 +646,31 @@ class ZipBackfiller:
 
                                 # 对齐到 5 分钟边界
                                 ts = (ts // 300000) * 300000
-                                dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+                                dt = datetime.fromtimestamp(ts / 1000, tz=UTC)
                                 if filter_date and dt.date() != filter_date:
                                     continue
 
-                                rows.append({
-                                    "create_time": dt.replace(tzinfo=None),
-                                    "symbol": symbol.upper(),
-                                    "exchange": settings.db_exchange,
-                                    "sum_open_interest": Decimal(row[2]) if len(row) > 2 and row[2] else None,
-                                    "sum_open_interest_value": Decimal(row[3]) if len(row) > 3 and row[3] else None,
-                                    "count_toptrader_long_short_ratio": Decimal(row[5]) if len(row) > 5 and row[5] else None,
-                                    "sum_toptrader_long_short_ratio": Decimal(row[4]) if len(row) > 4 and row[4] else None,
-                                    "count_long_short_ratio": Decimal(row[6]) if len(row) > 6 and row[6] else None,
-                                    "sum_taker_long_short_vol_ratio": Decimal(row[7]) if len(row) > 7 and row[7] else None,
-                                    "source": "binance_zip",
-                                    "is_closed": True,
-                                })
+                                rows.append(
+                                    {
+                                        "create_time": dt.replace(tzinfo=None),
+                                        "symbol": symbol.upper(),
+                                        "exchange": settings.db_exchange,
+                                        "sum_open_interest": Decimal(row[2]) if len(row) > 2 and row[2] else None,
+                                        "sum_open_interest_value": Decimal(row[3]) if len(row) > 3 and row[3] else None,
+                                        "count_toptrader_long_short_ratio": Decimal(row[5])
+                                        if len(row) > 5 and row[5]
+                                        else None,
+                                        "sum_toptrader_long_short_ratio": Decimal(row[4])
+                                        if len(row) > 4 and row[4]
+                                        else None,
+                                        "count_long_short_ratio": Decimal(row[6]) if len(row) > 6 and row[6] else None,
+                                        "sum_taker_long_short_vol_ratio": Decimal(row[7])
+                                        if len(row) > 7 and row[7]
+                                        else None,
+                                        "source": "binance_zip",
+                                        "is_closed": True,
+                                    }
+                                )
                             except (ValueError, IndexError):
                                 pass
         except Exception as e:
@@ -618,7 +681,7 @@ class ZipBackfiller:
             return self._upsert_metrics(rows)
         return 0
 
-    def _upsert_metrics(self, rows: List[dict]) -> int:
+    def _upsert_metrics(self, rows: list[dict]) -> int:
         """批量 upsert metrics - 使用 COPY 高性能写入"""
         if not rows:
             return 0
@@ -640,7 +703,7 @@ class DataBackfiller:
         self._rest = RestBackfiller(self._ts)
         self._zip = ZipBackfiller(self._ts, workers)
 
-    def run_klines(self, symbols: Optional[Sequence[str]] = None, interval: str = "1m") -> Dict[str, int]:
+    def run_klines(self, symbols: Sequence[str] | None = None, interval: str = "1m") -> dict[str, int]:
         """补齐 K 线"""
         with Timer("last_backfill_duration"):
             symbols = symbols or load_symbols(settings.ccxt_exchange)
@@ -676,7 +739,7 @@ class DataBackfiller:
             logger.info("K 线补齐完成: 填充 %d 条, 剩余缺口 %d | %s", filled, final_gaps, metrics)
             return {"scanned": len(symbols), "gaps": total_gaps, "filled": filled, "remaining": final_gaps}
 
-    def run_metrics(self, symbols: Optional[Sequence[str]] = None) -> Dict[str, int]:
+    def run_metrics(self, symbols: Sequence[str] | None = None) -> dict[str, int]:
         """补齐期货指标"""
         symbols = symbols or load_symbols(settings.ccxt_exchange)
         end = date.today() - timedelta(days=1)
@@ -711,7 +774,7 @@ class DataBackfiller:
         logger.info("Metrics 补齐完成: 填充 %d 条, 剩余缺口 %d", filled, final_gaps)
         return {"scanned": len(symbols), "gaps": total_gaps, "filled": filled, "remaining": final_gaps}
 
-    def run_all(self, symbols: Optional[Sequence[str]] = None) -> Dict[str, Dict[str, int]]:
+    def run_all(self, symbols: Sequence[str] | None = None) -> dict[str, dict[str, int]]:
         """并行补齐 K线 + Metrics"""
         with ThreadPoolExecutor(max_workers=2) as pool:
             f_klines = pool.submit(self.run_klines, symbols)
@@ -728,6 +791,7 @@ class DataBackfiller:
 # ==================== 兼容旧接口 ====================
 class GapFiller:
     """K线缺口补齐 (兼容旧接口)"""
+
     def __init__(self, ts: TimescaleAdapter):
         self._ts = ts
         self._lookback = settings.ws_gap_lookback
@@ -774,7 +838,7 @@ def get_backfill_config():
     return mode, days, on_start, start_date
 
 
-def compute_lookback(mode: str, days: int, start_date: Optional[date] = None) -> int:
+def compute_lookback(mode: str, days: int, start_date: date | None = None) -> int:
     """根据模式与起始日计算回溯天数"""
     mode = (mode or "days").lower()
 

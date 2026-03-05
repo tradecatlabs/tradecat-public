@@ -1,4 +1,5 @@
 """全局限流器 - 信号量控制并发 + 跨进程令牌桶 + ban 共享"""
+
 from __future__ import annotations
 
 import fcntl
@@ -53,7 +54,7 @@ class GlobalLimiter:
 
     def _save_ban(self):
         try:
-            tmp = _BAN_FILE.with_suffix('.tmp')
+            tmp = _BAN_FILE.with_suffix(".tmp")
             tmp.write_text(str(self._ban_until))
             tmp.rename(_BAN_FILE)
         except Exception:
@@ -64,7 +65,7 @@ class GlobalLimiter:
             if until > self._ban_until:
                 self._ban_until = until
                 self._save_ban()
-                logger.warning("IP ban 至 %s", time.strftime('%H:%M:%S', time.localtime(until)))
+                logger.warning("IP ban 至 %s", time.strftime("%H:%M:%S", time.localtime(until)))
 
     def _wait_ban(self):
         self._load_ban()
@@ -102,7 +103,7 @@ class GlobalLimiter:
 
     def _write_state(self, tokens, last):
         try:
-            tmp = _STATE_FILE.with_suffix('.tmp')
+            tmp = _STATE_FILE.with_suffix(".tmp")
             tmp.write_text(json.dumps({"tokens": tokens, "last": last}))
             tmp.rename(_STATE_FILE)
         except Exception:
@@ -123,16 +124,29 @@ class GlobalLimiter:
         self._sem.release()
 
     def parse_ban(self, msg: str) -> float:
-        m = re.search(r'banned until (\d+)', str(msg))
+        m = re.search(r"banned until (\d+)", str(msg))
         return int(m.group(1)) / 1000 if m else 0
 
 
 _g = GlobalLimiter()
 
-def acquire(weight: int = 1): _g.acquire(weight)
-def release(): _g.release()
-def set_ban(until: float): _g.set_ban(until)
-def parse_ban(msg: str) -> float: return _g.parse_ban(msg)
+
+def acquire(weight: int = 1):
+    _g.acquire(weight)
+
+
+def release():
+    _g.release()
+
+
+def set_ban(until: float):
+    _g.set_ban(until)
+
+
+def parse_ban(msg: str) -> float:
+    return _g.parse_ban(msg)
+
 
 # 兼容旧接口
-def get_limiter(): return _g
+def get_limiter():
+    return _g

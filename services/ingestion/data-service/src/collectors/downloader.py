@@ -1,9 +1,10 @@
 """下载器"""
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Protocol
+from typing import Protocol
 
 import requests
 
@@ -12,7 +13,10 @@ logger = logging.getLogger(__name__)
 
 class RateLimiterProtocol(Protocol):
     """限流器协议"""
+
     def acquire(self, weight: int = 1) -> None: ...
+
+
 class Downloader:
     """
     一个健壮的文件下载器，支持代理和自动重试。
@@ -21,8 +25,8 @@ class Downloader:
     def __init__(
         self,
         rate_limiter: RateLimiterProtocol,
-        http_proxy: Optional[str] = None,
-        fallback_proxy: Optional[str] = None,
+        http_proxy: str | None = None,
+        fallback_proxy: str | None = None,
     ):
         """
         初始化 Downloader。
@@ -36,7 +40,7 @@ class Downloader:
         self._fallback_proxies = self._create_proxy_dict(fallback_proxy)
 
     @staticmethod
-    def _create_proxy_dict(proxy_url: Optional[str]) -> Optional[Dict[str, str]]:
+    def _create_proxy_dict(proxy_url: str | None) -> dict[str, str] | None:
         """从 URL 创建 requests 库所需的代理字典。"""
         if not proxy_url:
             return None
@@ -64,7 +68,7 @@ class Downloader:
         attempts = [self._proxies, self._fallback_proxies]
 
         for i, proxies in enumerate(attempts):
-            if i > 0 and attempts[i-1] == proxies:  # 如果代理配置相同，则不重复尝试
+            if i > 0 and attempts[i - 1] == proxies:  # 如果代理配置相同，则不重复尝试
                 continue
 
             proxy_name = "备用代理" if proxies == self._fallback_proxies else "主代理/直连"
@@ -80,7 +84,7 @@ class Downloader:
                     # 确保目标目录存在
                     destination.parent.mkdir(parents=True, exist_ok=True)
 
-                    with open(destination, 'wb') as f:
+                    with open(destination, "wb") as f:
                         for chunk in r.iter_content(chunk_size=8192):
                             f.write(chunk)
 
@@ -92,4 +96,3 @@ class Downloader:
 
         logger.error("所有下载尝试均失败: %s", url)
         return False
-

@@ -1,14 +1,15 @@
 """期货指标采集器 - 高性能版"""
+
 from __future__ import annotations
 
 import logging
 import sys
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import List, Optional, Sequence
 
 import requests
 
@@ -32,7 +33,7 @@ _session.mount("https://", _adapter)
 _session.mount("http://", _adapter)
 
 
-def _to_decimal(value) -> Optional[Decimal]:
+def _to_decimal(value) -> Decimal | None:
     if value is None:
         return None
     try:
@@ -49,7 +50,7 @@ class MetricsCollector:
         self._workers = workers
         self._proxies = {"http": settings.http_proxy, "https": settings.http_proxy} if settings.http_proxy else {}
 
-    def _get(self, url: str, params: dict) -> Optional[list]:
+    def _get(self, url: str, params: dict) -> list | None:
         """REST 请求 - 使用全局限流"""
         acquire(1)
         metrics.inc("requests_total")
@@ -79,7 +80,7 @@ class MetricsCollector:
         finally:
             release()
 
-    def _collect_one(self, sym: str) -> Optional[dict]:
+    def _collect_one(self, sym: str) -> dict | None:
         """采集单个符号 - 串行请求避免并发放大"""
         sym = sym.upper()
         apis = [
@@ -94,7 +95,13 @@ class MetricsCollector:
         for key, url, params in apis:
             results[key] = self._get(url, params)
 
-        oi, pos, acc, glb, taker = results.get("oi"), results.get("pos"), results.get("acc"), results.get("glb"), results.get("taker")
+        oi, pos, acc, glb, taker = (
+            results.get("oi"),
+            results.get("pos"),
+            results.get("acc"),
+            results.get("glb"),
+            results.get("taker"),
+        )
 
         # 至少要有 oi 数据才有意义
         if not oi or not isinstance(oi, list) or not oi:
@@ -104,7 +111,7 @@ class MetricsCollector:
         ts = (ts // 300000) * 300000
 
         return {
-            "create_time": datetime.fromtimestamp(ts / 1000, tz=timezone.utc).replace(tzinfo=None),
+            "create_time": datetime.fromtimestamp(ts / 1000, tz=UTC).replace(tzinfo=None),
             "symbol": sym,
             "exchange": settings.db_exchange,
             "sum_open_interest": _to_decimal(oi[0].get("sumOpenInterest")) if oi else None,
@@ -117,7 +124,7 @@ class MetricsCollector:
             "is_closed": True,
         }
 
-    def collect(self, symbols: Sequence[str]) -> List[dict]:
+    def collect(self, symbols: Sequence[str]) -> list[dict]:
         """并发采集"""
         rows = []
         with ThreadPoolExecutor(max_workers=self._workers) as pool:
@@ -131,7 +138,7 @@ class MetricsCollector:
                     logger.debug("采集异常 %s: %s", futures[future], e)
         return rows
 
-    def save(self, rows: List[dict]) -> int:
+    def save(self, rows: list[dict]) -> int:
         """批量保存 - 使用 COPY 高性能写入"""
         if not rows:
             return 0
@@ -139,7 +146,7 @@ class MetricsCollector:
         metrics.inc("rows_written", n)
         return n
 
-    def run_once(self, symbols: Optional[Sequence[str]] = None) -> int:
+    def run_once(self, symbols: Sequence[str] | None = None) -> int:
         symbols = symbols or load_symbols(settings.ccxt_exchange)
         logger.info("采集 %d 个符号 (并发=%d)", len(symbols), self._workers)
         with Timer("last_collect_duration"):

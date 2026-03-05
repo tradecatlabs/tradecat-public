@@ -1,15 +1,16 @@
 """简单监控指标收集器"""
+
 from __future__ import annotations
 
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict
 
 
 @dataclass
 class Metrics:
     """监控指标"""
+
     # 计数器
     requests_total: int = 0
     requests_failed: int = 0
@@ -36,7 +37,7 @@ class Metrics:
         with self._lock:
             setattr(self, name, value)
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         with self._lock:
             return {
                 "requests_total": self.requests_total,
@@ -62,11 +63,12 @@ metrics = Metrics()
 
 class Timer:
     """计时上下文管理器"""
+
     def __init__(self, metric_name: str):
         self.metric_name = metric_name
         self.start = 0.0
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> Timer:
         self.start = time.perf_counter()
         return self
 

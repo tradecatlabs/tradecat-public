@@ -1,4 +1,5 @@
 """Alpha 代币列表采集"""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,9 +7,8 @@ import json
 import logging
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 import aiohttp
 
@@ -22,7 +22,7 @@ BINANCE_ALPHA_URL = settings.binance_alpha_url
 CACHE_TTL = timedelta(hours=6)
 
 
-def _normalize_symbol(symbol: Optional[str]) -> Optional[str]:
+def _normalize_symbol(symbol: str | None) -> str | None:
     if not symbol:
         return None
     return symbol.replace("/", "").replace("-", "").replace("_", "").upper() or None
@@ -35,13 +35,13 @@ class AlphaTokenFetcher:
         self._cache_path = settings.data_dir / "alpha_tokens.json"
         self._proxy = settings.http_proxy
 
-    async def refresh(self, force: bool = False) -> Dict[str, Dict[str, str]]:
+    async def refresh(self, force: bool = False) -> dict[str, dict[str, str]]:
         """刷新 Alpha 代币缓存"""
         if not force and self._cache_path.exists():
             try:
                 cache = json.loads(self._cache_path.read_text())
                 fetched_at = datetime.fromisoformat(cache.get("fetched_at", ""))
-                if datetime.now(timezone.utc) - fetched_at.replace(tzinfo=timezone.utc) < CACHE_TTL:
+                if datetime.now(UTC) - fetched_at.replace(tzinfo=UTC) < CACHE_TTL:
                     logger.info("使用缓存: %d 个 Alpha 代币", len(cache.get("tokens", [])))
                     return self._parse_tokens(cache.get("tokens", []))
             except Exception:
@@ -71,14 +71,14 @@ class AlphaTokenFetcher:
         if not tokens:
             return self._load_cache()
 
-        cache = {"fetched_at": datetime.now(timezone.utc).isoformat(), "tokens": tokens}
+        cache = {"fetched_at": datetime.now(UTC).isoformat(), "tokens": tokens}
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
         self._cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2))
         logger.info("Alpha 代币缓存已更新: %d 个", len(tokens))
 
         return self._parse_tokens(tokens)
 
-    def _load_cache(self) -> Dict[str, Dict[str, str]]:
+    def _load_cache(self) -> dict[str, dict[str, str]]:
         if not self._cache_path.exists():
             return {}
         try:
@@ -87,7 +87,7 @@ class AlphaTokenFetcher:
         except Exception:
             return {}
 
-    def _parse_tokens(self, tokens: list) -> Dict[str, Dict[str, str]]:
+    def _parse_tokens(self, tokens: list) -> dict[str, dict[str, str]]:
         mapping = {}
         for item in tokens:
             symbol = item.get("symbol") or item.get("cexCoinName")
@@ -105,7 +105,7 @@ class AlphaTokenFetcher:
                 }
         return mapping
 
-    def is_alpha(self, symbol: str) -> Tuple[bool, Optional[str]]:
+    def is_alpha(self, symbol: str) -> tuple[bool, str | None]:
         """判断是否为 Alpha 代币"""
         alpha_map = self._load_cache()
         normalized = _normalize_symbol(symbol)
@@ -114,7 +114,7 @@ class AlphaTokenFetcher:
         return False, None
 
 
-async def refresh_alpha_tokens(force: bool = False) -> Dict[str, Dict[str, str]]:
+async def refresh_alpha_tokens(force: bool = False) -> dict[str, dict[str, str]]:
     """刷新 Alpha 代币列表"""
     return await AlphaTokenFetcher().refresh(force)
 

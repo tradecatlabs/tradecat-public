@@ -1,11 +1,11 @@
 """配置与数据模型"""
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # ==================== 路径定位（避免目录迁移导致 parents[...] 失效） ====================
 SERVICE_ROOT = Path(__file__).resolve().parents[1]  # services/ingestion/data-service
@@ -54,35 +54,36 @@ def _int_env(name: str, default: int) -> int:
 @dataclass
 class Settings:
     """服务配置"""
-    database_url: str = field(default_factory=lambda: (
-        os.getenv("DATABASE_URL", "")
-        if _DATABASE_URL_PRESET
-        else (os.getenv("DATA_SERVICE_DATABASE_URL") or os.getenv("DATABASE_URL", ""))
-    ))
-    http_proxy: Optional[str] = field(default_factory=lambda: os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY"))
-    binance_fapi_base: str = field(default_factory=lambda: (
-        os.getenv("DATA_SERVICE_BINANCE_FAPI_BASE")
-        or os.getenv("BINANCE_FAPI_BASE")
-        or ""
-    ).rstrip("/"))
-    binance_data_base: str = field(default_factory=lambda: (
-        os.getenv("DATA_SERVICE_BINANCE_DATA_BASE")
-        or os.getenv("BINANCE_DATA_BASE")
-        or ""
-    ).rstrip("/"))
-    binance_alpha_url: str = field(default_factory=lambda: (
-        os.getenv("DATA_SERVICE_BINANCE_ALPHA_URL")
-        or os.getenv("BINANCE_ALPHA_URL")
-        or ""
-    ))
+
+    database_url: str = field(
+        default_factory=lambda: (
+            os.getenv("DATABASE_URL", "")
+            if _DATABASE_URL_PRESET
+            else (os.getenv("DATA_SERVICE_DATABASE_URL") or os.getenv("DATABASE_URL", ""))
+        )
+    )
+    http_proxy: str | None = field(default_factory=lambda: os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY"))
+    binance_fapi_base: str = field(
+        default_factory=lambda: (
+            os.getenv("DATA_SERVICE_BINANCE_FAPI_BASE") or os.getenv("BINANCE_FAPI_BASE") or ""
+        ).rstrip("/")
+    )
+    binance_data_base: str = field(
+        default_factory=lambda: (
+            os.getenv("DATA_SERVICE_BINANCE_DATA_BASE") or os.getenv("BINANCE_DATA_BASE") or ""
+        ).rstrip("/")
+    )
+    binance_alpha_url: str = field(
+        default_factory=lambda: os.getenv("DATA_SERVICE_BINANCE_ALPHA_URL") or os.getenv("BINANCE_ALPHA_URL") or ""
+    )
 
     # 日志和数据目录改为项目内
-    log_dir: Path = field(default_factory=lambda: Path(os.getenv(
-        "DATA_SERVICE_LOG_DIR", str(SERVICE_ROOT / "logs")
-    )))
-    data_dir: Path = field(default_factory=lambda: Path(os.getenv(
-        "DATA_SERVICE_DATA_DIR", str(PROJECT_ROOT / "assets" / "database" / "csv")
-    )))
+    log_dir: Path = field(default_factory=lambda: Path(os.getenv("DATA_SERVICE_LOG_DIR", str(SERVICE_ROOT / "logs"))))
+    data_dir: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("DATA_SERVICE_DATA_DIR", str(PROJECT_ROOT / "assets" / "database" / "csv"))
+        )
+    )
 
     ws_gap_interval: int = field(default_factory=lambda: _int_env("BINANCE_WS_GAP_INTERVAL", 600))
     ws_gap_lookback: int = field(default_factory=lambda: _int_env("BINANCE_WS_GAP_LOOKBACK", 10080))
@@ -101,15 +102,26 @@ settings = Settings()
 
 
 INTERVAL_TO_MS = {
-    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
-    "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "6h": 21_600_000, "12h": 43_200_000,
-    "1d": 86_400_000, "1w": 604_800_000, "1M": 2_592_000_000,
+    "1m": 60_000,
+    "3m": 180_000,
+    "5m": 300_000,
+    "15m": 900_000,
+    "30m": 1_800_000,
+    "1h": 3_600_000,
+    "2h": 7_200_000,
+    "4h": 14_400_000,
+    "6h": 21_600_000,
+    "12h": 43_200_000,
+    "1d": 86_400_000,
+    "1w": 604_800_000,
+    "1M": 2_592_000_000,
 }
 
 
 @dataclass(slots=True)
 class GapTask:
     """缺口任务"""
+
     symbol: str
     gap_start: datetime
     gap_end: datetime

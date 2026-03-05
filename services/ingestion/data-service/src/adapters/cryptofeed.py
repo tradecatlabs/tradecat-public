@@ -1,11 +1,12 @@
 """Cryptofeed WebSocket 适配器"""
+
 from __future__ import annotations
 
 import inspect
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Awaitable, Callable, List, Optional, Union
 
 from config import settings
 
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CandleEvent:
     """K线事件"""
+
     symbol: str
     timestamp: float
     open: float
@@ -22,22 +24,22 @@ class CandleEvent:
     low: float
     close: float
     volume: float
-    quote_volume: Optional[Decimal] = None
-    taker_buy_volume: Optional[Decimal] = None
-    taker_buy_quote_volume: Optional[Decimal] = None
-    trade_count: Optional[int] = None
+    quote_volume: Decimal | None = None
+    taker_buy_volume: Decimal | None = None
+    taker_buy_quote_volume: Decimal | None = None
+    trade_count: int | None = None
 
 
 class BinanceWSAdapter:
     """Binance WebSocket 适配器"""
 
-    def __init__(self, http_proxy: Optional[str] = None):
+    def __init__(self, http_proxy: str | None = None):
         self._proxy = http_proxy
         self._handler = None
-        self._callback: Optional[Callable[[CandleEvent], Union[None, Awaitable[None]]]] = None
-        self._symbols: List[str] = []
+        self._callback: Callable[[CandleEvent], None | Awaitable[None]] | None = None
+        self._symbols: list[str] = []
 
-    def subscribe(self, symbols: List[str], callback: Callable[[CandleEvent], Union[None, Awaitable[None]]]) -> None:
+    def subscribe(self, symbols: list[str], callback: Callable[[CandleEvent], None | Awaitable[None]]) -> None:
         self._symbols = symbols
         self._callback = callback
 
@@ -48,10 +50,17 @@ class BinanceWSAdapter:
         raw = getattr(candle, "raw", {}) or {}
         k = raw.get("k", {})
         evt = CandleEvent(
-            symbol=candle.symbol, timestamp=candle.start,
-            open=candle.open, high=candle.high, low=candle.low, close=candle.close, volume=candle.volume,
-            quote_volume=Decimal(k.get("q", "0")), taker_buy_volume=Decimal(k.get("V", "0")),
-            taker_buy_quote_volume=Decimal(k.get("Q", "0")), trade_count=candle.trades,
+            symbol=candle.symbol,
+            timestamp=candle.start,
+            open=candle.open,
+            high=candle.high,
+            low=candle.low,
+            close=candle.close,
+            volume=candle.volume,
+            quote_volume=Decimal(k.get("q", "0")),
+            taker_buy_volume=Decimal(k.get("V", "0")),
+            taker_buy_quote_volume=Decimal(k.get("Q", "0")),
+            trade_count=candle.trades,
         )
         try:
             ret = cb(evt)
@@ -75,7 +84,15 @@ class BinanceWSAdapter:
                 opts.setdefault("proxy", self._proxy)
                 ep.options = opts
 
-        kw = {"symbols": self._symbols, "channels": [CANDLES], "callbacks": {CANDLES: self._on_candle}, "candle_interval": "1m", "candle_closed_only": True, "timeout": 60, "http_proxy": self._proxy}
+        kw = {
+            "symbols": self._symbols,
+            "channels": [CANDLES],
+            "callbacks": {CANDLES: self._on_candle},
+            "candle_interval": "1m",
+            "candle_closed_only": True,
+            "timeout": 60,
+            "http_proxy": self._proxy,
+        }
         if self._proxy:
             logger.info("WebSocket/HTTP 代理已启用: %s", self._proxy)
         self._handler.add_feed(BinanceFutures(**kw))
@@ -87,14 +104,22 @@ class BinanceWSAdapter:
             self._handler.stop()
 
 
-def preload_symbols(symbols: List[str]) -> None:
+def preload_symbols(symbols: list[str]) -> None:
     try:
         from cryptofeed.defines import BINANCE_FUTURES, PERPETUAL
         from cryptofeed.exchanges import BinanceFutures
         from cryptofeed.symbols import Symbol, Symbols
+
         mapping = {Symbol(s[:-4], "USDT", type=PERPETUAL).normalized: s for s in symbols if s.upper().endswith("USDT")}
         if mapping:
-            Symbols.set(BINANCE_FUTURES, mapping, {"symbols": list(mapping.keys()), "channels": {"rest": [], "websocket": list(BinanceFutures.websocket_channels.keys())}})
+            Symbols.set(
+                BINANCE_FUTURES,
+                mapping,
+                {
+                    "symbols": list(mapping.keys()),
+                    "channels": {"rest": [], "websocket": list(BinanceFutures.websocket_channels.keys())},
+                },
+            )
             logger.info("预置 cryptofeed 映射 %d 个", len(mapping))
     except Exception as e:
         logger.warning("预置映射失败: %s", e)
