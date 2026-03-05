@@ -3,6 +3,9 @@
 > 生成时间: 2026-01-29  
 > 版本: v1.0 - 全系统完整版
 
+> 更新（2026-03）：运行态持久化已收敛到 PostgreSQL（`tg_cards.*` / `signal_state.*` / `sheets_state.*`），不再依赖 SQLite。  
+> 本图中所有 “SQLite 数据库集群 / market_data.db” 节点为**历史架构（已废弃）**，仅用于迁移/对账复盘。
+
 ---
 
 ## 1. 系统全景架构图
@@ -52,14 +55,14 @@ graph TB
     subgraph STORAGE["🗄️ 持久化层"]
         direction TB
         
-        subgraph TSDB["TimescaleDB :5434"]
+        subgraph TSDB["TimescaleDB（DATABASE_URL 默认 5433）"]
             TSDB_CANDLES[("candles_1m<br>3.73亿条 K线")]
             TSDB_FUTURES[("futures_metrics_5m<br>9457万条 期货指标")]
             TSDB_VIEWS[("物化视图<br>*_5m_last, *_1h_last...")]
         end
         
-        subgraph SQLITE["SQLite 数据库集群"]
-            SQLITE_MARKET[("market_data.db<br>34张指标表")]
+        subgraph SQLITE["（历史）SQLite 数据库集群（已废弃）"]
+            SQLITE_MARKET[("（历史）market_data.db<br>34张指标表（已废弃）")]
             SQLITE_COOLDOWN[("cooldown.db<br>信号冷却状态")]
             SQLITE_HISTORY[("signal_history.db<br>信号触发历史")]
         end
@@ -354,7 +357,7 @@ graph LR
     end
 
     subgraph 指标存储["📁 指标存储"]
-        E1[("market_data.db<br>34张指标表")]
+        E1[("（历史）market_data.db<br>34张指标表（已废弃）")]
     end
 
     subgraph 信号["🔔 信号检测"]
@@ -554,7 +557,7 @@ graph TD
 
     subgraph 引擎["双引擎架构"]
         subgraph SQLITE_ENG["SQLiteSignalEngine"]
-            SE_CONN["SQLite 连接<br>market_data.db"]
+            SE_CONN["（历史）SQLite 连接<br>market_data.db"]
             SE_QUERY["指标表查询"]
             SE_CHECK["规则检查"]
         end
@@ -713,7 +716,7 @@ graph TD
     end
 
     subgraph 数据源["数据源"]
-        SQLITE[("market_data.db")]
+        SQLITE[("（历史）market_data.db")]
         SIG_PUB["SignalPublisher"]
     end
 
@@ -761,7 +764,7 @@ graph TD
         ENV_EXAMPLE["config/.env.example<br>配置模板"]
         
         subgraph 配置项["主要配置项"]
-            CFG_DB["DATABASE_URL<br>TimescaleDB :5434"]
+            CFG_DB["DATABASE_URL<br>TimescaleDB（默认 5433）"]
             CFG_BOT["BOT_TOKEN<br>Telegram Bot"]
             CFG_PROXY["HTTP_PROXY<br>网络代理"]
             CFG_SYMBOLS["SYMBOLS_GROUPS<br>币种分组"]
@@ -837,7 +840,7 @@ graph TD
 
 ```mermaid
 graph TD
-    subgraph TimescaleDB["TimescaleDB :5434"]
+    subgraph TimescaleDB["TimescaleDB（DATABASE_URL 默认 5433）"]
         subgraph market_data_schema["Schema: market_data"]
             T_CANDLES["candles_1m<br>━━━━━━━━━━<br>symbol VARCHAR<br>bucket_ts TIMESTAMPTZ<br>open, high, low, close DECIMAL<br>volume, quote_volume DECIMAL<br>taker_buy_volume DECIMAL<br>━━━━━━━━━━<br>超表 (Hypertable)<br>按 bucket_ts 分区"]
             
@@ -856,8 +859,8 @@ graph TD
         end
     end
 
-    subgraph SQLite集群["SQLite 数据库集群"]
-        subgraph MARKET_DB["market_data.db (34张表)"]
+    subgraph SQLite集群["（历史）SQLite 数据库集群（已废弃）"]
+        subgraph MARKET_DB["（历史）market_data.db (34张表，已废弃)"]
             subgraph 趋势指标表["趋势指标"]
                 TBL_EMA["G，C点扫描器.py<br>EMA7/25/99"]
                 TBL_SUPER["超级精准趋势扫描器.py"]

@@ -1,8 +1,11 @@
 # Trading-Service Python 性能优化审计报告（静态审计版）
 
 日期：2026-01-22  
-范围：`services/compute/trading-service`（指标计算服务：K线 + 期货情绪 → SQLite）  
+范围：`services/compute/trading-service`（指标计算服务：K线 + 期货情绪 → PostgreSQL(tg_cards.*)；SQLite 分析为历史路径）  
 审计方法：代码静态扫描 + 结构/复杂度分析 + 可复现实证（profiling 计划）  
+
+> 更新（2026-03）：trading-service 的指标落盘已切换为 PostgreSQL（`tg_cards.*`），不再依赖 `market_data.db`。  
+> 本报告中关于 SQLite 写入路径（delete/cleanup/commit 放大）的结论属于**历史优化记录**：用于解释“旧版为什么会慢”，不应直接当作当前线上瓶颈结论。
 
 > 说明：本报告未直接在你的生产数据与数据库上运行 profiling，因此“热点”结论默认标记为【推断】；每个【推断】都附带可执行的验证方法，用于把推断转成证据并量化收益。
 
@@ -45,8 +48,8 @@
 1) 选币：若未指定 `--symbols`，会从 PG 计算高优先级币种（`services/compute/trading-service/src/core/engine.py` 调用 `get_high_priority_symbols_fast`）。  
 2) 读数据：通过 `services/compute/trading-service/src/db/cache.py` 的 `DataCache` 从 TimescaleDB 拉取各 `interval` 的 candles（看起来是“缓存初始化 + 增量更新”模式）。  
 3) 算指标：`services/compute/trading-service/src/core/engine.py` 的 `_compute_batch` 对每个 `(symbol, interval)` 运行所有指标 `Indicator.compute()`。  
-4) 写结果：把所有指标结果写入 SQLite `assets/database/services/telegram-service/market_data.db`（写入代码：`services/compute/trading-service/src/db/reader.py:DataWriter`）。  
-5) 后处理：额外更新市场占比（PG → SQLite）与清理期货表的 1m 数据（SQLite DELETE）。
+4) 写结果：把所有指标结果写入 PostgreSQL `tg_cards.*`（写入代码：`services/compute/trading-service/src/db/reader.py:DataWriter`；旧版为 SQLite `market_data.db`）。  
+5) 后处理：根据需要更新市场占比与做保留/清理（旧版包含 “PG → SQLite” 与 SQLite DELETE；现行以 PG 侧策略为准）。
 
 ### 1.3 规模敏感性（决定你为什么“会突然慢”）
 

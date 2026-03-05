@@ -62,7 +62,7 @@ TradeCatConfig
 
 ### 1.5 环境变量覆盖
 
-配置模块会自动加载 `config/.env` 文件，但环境变量优先级更高：
+配置模块会自动加载 `assets/config/.env` 文件，但环境变量优先级更高：
 
 ```bash
 # 命令行覆盖
@@ -84,7 +84,7 @@ import os
 conn = psycopg2.connect(os.getenv("DATABASE_URL"))
 
 # ❌ 不推荐：硬编码路径
-sqlite_path = "/path/to/market_data.db"
+sqlite_path = "/path/to/market_data.db"  # （历史）仅迁移/对账回放使用
 ```
 
 ---

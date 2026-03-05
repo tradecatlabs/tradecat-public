@@ -1,6 +1,6 @@
 # STATUS
 
-状态：In Progress
+状态：Done
 
 ## 1) 证据存证（Planning 阶段只读审计）
 
@@ -49,3 +49,12 @@
 
 - `git show --oneline -1`：`feat(storage): migrate runtime state/idempotency to postgres`
 - `./scripts/verify.sh`：通过（语法检查 + i18n + 文档入口）
+
+## 5) P2 收敛证据（SQLite 最终出清）
+
+- `rg -n "import sqlite3" services`：无命中（核心链路不再依赖 SQLite）
+- `find . -name "*.db" -not -path "*/assets/repo/*" -not -path "*/.venv/*" -not -path "*/dist/*"`（当前仍存在的 `.db` 仅用于历史/非核心链路）：
+  - `assets/database/services/telegram-service/market_data.db`（历史/迁移对账样本，README 已标记 deprecated）
+  - `assets/artifacts/sqlite_import/market_data_windows*.db`（导入 artifacts，用于回放/对账）
+  - `services/compute/fate-service/.../*.db`、`services/consumption/nofx-dev/data/data.db`（非核心链路：按约束不纳入“单 PG”整改范围）
+- `rg -n "market_data\\.db" README* assets/docs`：仅保留历史/迁移说明（并补齐“2026-03 运行态已迁移至 PG”口径）

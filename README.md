@@ -293,7 +293,7 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
 | Python | 3.12+ | CI 使用 3.12；各服务 `services/*/*/pyproject.toml` 声明 `requires-python >=3.12`（`scripts/init.sh` 的最低检查为 3.10） |
 | PostgreSQL | 16+ | 需安装 TimescaleDB 扩展 |
 | TA-Lib | 0.4+ | 系统级库，需单独安装 |
-| SQLite | 3.x | 系统自带 |
+| SQLite | 3.x | 系统自带（仅迁移/对账/回放；运行态已不依赖） |
 
 ### 安装步骤
 
@@ -537,7 +537,7 @@ graph TD
 |:---|:---:|:---|:---|
 | **data-service** | - | 加密货币 K线采集、期货指标采集、历史数据回填 | Python, asyncio, ccxt, cryptofeed |
 | **trading-service** | - | 38个技术指标模块计算、高优先级币种筛选、定时调度 | Python, pandas, numpy, TA-Lib |
-| **signal-service** | - | 独立信号检测服务（129条规则、8分类、事件发布） | Python, SQLite, psycopg2 |
+| **signal-service** | - | 独立信号检测服务（129条规则、8分类、事件发布） | Python, psycopg3（PostgreSQL） |
 | **telegram-service** | - | Bot 交互、排行榜展示、信号推送 UI（通过 adapter 调用 signal-service） | python-telegram-bot, aiohttp |
 | **ai-service** | - | AI 分析、Wyckoff 方法论（作为 telegram-service 子模块） | Gemini/OpenAI/Claude/DeepSeek |
 | **fate-service** | - | 命理/排盘服务（独立微服务） | Python, Node.js（可选） |
@@ -867,8 +867,8 @@ tradecat/
 │   │   ├── 📂 binance-vision-service/  # Binance Vision Raw 对齐采集（高频原子事实）
 │   │   └── 📂 predict-service/     # 预测市场信号（Polymarket/Kalshi/Opinion）
 │   │
-│   ├── 📂 compute/                 # 计算层：读 PG / 写 SQLite
-│   │   ├── 📂 trading-service/     # 指标计算（写入 SQLite，供展示层消费）
+│   ├── 📂 compute/                 # 计算层：读 PG / 写 PG（tg_cards / signal_state / sheets_state）
+│   │   ├── 📂 trading-service/     # 指标计算（写入 PG: tg_cards.*；供消费层读取）
 │   │   ├── 📂 signal-service/      # 信号检测（规则引擎）
 │   │   ├── 📂 ai-service/          # AI 分析（telegram 子模块）
 │   │   └── 📂 fate-service/        # 命理/排盘（独立微服务）

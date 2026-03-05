@@ -307,7 +307,7 @@ zstd -d futures_metrics_5m.bin.zst -c | psql -h localhost -p 5433 -U postgres -d
 | Python | 3.12+ | CI uses 3.12 |
 | PostgreSQL | 16+ | TimescaleDB extension required |
 | TA-Lib | 0.4+ | System library, install separately |
-| SQLite | 3.x | System built-in |
+| SQLite | 3.x | System built-in (migration/replay only; not a runtime dependency) |
 
 ### Installation Steps
 
@@ -548,7 +548,7 @@ graph TD
 | Service | Port | Responsibility | Tech Stack |
 |:---|:---:|:---|:---|
 | **data-service** | - | Crypto candlestick collection, futures metrics, historical backfill | Python, asyncio, ccxt, cryptofeed |
-| **signal-service** | - | Standalone signal detection (129 rules, 8 categories, event publishing) | Python, SQLite, psycopg2 |
+| **signal-service** | - | Standalone signal detection (129 rules, 8 categories, event publishing) | Python, psycopg3 (PostgreSQL) |
 | **trading-service** | - | 38 indicator modules calculation, scheduling, high-priority symbol filtering | Python, pandas, numpy, TA-Lib |
 | **telegram-service** | - | Bot interaction, rankings display, signal UI (calls signal-service via adapter) | python-telegram-bot, aiohttp |
 | **ai-service** | - | AI analysis, Wyckoff methodology (as telegram-service submodule) | Gemini/OpenAI/Claude/DeepSeek |
@@ -879,8 +879,8 @@ tradecat/
 │   │   ├── 📂 binance-vision-service/  # Binance Vision raw-aligned ingestion (HF atomic facts)
 │   │   └── 📂 predict-service/     # Prediction market signals (Polymarket/Kalshi/Opinion)
 │   │
-│   ├── 📂 compute/                 # Compute layer: read PG / write SQLite
-│   │   ├── 📂 trading-service/     # Indicator calculation (writes SQLite for consumption)
+│   ├── 📂 compute/                 # Compute layer: read PG / write PG (tg_cards / signal_state / sheets_state)
+│   │   ├── 📂 trading-service/     # Indicator calculation (writes PG: tg_cards.* for consumption)
 │   │   ├── 📂 signal-service/      # Signal detection (rules engine)
 │   │   ├── 📂 ai-service/          # AI analysis (telegram submodule)
 │   │   └── 📂 fate-service/        # Fate/astrology (independent microservice)

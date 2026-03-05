@@ -15,18 +15,18 @@
         |
         v
 [处理/计算层] trading-service
-  - 读PG -> 计算指标/特征/统计 -> 写结果
+  - 读 PG/Timescale -> 计算指标/特征/统计 -> 写入 PG: tg_cards.*
         |
         v
-[消费侧缓存（可重建）]
-  SQLite: market_data.db（给 Telegram/API 快速读）
+[统一数据契约层] api-service（Query Service, /api/v1/*）
+  - 只读：market_data.* / tg_cards.* / signal_state.* / sheets_state.*
         |
         +------------------------------+
         |                              |
         v                              v
-[信号层] signal-service               [查询/展示层] telegram-service / api-service
-  - 读PG+SQLite                        - 排行榜/面板/查询
-  - 规则/去重/冷却                      - 订阅/推送
+[信号层] signal-service               [查询/展示层] telegram-service / sheets-service / vis-service
+  - 读 PG（market_data + tg_cards）     - 排行榜/面板/币种查询
+  - 写 PG（signal_state.*）             - 导出 Sheets/推送/可视化
   - 输出 SignalEvent                    ^
         |                               |
         v                               |
@@ -38,3 +38,5 @@
     -> 更新订单/持仓状态（建议落PG orders_*）
     -> 状态变更回流到 Telegram 展示/告警
 
+备注：
+- SQLite `market_data.db` 已废弃（仅保留历史/迁移对账样本，不作为运行态依赖）。

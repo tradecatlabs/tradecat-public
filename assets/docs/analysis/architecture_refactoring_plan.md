@@ -78,12 +78,12 @@ from functools import lru_cache
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_DIR = PROJECT_ROOT / "config"
+CONFIG_DIR = PROJECT_ROOT / "assets/config"
 ENV_FILE = CONFIG_DIR / ".env"
 
 
 def _load_env_file():
-    """加载 config/.env 到 os.environ (仅未设置的变量)"""
+    """加载 assets/config/.env 到 os.environ (仅未设置的变量)"""
     if not ENV_FILE.exists():
         return
     for line in ENV_FILE.read_text().splitlines():
@@ -101,16 +101,13 @@ class DatabaseConfig:
     """数据库配置"""
     timescale_url: str = field(default_factory=lambda: os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:postgres@localhost:5434/market_data"
+        "postgresql://postgres:postgres@localhost:5433/market_data"
     ))
-    sqlite_market_data: Path = field(default_factory=lambda: (
+    indicator_pg_schema: str = field(default_factory=lambda: os.getenv("INDICATOR_PG_SCHEMA", "tg_cards"))
+
+    # （历史）SQLite：仅迁移/对账回放，不作为运行态依赖
+    legacy_sqlite_market_data: Path = field(default_factory=lambda: (
         PROJECT_ROOT / "assets/database/services/telegram-service/market_data.db"
-    ))
-    sqlite_cooldown: Path = field(default_factory=lambda: (
-        PROJECT_ROOT / "assets/database/services/signal-service/cooldown.db"
-    ))
-    sqlite_history: Path = field(default_factory=lambda: (
-        PROJECT_ROOT / "assets/database/services/signal-service/signal_history.db"
     ))
 
 

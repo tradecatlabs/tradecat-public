@@ -3,6 +3,9 @@
 > 生成时间: 2026-01-29  
 > 分析方法: 静态代码分析 + 架构审查
 
+> 更新（2026-03）：api-service 已收敛为 Query Service（`/api/v1/*`）并统一 `datasources/dao`；核心链路已不再读写 SQLite。  
+> 本文部分“问题现状”以 2026-01 基线为准；若与当前代码不一致，以 `assets/tasks/0020~0026` 的落地结果为准。
+
 ---
 
 ## 1. 模块健康度总览
@@ -128,13 +131,14 @@ data = provider.get_ranking(table="谐波信号扫描器.py", ...)
 **现状**:
 ```
 routers/
-├── ohlc.py              # 直接查询 TimescaleDB
-├── open_interest.py     # 直接查询 TimescaleDB
-├── funding_rate.py      # 直接查询 TimescaleDB
-├── futures_metrics.py   # 直接查询 TimescaleDB
-├── base_data.py         # 直接查询 SQLite
-├── indicator.py         # 直接查询 SQLite
-└── signal.py            # 调用 signal-service
+├── query_v1.py           # /api/v1/* 稳定契约（capabilities/cards/dashboard/snapshot）
+├── ohlc.py               # TimescaleDB 查询（datasources(MARKET) 连接池）
+├── open_interest.py      # TimescaleDB 查询（缺表降级）
+├── funding_rate.py       # 资金费率（未接入真实源时返回 not_supported，禁止假数据）
+├── futures_metrics.py    # TimescaleDB 查询（缺表降级）
+├── base_data.py          # 读取 PostgreSQL tg_cards（datasources(INDICATORS) + 引用安全）
+├── indicator.py          # 指标/卡片查询（PG tg_cards；统一 DAO）
+└── signal.py             # 读取 PG signal_state（冷却/订阅/历史）
 ```
 
 **问题**:
@@ -143,9 +147,8 @@ routers/
 - 缓存策略分散
 
 **建议**:
-- 创建 `services/consumption/api-service/src/repositories/` 统一数据访问
-- 引入连接池和查询缓存
-- 参考 trading-service 的 `db/reader.py` 模式
+- 已落地：`src/query/datasources.py`（连接池）+ `src/query/dao.py`（统一 DAO）+ `/api/v1/*`（稳定契约）
+- 仍建议：把旧 `/api/futures/*` 路由逐步收敛为只读兼容层，并在文档中标记 deprecated（避免新消费接入）
 
 ---
 
@@ -153,8 +156,8 @@ routers/
 
 **位置**:
 - `services/*/src/config.py` (多个)
-- `config/.env` (全局)
-- `config/.env.example` (模板)
+- `assets/config/.env` (全局)
+- `assets/config/.env.example` (模板)
 
 **现状**:
 每个服务都有自己的 `config.py`，但配置来源和解析逻辑不一致：

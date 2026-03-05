@@ -8,7 +8,7 @@
 ## 0. 全局约束（适用于所有层）
 
 - **统一时间**：所有时间戳使用 UTC；严禁本地时区混入存储与接口。
-- **单一真相源**：PostgreSQL 作为权威数据源；SQLite 仅允许作为消费侧缓存（可丢、可重建）。
+- **单一真相源**：PostgreSQL/TimescaleDB 作为权威数据源；SQLite 已废弃（仅允许用于迁移/对账回放，不允许作为运行态依赖）。
 - **单向依赖**：采集 → 处理 → 消费；禁止反向调用与跨层写入。
 - **至少一次（At-least-once）交付**：允许重复写入，但必须通过幂等键实现“重复无害”。
 
@@ -85,7 +85,7 @@
    - 输出：面向用户/系统的“投递物”
      - API：`{request_id, ts_range, data[], source_metadata}`
      - 推送：`{channel, dedupe_key, title, body, links[], ts, context}`
-     - 缓存（SQLite，允许丢失）：`ui_snapshots`, `rankings`, `last_sent_state`
+     - 缓存（PG: `sheets_state.*`/内存 cache；SQLite 已废弃）：`ui_snapshots`, `rankings`, `last_sent_state`
 
 2. **幂等键（Idempotency Key）**
    - 消息投递：`dedupe_key = (channel, rule_id/indicator_id, venue, symbol, ts_bucket, context_hash)`
@@ -106,4 +106,3 @@
    - 延迟：`delivery_lag = delivered_ts - event_ts`；按 channel 聚合 P50/P95
    - 缺口率：应推送条数 vs 实际推送条数（按规则/币种/时间窗）
    - 重复率：去重命中次数 / 总尝试次数；每 channel 的重复率必须可报警
-

@@ -1,5 +1,7 @@
 # TradeCat 完整系统架构图
 
+> 更新（2026-03）：运行态指标/状态已收敛到 PostgreSQL（`tg_cards.*` / `signal_state.*` / `sheets_state.*`），不再依赖 SQLite；图中 SQLite 节点仅为历史迁移/对账参考。
+
 ```mermaid
 flowchart TB
     %% 外部数据源
@@ -22,9 +24,12 @@ flowchart TB
     subgraph DB[持久化层]
         TSDB_K[(TimescaleDB candles_1m 3.73亿)]
         TSDB_F[(TimescaleDB futures_5m 9457万)]
-        SQLITE_MKT[(SQLite market_data.db 34表)]
-        SQLITE_CD[(SQLite cooldown.db)]
-        SQLITE_HIST[(SQLite signal_history.db)]
+        PG_TG[(PostgreSQL tg_cards.* 指标派生)]
+        PG_SIGNAL[(PostgreSQL signal_state.* 运行态状态)]
+        PG_SHEETS[(PostgreSQL sheets_state.* 幂等/检查点)]
+        SQLITE_MKT[(（历史）SQLite market_data.db)]
+        SQLITE_CD[(（历史）SQLite cooldown.db)]
+        SQLITE_HIST[(（历史）SQLite signal_history.db)]
     end
 
     %% 指标计算
@@ -46,8 +51,8 @@ flowchart TB
 
     %% 信号检测
     subgraph SIGNAL[signal-service 信号检测]
-        SIG_SQLITE[SQLite Engine]
-        SIG_PG[PG Engine]
+        SIG_SQLITE[（历史）SQLite Engine]
+        SIG_PG[PG Engine（单一引擎）]
         
         subgraph RULES[129条规则]
             R1[core 核心]
@@ -212,7 +217,8 @@ Binance API ──→ data-service ──→ TimescaleDB (K线+期货)
                               (34个指标计算)
                                       │
                                       ▼
-                              SQLite market_data.db
+                              PostgreSQL tg_cards.*
+                              （SQLite market_data.db 为历史迁移/对账样本）
                                       │
                     ┌─────────────────┼─────────────────┐
                     ▼                 ▼                 ▼

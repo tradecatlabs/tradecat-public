@@ -19,9 +19,9 @@
 
 ## P2（收敛/清理）
 
-- [ ] P2: 移除 SQLite 代码路径与遗留脚本（保留迁移工具） | Verify: `rg -n "import sqlite3" services` 为空 | Gate: CI/本地验证全绿
-- [ ] P2: 清理 `.db` 产物与远端快照逻辑（remote_db） | Verify: `find . -name "*.db" -not -path "*/assets/repo/*"` | Gate: 运行不依赖本地 DB 文件
-- [ ] P2: 文档同步（README/架构图/运维口径） | Verify: `rg -n "market_data\\.db" README* assets/docs` 仅保留“历史/迁移说明” | Gate: 文档与代码一致
+- [x] P2: 移除 SQLite 代码路径与遗留脚本（保留迁移工具） | Verify: `rg -n "import sqlite3" services` 为空 | Gate: CI/本地验证全绿
+- [x] P2: 清理 `.db` 产物与远端快照逻辑（remote_db） | Verify: `find . -name "*.db" -not -path "*/assets/repo/*"` | Gate: 运行不依赖本地 DB 文件
+- [x] P2: 文档同步（README/架构图/运维口径） | Verify: `rg -n "market_data\\.db" README* assets/docs` 仅保留“历史/迁移说明” | Gate: 文档与代码一致
 
 ## 可并行（Parallelizable）
 
