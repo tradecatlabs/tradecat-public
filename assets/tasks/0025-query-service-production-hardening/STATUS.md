@@ -14,6 +14,7 @@
 - `rg -n "QUERY_SERVICE_AUTH_MODE" README.md README_EN.md`: ✅ 已补齐（文档与 `.env.example` 同步）
 - `./scripts/verify.sh`: _TBD_
 - `cd services/consumption/api-service && make check`: ✅ 通过（ruff + pytest，`26 passed`；新增 dashboard/snapshot TTL 缓存 + 防“ignored_cards 污染缓存”测试用例）
+- statement_timeout 故障注入：✅ `QUERY_PG_STATEMENT_TIMEOUT_MS=1200` + `SELECT pg_sleep(5)` → `QueryCanceled`（≈1.2s）
 - `cd services/consumption/telegram-service && make check`: ✅ 通过（ruff + pytest，`3 passed`；覆盖 retry + stale-if-error）
 - `cd services/compute/trading-service && make check`: ✅ 通过（pytest，`2 passed, 1 skipped`；读库失败不再静默吞掉）
 

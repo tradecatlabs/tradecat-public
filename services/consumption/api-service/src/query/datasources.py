@@ -33,6 +33,25 @@ _LOCK = Lock()
 LOG = logging.getLogger("tradecat.api.datasources")
 
 
+def _statement_timeout_ms() -> int:
+    """
+    PostgreSQL statement_timeout（毫秒）：
+
+    - 目的：避免慢查询/卡死把连接池拖住，导致请求排队雪崩
+    - env: QUERY_PG_STATEMENT_TIMEOUT_MS
+      - <=0：禁用（不设置 statement_timeout）
+      - 默认：8000（8s）
+    """
+    raw = (os.getenv("QUERY_PG_STATEMENT_TIMEOUT_MS") or "").strip()
+    if not raw:
+        return 8000
+    try:
+        v = int(raw)
+    except Exception:
+        return 8000
+    return max(int(v), 0)
+
+
 def _resolve_dsn(spec: DataSourceSpec) -> str:
     raw = (os.getenv(spec.env_key) or "").strip()
     if raw:
@@ -93,12 +112,18 @@ def get_pool(spec: DataSourceSpec) -> ConnectionPool:
         if not dsn:
             raise RuntimeError(f"missing_dsn:{spec.env_key}")
 
+        kwargs: dict[str, object] = {"connect_timeout": 3}
+        statement_timeout_ms = int(_statement_timeout_ms())
+        if statement_timeout_ms > 0:
+            # libpq: options='-c statement_timeout=8000'
+            kwargs["options"] = f"-c statement_timeout={statement_timeout_ms}"
+
         pool = ConnectionPool(
             dsn,
             min_size=1,
             max_size=10,
             timeout=30,
-            kwargs={"connect_timeout": 3},
+            kwargs=kwargs,
         )
         _POOLS[spec.id] = pool
         return pool
