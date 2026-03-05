@@ -2,8 +2,6 @@
 
 import logging
 import os
-import sys
-from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -12,11 +10,6 @@ from psycopg import sql
 from src.query import datasources
 from src.utils.errors import ErrorCode, api_response, error_response
 from src.utils.symbol import to_base_symbol
-
-# 添加 repo root 到路径，以使用 assets/common/symbols.py 的全局币种管理
-repo_root = Path(__file__).resolve().parents[5]
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
 
 from assets.common.symbols import get_configured_symbols
 
