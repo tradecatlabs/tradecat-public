@@ -36,6 +36,11 @@
 - `SHEETS_FACTS_MODE`：`append|none`（默认 `append`；若工作簿触发 1000 万 cells 上限，需要设为 `none` 仅保留看板覆盖写）
 - `SHEETS_BLOB_THRESHOLD_CHARS`：raw 超长阈值（默认 20000；超长会落 Drive 并在表内存引用）
 - `SHEETS_SA_WRITE_RPM`：SA 写入限流（写请求/分钟，默认 55；配额为 60 时建议 50）
+- `SHEETS_SA_READ_RETRIES`：读请求弱网重试次数（默认 3；覆盖 `SSLError/ConnectionResetError/socket.timeout/5xx/429` 等瞬断）
+- `SHEETS_SA_429_RETRIES`：写请求遇到 429 的重试次数（默认 8；指数退避）
+- `SHEETS_SA_NET_WRITE_RETRIES`：写请求弱网/代理抖动重试次数（默认 2；仅对“幂等写入”生效，避免 append 重放）
+- `SHEETS_PRUNE_TABS_INTERVAL_SECONDS`：minimal schema 下 prune_tabs 的最小执行间隔（默认 21600=6h；keep 集合变更会绕过间隔立即执行；状态写入 `local_meta.json`）
+- `SHEETS_LOG_LEVEL`：日志级别（`info|debug`，默认 `info`；`debug` 才会输出 `[DEBUG]` 细节）
 
 ### 指标数据源（Query Service）
 
@@ -59,6 +64,9 @@ sheets-service 复用 telegram-service 的卡片导出逻辑，指标/行情快�
 - 固定列宽（可选，优先级最高）：用于“你在表格 UI 手工拖拽调整好列宽后，希望后续刷新不再覆盖”
   - `SHEETS_DASHBOARD_FIXED_COL_WIDTHS`：看板每列像素宽度列表（从 `SHEETS_DASHBOARD_COL_L` 起），逗号/中文逗号分隔；长度不足会用最后一个值补齐，超出会截断
   - `SHEETS_SYMBOL_QUERY_FIXED_COL_WIDTHS`：币种查询表每列像素宽度列表（从 A 列起），规则同上
+  - CLI 快照（只读，不写入 `.env`）：
+    - `.venv/bin/python -m src --snapshot-col-widths`（输出：看板/币种查询/Polymarket 三表共 5 行 env）
+    - `.venv/bin/python -m src --snapshot-polymarket-col-widths`（仅输出 Polymarket 三表 env，历史兼容）
 - 顶部广告/赞助商栏（可选）：在看板顶部新增首行（A1）用于放置赞助商/返佣信息
   - `SHEETS_DASHBOARD_BANNER_TEXT`：看板广告栏文本（优先）
   - `SHEETS_TOP_BANNER_TEXT`：全局广告栏文本（当 `SHEETS_DASHBOARD_BANNER_TEXT` 为空时回退使用）
