@@ -13,7 +13,7 @@
 - [x] P1: open_interest 去 float 漂移（Decimal 保真） | Verify: `cd services/consumption/api-service && make check` | Gate: 返回字符串稳定，不出现科学计数法
 - [x] P1: 引入 `QUERY_NUMERIC_MODE`（float|string）并补单测 | Verify: `cd services/consumption/api-service && make check` | Gate: 两种模式均通过
 - [x] P1: dashboard/snapshot 加短 TTL 缓存+上限+击穿锁 | Verify: `cd services/consumption/api-service && make check` | Gate: 同参数二次请求不重复计算
-- [ ] P1: telegram QueryServiceClient 加锁+重试+stale-if-error | Verify: `cd services/consumption/telegram-service && make check` | Gate: 故障注入下仍可返回 stale（或不崩溃）
+- [x] P1: telegram QueryServiceClient 加锁+重试+stale-if-error | Verify: `cd services/consumption/telegram-service && make check` | Gate: 故障注入下仍可返回 stale（或不崩溃）
 - [ ] P1: futures_gap_monitor 缓存加锁 + 禁止 silent fallback | Verify: `cd services/compute/trading-service && make check` | Gate: DB 异常时输出显式 error，日志有 warning
 
 ## P2（工程化/可维护性）
