@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Local-only agent/debug notes. Keep them on the developer machine, not in the public repo.
+AGENTS.md
+DEBUG.md
+DEBUG.archive.md
