@@ -24,6 +24,7 @@
 ## 目录
 
 - [定位](#定位)
+- [系统架构图](#系统架构图)
 - [免责声明](#免责声明)
 - [快速开始](#快速开始)
 - [常用命令](#常用命令)
@@ -51,6 +52,38 @@ TradeCat Terminal 是一个轻量、可本地运行、可独立分发的用户�
 - 不使用 SQLite、WAL、本地 SQL 查询层或数据库型后端存储。
 - 不需要 Google service account、私钥、token 或服务端权限。
 - 不承担服务端数据生产、采集、修复或发布职责。
+
+## 系统架构图
+
+```mermaid
+flowchart TD
+    A[Google Sheets 公开 CSV] --> B[Dataset Registry]
+    B --> C[Sync / Probe]
+    C --> D[本地 JSON 快照缓存]
+    D --> E[CLI 状态与同步命令]
+    D --> F[TUI 终端面板]
+
+    subgraph Remote[远端公开数据]
+        A1[market_data 工作簿]
+        A2[alternative_data 工作簿]
+        A1 --> A
+        A2 --> A
+    end
+
+    subgraph Cache[用户本地缓存]
+        D1[snapshots/*.json]
+        D2[stream_events.json]
+        D --> D1
+        D --> D2
+    end
+
+    subgraph Interface[用户入口]
+        E1[tradecat init/status/sync/probe]
+        F1[tradecat / tradecat tui]
+        E --> E1
+        F --> F1
+    end
+```
 
 ## 免责声明
 
