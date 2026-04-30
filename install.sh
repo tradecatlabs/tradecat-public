@@ -115,6 +115,31 @@ EOF
   chmod +x "$BIN_DIR/tcat-uninstall"
 }
 
+ensure_shell_path() {
+  path_line="export PATH=\"$BIN_DIR:\$PATH\""
+  wrote=0
+  for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -e "$profile" ] && ! grep -F "$BIN_DIR" "$profile" >/dev/null 2>&1; then
+      {
+        printf '\n'
+        printf '# Added by TradeCat installer\n'
+        printf '%s\n' "$path_line"
+      } >>"$profile"
+      wrote=1
+    fi
+  done
+  if [ ! -e "$HOME/.profile" ]; then
+    {
+      printf '# Added by TradeCat installer\n'
+      printf '%s\n' "$path_line"
+    } >"$HOME/.profile"
+    wrote=1
+  fi
+  if [ "$wrote" = "1" ]; then
+    log "已把 $BIN_DIR 写入 shell profile；重新登录或新开终端后可直接运行 tradecat"
+  fi
+}
+
 bootstrap_cache() {
   "$BIN_DIR/tradecat" init >/dev/null
   if "$BIN_DIR/tradecat" sync-all >/dev/null 2>&1; then
@@ -128,15 +153,17 @@ main() {
   checkout_repo
   create_venv
   write_launcher
+  ensure_shell_path
   bootstrap_cache
 
   log "安装完成"
   log "命令入口：$BIN_DIR/tradecat"
   log "卸载命令：$BIN_DIR/tradecat-uninstall"
   if ! printf '%s' ":$PATH:" | grep -F ":$BIN_DIR:" >/dev/null 2>&1; then
-    log "当前 PATH 未包含 $BIN_DIR；本次会话可执行：export PATH=\"$BIN_DIR:\$PATH\""
+    log "当前会话 PATH 未包含 $BIN_DIR；立即运行可用：$BIN_DIR/tradecat"
+    log "或执行：export PATH=\"$BIN_DIR:\$PATH\""
   fi
-  log "启动：tradecat"
+  log "启动：$BIN_DIR/tradecat"
 }
 
 main "$@"

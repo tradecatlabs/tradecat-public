@@ -120,6 +120,7 @@ tradecat
 4. 初始化 `.tradecat/cache`。
 5. 尝试同步一次公开数据，失败时不阻断安装。
 6. 把 `tradecat` / `tcat` / `tradecat-uninstall` 放到用户级命令目录。
+7. Linux / macOS / WSL 会把命令目录写入 shell profile；当前会话如果还没生效，可直接运行 `~/.local/bin/tradecat`。
 
 ### 卸载
 
