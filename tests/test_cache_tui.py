@@ -953,6 +953,36 @@ def test_tui_without_curses_falls_back_to_plain(monkeypatch, tmp_path):
     assert calls == []
 
 
+def test_tui_windows_native_defaults_to_plain(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module.sys, "platform", "win32")
+    monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_CURSES", raising=False)
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+
+    assert "Windows 原生终端的 curses 渲染不稳定" in output
+    assert "已自动切换为静态文本模式" in output
+    assert calls == []
+
+
+def test_tui_windows_native_can_force_curses(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module.sys, "platform", "win32")
+    monkeypatch.setenv("TRADECAT_TERMINAL_FORCE_CURSES", "1")
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(tui_module.curses, "wrapper", lambda callback: None)
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+
+    assert output is None
+    assert calls == []
+
+
 def test_tui_live_startup_is_cache_first_without_blocking_probe(monkeypatch, tmp_path):
     import tradecat_terminal.tui as tui_module
 

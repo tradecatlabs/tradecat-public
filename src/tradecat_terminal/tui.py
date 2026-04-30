@@ -32,6 +32,7 @@ TUI_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_PROBE_INTERVAL"
 TUI_FETCH_TIMEOUT_ENV = "TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT"
 TUI_BACKGROUND_PROBE_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE"
 TUI_BACKGROUND_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL"
+TUI_FORCE_CURSES_ENV = "TRADECAT_TERMINAL_FORCE_CURSES"
 BINANCE_FUTURES_URL_TEMPLATE = "https://www.binance.com/zh-CN/futures/{symbol}?type=perpetual"
 SYMBOL_HEADER_NAMES = {"交易对", "合约代码", "代码", "币种", "symbol", "Symbol", "SYMBOL"}
 SYMBOL_VALUE_RE = re.compile(r"^[A-Z0-9]{2,24}(?:USDT)?$")
@@ -57,7 +58,7 @@ def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, 
     return "\n".join(
         [
             f"提示：{reason}",
-            "已自动切换为静态文本模式；如需交互式 TUI，请使用支持 curses 的终端或重新运行安装脚本。",
+            "已自动切换为静态文本模式；如需交互式 TUI，请使用 Windows Terminal + WSL，或设置 TRADECAT_TERMINAL_FORCE_CURSES=1 后自行测试。",
             "",
             render_basic_tui(cache_dir, dataset_key=dataset_key, limit=limit),
         ]
@@ -95,6 +96,8 @@ def run_tui(
     startup_dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     if not interactive:
         return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=limit)
+    if _should_force_plain_mode_on_windows():
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, "Windows 原生终端的 curses 渲染不稳定")
     if curses is None:
         return render_plain_fallback(cache_dir, startup_dataset_key, limit, "当前 Python 环境不支持 curses")
     try:
@@ -111,6 +114,13 @@ def run_tui(
     except curses.error as exc:
         return render_plain_fallback(cache_dir, startup_dataset_key, limit, f"交互式 TUI 渲染失败：{exc}")
     return None
+
+
+def _should_force_plain_mode_on_windows() -> bool:
+    if sys.platform != "win32":
+        return False
+    raw = os.environ.get(TUI_FORCE_CURSES_ENV, "")
+    return raw.strip().lower() not in {"1", "true", "yes", "on"}
 
 
 def _run_curses(
