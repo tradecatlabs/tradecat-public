@@ -1,6 +1,6 @@
 <div align="center">
 
-# TradeCat Terminal
+# TradeCat
 
 用户侧终端面板：只读 TradeCat 公开数据入口，写入本地 JSON 快照缓存，并在终端中浏览市场快照与事件流。
 
@@ -8,8 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-TradeCat CA：
-[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777)
+CA：[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777)
 
 公开数据入口：
 由内置 dataset registry 管理，用户无需手工配置数据源。
@@ -35,11 +34,11 @@ TradeCat CA：
 - [配置](#配置)
 - [开发与验证](#开发与验证)
 
-> 给 AI 助手的一句话：`请按 https://github.com/tukuaiai/tradecat/tree/develop 的 README 帮我安装并运行 TradeCat Terminal。`
+> 给 AI 助手的一句话：`请按 https://github.com/tukuaiai/tradecat/tree/develop 的 README 帮我安装并运行 TradeCat。`
 
 ## 定位
 
-TradeCat Terminal 是一个轻量、可本地运行、可独立分发的用户侧工具。
+TradeCat 是一个轻量、可本地运行、可独立分发的用户侧工具。
 
 它只做三件事：
 
@@ -139,7 +138,7 @@ tradecat
 把下面这段复制给 Claude / ChatGPT / Cursor / Codex：
 
 ```text
-请帮我安装并运行 TradeCat Terminal：
+请帮我安装并运行 TradeCat：
 
 1. 克隆 https://github.com/tukuaiai/tradecat.git
 2. 进入仓库后创建 Python 3.12 虚拟环境
