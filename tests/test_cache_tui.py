@@ -51,6 +51,8 @@ from tradecat_terminal.tui import (
     _update_probe_tuning_state,
     _url_link_for_visible_row,
     render_basic_tui,
+    render_plain_fallback,
+    render_safe_plain_tui,
     render_rows_table,
     run_tui,
 )
@@ -373,6 +375,46 @@ def test_tui_table_renderer_preserves_full_plain_structure():
     assert "| 长文本 " in output
     assert "abcdefghijklmnopqrstuvwxyz0123456789" in output
     assert len({_display_width(line) for line in output.splitlines()}) == 1
+
+
+def test_tui_safe_plain_fallback_uses_borderless_width_capped_output(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    long_text = "美国总统特朗普：伊朗的无人机和导弹工厂数量大幅下降。" * 8
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        f"https://dexscreener.com/x\n时间(北京),内容\n2026-05-01 03:09:56,{long_text}\n",
+    )
+    monkeypatch.setenv("TRADECAT_TERMINAL_PLAIN_WIDTH", "80")
+
+    output = render_plain_fallback(cache_dir, "event_stream", 0, "Windows 原生终端的 curses 渲染不稳定")
+    lines = output.splitlines()
+
+    assert "Windows 原生终端的 curses 渲染不稳定" in output
+    assert "+---" not in output
+    assert not any(line.startswith("+") or set(line) <= {"-", "+"} for line in lines if line)
+    assert all(_display_width(line) <= 80 for line in lines)
+    assert "2026-05-01 03:09:56" in output
+    assert "美国总统特朗普" in output
+
+
+def test_tui_safe_plain_renderer_handles_wide_snapshot_without_psql_borders(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    columns = ",".join(f"字段{i}" for i in range(1, 18))
+    values = ",".join(f"值{i}" for i in range(1, 18))
+    write_dataset_body(
+        cache_dir,
+        get_dataset("market_snapshot"),
+        f"数据源,market\n{columns}\n{values}\n",
+    )
+    monkeypatch.setenv("TRADECAT_TERMINAL_PLAIN_WIDTH", "90")
+
+    output = render_safe_plain_tui(cache_dir, dataset_key="market_snapshot", limit=0)
+
+    assert "+---" not in output
+    assert "| 字段" not in output
+    assert all(_display_width(line) <= 90 for line in output.splitlines())
+    assert "#2" in output
 
 
 def test_viewport_renderer_outputs_all_columns_without_freezing_or_horizontal_scroll():

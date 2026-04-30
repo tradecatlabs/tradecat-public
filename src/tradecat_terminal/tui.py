@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -34,6 +35,9 @@ TUI_BACKGROUND_PROBE_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE"
 TUI_BACKGROUND_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL"
 TUI_FORCE_CURSES_ENV = "TRADECAT_TERMINAL_FORCE_CURSES"
 TUI_FORCE_PLAIN_ENV = "TRADECAT_TERMINAL_FORCE_PLAIN"
+TUI_PLAIN_WIDTH_ENV = "TRADECAT_TERMINAL_PLAIN_WIDTH"
+DEFAULT_SAFE_PLAIN_WIDTH = 120
+MAX_SAFE_PLAIN_WIDTH = 160
 BINANCE_FUTURES_URL_TEMPLATE = "https://www.binance.com/zh-CN/futures/{symbol}?type=perpetual"
 SYMBOL_HEADER_NAMES = {"交易对", "合约代码", "代码", "币种", "symbol", "Symbol", "SYMBOL"}
 SYMBOL_VALUE_RE = re.compile(r"^[A-Z0-9]{2,24}(?:USDT)?$")
@@ -56,14 +60,39 @@ def render_basic_tui(cache_dir: Path, dataset_key: str | None = None, limit: int
 
 
 def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, reason: str) -> str:
-    return "\n".join(
+    return render_safe_plain_tui(cache_dir, dataset_key=dataset_key, limit=limit, reason=reason)
+
+
+def render_safe_plain_tui(
+    cache_dir: Path,
+    dataset_key: str | None = None,
+    limit: int = 0,
+    *,
+    reason: str | None = None,
+) -> str:
+    """为 Windows PowerShell / Web SSH 这类不稳定终端生成无边框静态输出。"""
+    dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
+    width = _safe_plain_output_width()
+    view = read_cached_view(cache_dir, dataset_key)
+    lines: list[str] = []
+    if reason:
+        lines.append(_safe_plain_line(f"提示：{reason}", width))
+        lines.append(_safe_plain_line("已自动切换为静态文本模式；该模式不使用 psql 边框，避免 Windows/Web 终端换行错位。", width))
+    lines.extend(
         [
-            f"提示：{reason}",
-            "已自动切换为静态文本模式；如需交互式 TUI，请使用 Windows Terminal + WSL、桌面终端，或设置 TRADECAT_TERMINAL_FORCE_CURSES=1 后自行测试。",
-            "",
-            render_basic_tui(cache_dir, dataset_key=dataset_key, limit=limit),
+            _safe_plain_line("TradeCat", width),
+            _safe_plain_line(f"cache: {cache_dir}", width),
+            _safe_plain_line(f"current: {dataset_key}", width),
         ]
     )
+    if not view["rows"]:
+        lines.append(_safe_plain_line("暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat", width))
+        return "\n".join(lines)
+    for line in view.get("top_lines") or []:
+        lines.append(_safe_plain_line(line, width))
+    rows = _rows_for_display(view, start=0, limit=limit)
+    lines.extend(_render_safe_plain_rows(rows, columns=view.get("columns") or None, width=width))
+    return "\n".join(lines)
 
 
 def render_rows_table(
@@ -82,6 +111,70 @@ def render_rows_table(
         for row in rows
     ]
     return _render_psql_table(["#", *selected_columns], table_rows)
+
+
+def _safe_plain_output_width() -> int:
+    raw = os.environ.get(TUI_PLAIN_WIDTH_ENV, "").strip()
+    if raw:
+        try:
+            return max(60, min(int(raw), MAX_SAFE_PLAIN_WIDTH))
+        except ValueError:
+            pass
+    columns = shutil.get_terminal_size((DEFAULT_SAFE_PLAIN_WIDTH, 24)).columns
+    return max(60, min(int(columns), MAX_SAFE_PLAIN_WIDTH))
+
+
+def _safe_plain_line(text: Any, width: int) -> str:
+    return _ellipsize_display(_format_cell(text), max(1, int(width)))
+
+
+def _render_safe_plain_rows(
+    rows: list[dict[str, Any]],
+    *,
+    columns: list[str] | None,
+    width: int,
+) -> list[str]:
+    selected_columns = list(columns or _select_columns(rows))
+    if not rows:
+        return []
+    if len(selected_columns) <= 2:
+        return _render_safe_plain_two_column_rows(rows, selected_columns, width=width)
+    return _render_safe_plain_wide_rows(rows, selected_columns, width=width)
+
+
+def _render_safe_plain_two_column_rows(rows: list[dict[str, Any]], columns: list[str], *, width: int) -> list[str]:
+    selected_columns = columns[:2] or _select_columns(rows)[:2]
+    row_width = min(6, max([1, *[_display_width(_format_cell(row.get("row_index", ""))) for row in rows]]))
+    first_width = 0
+    if selected_columns:
+        first_values = [_format_cell(_row_values(row).get(selected_columns[0], "")) for row in rows]
+        first_width = min(24, max([10, *[_display_width(value) for value in first_values]]))
+    output: list[str] = []
+    for row in rows:
+        values = _row_values(row)
+        row_index = _format_cell(row.get("row_index", ""))
+        first = _format_cell(values.get(selected_columns[0], "")) if selected_columns else ""
+        second = _format_cell(values.get(selected_columns[1], "")) if len(selected_columns) > 1 else ""
+        prefix = f"{_pad_display(row_index, row_width)}  {_pad_display(first, first_width)}  "
+        remaining = max(1, int(width) - _display_width(prefix))
+        output.append(prefix + _ellipsize_display(second, remaining))
+    return output
+
+
+def _render_safe_plain_wide_rows(rows: list[dict[str, Any]], columns: list[str], *, width: int) -> list[str]:
+    output: list[str] = []
+    for row in rows:
+        values = _row_values(row)
+        row_index = _format_cell(row.get("row_index", ""))
+        parts = [f"#{row_index}"]
+        for column in columns:
+            value = _format_cell(values.get(column, ""))
+            if value:
+                parts.append(f"{column}={value}")
+            if _display_width("  ".join(parts)) >= width:
+                break
+        output.append(_ellipsize_display("  ".join(parts), width))
+    return output
 
 
 def run_tui(
