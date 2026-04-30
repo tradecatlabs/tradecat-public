@@ -33,6 +33,7 @@ TUI_FETCH_TIMEOUT_ENV = "TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT"
 TUI_BACKGROUND_PROBE_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE"
 TUI_BACKGROUND_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL"
 TUI_FORCE_CURSES_ENV = "TRADECAT_TERMINAL_FORCE_CURSES"
+TUI_FORCE_PLAIN_ENV = "TRADECAT_TERMINAL_FORCE_PLAIN"
 BINANCE_FUTURES_URL_TEMPLATE = "https://www.binance.com/zh-CN/futures/{symbol}?type=perpetual"
 SYMBOL_HEADER_NAMES = {"交易对", "合约代码", "代码", "币种", "symbol", "Symbol", "SYMBOL"}
 SYMBOL_VALUE_RE = re.compile(r"^[A-Z0-9]{2,24}(?:USDT)?$")
@@ -58,7 +59,7 @@ def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, 
     return "\n".join(
         [
             f"提示：{reason}",
-            "已自动切换为静态文本模式；如需交互式 TUI，请使用 Windows Terminal + WSL，或设置 TRADECAT_TERMINAL_FORCE_CURSES=1 后自行测试。",
+            "已自动切换为静态文本模式；如需交互式 TUI，请使用 Windows Terminal + WSL、桌面终端，或设置 TRADECAT_TERMINAL_FORCE_CURSES=1 后自行测试。",
             "",
             render_basic_tui(cache_dir, dataset_key=dataset_key, limit=limit),
         ]
@@ -96,8 +97,9 @@ def run_tui(
     startup_dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     if not interactive:
         return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=limit)
-    if _should_force_plain_mode_on_windows():
-        return render_plain_fallback(cache_dir, startup_dataset_key, limit, "Windows 原生终端的 curses 渲染不稳定")
+    plain_reason = _plain_mode_reason()
+    if plain_reason:
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, plain_reason)
     if curses is None:
         return render_plain_fallback(cache_dir, startup_dataset_key, limit, "当前 Python 环境不支持 curses")
     try:
@@ -116,11 +118,41 @@ def run_tui(
     return None
 
 
-def _should_force_plain_mode_on_windows() -> bool:
-    if sys.platform != "win32":
+def _plain_mode_reason() -> str:
+    if _truthy_env(TUI_FORCE_CURSES_ENV):
+        return ""
+    if _truthy_env(TUI_FORCE_PLAIN_ENV):
+        return "已按 TRADECAT_TERMINAL_FORCE_PLAIN=1 使用静态文本模式"
+    if sys.platform == "win32":
+        return "Windows 原生终端的 curses 渲染不稳定"
+    if _is_web_or_unknown_ssh_terminal():
+        return "远程 Web/SSH 终端的 curses 宽字符渲染不稳定"
+    return ""
+
+
+def _is_web_or_unknown_ssh_terminal() -> bool:
+    if not (os.environ.get("SSH_CONNECTION") or os.environ.get("SSH_CLIENT")):
         return False
-    raw = os.environ.get(TUI_FORCE_CURSES_ENV, "")
-    return raw.strip().lower() not in {"1", "true", "yes", "on"}
+    if _truthy_env("TRADECAT_TERMINAL_ALLOW_SSH_CURSES"):
+        return False
+    if _known_stable_terminal():
+        return False
+    return True
+
+
+def _known_stable_terminal() -> bool:
+    if os.environ.get("WT_SESSION"):
+        return True
+    if os.environ.get("VTE_VERSION") or os.environ.get("KONSOLE_VERSION"):
+        return True
+    if os.environ.get("ALACRITTY_WINDOW_ID") or os.environ.get("KITTY_WINDOW_ID"):
+        return True
+    term_program = os.environ.get("TERM_PROGRAM", "")
+    return term_program in {"iTerm.app", "Apple_Terminal", "vscode", "WezTerm", "WarpTerminal"}
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _run_curses(

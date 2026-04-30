@@ -983,6 +983,43 @@ def test_tui_windows_native_can_force_curses(monkeypatch, tmp_path):
     assert calls == []
 
 
+def test_tui_unknown_ssh_terminal_defaults_to_plain(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module.sys, "platform", "linux")
+    monkeypatch.setenv("SSH_CONNECTION", "1.1.1.1 1 2.2.2.2 2")
+    monkeypatch.delenv("WT_SESSION", raising=False)
+    monkeypatch.delenv("TERM_PROGRAM", raising=False)
+    monkeypatch.delenv("VTE_VERSION", raising=False)
+    monkeypatch.delenv("KONSOLE_VERSION", raising=False)
+    monkeypatch.delenv("ALACRITTY_WINDOW_ID", raising=False)
+    monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_CURSES", raising=False)
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+
+    assert "远程 Web/SSH 终端的 curses 宽字符渲染不稳定" in output
+    assert calls == []
+
+
+def test_tui_known_stable_ssh_terminal_can_use_curses(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module.sys, "platform", "linux")
+    monkeypatch.setenv("SSH_CONNECTION", "1.1.1.1 1 2.2.2.2 2")
+    monkeypatch.setenv("WT_SESSION", "stable")
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(tui_module.curses, "wrapper", lambda callback: None)
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+
+    assert output is None
+    assert calls == []
+
+
 def test_tui_live_startup_is_cache_first_without_blocking_probe(monkeypatch, tmp_path):
     import tradecat_terminal.tui as tui_module
 
