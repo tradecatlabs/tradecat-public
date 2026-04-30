@@ -4,8 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_DATA_DIR = Path.home() / ".tradecat"
-DEFAULT_CACHE_DIR = DEFAULT_DATA_DIR / "cache"
+DEFAULT_APP_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CACHE_DIR = DEFAULT_APP_ROOT / ".tradecat" / "cache"
 
 
 @dataclass(frozen=True)

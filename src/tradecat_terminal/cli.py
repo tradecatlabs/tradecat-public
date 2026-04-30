@@ -8,14 +8,14 @@ import sys
 from tradecat_terminal.cache import init_cache, prune_cache, status_cache
 from tradecat_terminal.config import load_config
 from tradecat_terminal.lifecycle import doctor_local_store, probe_all_datasets, probe_dataset, watch_datasets
-from tradecat_terminal.registry import dataset_to_dict, list_datasets
+from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_datasets
 from tradecat_terminal.sync import sync_all_datasets, sync_dataset
 from tradecat_terminal.tui import run_tui
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tradecat", description="TradeCat 用户侧终端面板")
-    parser.add_argument("--cache-dir", help="本地快照缓存目录，默认 TRADECAT_CACHE_DIR 或 ~/.tradecat/cache")
+    parser.add_argument("--cache-dir", help="本地快照缓存目录，默认 TRADECAT_CACHE_DIR 或 TradeCat 源码根目录 .tradecat/cache")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="初始化本地快照缓存目录")
@@ -26,6 +26,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     status_parser = subparsers.add_parser("status", help="查看本地缓存状态")
     status_parser.add_argument("--json", action="store_true", help="输出 JSON")
+
+    path_parser = subparsers.add_parser("path", help="输出结构化缓存文件路径，便于用户和 Agent 读取")
+    path_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则输出根 manifest")
+    path_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     datasets_parser = subparsers.add_parser("datasets", help="列出可同步 dataset")
     datasets_parser.add_argument("--all", action="store_true", help="包含 inactive dataset")
@@ -99,6 +103,14 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(payload, ensure_ascii=False))
         else:
             print_status(payload)
+        return 0
+
+    if args.command == "path":
+        payload = cache_paths(config.cache_dir, args.dataset_key)
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print_paths(payload)
         return 0
 
     if args.command == "datasets":
@@ -300,7 +312,7 @@ def _should_route_to_tui(argv: list[str]) -> bool:
     if not argv:
         return False
     first = argv[0]
-    if first in {"init", "doctor", "status", "datasets", "sync", "sync-all", "probe", "watch", "tui"}:
+    if first in {"init", "doctor", "status", "path", "datasets", "sync", "sync-all", "probe", "watch", "tui"}:
         return False
     if first in {"-h", "--help", "--cache-dir"}:
         return False
@@ -326,6 +338,34 @@ def _route_global_tui_args(argv: list[str]) -> list[str]:
         tui_args.append(token)
         index += 1
     return [*global_args, "tui", *tui_args]
+
+
+def cache_paths(cache_dir, dataset_key: str | None = None) -> dict:
+    if not dataset_key:
+        return {
+            "cache_dir": str(cache_dir),
+            "manifest": str(cache_dir / "manifest.json"),
+        }
+    dataset = get_dataset(dataset_key)
+    dataset_dir = cache_dir / "datasets" / dataset.key
+    payload = {
+        "cache_dir": str(cache_dir),
+        "dataset_key": dataset.key,
+        "dataset_dir": str(dataset_dir),
+        "manifest": str(dataset_dir / "manifest.json"),
+        "latest_json": str(dataset_dir / "latest.json"),
+        "latest_jsonl": str(dataset_dir / "latest.jsonl"),
+        "latest_csv": str(dataset_dir / "latest.csv"),
+        "snapshots_dir": str(dataset_dir / "snapshots"),
+    }
+    if dataset.is_stream():
+        payload["stream_events"] = str(dataset_dir / "stream_events.json")
+    return payload
+
+
+def print_paths(payload: dict) -> None:
+    for key, value in payload.items():
+        print(f"{key}: {value}")
 
 
 if __name__ == "__main__":

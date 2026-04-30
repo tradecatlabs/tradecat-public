@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="${TRADECAT_TERMINAL_RUNTIME_DIR:-$HOME/.tradecat-terminal/run}"
-CACHE_DIR="${TRADECAT_CACHE_DIR:-$HOME/.tradecat/cache}"
+CACHE_DIR="${TRADECAT_CACHE_DIR:-$APP_DIR/.tradecat/cache}"
 INTERVAL="${TRADECAT_TERMINAL_WATCH_INTERVAL:-60}"
 DATASET="${TRADECAT_TERMINAL_WATCH_DATASET:-}"
 PID_FILE="$RUNTIME_DIR/watch.pid"

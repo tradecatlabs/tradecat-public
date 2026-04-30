@@ -27,6 +27,7 @@ CA：[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad26
 - [系统架构图](#系统架构图)
 - [免责声明](#免责声明)
 - [快速开始](#快速开始)
+- [一次性请求](#一次性请求)
 - [常用命令](#常用命令)
 - [TUI 操作](#tui-操作)
 - [数据集](#数据集)
@@ -95,7 +96,102 @@ flowchart TD
 
 ## 快速开始
 
-### 推荐：从源码安装
+### 推荐：一键安装
+
+Linux / macOS / WSL / Git Bash：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.sh | sh
+tradecat
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.ps1 | iex
+tradecat
+```
+
+安装脚本会自动完成：
+
+1. 克隆或更新 `https://github.com/tukuaiai/tradecat.git` 的 `develop` 分支。
+2. 创建项目内 `.venv`。
+3. 安装 `tradecat` 命令入口。
+4. 初始化 `.tradecat/cache`。
+5. 尝试同步一次公开数据，失败时不阻断安装。
+6. 把 `tradecat` / `tcat` / `tradecat-uninstall` 放到用户级命令目录。
+
+### 卸载
+
+安装完成后，直接运行：
+
+```bash
+tradecat-uninstall
+```
+
+Windows PowerShell：
+
+```powershell
+tradecat-uninstall
+```
+
+也可以不依赖本地安装，直接远程卸载默认安装位置：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/uninstall.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/uninstall.ps1 | iex
+```
+
+卸载会删除：
+
+- TradeCat 安装目录。
+- `tradecat` / `tcat` / `tradecat-uninstall` 命令入口。
+- 后台 watch 的 pid/log 运行态目录。
+
+卸载不会删除：
+
+- 系统 Python。
+- Git。
+- uv。
+- 用户 PATH 变量。
+
+默认缓存位于安装目录内，会随安装目录一起删除。如需卸载前保留缓存：
+
+```bash
+TRADECAT_KEEP_CACHE=1 tradecat-uninstall
+```
+
+Windows PowerShell：
+
+```powershell
+$env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
+```
+
+默认安装位置：
+
+| 平台 | 源码目录 | 命令目录 |
+|:---|:---|:---|
+| Linux / macOS / WSL / Git Bash | `~/.tradecat/app` | `~/.local/bin` |
+| Windows PowerShell | `%USERPROFILE%\.tradecat\app` | `%USERPROFILE%\.local\bin` |
+
+可选环境变量：
+
+| 变量 | 说明 |
+|:---|:---|
+| `TRADECAT_INSTALL_REPO` | 覆盖 Git 仓库地址 |
+| `TRADECAT_INSTALL_BRANCH` | 覆盖安装分支，默认 `develop` |
+| `TRADECAT_INSTALL_DIR` | 覆盖源码安装目录 |
+| `TRADECAT_BIN_DIR` | 覆盖命令入口目录 |
+| `TRADECAT_PYTHON_VERSION` | 覆盖 Python 版本，默认 `3.12` |
+
+如果系统没有 Python 3.12，安装脚本会尝试安装 `uv`，并用 `uv` 托管 Python 3.12。仍然需要本机有 `git` 和 `curl`。
+
+### 手动：从源码安装
 
 ```bash
 git clone https://github.com/tukuaiai/tradecat.git
@@ -133,6 +229,38 @@ ln -sfn "$(pwd)/.venv/bin/tradecat" ~/.local/bin/tradecat
 tradecat
 ```
 
+## 一次性请求
+
+不安装、不克隆、不写缓存，直接请求公开数据：
+
+```bash
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) event_stream
+```
+
+常用示例：
+
+```bash
+# 列出可用 dataset
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) --datasets
+
+# 查看事件流前 20 行
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) event_stream --limit 20
+
+# JSONL 输出，方便脚本或 Agent 消费
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) market_snapshot --format jsonl --limit 10
+
+# 只看元信息或表头
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) market_stats --meta
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) anomaly_panel --headers
+```
+
+不支持 process substitution 的 shell 可使用：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py -o /tmp/tradecat-request.py
+python3 /tmp/tradecat-request.py event_stream
+```
+
 ### AI 安装提示词
 
 把下面这段复制给 Claude / ChatGPT / Cursor / Codex：
@@ -154,13 +282,17 @@ tradecat
 # 默认打开终端面板；先读本地缓存，进入后按 tap 独立间隔探测
 tradecat
 
-# 初始化缓存目录，默认 ~/.tradecat/cache
+# 初始化缓存目录，默认 TradeCat 源码根目录 .tradecat/cache
 tradecat init
 
 # 查看 dataset 和缓存状态
 tradecat datasets
 tradecat status
 tradecat doctor
+
+# 查看结构化 JSON/JSONL/CSV 固定路径
+tradecat path
+tradecat path event_stream
 
 # 同步指定 tap 到文件缓存
 tradecat sync event_stream
@@ -211,15 +343,18 @@ tradecat tui --no-live
 - 终端窗口或字体缩放后，TUI 会检测尺寸变化并立即重绘，不需要手动按 `r`。
 - 缓存文件始终保留完整值。
 
-TUI 高频探针规则：
+TUI 探针规则：
 
-- 只 probe 当前打开的 tap，不做 `sync-all`。
-- TUI 启动后立即发起后台 probe；网络慢不会阻塞界面主循环。
+- 当前焦点 tap 按自己的 interval 前台刷新。
+- 非焦点 active tap 默认也会后台保鲜刷新，不需要切过去才更新。
+- TUI 启动后立即发起异步 probe；网络慢不会阻塞界面主循环。
 - 滚动、选行、hover 只读内存中的当前 view/render cache，不重复读取 JSON 快照。
 - `event_stream` 使用两列轻量渲染，只渲染时间与内容，避免长文本拖慢交互。
-- `event_stream` 默认 `interval=1.5s`、`timeout=1.0s`。
-- timeout 会被限制为不超过当前 tap 的基础 interval。
+- `event_stream` 当前焦点默认 `interval=1.5s`、`timeout=1.0s`。
+- `event_stream` 非焦点默认后台保鲜间隔 `10s`；其他非焦点 tap 默认 `60s`。
+- timeout 会被限制为不超过对应 tap 的基础 interval。
 - 连续失败自动退避：1 次失败退到 `3s`，2 次退到 `5s`，3 次及以上退到 `15s`；成功后恢复基础 interval。
+- 可通过 `TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE=0` 关闭非焦点后台保鲜。
 
 ## 数据集
 
@@ -250,29 +385,80 @@ TUI 高频探针规则：
 
 ## 缓存结构
 
+结构化 JSON 的固定默认位置：
+
 ```text
-~/.tradecat/cache/
+<TradeCat 源码根目录>/.tradecat/cache
+```
+
+在本仓库开发态，固定为：
+
+```text
+/home/lenovo/.projects/cat/tradecat-public/.tradecat/cache
+```
+
+Agent 和脚本优先读取：
+
+```text
+.tradecat/cache/manifest.json
+.tradecat/cache/datasets/<dataset_key>/latest.json
+.tradecat/cache/datasets/<dataset_key>/latest.jsonl
+.tradecat/cache/datasets/<dataset_key>/latest.csv
+```
+
+常用路径：
+
+```text
+.tradecat/cache/datasets/event_stream/latest.json
+.tradecat/cache/datasets/event_stream/latest.jsonl
+.tradecat/cache/datasets/market_snapshot/latest.json
+.tradecat/cache/datasets/anomaly_panel/latest.json
+.tradecat/cache/datasets/market_stats/latest.json
+```
+
+`TRADECAT_CACHE_DIR` 可以覆盖缓存根目录；未设置时一律使用 TradeCat 源码根目录下的 `.tradecat/cache`。`.tradecat/` 是运行时缓存目录，已加入 `.gitignore`，不提交到仓库。
+
+```text
+.tradecat/cache/
+├── manifest.json
 └── datasets/
     ├── market_snapshot/
     │   ├── manifest.json
+    │   ├── latest.json
+    │   ├── latest.jsonl
+    │   ├── latest.csv
     │   └── snapshots/*.json
     ├── anomaly_panel/
     │   ├── manifest.json
+    │   ├── latest.json
+    │   ├── latest.jsonl
+    │   ├── latest.csv
     │   └── snapshots/*.json
     ├── market_stats/
     │   ├── manifest.json
+    │   ├── latest.json
+    │   ├── latest.jsonl
+    │   ├── latest.csv
     │   └── snapshots/*.json
     └── event_stream/
         ├── manifest.json
+        ├── latest.json
+        ├── latest.jsonl
+        ├── latest.csv
         ├── snapshots/*.json
         └── stream_events.json
 ```
+
+- `latest.json`：AI/Agent 读取的完整结构化数据，包含 source/sync/layout/columns/rows/indexes/stats。
+- `latest.jsonl`：一行一条记录，便于 shell、脚本和 Agent 流式消费。
+- `latest.csv`：去掉顶部信息和元信息后的干净业务表。
+- `snapshots/*.json`：内容 hash 变化时追加保存的历史原始 matrix 快照。
 
 ## 配置
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
-| `TRADECAT_CACHE_DIR` | `~/.tradecat/cache` | 本地快照缓存目录 |
+| `TRADECAT_CACHE_DIR` | TradeCat 源码根目录 `.tradecat/cache` | 本地快照缓存目录 |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=1.5` |
 | `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `1.5`，其它 tap 默认 `10` |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import queue
 
 from tradecat_terminal import cli
+from tradecat_terminal.config import DEFAULT_APP_ROOT
+from tradecat_terminal.config import load_config
 from tradecat_terminal.cache import (
     init_cache,
     normalized_event_key_for_row,
@@ -18,6 +21,7 @@ from tradecat_terminal.tui import (
     CURSES_POLL_TIMEOUT_MS,
     MOUSE_WHEEL_STEP,
     _build_binance_futures_url,
+    _background_probe_interval,
     _display_slice,
     _display_width,
     _drain_probe_results,
@@ -26,6 +30,7 @@ from tradecat_terminal.tui import (
     _handle_screen_resize,
     _handle_sgr_mouse_payload,
     _hovered_link_row_offset,
+    _maybe_probe_background,
     _normalize_contract_symbol,
     _observed_screen_size,
     _open_selected_symbol,
@@ -66,6 +71,15 @@ def test_init_cache_does_not_write_registry_projection(tmp_path):
         "market_stats",
         "event_stream",
     ]
+
+
+def test_default_cache_dir_is_app_root_dot_tradecat_cache(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TRADECAT_CACHE_DIR", raising=False)
+
+    config = load_config()
+
+    assert config.cache_dir == DEFAULT_APP_ROOT / ".tradecat" / "cache"
 
 
 def test_registry_has_no_freeze_columns_contract():
@@ -118,6 +132,66 @@ def test_sync_dataset_writes_snapshot_files(tmp_path, monkeypatch):
     assert view["rows"][0]["values"]["A"] == "数据源"
     assert view["rows"][2]["values"]["B"] == "BTCUSDT"
     assert len(view["columns"]) == 3
+
+
+def test_sync_dataset_writes_structured_latest_files(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+
+    import tradecat_terminal.cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "fetch_csv_body",
+        lambda url, timeout=30.0: (
+            "https://dexscreener.com/x\n"
+            "数据源,market,导出时间(UTC+8),2026-05-01T12:00:00+08:00\n"
+            "排名,交易对,综合分,5m量变(%)\n"
+            "1,BTCUSDT,98.2,1.23%\n"
+        ),
+    )
+
+    result = sync_dataset(cache_dir, "market_snapshot")
+    dataset_dir = cache_dir / "datasets" / "market_snapshot"
+    latest = json.loads((dataset_dir / "latest.json").read_text(encoding="utf-8"))
+    jsonl = (dataset_dir / "latest.jsonl").read_text(encoding="utf-8").strip()
+    csv_text = (dataset_dir / "latest.csv").read_text(encoding="utf-8")
+    root_manifest = json.loads((cache_dir / "manifest.json").read_text(encoding="utf-8"))
+
+    assert result["structured_row_count"] == 1
+    assert latest["schema"] == "tradecat.dataset.v1"
+    assert latest["layout"]["meta"]["数据源"] == "market"
+    assert latest["indexes"]["primary_key"] == "交易对"
+    assert latest["rows"][0]["key"] == "BTC"
+    assert latest["rows"][0]["typed_values"]["综合分"] == 98.2
+    assert latest["rows"][0]["typed_values"]["5m量变(%)"] == 0.0123
+    assert "BTCUSDT" in jsonl
+    assert csv_text.splitlines()[0] == "排名,交易对,综合分,5m量变(%)"
+    assert root_manifest["schema"] == "tradecat.cache_manifest.v1"
+    assert root_manifest["datasets"][0]["latest_json"] == "datasets/market_snapshot/latest.json"
+
+
+def test_structured_latest_extracts_meta_from_public_top_cell(tmp_path):
+    cache_dir = tmp_path / "cache"
+    dataset = get_dataset("event_stream")
+
+    write_dataset_body(
+        cache_dir,
+        dataset,
+        (
+            "https://dexscreener.com/x\n"
+            "https://t.me/y\n"
+            "数据源，事件流，导出时间(UTC+8)，2026-05-01T12:00:00+08:00，刷新间隔(s)，1.5\n"
+            "时间(北京),内容\n"
+            "2026-05-01 12:00:00,hello\n"
+        ),
+    )
+
+    latest = json.loads((cache_dir / "datasets" / "event_stream" / "latest.json").read_text(encoding="utf-8"))
+
+    assert latest["layout"]["top_lines"] == ["https://dexscreener.com/x", "https://t.me/y"]
+    assert latest["layout"]["meta"]["数据源"] == "事件流"
+    assert latest["layout"]["meta"]["刷新间隔(s)"] == "1.5"
+    assert latest["sync"]["remote_updated_at_utc8"] == "2026-05-01T12:00:00+08:00"
 
 
 def test_snapshot_cache_supports_optional_gzip_snapshots(tmp_path, monkeypatch):
@@ -257,6 +331,19 @@ def test_cli_without_subcommand_opens_tui(tmp_path, monkeypatch):
     }
 
 
+def test_cli_path_outputs_agent_friendly_cache_paths(tmp_path, capsys):
+    cache_dir = tmp_path / "cache"
+
+    assert cli.main(["--cache-dir", str(cache_dir), "path", "event_stream", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["manifest"] == str(cache_dir / "datasets" / "event_stream" / "manifest.json")
+    assert payload["latest_json"] == str(cache_dir / "datasets" / "event_stream" / "latest.json")
+    assert payload["latest_jsonl"] == str(cache_dir / "datasets" / "event_stream" / "latest.jsonl")
+    assert payload["latest_csv"] == str(cache_dir / "datasets" / "event_stream" / "latest.csv")
+    assert payload["stream_events"] == str(cache_dir / "datasets" / "event_stream" / "stream_events.json")
+
+
 def test_tui_plain_render_reads_snapshot_cache(tmp_path):
     cache_dir = tmp_path / "cache"
     write_dataset_body(
@@ -268,7 +355,7 @@ def test_tui_plain_render_reads_snapshot_cache(tmp_path):
     output = render_basic_tui(cache_dir, dataset_key="market_snapshot", limit=0)
     header_text, table_text = output.split("+---", 1)
 
-    assert "TradeCat Terminal" in output
+    assert "TradeCat" in output
     assert "https://dexscreener.com/x" in header_text
     assert "https://dexscreener.com/x" not in table_text
     assert "| A " in output
@@ -449,6 +536,9 @@ def test_tui_left_right_switch_tap_resets_view_state():
         "hover_row_offset": 1,
         "selected_row_offset": 2,
         "live": False,
+        "last_probe_at": 123.0,
+        "view_cache": {("event_stream", 0, True): {"content_hash": "old"}},
+        "render_cache": {"old": "value"},
     }
 
     _switch_dataset(state, 1)
@@ -458,6 +548,38 @@ def test_tui_left_right_switch_tap_resets_view_state():
     assert state["row_scroll"] == 0
     assert state["live"] is True
     assert state["hover_row_offset"] is None
+    assert state["last_probe_at"] == 0.0
+    assert state["view_cache"] == {}
+    assert state["render_cache"] == {}
+
+
+def test_tui_probe_result_refreshes_stale_cached_view_even_when_remote_hash_is_unchanged():
+    state = {
+        "datasets": [{"dataset_key": "market_snapshot"}],
+        "dataset_index": 0,
+        "probe_generation": 0,
+        "probe_inflight": True,
+        "view_cache": {("market_snapshot", 0, True): {"content_hash": "old-hash"}},
+        "render_cache": {"old": "value"},
+    }
+    results = queue.Queue()
+    results.put(
+        {
+            "dataset_key": "market_snapshot",
+            "generation": 0,
+            "result": {
+                "ok": True,
+                "status": "unchanged",
+                "changed": False,
+                "wrote": False,
+                "content_hash": "new-hash",
+            },
+        }
+    )
+
+    assert _drain_probe_results(state, results) is True
+    assert state["view_cache"] == {}
+    assert state["render_cache"] == {}
 
 
 def test_tui_mouse_wheel_updates_vertical_scroll(monkeypatch):
@@ -721,6 +843,67 @@ def test_tui_background_probe_does_not_block_main_thread(monkeypatch, tmp_path):
     assert _drain_probe_results(state, results) is True
     assert state["probe_inflight"] is False
     assert state["last_probe_status"] == "unchanged"
+
+
+def test_tui_background_probe_keeps_non_focused_taps_fresh(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    results: queue.Queue[dict] = queue.Queue()
+    cache_dir = tmp_path / "cache"
+    calls = []
+    state = {
+        "datasets": [
+            {"dataset_key": "event_stream"},
+            {"dataset_key": "market_snapshot"},
+            {"dataset_key": "anomaly_panel"},
+        ],
+        "dataset_index": 0,
+        "batch_index": 0,
+        "live": True,
+        "background_probe_enabled": True,
+        "background_probe_jobs": {},
+    }
+
+    def fake_probe(path, *, dataset_key, fetch_timeout=None):
+        calls.append((path, dataset_key, fetch_timeout))
+        return {
+            "ok": True,
+            "status": "unchanged",
+            "changed": False,
+            "wrote": False,
+            "content_hash": dataset_key,
+        }
+
+    monkeypatch.setattr(tui_module, "_probe_latest", fake_probe)
+
+    assert _maybe_probe_background(cache_dir, state, results) is True
+    item_1 = results.get(timeout=1)
+    item_2 = results.get(timeout=1)
+    seen = {item_1["dataset_key"], item_2["dataset_key"]}
+
+    assert seen == {"market_snapshot", "anomaly_panel"}
+    assert {call[1] for call in calls} == {"market_snapshot", "anomaly_panel"}
+    assert all(state["background_probe_jobs"][key]["inflight"] is True for key in seen)
+
+    results.put(item_1)
+    results.put(item_2)
+    assert _drain_probe_results(state, results) is False
+    assert all(state["background_probe_jobs"][key]["inflight"] is False for key in seen)
+
+
+def test_tui_background_probe_interval_is_dataset_specific(monkeypatch):
+    monkeypatch.delenv("TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_BACKGROUND_PROBE_INTERVAL", raising=False)
+
+    assert _background_probe_interval("event_stream") == 10.0
+    assert _background_probe_interval("market_snapshot") == 60.0
+    assert _background_probe_interval("event_stream", consecutive_failures=1) == 10.0
+
+    monkeypatch.setenv("TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL", "30")
+    assert _background_probe_interval("market_snapshot") == 30.0
+
+    monkeypatch.setenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_BACKGROUND_PROBE_INTERVAL", "5")
+    assert _background_probe_interval("event_stream") == 5.0
 
 
 def test_tui_ignores_background_probe_result_from_previous_generation():

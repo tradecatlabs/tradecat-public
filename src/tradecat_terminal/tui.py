@@ -24,10 +24,14 @@ MOUSE_WHEEL_STEP = 1
 CURSES_POLL_TIMEOUT_MS = 100
 DEFAULT_LIVE_PROBE_INTERVAL_SECONDS = 10.0
 DEFAULT_LIVE_FETCH_TIMEOUT_SECONDS = 2.0
+DEFAULT_BACKGROUND_PROBE_INTERVAL_SECONDS = 60.0
+DEFAULT_BACKGROUND_STREAM_PROBE_INTERVAL_SECONDS = 10.0
 DEFAULT_TUI_DATASET_KEY = "event_stream"
 TUI_DEFAULT_DATASET_ENV = "TRADECAT_TERMINAL_TUI_DEFAULT_DATASET"
 TUI_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_PROBE_INTERVAL"
 TUI_FETCH_TIMEOUT_ENV = "TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT"
+TUI_BACKGROUND_PROBE_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE"
+TUI_BACKGROUND_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL"
 BINANCE_FUTURES_URL_TEMPLATE = "https://www.binance.com/zh-CN/futures/{symbol}?type=perpetual"
 SYMBOL_HEADER_NAMES = {"交易对", "合约代码", "代码", "币种", "symbol", "Symbol", "SYMBOL"}
 SYMBOL_VALUE_RE = re.compile(r"^[A-Z0-9]{2,24}(?:USDT)?$")
@@ -37,7 +41,7 @@ URL_RE = re.compile(r"https?://[^\s|]+")
 def render_basic_tui(cache_dir: Path, dataset_key: str | None = None, limit: int = 0) -> str:
     dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     view = read_cached_view(cache_dir, dataset_key)
-    lines = ["TradeCat Terminal", "=" * 80, f"cache: {cache_dir}", f"current: {dataset_key}"]
+    lines = ["TradeCat", "=" * 80, f"cache: {cache_dir}", f"current: {dataset_key}"]
     if not view["rows"]:
         lines.append("暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat")
         return "\n".join(lines)
@@ -121,6 +125,8 @@ def _run_curses(
     state["consecutive_probe_failures"] = 0
     state["probe_generation"] = 0
     state["probe_inflight"] = False
+    state["background_probe_jobs"] = {}
+    state["background_probe_enabled"] = _background_probe_enabled()
     state["view_cache"] = {}
     state["render_cache"] = {}
     state["screen_size"] = _observed_screen_size(stdscr)
@@ -132,6 +138,7 @@ def _run_curses(
             dirty = _handle_screen_resize(stdscr, state) or dirty
             dirty = _drain_probe_results(state, probe_results) or dirty
             dirty = _maybe_probe_live(cache_dir, state, probe_interval_override, probe_results) or dirty
+            dirty = _maybe_probe_background(cache_dir, state, probe_results) or dirty
             if dirty:
                 _draw(stdscr, cache_dir, state, limit=limit)
                 dirty = False
@@ -238,7 +245,7 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
 
     mode = "live" if state.get("live", True) else "history"
     header = (
-        f"TradeCat Terminal | {mode} | tap {state['dataset_index'] + 1}/{len(state['datasets'])}: "
+        f"TradeCat | {mode} | tap {state['dataset_index'] + 1}/{len(state['datasets'])}: "
         f"{dataset_key} ({dataset['tab_name']})"
     )
     controls = (
@@ -331,13 +338,14 @@ def _switch_dataset(state: dict[str, Any], step: int) -> None:
     state["hover_row_offset"] = None
     state["selected_row_offset"] = 0
     state["live"] = True
-    state["last_probe_at"] = time.monotonic()
+    state["last_probe_at"] = 0.0
     state["last_probe_status"] = "cache"
     state["last_probe_error"] = None
     state["last_probe_error_at"] = None
     state["consecutive_probe_failures"] = 0
     state["probe_generation"] = int(state.get("probe_generation", 0)) + 1
     state["probe_inflight"] = False
+    _invalidate_view_cache(state)
 
 
 def _maybe_probe_live(
@@ -382,6 +390,67 @@ def _start_probe_thread(
     return True
 
 
+def _maybe_probe_background(
+    cache_dir: Path,
+    state: dict[str, Any],
+    probe_results: queue.Queue[dict[str, Any]],
+) -> bool:
+    if not state.get("background_probe_enabled", True):
+        return False
+    current_key = _current_dataset_key(state)
+    dirty = False
+    for dataset in state.get("datasets", []):
+        dataset_key = str(dataset.get("dataset_key") or "")
+        if not dataset_key or (dataset_key == current_key and state.get("live", True)):
+            continue
+        dirty = _maybe_start_background_probe(cache_dir, state, probe_results, dataset_key) or dirty
+    return dirty
+
+
+def _maybe_start_background_probe(
+    cache_dir: Path,
+    state: dict[str, Any],
+    probe_results: queue.Queue[dict[str, Any]],
+    dataset_key: str,
+) -> bool:
+    jobs = state.setdefault("background_probe_jobs", {})
+    job = jobs.setdefault(
+        dataset_key,
+        {
+            "inflight": False,
+            "last_probe_at": 0.0,
+            "generation": 0,
+            "consecutive_failures": 0,
+        },
+    )
+    if job.get("inflight"):
+        return False
+    interval = _background_probe_interval(dataset_key, int(job.get("consecutive_failures") or 0))
+    now = time.monotonic()
+    if now - float(job.get("last_probe_at", 0.0)) < interval:
+        return False
+    generation = int(job.get("generation") or 0) + 1
+    job["generation"] = generation
+    job["inflight"] = True
+    job["last_probe_at"] = now
+    fetch_timeout = _resolve_fetch_timeout(None, dataset_key, interval)
+
+    def worker() -> None:
+        result = _probe_latest(cache_dir, dataset_key=dataset_key, fetch_timeout=fetch_timeout)
+        probe_results.put(
+            {
+                "dataset_key": dataset_key,
+                "generation": generation,
+                "scope": "background",
+                "result": result,
+            }
+        )
+
+    thread = threading.Thread(target=worker, name=f"tradecat-bg-probe-{dataset_key}", daemon=True)
+    thread.start()
+    return True
+
+
 def _drain_probe_results(state: dict[str, Any], probe_results: queue.Queue[dict[str, Any]]) -> bool:
     dirty = False
     while True:
@@ -389,6 +458,9 @@ def _drain_probe_results(state: dict[str, Any], probe_results: queue.Queue[dict[
             item = probe_results.get_nowait()
         except queue.Empty:
             return dirty
+        if item.get("scope") == "background":
+            dirty = _drain_background_probe_result(state, item) or dirty
+            continue
         if int(item.get("generation", -1)) != int(state.get("probe_generation", 0)):
             continue
         if str(item.get("dataset_key")) != _current_dataset_key(state):
@@ -397,9 +469,44 @@ def _drain_probe_results(state: dict[str, Any], probe_results: queue.Queue[dict[
         result = item.get("result") if isinstance(item.get("result"), dict) else {}
         _record_probe_result(state, result)
         state["batch_index"] = 0
-        if result.get("changed") or result.get("wrote"):
+        if result.get("changed") or result.get("wrote") or _cached_view_hash_mismatch(
+            state,
+            str(item.get("dataset_key")),
+            str(result.get("content_hash") or ""),
+        ):
             _invalidate_view_cache(state, str(item.get("dataset_key")))
         dirty = True
+
+
+def _drain_background_probe_result(state: dict[str, Any], item: dict[str, Any]) -> bool:
+    dataset_key = str(item.get("dataset_key") or "")
+    jobs = state.setdefault("background_probe_jobs", {})
+    job = jobs.setdefault(dataset_key, {"inflight": False, "generation": 0, "consecutive_failures": 0})
+    if int(item.get("generation", -1)) != int(job.get("generation", 0)):
+        return False
+    job["inflight"] = False
+    result = item.get("result") if isinstance(item.get("result"), dict) else {}
+    if result.get("ok"):
+        job["consecutive_failures"] = 0
+        job["last_success_at"] = _clock_label()
+    else:
+        job["consecutive_failures"] = int(job.get("consecutive_failures") or 0) + 1
+        job["last_error_at"] = _clock_label()
+        job["last_error"] = _short_probe_error(_probe_error_label(result))
+    changed = bool(
+        result.get("changed")
+        or result.get("wrote")
+        or _cached_view_hash_mismatch(state, dataset_key, str(result.get("content_hash") or ""))
+    )
+    if changed:
+        _invalidate_view_cache(state, dataset_key)
+    if dataset_key != _current_dataset_key(state):
+        return False
+    if state.get("live", True):
+        _record_probe_result(state, result)
+        state["batch_index"] = 0
+        return True
+    return changed
 
 
 def _probe_latest(cache_dir: Path, *, dataset_key: str | None, fetch_timeout: float | None = None) -> dict[str, Any]:
@@ -581,6 +688,38 @@ def _effective_probe_interval(base_interval: float, consecutive_failures: int) -
     return max(float(base_interval), 15.0)
 
 
+def _background_probe_enabled() -> bool:
+    raw = os.environ.get(TUI_BACKGROUND_PROBE_ENV)
+    if raw is None or not raw.strip():
+        return True
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _background_probe_interval(dataset_key: str, consecutive_failures: int = 0) -> float:
+    raw = _dataset_background_probe_interval_env_value(dataset_key) or os.environ.get(TUI_BACKGROUND_PROBE_INTERVAL_ENV)
+    if raw and raw.strip():
+        try:
+            base = max(1.0, float(raw))
+        except ValueError:
+            base = _default_background_probe_interval(dataset_key)
+    else:
+        base = _default_background_probe_interval(dataset_key)
+    return _effective_probe_interval(base, consecutive_failures)
+
+
+def _dataset_background_probe_interval_env_value(dataset_key: str | None) -> str | None:
+    if not dataset_key:
+        return None
+    key = f"TRADECAT_TERMINAL_{dataset_key.upper()}_TUI_BACKGROUND_PROBE_INTERVAL"
+    return os.environ.get(key)
+
+
+def _default_background_probe_interval(dataset_key: str) -> float:
+    if dataset_key == "event_stream":
+        return DEFAULT_BACKGROUND_STREAM_PROBE_INTERVAL_SECONDS
+    return DEFAULT_BACKGROUND_PROBE_INTERVAL_SECONDS
+
+
 def _format_seconds(value: float) -> str:
     text = f"{float(value):.1f}".rstrip("0").rstrip(".")
     return f"{text}s"
@@ -686,6 +825,18 @@ def _invalidate_view_cache(state: dict[str, Any], dataset_key: str | None = None
         if key and key[0] == dataset_key:
             view_cache.pop(key, None)
     state["render_cache"] = {}
+
+
+def _cached_view_hash_mismatch(state: dict[str, Any], dataset_key: str, content_hash: str) -> bool:
+    if not content_hash:
+        return False
+    view_cache = state.setdefault("view_cache", {})
+    for key, view in view_cache.items():
+        if key and key[0] == dataset_key and isinstance(view, dict):
+            cached_hash = str(view.get("content_hash") or "")
+            if cached_hash and cached_hash != content_hash:
+                return True
+    return False
 
 
 def _rows_for_display(view: dict[str, Any], *, start: int = 0, limit: int = 0) -> list[dict[str, Any]]:

@@ -10,6 +10,13 @@ from typing import Any
 
 from tradecat_terminal.registry import DatasetSpec, get_dataset, list_active_datasets, list_datasets
 from tradecat_terminal.sheets import fetch_csv_body, find_header_row_index, normalize_headers, parse_csv_matrix
+from tradecat_terminal.structured_cache import (
+    LATEST_CSV_FILE,
+    LATEST_JSON_FILE,
+    LATEST_JSONL_FILE,
+    write_cache_manifest,
+    write_structured_latest,
+)
 
 CACHE_SCHEMA_VERSION = 1
 MANIFEST_FILE = "manifest.json"
@@ -87,6 +94,7 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict
     snapshots_dir = dataset_dir / "snapshots"
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     manifest = read_manifest(cache_dir, dataset.key)
+    previous_hash = manifest.get("current_hash")
     changed = manifest.get("current_hash") != matrix_hash
     compression, compression_suffix = _snapshot_compression()
 
@@ -110,8 +118,10 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict
         )
     if dataset.is_stream():
         stream_result = _merge_stream_events(cache_dir, dataset, matrix, fetched_at=fetched_at)
+        structured_matrix = _stream_structured_matrix(cache_dir, dataset, matrix)
     else:
         stream_result = {"new_events": 0, "updated_events": 0, "event_count": 0}
+        structured_matrix = matrix
 
     snapshots = list(manifest.get("snapshots") or [])
     if changed and snapshot_ref:
@@ -132,6 +142,9 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict
         "data_mode": dataset.data_mode,
         "current_hash": matrix_hash,
         "current_snapshot": snapshot_ref,
+        "latest_json": LATEST_JSON_FILE,
+        "latest_jsonl": LATEST_JSONL_FILE,
+        "latest_csv": LATEST_CSV_FILE,
         "fetched_at": fetched_at,
         "checked_at": fetched_at,
         "row_count": len(matrix),
@@ -140,6 +153,18 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict
         "stream": stream_result,
     }
     _write_json(_manifest_path(cache_dir, dataset.key), new_manifest)
+    latest_payload = write_structured_latest(
+        cache_dir,
+        dataset,
+        structured_matrix,
+        fetched_at=fetched_at,
+        matrix_hash=matrix_hash,
+        previous_hash=str(previous_hash or ""),
+        changed=changed,
+        snapshot_ref=str(snapshot_ref or ""),
+        status="written" if changed else "unchanged",
+    )
+    write_cache_manifest(cache_dir)
     return {
         "ok": True,
         "dataset_key": dataset.key,
@@ -154,6 +179,11 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict
         "compression": compression if changed else _snapshot_compression_for_ref(snapshot_ref),
         "snapshot": snapshot_ref,
         "stream": stream_result,
+        "latest_json": LATEST_JSON_FILE,
+        "latest_jsonl": LATEST_JSONL_FILE,
+        "latest_csv": LATEST_CSV_FILE,
+        "structured_row_count": latest_payload["stats"]["row_count"],
+        "structured_column_count": latest_payload["stats"]["column_count"],
         "cache_dir": str(cache_dir),
     }
 
@@ -341,7 +371,26 @@ def _stream_display_matrix(cache_dir: Path, dataset: DatasetSpec, latest_matrix:
     header = state.get("header")
     if not isinstance(header, list) or not header:
         return latest_matrix
-    top = latest_matrix[:1]
+    header_index = find_header_row_index(latest_matrix) if latest_matrix else 0
+    top = latest_matrix[: max(1, header_index)]
+    rows = []
+    for event in state.get("events", []):
+        values = event.get("values") if isinstance(event, dict) else {}
+        if isinstance(values, dict):
+            rows.append([str(values.get(column, "")) for column in header])
+    return [*top, [str(item) for item in header], *rows]
+
+
+def _stream_structured_matrix(cache_dir: Path, dataset: DatasetSpec, latest_matrix: list[list[str]]) -> list[list[str]]:
+    path = _stream_path(cache_dir, dataset.key)
+    if not path.exists():
+        return latest_matrix
+    state = _read_json(path)
+    header = state.get("header")
+    if not isinstance(header, list) or not header:
+        return latest_matrix
+    header_index = find_header_row_index(latest_matrix) if latest_matrix else 0
+    top = latest_matrix[:header_index]
     rows = []
     for event in state.get("events", []):
         values = event.get("values") if isinstance(event, dict) else {}

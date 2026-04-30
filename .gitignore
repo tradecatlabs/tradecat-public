@@ -9,6 +9,7 @@ dist/
 build/
 .coverage
 htmlcov/
+.tradecat/
 
 # Local-only agent/debug notes. Keep them on the developer machine, not in the public repo.
 AGENTS.md

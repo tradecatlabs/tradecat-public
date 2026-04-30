@@ -21,4 +21,9 @@ jobs:
       - name: Test
         run: PYTHONPATH=src pytest -q
       - name: Shell syntax
-        run: bash -n scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
+        run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          [scriptblock]::Create((Get-Content install.ps1 -Raw)) | Out-Null
+          [scriptblock]::Create((Get-Content uninstall.ps1 -Raw)) | Out-Null
