@@ -2,20 +2,21 @@
 
 # TradeCat Terminal
 
-用户侧终端面板：只读 TradeCat 在线表格，写入本地 JSON 快照缓存，并在终端中浏览市场快照与事件流。
+用户侧终端面板：只读 TradeCat 公开数据入口，写入本地 JSON 快照缓存，并在终端中浏览市场快照与事件流。
 
 [![CI](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-公开在线表格：
-[另类数据终端](https://docs.google.com/spreadsheets/d/1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4/edit?usp=sharing) /
-[市场数据终端](https://docs.google.com/spreadsheets/d/1k16nGFCE7oBXrEqvTpHSA2Z5530GM_kou-wiWklTsfY/edit?usp=sharing)
+TradeCat CA：
+[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777)
+
+公开数据入口：
+由内置 dataset registry 管理，用户无需手工配置数据源。
 
 社区：
 [Telegram](https://t.me/tradecat_community) /
-[GitHub](https://github.com/tukuaiai/tradecat) /
-[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777)
+[GitHub](https://github.com/tukuaiai/tradecat)
 
 </div>
 
@@ -42,7 +43,7 @@ TradeCat Terminal 是一个轻量、可本地运行、可独立分发的用户�
 
 它只做三件事：
 
-1. 从公开 Google Sheets CSV 读取数据。
+1. 从公开在线数据端点读取数据。
 2. 把最新内容保存为用户本地 JSON 快照缓存。
 3. 用 CLI / TUI 在终端里查看市场快照和事件流。
 
@@ -50,22 +51,22 @@ TradeCat Terminal 是一个轻量、可本地运行、可独立分发的用户�
 
 - 不连接或写入 TradeCat 服务端 PostgreSQL。
 - 不使用 SQLite、WAL、本地 SQL 查询层或数据库型后端存储。
-- 不需要 Google service account、私钥、token 或服务端权限。
+- 不需要云端服务账号、私钥、token 或服务端权限。
 - 不承担服务端数据生产、采集、修复或发布职责。
 
 ## 系统架构图
 
 ```mermaid
 flowchart TD
-    A[Google Sheets 公开 CSV] --> B[Dataset Registry]
+    A[公开在线数据端点] --> B[Dataset Registry]
     B --> C[Sync / Probe]
     C --> D[本地 JSON 快照缓存]
     D --> E[CLI 状态与同步命令]
     D --> F[TUI 终端面板]
 
     subgraph Remote[远端公开数据]
-        A1[market_data 工作簿]
-        A2[alternative_data 工作簿]
+        A1[市场数据入口]
+        A2[另类数据入口]
         A1 --> A
         A2 --> A
     end
@@ -90,7 +91,7 @@ flowchart TD
 1. 本项目仅用于技术研究、数据浏览与社区协作交流，不构成投资建议、理财建议或交易建议。
 2. 本项目不隶属于任何交易所、基金、做市商或官方组织。
 3. 数字资产价格波动剧烈，可能出现大幅亏损甚至归零风险，请自行评估风险并独立决策。
-4. 本工具只读取公开在线表格，不保证第三方数据源、网络、Google Sheets、交易所页面或外部链接持续可用。
+4. 本工具只读取公开在线数据源，不保证第三方数据源、网络、外部数据承载服务、交易所页面或外部链接持续可用。
 5. 项目维护者和贡献者不对任何直接或间接损失承担责任，包括但不限于投资亏损、交易损失、第三方服务故障、误用数据或链接跳转风险。
 
 ## 快速开始
@@ -203,7 +204,7 @@ tradecat tui --no-live
 
 渲染规则：
 
-- 在线表格物理第 1 行显示在顶部文本区，不进入表格区。
+- 上游数据物理第 1 行显示在顶部文本区，不进入表格区。
 - 表格区保留物理列 A/B/C... 和原始行号。
 - 表格作为一个整体渲染，不冻结主键列，也不提供右侧列横向滚动。
 - 渲染器按真实内容宽度生成 psql 表格，不做按 tap 的自动缩放、撑满空隙或固定宽度省略。
@@ -234,7 +235,7 @@ TUI 高频探针规则：
 
 `market_snapshot`、`anomaly_panel`、`market_stats` 是快照型 tap：
 
-- 每次拉取计算完整 CSV matrix hash。
+- 每次拉取计算完整二维数据 matrix hash。
 - hash 不变时不新增快照文件。
 - hash 变化时写入一个新的 `snapshots/<time>_<hash>.json`。
 - TUI 上下键切换历史快照。
@@ -243,7 +244,7 @@ TUI 高频探针规则：
 
 `event_stream` 是增量流：
 
-- 每次仍保留最新 CSV 快照。
+- 每次仍保留最新原始快照。
 - 同时按 `时间(北京) + 内容` 生成事件键，写入 `stream_events.json`。
 - 重复事件只更新 `seen_count / last_seen_at`。
 - TUI 上下键滚动事件列表，不切换批次。
@@ -274,11 +275,11 @@ TUI 高频探针规则：
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `TRADECAT_CACHE_DIR` | `~/.tradecat/cache` | 本地快照缓存目录 |
-| `TRADECAT_TERMINAL_<DATASET_KEY>_CSV_URL` | 无 | 覆盖指定 dataset 的 CSV URL |
+| `TRADECAT_TERMINAL_<DATASET_KEY>_CSV_URL` | 无 | 覆盖指定 dataset 的公开数据端点 URL；仅用于调试或自托管 |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=1.5` |
 | `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `1.5`，其它 tap 默认 `10` |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |
-| `TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT` | 空 | 全局覆盖 TUI live 探针单次 CSV 拉取超时秒数；未设置时 `event_stream` 默认 `1.0`，其它 tap 默认 `2.0` |
+| `TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT` | 空 | 全局覆盖 TUI live 探针单次数据拉取超时秒数；未设置时 `event_stream` 默认 `1.0`，其它 tap 默认 `2.0` |
 | `TRADECAT_TERMINAL_TUI_DEFAULT_DATASET` | `event_stream` | 无参数 `tradecat` 默认打开 dataset |
 | `TRADECAT_CACHE_MAX_SNAPSHOTS` | 空 | `tradecat prune` 未传 `--max-snapshots` 时读取；空表示不启用裁剪 |
 | `TRADECAT_CACHE_COMPRESSION` | `none` | 新快照压缩方式；可选 `none` / `gzip`，默认不压缩 |
