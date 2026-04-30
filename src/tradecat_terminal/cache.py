@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from tradecat_terminal.registry import DatasetSpec, dataset_to_dict, get_dataset, list_active_datasets, list_datasets
+from tradecat_terminal.registry import DatasetSpec, get_dataset, list_active_datasets, list_datasets
 from tradecat_terminal.sheets import fetch_csv_body, find_header_row_index, normalize_headers, parse_csv_matrix
 
 CACHE_SCHEMA_VERSION = 1
@@ -19,21 +19,8 @@ CACHE_COMPRESSION_ENV = "TRADECAT_CACHE_COMPRESSION"
 
 def init_cache(cache_dir: Path) -> dict[str, Any]:
     cache_dir.mkdir(parents=True, exist_ok=True)
-    registry_path = cache_dir / "registry.json"
-    registry_path.write_text(
-        json.dumps(
-            {
-                "schema_version": CACHE_SCHEMA_VERSION,
-                "updated_at": _now_iso(),
-                "datasets": [dataset_to_dict(dataset) for dataset in list_datasets(include_inactive=True)],
-            },
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    for dataset in list_datasets(include_inactive=True):
+        (_dataset_dir(cache_dir, dataset.key) / "snapshots").mkdir(parents=True, exist_ok=True)
     return {"ok": True, "cache_dir": str(cache_dir), "datasets": len(list_datasets(include_inactive=True))}
 
 
@@ -62,13 +49,12 @@ def sync_dataset(
     cache_dir: Path,
     dataset_key: str,
     *,
-    url_override: str | None = None,
     fetch_timeout: float | None = None,
 ) -> dict[str, Any]:
     dataset = get_dataset(dataset_key)
-    url = dataset.resolve_url(url_override)
+    url = dataset.export_url()
     body = fetch_csv_body(url, timeout=fetch_timeout or 30.0)
-    return write_dataset_body(cache_dir, dataset, body, source_url=url)
+    return write_dataset_body(cache_dir, dataset, body)
 
 
 def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) -> list[dict[str, Any]]:
@@ -91,7 +77,7 @@ def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) ->
     return results
 
 
-def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str, *, source_url: str) -> dict[str, Any]:
+def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict[str, Any]:
     init_cache(cache_dir)
     matrix = parse_csv_matrix(body)
     matrix_hash = hash_matrix(matrix)
@@ -112,11 +98,7 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str, *, sour
             {
                 "schema_version": CACHE_SCHEMA_VERSION,
                 "dataset_key": dataset.key,
-                "workbook_key": dataset.workbook_key,
-                "spreadsheet_id": dataset.workbook().spreadsheet_id,
                 "tab_name": dataset.tab_name,
-                "gid": dataset.gid,
-                "source_url": source_url,
                 "fetched_at": fetched_at,
                 "content_hash": matrix_hash,
                 "compression": compression,
@@ -146,14 +128,12 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str, *, sour
         ]
     new_manifest = {
         "schema_version": CACHE_SCHEMA_VERSION,
-        "dataset": dataset_to_dict(dataset),
         "dataset_key": dataset.key,
         "data_mode": dataset.data_mode,
         "current_hash": matrix_hash,
         "current_snapshot": snapshot_ref,
         "fetched_at": fetched_at,
         "checked_at": fetched_at,
-        "source_url": source_url,
         "row_count": len(matrix),
         "column_count": _matrix_width(matrix),
         "snapshots": snapshots,

@@ -16,7 +16,6 @@ from tradecat_terminal.tui import run_tui
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tradecat", description="TradeCat 用户侧终端面板")
     parser.add_argument("--cache-dir", help="本地快照缓存目录，默认 TRADECAT_CACHE_DIR 或 ~/.tradecat/cache")
-    parser.add_argument("--db", help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="初始化本地快照缓存目录")
@@ -33,9 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     datasets_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     sync_parser = subparsers.add_parser("sync", help="按 registry 同步一个 dataset 到本地快照缓存")
-    sync_parser.add_argument("dataset_key", nargs="?", help="dataset_key，例如 market_snapshot")
-    sync_parser.add_argument("--source", help="兼容旧参数；等价于 dataset_key")
-    sync_parser.add_argument("--url", help="公开 CSV URL 覆盖 registry/env URL")
+    sync_parser.add_argument("dataset_key", help="dataset_key，例如 market_snapshot")
     sync_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     sync_all_parser = subparsers.add_parser("sync-all", help="同步全部 active dataset 到本地快照缓存")
@@ -44,7 +41,6 @@ def build_parser() -> argparse.ArgumentParser:
     probe_parser = subparsers.add_parser("probe", help="探测远端变化；发现变化后写入本地快照缓存")
     probe_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则探测全部 active dataset")
     probe_parser.add_argument("--no-write", action="store_true", help="只做 dry-run，不写缓存")
-    probe_parser.add_argument("--url", help="仅单 dataset 探测时覆盖 registry/env URL")
     probe_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     prune_parser = subparsers.add_parser("prune", help="按保留数量裁剪本地历史快照；默认 dry-run 不删除")
@@ -114,10 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "sync":
-        dataset_key = args.dataset_key or args.source
-        if not dataset_key:
-            raise SystemExit("sync 需要 dataset_key，例如：tradecat sync market_snapshot")
-        payload = sync_dataset(config.cache_dir, dataset_key, url_override=args.url)
+        payload = sync_dataset(config.cache_dir, args.dataset_key)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -139,11 +132,8 @@ def main(argv: list[str] | None = None) -> int:
                 config.cache_dir,
                 args.dataset_key,
                 write=not args.no_write,
-                url_override=args.url,
             )
         else:
-            if args.url:
-                raise SystemExit("probe --url 只能和单个 dataset_key 一起使用")
             payload = probe_all_datasets(config.cache_dir, write=not args.no_write)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
@@ -294,10 +284,10 @@ def _should_default_to_tui(argv: list[str]) -> bool:
     index = 0
     while index < len(argv):
         token = argv[index]
-        if token in {"--cache-dir", "--db"}:
+        if token == "--cache-dir":
             index += 2
             continue
-        if token.startswith("--cache-dir=") or token.startswith("--db="):
+        if token.startswith("--cache-dir="):
             index += 1
             continue
         if token.startswith("-"):
@@ -312,9 +302,9 @@ def _should_route_to_tui(argv: list[str]) -> bool:
     first = argv[0]
     if first in {"init", "doctor", "status", "datasets", "sync", "sync-all", "probe", "watch", "tui"}:
         return False
-    if first in {"-h", "--help", "--cache-dir", "--db"}:
+    if first in {"-h", "--help", "--cache-dir"}:
         return False
-    if first.startswith("--cache-dir=") or first.startswith("--db="):
+    if first.startswith("--cache-dir="):
         return False
     return first.startswith("-")
 
@@ -325,16 +315,12 @@ def _route_global_tui_args(argv: list[str]) -> list[str]:
     index = 0
     while index < len(argv):
         token = argv[index]
-        if token in {"--cache-dir", "--db"} and index + 1 < len(argv):
-            if token == "--cache-dir":
-                global_args.extend([token, argv[index + 1]])
+        if token == "--cache-dir" and index + 1 < len(argv):
+            global_args.extend([token, argv[index + 1]])
             index += 2
             continue
         if token.startswith("--cache-dir="):
             global_args.append(token)
-            index += 1
-            continue
-        if token.startswith("--db="):
             index += 1
             continue
         tui_args.append(token)

@@ -51,14 +51,15 @@ from tradecat_terminal.tui import (
 )
 
 
-def test_init_cache_writes_registry(tmp_path):
+def test_init_cache_does_not_write_registry_projection(tmp_path):
     cache_dir = tmp_path / "cache"
 
     payload = init_cache(cache_dir)
     status = status_cache(cache_dir)
 
     assert payload["ok"] is True
-    assert (cache_dir / "registry.json").exists()
+    assert not (cache_dir / "registry.json").exists()
+    assert (cache_dir / "datasets" / "market_snapshot" / "snapshots").exists()
     assert [item["dataset_key"] for item in status["datasets"]] == [
         "market_snapshot",
         "anomaly_panel",
@@ -128,7 +129,6 @@ def test_snapshot_cache_supports_optional_gzip_snapshots(tmp_path, monkeypatch):
         cache_dir,
         dataset,
         "https://dexscreener.com/x\n排名,交易对,价格\n1,BTCUSDT,100\n",
-        source_url="memory://gzip",
     )
     view = read_cached_view(cache_dir, "market_snapshot")
 
@@ -145,13 +145,11 @@ def test_snapshot_cache_keeps_multiple_batches(tmp_path):
         cache_dir,
         dataset,
         "https://dexscreener.com/x\n排名,交易对,价格\n1,BTCUSDT,100\n",
-        source_url="memory://one",
     )
     second = write_dataset_body(
         cache_dir,
         dataset,
         "https://dexscreener.com/x\n排名,交易对,价格\n1,BTCUSDT,101\n",
-        source_url="memory://two",
     )
 
     latest = read_cached_view(cache_dir, "market_snapshot", batch_index=0, live=False)
@@ -172,7 +170,6 @@ def test_prune_cache_is_dry_run_by_default_and_apply_is_explicit(tmp_path):
             cache_dir,
             dataset,
             f"https://dexscreener.com/x\n排名,交易对,价格\n1,BTCUSDT,{price}\n",
-            source_url=f"memory://{price}",
         )
 
     dry_run = prune_cache(cache_dir, dataset_key="market_snapshot", max_snapshots_per_dataset=1, apply=False)
@@ -195,13 +192,11 @@ def test_event_stream_uses_incremental_event_file(tmp_path):
         cache_dir,
         dataset,
         "时间(北京),内容\n2026-04-28 12:00:00,hello\n",
-        source_url="memory://one",
     )
     second = write_dataset_body(
         cache_dir,
         dataset,
         "时间(北京),内容\n2026-04-28 12:00:00,hello\n2026-04-28 12:01:00,world\n",
-        source_url="memory://two",
     )
     view = read_cached_view(cache_dir, "event_stream")
 
@@ -222,7 +217,6 @@ def test_event_stream_keeps_normalized_event_key_for_diagnostics(tmp_path):
         cache_dir,
         dataset,
         "时间(北京),内容\n2026-04-28 12:00:00, hello   world \n",
-        source_url="memory://events",
     )
     state_path = cache_dir / "datasets" / "event_stream" / "stream_events.json"
 
@@ -269,7 +263,6 @@ def test_tui_plain_render_reads_snapshot_cache(tmp_path):
         cache_dir,
         get_dataset("market_snapshot"),
         "https://dexscreener.com/x\n数据源,market\n排名,交易对,价格\n1,BTCUSDT,100\n",
-        source_url="memory://sheet",
     )
 
     output = render_basic_tui(cache_dir, dataset_key="market_snapshot", limit=0)

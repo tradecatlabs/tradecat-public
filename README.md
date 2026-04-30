@@ -252,7 +252,6 @@ TUI 高频探针规则：
 
 ```text
 ~/.tradecat/cache/
-├── registry.json
 └── datasets/
     ├── market_snapshot/
     │   ├── manifest.json
@@ -274,7 +273,6 @@ TUI 高频探针规则：
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `TRADECAT_CACHE_DIR` | `~/.tradecat/cache` | 本地快照缓存目录 |
-| `TRADECAT_TERMINAL_<DATASET_KEY>_CSV_URL` | 无 | 覆盖指定 dataset 的公开数据端点 URL；仅用于调试或自托管 |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=1.5` |
 | `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `1.5`，其它 tap 默认 `10` |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |

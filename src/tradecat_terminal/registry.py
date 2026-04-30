@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import urlencode
@@ -31,10 +30,6 @@ class DatasetSpec:
     table_region_policy: dict[str, str | int | None] = field(default_factory=dict)
     active: bool = True
 
-    @property
-    def env_url_key(self) -> str:
-        return f"TRADECAT_TERMINAL_{self.key.upper()}_CSV_URL"
-
     def workbook(self) -> WorkbookSource:
         try:
             return WORKBOOKS[self.workbook_key]
@@ -43,14 +38,10 @@ class DatasetSpec:
 
     def export_url(self) -> str:
         if not self.gid:
-            raise ValueError(f"dataset {self.key} 缺少 gid；请配置 {self.env_url_key} 或使用 --url 覆盖")
+            raise ValueError(f"dataset {self.key} 缺少 gid；请更新内置 dataset registry")
         workbook = self.workbook()
         query = urlencode({"format": "csv", "gid": self.gid})
         return f"https://docs.google.com/spreadsheets/d/{workbook.spreadsheet_id}/export?{query}"
-
-    def resolve_url(self, override_url: str | None = None) -> str:
-        url = override_url or os.environ.get(self.env_url_key)
-        return url or self.export_url()
 
     def is_snapshot(self) -> bool:
         return self.data_mode == "snapshot"
@@ -63,12 +54,12 @@ WORKBOOKS: dict[str, WorkbookSource] = {
     "market_data": WorkbookSource(
         key="market_data",
         spreadsheet_id="1k16nGFCE7oBXrEqvTpHSA2Z5530GM_kou-wiWklTsfY",
-        description="交易猫市场数据终端在线表格",
+        description="交易猫市场数据入口",
     ),
     "alternative_data": WorkbookSource(
         key="alternative_data",
         spreadsheet_id="1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4",
-        description="交易猫另类数据终端在线表格",
+        description="交易猫另类数据入口",
     ),
 }
 
@@ -137,12 +128,10 @@ def list_datasets(include_inactive: bool = False) -> list[DatasetSpec]:
 
 
 def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
-    workbook = dataset.workbook()
     return {
         "key": dataset.key,
         "active": dataset.active,
         "workbook_key": dataset.workbook_key,
-        "spreadsheet_id": workbook.spreadsheet_id,
         "tab_name": dataset.tab_name,
         "gid": dataset.gid,
         "description": dataset.description,
@@ -153,6 +142,4 @@ def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
         "tui_probe_interval_seconds": dataset.tui_probe_interval_seconds,
         "tui_fetch_timeout_seconds": dataset.tui_fetch_timeout_seconds,
         "table_region_policy": dict(dataset.table_region_policy),
-        "env_url_key": dataset.env_url_key,
-        "export_url": dataset.export_url() if dataset.gid else None,
     }

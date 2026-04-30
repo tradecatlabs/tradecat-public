@@ -27,7 +27,6 @@ def probe_dataset(
     dataset_key: str,
     *,
     write: bool = True,
-    url_override: str | None = None,
     fetch_timeout: float | None = None,
 ) -> dict[str, Any]:
     if not write:
@@ -42,7 +41,7 @@ def probe_dataset(
             "wrote": False,
             "cache_dir": str(cache_dir),
         }
-    return sync_dataset(cache_dir, dataset_key, url_override=url_override, fetch_timeout=fetch_timeout)
+    return sync_dataset(cache_dir, dataset_key, fetch_timeout=fetch_timeout)
 
 
 def probe_all_datasets(cache_dir: Path, *, write: bool = True) -> list[dict[str, Any]]:

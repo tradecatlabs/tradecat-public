@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "TradeCat Team" }]
-keywords = ["tradecat", "terminal", "tui", "sheets", "snapshot-cache"]
+keywords = ["tradecat", "terminal", "tui", "snapshot-cache"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

@@ -93,9 +93,8 @@ def run_tui(
                 probe_interval_override=probe_interval_seconds,
             )
         )
-    except curses.error:
-        fallback_limit = limit if limit > 0 else 20
-        return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=fallback_limit)
+    except curses.error as exc:
+        raise RuntimeError("交互式 TUI 渲染失败；请扩大终端窗口，或显式使用 tradecat tui --plain") from exc
     return None
 
 
