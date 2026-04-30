@@ -1,21 +1,72 @@
-# tradecat
+<div align="center">
 
-`apps/tradecat` 是 TradeCat 用户侧终端面板。它只读公开在线表格，把最近快照缓存为本地 JSON 文件，并用 CLI / TUI 做无后端数据库浏览。
+# TradeCat Terminal
 
-当前 monorepo 内保留 Python distribution / package 兼容名 `tradecat-terminal` / `tradecat_terminal`；对外主命令统一使用 `tradecat`。
+用户侧终端面板：只读 TradeCat 在线表格，写入本地 JSON 快照缓存，并在终端中浏览市场快照与事件流。
 
-## 边界
+[![CI](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-- 只读远端 Google Sheets CSV。
-- 只写用户本地快照缓存文件。
-- 不使用 SQLite、PostgreSQL 或 TradeCat 服务端生产数据库。
-- 不提供本地 SQL 查询层。
-- TUI 只读取本地缓存文件；实时刷新也是先拉取 CSV 写缓存，再从缓存渲染。
+公开在线表格：
+[另类数据终端](https://docs.google.com/spreadsheets/d/1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4/edit?usp=sharing) /
+[市场数据终端](https://docs.google.com/spreadsheets/d/1k16nGFCE7oBXrEqvTpHSA2Z5530GM_kou-wiWklTsfY/edit?usp=sharing)
+
+社区：
+[Telegram](https://t.me/tradecat_community) /
+[GitHub](https://github.com/tukuaiai/tradecat) /
+[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777)
+
+</div>
+
+---
+
+## 目录
+
+- [定位](#定位)
+- [免责声明](#免责声明)
+- [快速开始](#快速开始)
+- [常用命令](#常用命令)
+- [TUI 操作](#tui-操作)
+- [数据集](#数据集)
+- [缓存结构](#缓存结构)
+- [配置](#配置)
+- [开发与验证](#开发与验证)
+
+> 给 AI 助手的一句话：`请按 https://github.com/tukuaiai/tradecat/tree/develop 的 README 帮我安装并运行 TradeCat Terminal。`
+
+## 定位
+
+TradeCat Terminal 是一个轻量、可本地运行、可独立分发的用户侧工具。
+
+它只做三件事：
+
+1. 从公开 Google Sheets CSV 读取数据。
+2. 把最新内容保存为用户本地 JSON 快照缓存。
+3. 用 CLI / TUI 在终端里查看市场快照和事件流。
+
+它明确不做这些事：
+
+- 不连接或写入 TradeCat 服务端 PostgreSQL。
+- 不使用 SQLite、WAL、本地 SQL 查询层或数据库型后端存储。
+- 不需要 Google service account、私钥、token 或服务端权限。
+- 不承担服务端数据生产、采集、修复或发布职责。
+
+## 免责声明
+
+1. 本项目仅用于技术研究、数据浏览与社区协作交流，不构成投资建议、理财建议或交易建议。
+2. 本项目不隶属于任何交易所、基金、做市商或官方组织。
+3. 数字资产价格波动剧烈，可能出现大幅亏损甚至归零风险，请自行评估风险并独立决策。
+4. 本工具只读取公开在线表格，不保证第三方数据源、网络、Google Sheets、交易所页面或外部链接持续可用。
+5. 项目维护者和贡献者不对任何直接或间接损失承担责任，包括但不限于投资亏损、交易损失、第三方服务故障、误用数据或链接跳转风险。
 
 ## 快速开始
 
+### 推荐：从源码安装
+
 ```bash
-cd apps/tradecat
+git clone https://github.com/tukuaiai/tradecat.git
+cd tradecat
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
@@ -34,16 +85,40 @@ tradecat
 | `tradecat-terminal` | 兼容入口 |
 | `tcat` | 短命令别名 |
 
-任意目录直接启动：
+### 任意目录启动
+
+如果你使用本地虚拟环境安装，可以把命令软链接到 `~/.local/bin`：
 
 ```bash
-ln -sfn /home/lenovo/.projects/cat/tradecat/apps/tradecat/.venv/bin/tradecat ~/.local/bin/tradecat
+mkdir -p ~/.local/bin
+ln -sfn "$(pwd)/.venv/bin/tradecat" ~/.local/bin/tradecat
+```
+
+之后可以在任意目录执行：
+
+```bash
+tradecat
+```
+
+### AI 安装提示词
+
+把下面这段复制给 Claude / ChatGPT / Cursor / Codex：
+
+```text
+请帮我安装并运行 TradeCat Terminal：
+
+1. 克隆 https://github.com/tukuaiai/tradecat.git
+2. 进入仓库后创建 Python 3.12 虚拟环境
+3. 执行 pip install -e ".[dev]"
+4. 运行 bash scripts/verify.sh
+5. 运行 tradecat init 和 tradecat
+6. 如果 tradecat 命令不在 PATH，把 .venv/bin/tradecat 软链接到 ~/.local/bin/tradecat
 ```
 
 ## 常用命令
 
 ```bash
-# 默认打开终端面板；先读本地缓存，进入后按 tap 独立间隔探测，默认 event_stream=1.5s
+# 默认打开终端面板；先读本地缓存，进入后按 tap 独立间隔探测
 tradecat
 
 # 初始化缓存目录，默认 ~/.tradecat/cache
@@ -80,45 +155,6 @@ tradecat tui --plain
 tradecat tui --no-live
 ```
 
-## 缓存结构
-
-```text
-~/.tradecat/cache/
-├── registry.json
-└── datasets/
-    ├── market_snapshot/
-    │   ├── manifest.json
-    │   └── snapshots/*.json
-    ├── anomaly_panel/
-    │   ├── manifest.json
-    │   └── snapshots/*.json
-    ├── market_stats/
-    │   ├── manifest.json
-    │   └── snapshots/*.json
-    └── event_stream/
-        ├── manifest.json
-        ├── snapshots/*.json
-        └── stream_events.json
-```
-
-### Snapshot tap
-
-`market_snapshot`、`anomaly_panel`、`market_stats` 是快照型 tap：
-
-- 每次拉取计算完整 CSV matrix hash。
-- hash 不变时不新增快照文件。
-- hash 变化时写入一个新的 `snapshots/<time>_<hash>.json`。
-- TUI 上下键切换历史快照。
-
-### Event stream tap
-
-`event_stream` 是增量流：
-
-- 每次仍保留最新 CSV 快照。
-- 同时按 `时间(北京) + 内容` 生成事件键，写入 `stream_events.json`。
-- 重复事件只更新 `seen_count / last_seen_at`。
-- TUI 上下键滚动事件列表，不切换批次。
-
 ## TUI 操作
 
 | 操作 | 行为 |
@@ -142,7 +178,17 @@ tradecat tui --no-live
 - 终端窗口或字体缩放后，TUI 会检测尺寸变化并立即重绘，不需要手动按 `r`。
 - 缓存文件始终保留完整值。
 
-## Dataset
+TUI 高频探针规则：
+
+- 只 probe 当前打开的 tap，不做 `sync-all`。
+- TUI 启动后立即发起后台 probe；网络慢不会阻塞界面主循环。
+- 滚动、选行、hover 只读内存中的当前 view/render cache，不重复读取 JSON 快照。
+- `event_stream` 使用两列轻量渲染，只渲染时间与内容，避免长文本拖慢交互。
+- `event_stream` 默认 `interval=1.5s`、`timeout=1.0s`。
+- timeout 会被限制为不超过当前 tap 的基础 interval。
+- 连续失败自动退避：1 次失败退到 `3s`，2 次退到 `5s`，3 次及以上退到 `15s`；成功后恢复基础 interval。
+
+## 数据集
 
 | dataset_key | source | tab | mode |
 |:---|:---|:---|:---|
@@ -150,6 +196,45 @@ tradecat tui --no-live
 | `anomaly_panel` | `market_data` | `异动面板` | `snapshot` |
 | `market_stats` | `market_data` | `全市场统计` | `snapshot` |
 | `event_stream` | `alternative_data` | `事件流` | `stream` |
+
+### Snapshot tap
+
+`market_snapshot`、`anomaly_panel`、`market_stats` 是快照型 tap：
+
+- 每次拉取计算完整 CSV matrix hash。
+- hash 不变时不新增快照文件。
+- hash 变化时写入一个新的 `snapshots/<time>_<hash>.json`。
+- TUI 上下键切换历史快照。
+
+### Event stream tap
+
+`event_stream` 是增量流：
+
+- 每次仍保留最新 CSV 快照。
+- 同时按 `时间(北京) + 内容` 生成事件键，写入 `stream_events.json`。
+- 重复事件只更新 `seen_count / last_seen_at`。
+- TUI 上下键滚动事件列表，不切换批次。
+
+## 缓存结构
+
+```text
+~/.tradecat/cache/
+├── registry.json
+└── datasets/
+    ├── market_snapshot/
+    │   ├── manifest.json
+    │   └── snapshots/*.json
+    ├── anomaly_panel/
+    │   ├── manifest.json
+    │   └── snapshots/*.json
+    ├── market_stats/
+    │   ├── manifest.json
+    │   └── snapshots/*.json
+    └── event_stream/
+        ├── manifest.json
+        ├── snapshots/*.json
+        └── stream_events.json
+```
 
 ## 配置
 
@@ -168,19 +253,21 @@ tradecat tui --no-live
 | `TRADECAT_TERMINAL_WATCH_INTERVAL` | `60` | 后台 watch 间隔秒数 |
 | `TRADECAT_TERMINAL_WATCH_DATASET` | 空 | 为空 watch 全部 active dataset |
 
-TUI 高频探针规则：
-
-- 只 probe 当前打开的 tap，不做 `sync-all`。
-- TUI 启动后立即发起后台 probe；网络慢不会阻塞界面主循环。
-- 滚动、选行、hover 只读内存中的当前 view/render cache，不重复读取 JSON 快照。
-- `event_stream` 使用两列轻量渲染，只渲染时间与内容，避免长文本拖慢交互。
-- `event_stream` 默认 `interval=1.5s`、`timeout=1.0s`。
-- timeout 会被限制为不超过当前 tap 的基础 interval。
-- 连续失败自动退避：1 次失败退到 `3s`，2 次退到 `5s`，3 次及以上退到 `15s`；成功后恢复基础 interval。
-
-## 验证
+## 开发与验证
 
 ```bash
-cd apps/tradecat
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e ".[dev]"
+
 bash scripts/verify.sh
 ```
+
+CI 会执行：
+
+- local-only 文件门禁：`AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md` 不允许进入公开仓。
+- Ruff lint。
+- Pytest。
+- Shell 语法检查。
+
+本地 Agent / Debug 文档可保留在工作区，但被 `.gitignore` 忽略，不进入公开仓。
