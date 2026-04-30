@@ -191,6 +191,8 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 
 如果系统没有 Python 3.12，安装脚本会尝试安装 `uv`，并用 `uv` 托管 Python 3.12。仍然需要本机有 `git` 和 `curl`。
 
+Windows 原生 Python 会通过依赖自动安装 `windows-curses`。如果当前终端仍不支持交互式 TUI，`tradecat` 会自动降级为静态文本模式，不再抛出 Python traceback；完整交互体验优先使用 Windows Terminal + WSL。
+
 ### 手动：从源码安装
 
 ```bash

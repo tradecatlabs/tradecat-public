@@ -14,7 +14,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-dependencies = []
+dependencies = [
+    "windows-curses>=2.4.0; platform_system == 'Windows'",
+]
 
 [project.optional-dependencies]
 dev = [

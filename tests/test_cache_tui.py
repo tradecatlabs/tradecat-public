@@ -938,6 +938,21 @@ def test_tui_plain_mode_does_not_probe_before_render(monkeypatch, tmp_path):
     assert calls == []
 
 
+def test_tui_without_curses_falls_back_to_plain(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module, "curses", None)
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+
+    assert "当前 Python 环境不支持 curses" in output
+    assert "已自动切换为静态文本模式" in output
+    assert "暂无本地快照缓存" in output
+    assert calls == []
+
+
 def test_tui_live_startup_is_cache_first_without_blocking_probe(monkeypatch, tmp_path):
     import tradecat_terminal.tui as tui_module
 

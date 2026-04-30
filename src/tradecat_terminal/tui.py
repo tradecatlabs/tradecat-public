@@ -53,6 +53,17 @@ def render_basic_tui(cache_dir: Path, dataset_key: str | None = None, limit: int
     return "\n".join(lines)
 
 
+def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, reason: str) -> str:
+    return "\n".join(
+        [
+            f"提示：{reason}",
+            "已自动切换为静态文本模式；如需交互式 TUI，请使用支持 curses 的终端或重新运行安装脚本。",
+            "",
+            render_basic_tui(cache_dir, dataset_key=dataset_key, limit=limit),
+        ]
+    )
+
+
 def render_rows_table(
     rows: list[dict[str, Any]],
     *,
@@ -85,7 +96,7 @@ def run_tui(
     if not interactive:
         return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=limit)
     if curses is None:
-        raise RuntimeError("当前 Python 环境不支持 curses；请使用 --plain 输出静态文本")
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, "当前 Python 环境不支持 curses")
     try:
         curses.wrapper(
             lambda stdscr: _run_curses(
@@ -98,7 +109,7 @@ def run_tui(
             )
         )
     except curses.error as exc:
-        raise RuntimeError("交互式 TUI 渲染失败；请扩大终端窗口，或显式使用 tradecat tui --plain") from exc
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, f"交互式 TUI 渲染失败：{exc}")
     return None
 
 
