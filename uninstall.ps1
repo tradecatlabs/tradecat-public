@@ -30,8 +30,17 @@ function Backup-Cache-If-Needed {
 }
 
 function Remove-Launchers {
+    $CurrentCmd = $env:TRADECAT_UNINSTALL_CURRENT_CMD
     foreach ($Name in @("tradecat.cmd", "tcat.cmd", "tradecat.ps1", "tradecat-uninstall.cmd", "tcat-uninstall.cmd")) {
-        Remove-Item (Join-Path $BinDir $Name) -Force -ErrorAction SilentlyContinue
+        $Target = Join-Path $BinDir $Name
+        if ($CurrentCmd) {
+            try {
+                if ([System.IO.Path]::GetFullPath($Target) -ieq [System.IO.Path]::GetFullPath($CurrentCmd)) {
+                    continue
+                }
+            } catch {}
+        }
+        Remove-Item $Target -Force -ErrorAction SilentlyContinue
     }
 }
 

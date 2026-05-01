@@ -225,9 +225,9 @@ exit `$LASTEXITCODE
     $ShortLauncher = Join-Path $BinDir "tcat.cmd"
     "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$LauncherPs1`" %*`r`n" | Set-Content -Encoding ASCII $ShortLauncher
     $UninstallLauncher = Join-Path $BinDir "tradecat-uninstall.cmd"
-    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`n" | Set-Content -Encoding ASCII $UninstallLauncher
+    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`nset `"TRADECAT_UNINSTALL_CURRENT_CMD=%~f0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`nset `"_TC_CODE=%ERRORLEVEL%`"`r`ndel `"%~f0`" >nul 2>nul`r`nexit /b %_TC_CODE%`r`n" | Set-Content -Encoding ASCII $UninstallLauncher
     $ShortUninstallLauncher = Join-Path $BinDir "tcat-uninstall.cmd"
-    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`n" | Set-Content -Encoding ASCII $ShortUninstallLauncher
+    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`nset `"TRADECAT_UNINSTALL_CURRENT_CMD=%~f0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`nset `"_TC_CODE=%ERRORLEVEL%`"`r`ndel `"%~f0`" >nul 2>nul`r`nexit /b %_TC_CODE%`r`n" | Set-Content -Encoding ASCII $ShortUninstallLauncher
     if (-not (Test-Truthy $env:TRADECAT_INSTALL_SKIP_PATH_WRITE)) {
         $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
         if (-not ($UserPath.Split(";") -contains $BinDir)) {
