@@ -69,7 +69,7 @@ function Ensure-Uv {
     }
     Log "未找到 Python $PythonVersion，开始安装 uv，并由 uv 托管 Python"
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-    $env:Path = "$env:USERPROFILE\.local\bin;$env:USERPROFILE\.cargo\bin;$env:Path"
+    $env:Path = "${env:USERPROFILE}\.local\bin;${env:USERPROFILE}\.cargo\bin;${env:Path}"
     if (-not (Test-Command "uv")) {
         Fail "uv 安装后仍不可用；请重新打开终端或确认用户 PATH"
     }

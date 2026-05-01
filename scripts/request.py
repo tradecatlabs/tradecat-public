@@ -18,6 +18,7 @@ REGISTRY_URL_ENV = "TRADECAT_REQUEST_REGISTRY_URL"
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_stdio()
     parser = argparse.ArgumentParser(description="TradeCat 一次性公开数据请求；无需安装，无本地缓存。")
     parser.add_argument("dataset_key", nargs="?", help="dataset_key，例如 event_stream")
     parser.add_argument("--format", choices=("table", "json", "jsonl", "csv", "raw"), default="table")
@@ -76,6 +77,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(render_table(rows, headers=headers))
     return 0
+
+
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
 
 
 def load_registry(url: str, *, timeout: float) -> dict[str, dict]:

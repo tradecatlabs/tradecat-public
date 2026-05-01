@@ -244,13 +244,13 @@ main() {
   bootstrap_cache
 
   log "安装完成"
-  log "命令入口：$BIN_DIR/tradecat"
-  log "卸载命令：$BIN_DIR/tradecat-uninstall"
+  log "命令入口：${BIN_DIR}/tradecat"
+  log "卸载命令：${BIN_DIR}/tradecat-uninstall"
   if ! printf '%s' ":$PATH:" | grep -F ":$BIN_DIR:" >/dev/null 2>&1; then
-    log "当前会话 PATH 未包含 $BIN_DIR；立即运行可用：$BIN_DIR/tradecat"
-    log "或执行：export PATH=\"$BIN_DIR:\$PATH\""
+    log "当前会话 PATH 未包含 ${BIN_DIR}；立即运行可用：${BIN_DIR}/tradecat"
+    log "或执行：export PATH=\"${BIN_DIR}:\$PATH\""
   fi
-  log "启动：$BIN_DIR/tradecat"
+  log "启动：${BIN_DIR}/tradecat"
 }
 
 main "$@"

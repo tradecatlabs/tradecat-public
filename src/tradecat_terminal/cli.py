@@ -96,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_stdio()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     if _should_default_to_tui(raw_argv):
         raw_argv = [*raw_argv, "tui"]
@@ -483,6 +484,16 @@ def _route_global_tui_args(argv: list[str]) -> list[str]:
         tui_args.append(token)
         index += 1
     return [*global_args, "tui", *tui_args]
+
+
+def _configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
 
 
 def _pause_after_interactive_fallback(*, enabled: bool, lang: str | None = None) -> None:
