@@ -25,7 +25,7 @@ function Backup-Cache-If-Needed {
         $BackupDir = Join-Path (Join-Path $env:USERPROFILE ".tradecat") ("cache-backup-{0}" -f (Get-Date -Format "yyyyMMddHHmmss"))
         New-Item -ItemType Directory -Force -Path (Split-Path $BackupDir -Parent) | Out-Null
         Move-Item -Force $CacheDir $BackupDir
-        Log "已保留缓存：$BackupDir"
+        Log "kept cache backup: $BackupDir"
     }
 }
 
@@ -39,7 +39,7 @@ Backup-Cache-If-Needed
 Remove-Launchers
 Remove-Item $AppDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $RuntimeDir -Recurse -Force -ErrorAction SilentlyContinue
-Log "已卸载 TradeCat"
-Log "已删除安装目录：$AppDir"
-Log "已删除命令入口：$(Join-Path $BinDir 'tradecat.cmd'), $(Join-Path $BinDir 'tcat.cmd'), $(Join-Path $BinDir 'tradecat-uninstall.cmd')"
-Log "未删除系统 Python、git、uv 或用户 PATH"
+Log "TradeCat uninstalled"
+Log "removed install dir: $AppDir"
+Log "removed command entries: $(Join-Path $BinDir 'tradecat.cmd'), $(Join-Path $BinDir 'tcat.cmd'), $(Join-Path $BinDir 'tradecat-uninstall.cmd')"
+Log "system Python, git, uv and user PATH were not removed"

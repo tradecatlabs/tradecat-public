@@ -180,6 +180,12 @@ def test_install_launchers_enable_default_auto_update():
     assert "tradecat.ps1" in uninstall_ps1
 
 
+def test_powershell_installers_are_ascii_for_windows_powershell_51():
+    for relative_path in ("install.ps1", "uninstall.ps1"):
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        assert content.encode("ascii").decode("ascii") == content
+
+
 def test_parse_csv_rows_skips_public_top_row():
     rows = parse_csv_rows(
         '"https://dexscreener.com/x\\nhttps://t.me/y\\n数据源，事件流",\n'
