@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
     curses = None
 
 from tradecat_terminal.cache import init_cache, read_cached_view
+from tradecat_terminal.i18n import cycle_lang, lang_label, resolve_lang, tr
 from tradecat_terminal.lifecycle import probe_dataset
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
 
@@ -49,12 +50,12 @@ SYMBOL_VALUE_RE = re.compile(r"^[A-Z0-9]{2,24}(?:USDT)?$")
 URL_RE = re.compile(r"https?://[^\s|]+")
 
 
-def render_basic_tui(cache_dir: Path, dataset_key: str | None = None, limit: int = 0) -> str:
-    return render_safe_plain_tui(cache_dir, dataset_key=dataset_key, limit=limit)
+def render_basic_tui(cache_dir: Path, dataset_key: str | None = None, limit: int = 0, lang: str | None = None) -> str:
+    return render_safe_plain_tui(cache_dir, dataset_key=dataset_key, limit=limit, lang=lang)
 
 
-def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, reason: str) -> str:
-    return render_safe_plain_tui(cache_dir, dataset_key=dataset_key, limit=limit, reason=reason)
+def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, reason: str, lang: str | None = None) -> str:
+    return render_safe_plain_tui(cache_dir, dataset_key=dataset_key, limit=limit, reason=reason, lang=lang)
 
 
 def render_safe_plain_tui(
@@ -63,20 +64,22 @@ def render_safe_plain_tui(
     limit: int = 0,
     *,
     reason: str | None = None,
+    lang: str | None = None,
 ) -> str:
     """用 Rich 为 Windows PowerShell / Web SSH 这类不稳定终端生成无边框静态输出。"""
+    resolved_lang = resolve_lang(lang)
     dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     width = _safe_plain_output_width()
     view = read_cached_view(cache_dir, dataset_key)
     console, buffer = _rich_plain_console(width)
     if reason:
-        _rich_print_line(console, f"提示：{reason}")
-        _rich_print_line(console, "已自动切换为 Rich 静态文本模式；不使用 psql 边框，避免 Windows/Web 终端换行错位。")
-    _rich_print_line(console, "TradeCat")
-    _rich_print_line(console, f"cache: {cache_dir}")
-    _rich_print_line(console, f"current: {dataset_key}")
+        _rich_print_line(console, f"{tr(resolved_lang, 'notice_prefix')}: {reason}")
+        _rich_print_line(console, tr(resolved_lang, "plain_fallback"))
+    _rich_print_line(console, tr(resolved_lang, "app_title"))
+    _rich_print_line(console, f"{tr(resolved_lang, 'cache_label')}: {cache_dir}")
+    _rich_print_line(console, f"{tr(resolved_lang, 'current_label')}: {dataset_key} ({_display_name_for_key(dataset_key, resolved_lang)})")
     if not view["rows"]:
-        _rich_print_line(console, "暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat")
+        _rich_print_line(console, tr(resolved_lang, "empty_cache_plain"))
         return _rich_export_text(buffer)
     for line in view.get("top_lines") or []:
         _rich_print_line(console, line)
@@ -193,16 +196,18 @@ def run_tui(
     interactive: bool = True,
     live: bool = True,
     probe_interval_seconds: float | None = None,
+    lang: str | None = None,
 ) -> str | None:
     init_cache(cache_dir)
+    resolved_lang = resolve_lang(lang)
     startup_dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     if not interactive:
-        return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=limit)
-    plain_reason = _plain_mode_reason()
+        return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=limit, lang=resolved_lang)
+    plain_reason = _plain_mode_reason(resolved_lang)
     if plain_reason:
-        return render_plain_fallback(cache_dir, startup_dataset_key, limit, plain_reason)
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, plain_reason, lang=resolved_lang)
     if curses is None:
-        return render_plain_fallback(cache_dir, startup_dataset_key, limit, "当前 Python 环境不支持 curses")
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, tr(resolved_lang, "no_curses_reason"), lang=resolved_lang)
     try:
         curses.wrapper(
             lambda stdscr: _run_curses(
@@ -212,22 +217,25 @@ def run_tui(
                 limit=limit,
                 live=live,
                 probe_interval_override=probe_interval_seconds,
+                lang=resolved_lang,
             )
         )
     except curses.error as exc:
-        return render_plain_fallback(cache_dir, startup_dataset_key, limit, f"交互式 TUI 渲染失败：{exc}")
+        reason = tr(resolved_lang, "curses_failed_reason", error=exc)
+        return render_plain_fallback(cache_dir, startup_dataset_key, limit, reason, lang=resolved_lang)
     return None
 
 
-def _plain_mode_reason() -> str:
+def _plain_mode_reason(lang: str | None = None) -> str:
+    resolved_lang = resolve_lang(lang)
     if _truthy_env(TUI_FORCE_CURSES_ENV):
         return ""
     if _truthy_env(TUI_FORCE_PLAIN_ENV):
-        return "已按 TRADECAT_TERMINAL_FORCE_PLAIN=1 使用静态文本模式"
+        return tr(resolved_lang, "force_plain_reason")
     if sys.platform == "win32":
-        return "Windows 原生终端的 curses 渲染不稳定"
+        return tr(resolved_lang, "windows_plain_reason")
     if _is_web_or_unknown_ssh_terminal():
-        return "远程 Web/SSH 终端的 curses 宽字符渲染不稳定"
+        return tr(resolved_lang, "ssh_plain_reason")
     return ""
 
 
@@ -264,12 +272,13 @@ def _run_curses(
     *,
     live: bool,
     probe_interval_override: float | None,
+    lang: str,
 ) -> None:
     curses.curs_set(0)
     stdscr.keypad(True)
     stdscr.timeout(CURSES_POLL_TIMEOUT_MS)
     _enable_mouse()
-    state = _load_state(dataset_key)
+    state = _load_state(dataset_key, lang=lang)
     state["live"] = live
     state["last_probe_at"] = 0.0
     state["last_probe_status"] = "cache"
@@ -352,6 +361,10 @@ def _run_curses(
                 state["batch_index"] = 0
                 _start_probe_thread(cache_dir, state, probe_results)
                 dirty = True
+            elif key in {ord("l"), ord("L")}:
+                state["lang"] = cycle_lang(str(state.get("lang") or lang))
+                state["render_cache"] = {}
+                dirty = True
             elif key in {ord("n"), ord("N")}:
                 state["selected_row_offset"] = min(
                     int(state.get("selected_row_offset", 0)) + 1,
@@ -373,6 +386,7 @@ def _run_curses(
 def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
     height, width = stdscr.getmaxyx()
     dataset = state["datasets"][state["dataset_index"]]
+    lang = resolve_lang(str(state.get("lang") or ""))
     dataset_key = str(dataset["dataset_key"])
     data_mode = str(dataset["data_mode"])
     view = _read_view_cached(
@@ -397,27 +411,29 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
         max(0, len(visible_rows) - 1),
     )
 
-    mode = "live" if state.get("live", True) else "history"
+    mode = tr(lang, "mode_live") if state.get("live", True) else tr(lang, "mode_history")
+    display_name = _dataset_display_name(dataset, lang)
     header = (
         f"TradeCat | {mode} | tap {state['dataset_index'] + 1}/{len(state['datasets'])}: "
-        f"{dataset_key} ({dataset['tab_name']})"
+        f"{dataset_key} ({display_name}) | {lang_label(lang, lang=lang)}"
     )
-    controls = (
-        "<-/-> 切换 tap | up/down 快照/事件 | PgUp/PgDn 翻行 | "
-        "n/p 选行 | Enter/o 打开链接/交易对 | r 刷新 | q 退出"
-    )
+    controls = tr(lang, "controls")
     probe_label = _probe_state_label(state)
     if data_mode == "stream":
-        batch_label = f"mode=stream | row={state['row_scroll']} | probe={probe_label}"
+        batch_label = tr(lang, "stream_status", row_scroll=state["row_scroll"], probe=probe_label)
     else:
-        batch_label = (
-            f"batch {int(view.get('batch_index') or 0) + 1}/{int(view.get('batch_count') or 0)}: "
-            f"{view.get('batch_label') or '无缓存'} | probe={probe_label}"
+        batch_label = tr(
+            lang,
+            "batch_status",
+            batch_index=int(view.get("batch_index") or 0) + 1,
+            batch_count=int(view.get("batch_count") or 0),
+            batch_label=view.get("batch_label") or tr(lang, "no_cache"),
+            probe=probe_label,
         )
     if state.get("last_probe_error"):
-        batch_label += f" | error={state['last_probe_error']}"
+        batch_label += f" | {tr(lang, 'error_label')}={state['last_probe_error']}"
     if state.get("last_open_status"):
-        batch_label += f" | open={state['last_open_status']}"
+        batch_label += f" | {tr(lang, 'open_label')}={state['last_open_status']}"
     _add_line(stdscr, 0, header, width, curses.A_REVERSE)
     _add_line(stdscr, 1, controls, width)
     _add_line(stdscr, 2, batch_label, width)
@@ -434,7 +450,7 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
         y += 1
     if not visible_rows:
         state["data_start_y"] = None
-        _add_line(stdscr, y, "暂无本地快照缓存；按 r 拉取当前 tap，或执行 tradecat sync-all。", width)
+        _add_line(stdscr, y, tr(lang, "empty_cache_curses"), width)
         _finish_draw(stdscr, state, y + 1, height)
         return
     viewport = _render_viewport_cached(
@@ -460,7 +476,7 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
     _finish_draw(stdscr, state, y, height)
 
 
-def _load_state(dataset_key: str) -> dict[str, Any]:
+def _load_state(dataset_key: str, *, lang: str | None = None) -> dict[str, Any]:
     datasets = [dataset_to_dict(dataset) for dataset in list_active_datasets()]
     keys = [str(row["key"]) for row in datasets]
     index = keys.index(dataset_key) if dataset_key in keys else 0
@@ -468,6 +484,7 @@ def _load_state(dataset_key: str) -> dict[str, Any]:
         {
             "dataset_key": row["key"],
             "tab_name": row["tab_name"],
+            "display_names": row.get("display_names", {}),
             "data_mode": row["data_mode"],
         }
         for row in datasets
@@ -481,6 +498,7 @@ def _load_state(dataset_key: str) -> dict[str, Any]:
         "selected_row_offset": 0,
         "hover_row_offset": None,
         "last_open_status": None,
+        "lang": resolve_lang(lang),
     }
 
 
@@ -894,6 +912,21 @@ def _current_dataset_key(state: dict) -> str:
 def _current_dataset_mode(state: dict) -> str:
     datasets = state["datasets"]
     return str(datasets[state["dataset_index"]].get("data_mode") or "snapshot")
+
+
+def _dataset_display_name(dataset: dict[str, Any], lang: str | None = None) -> str:
+    names = dataset.get("display_names")
+    resolved_lang = resolve_lang(lang)
+    if isinstance(names, dict):
+        return str(names.get(resolved_lang) or names.get("zh") or dataset.get("tab_name") or dataset.get("dataset_key") or "")
+    return str(dataset.get("tab_name") or dataset.get("dataset_key") or "")
+
+
+def _display_name_for_key(dataset_key: str, lang: str | None = None) -> str:
+    try:
+        return get_dataset(dataset_key).display_name(lang)
+    except ValueError:
+        return dataset_key
 
 
 def _render_rows_table_viewport(

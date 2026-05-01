@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import queue
+from pathlib import Path
 
 from tradecat_terminal import cli
 from tradecat_terminal.cache import (
@@ -15,6 +16,7 @@ from tradecat_terminal.cache import (
     write_dataset_body,
 )
 from tradecat_terminal.config import DEFAULT_APP_ROOT, load_config
+from tradecat_terminal.i18n import cycle_lang, resolve_lang, tr
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
 from tradecat_terminal.sheets import find_header_row_index, parse_csv_rows
 from tradecat_terminal.tui import (
@@ -56,6 +58,8 @@ from tradecat_terminal.tui import (
     render_safe_plain_tui,
     run_tui,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class _TtyInput:
@@ -111,8 +115,42 @@ def test_registry_has_no_freeze_columns_contract():
     assert "freeze_columns" not in snapshot
     assert event_stream["data_mode"] == "stream"
     assert "freeze_columns" not in event_stream
+    assert snapshot["display_names"]["en"] == "Market Snapshot"
+    assert get_dataset("event_stream").display_name("ko") == "이벤트 스트림"
     assert event_stream["tui_probe_interval_seconds"] == 1.5
     assert event_stream["tui_fetch_timeout_seconds"] == 1.0
+
+
+def test_i18n_resolves_aliases_and_cycles_language(monkeypatch):
+    monkeypatch.delenv("TRADECAT_LANG", raising=False)
+
+    assert resolve_lang("en-US") == "en"
+    assert resolve_lang("ko_KR.UTF-8") == "ko"
+    assert resolve_lang("中文") == "zh"
+    assert cycle_lang("zh") == "en"
+    assert cycle_lang("en") == "ko"
+    assert cycle_lang("ko") == "zh"
+    assert tr("en", "mode_live") == "live"
+
+
+def test_install_launchers_enable_default_auto_update():
+    install_sh = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
+    install_ps1 = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
+    uninstall_ps1 = (REPO_ROOT / "uninstall.ps1").read_text(encoding="utf-8")
+
+    assert "auto_update" in install_sh
+    assert 'git -C "$APP_DIR" fetch origin "$BRANCH"' in install_sh
+    assert 'git -C "$APP_DIR" pull --ff-only origin "$BRANCH"' in install_sh
+    assert 'TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init' in install_sh
+    assert "TRADECAT_FORCE_UPDATE" in install_sh
+    assert "TRADECAT_NO_AUTO_UPDATE" in install_sh
+    assert "Invoke-TradeCatAutoUpdate" in install_ps1
+    assert "git -C `$AppDir fetch origin `$Branch" in install_ps1
+    assert "git -C `$AppDir pull --ff-only origin `$Branch" in install_ps1
+    assert "$env:TRADECAT_NO_AUTO_UPDATE = \"1\"" in install_ps1
+    assert "TRADECAT_FORCE_UPDATE" in install_ps1
+    assert "tradecat.ps1" in install_ps1
+    assert "tradecat.ps1" in uninstall_ps1
 
 
 def test_parse_csv_rows_skips_public_top_row():
@@ -328,6 +366,7 @@ def test_cli_without_subcommand_opens_tui(tmp_path, monkeypatch):
         interactive=True,
         live=True,
         probe_interval_seconds=None,
+        lang=None,
     ):
         calls["cache_dir"] = cache_dir
         calls["dataset_key"] = dataset_key
@@ -335,6 +374,7 @@ def test_cli_without_subcommand_opens_tui(tmp_path, monkeypatch):
         calls["interactive"] = interactive
         calls["live"] = live
         calls["probe_interval_seconds"] = probe_interval_seconds
+        calls["lang"] = lang
         return None
 
     monkeypatch.setattr(cli, "run_tui", fake_run_tui)
@@ -347,7 +387,32 @@ def test_cli_without_subcommand_opens_tui(tmp_path, monkeypatch):
         "interactive": True,
         "live": True,
         "probe_interval_seconds": None,
+        "lang": None,
     }
+
+
+def test_cli_routes_language_option_to_default_tui(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_run_tui(
+        cache_dir,
+        dataset_key=None,
+        limit=0,
+        *,
+        interactive=True,
+        live=True,
+        probe_interval_seconds=None,
+        lang=None,
+    ):
+        calls["cache_dir"] = cache_dir
+        calls["lang"] = lang
+        calls["interactive"] = interactive
+        return None
+
+    monkeypatch.setattr(cli, "run_tui", fake_run_tui)
+
+    assert cli.main(["--cache-dir", str(tmp_path / "cache"), "--lang", "ko"]) == 0
+    assert calls == {"cache_dir": tmp_path / "cache", "lang": "ko", "interactive": True}
 
 
 def test_cli_path_outputs_agent_friendly_cache_paths(tmp_path, capsys):
@@ -442,7 +507,7 @@ def test_tui_safe_plain_fallback_uses_borderless_width_capped_output(tmp_path, m
     )
     monkeypatch.setenv("TRADECAT_TERMINAL_PLAIN_WIDTH", "80")
 
-    output = render_plain_fallback(cache_dir, "event_stream", 0, "Windows 原生终端的 curses 渲染不稳定")
+    output = render_plain_fallback(cache_dir, "event_stream", 0, "Windows 原生终端的 curses 渲染不稳定", lang="zh")
     lines = output.splitlines()
 
     assert "Windows 原生终端的 curses 渲染不稳定" in output
@@ -472,6 +537,28 @@ def test_tui_safe_plain_renderer_handles_wide_snapshot_without_psql_borders(tmp_
     assert all(_display_width(line) <= 90 for line in output.splitlines())
     assert "#2" in output
     assert "数据源" in output
+
+
+def test_tui_plain_renderer_uses_requested_language_without_translating_data(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        "https://dexscreener.com/x\n时间(北京),内容\n2026-05-01 03:09:56,美国总统特朗普讲话\n",
+    )
+
+    output = render_safe_plain_tui(cache_dir, dataset_key="event_stream", limit=0, lang="en")
+
+    assert "current: event_stream (Event Stream)" in output
+    assert "时间(北京)" in output
+    assert "美国总统特朗普讲话" in output
+
+
+def test_tui_empty_plain_renderer_uses_korean_language(tmp_path):
+    output = run_tui(tmp_path / "cache", dataset_key="event_stream", interactive=False, live=True, lang="ko")
+
+    assert "current: event_stream (이벤트 스트림)" in output
+    assert "로컬 스냅샷 캐시가 없습니다" in output
 
 
 def test_viewport_renderer_outputs_all_columns_without_freezing_or_horizontal_scroll():
@@ -1031,7 +1118,7 @@ def test_tui_plain_mode_does_not_probe_before_render(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
 
-    output = run_tui(tmp_path / "cache", interactive=False, live=True)
+    output = run_tui(tmp_path / "cache", interactive=False, live=True, lang="zh")
 
     assert "暂无本地快照缓存" in output
     assert calls == []
@@ -1044,7 +1131,7 @@ def test_tui_without_curses_falls_back_to_plain(monkeypatch, tmp_path):
     monkeypatch.setattr(tui_module, "curses", None)
     monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
 
-    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+    output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="zh")
 
     assert "当前 Python 环境不支持 curses" in output
     assert "已自动切换为 Rich 静态文本模式" in output
@@ -1060,7 +1147,7 @@ def test_tui_windows_native_defaults_to_plain(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_CURSES", raising=False)
     monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
 
-    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+    output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="zh")
 
     assert "Windows 原生终端的 curses 渲染不稳定" in output
     assert "已自动切换为 Rich 静态文本模式" in output
@@ -1076,7 +1163,7 @@ def test_tui_windows_native_can_force_curses(monkeypatch, tmp_path):
     monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
     monkeypatch.setattr(tui_module.curses, "wrapper", lambda callback: None)
 
-    output = run_tui(tmp_path / "cache", interactive=True, live=True)
+    output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="zh")
 
     assert output is None
     assert calls == []

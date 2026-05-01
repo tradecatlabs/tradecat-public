@@ -108,10 +108,76 @@ function Create-Venv {
 
 function Write-Launcher {
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+    $LauncherPs1 = Join-Path $BinDir "tradecat.ps1"
+    @"
+`$ErrorActionPreference = "Continue"
+`$AppDir = "$AppDir"
+`$Branch = "$Branch"
+`$VenvPy = "$script:VenvPy"
+
+function Test-Truthy(`$Value) {
+    return @("1", "true", "yes", "on") -contains ([string]`$Value).Trim().ToLowerInvariant()
+}
+
+function Invoke-TradeCatAutoUpdate {
+    if (Test-Truthy `$env:TRADECAT_NO_AUTO_UPDATE) {
+        return
+    }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue) -or -not (Test-Path (Join-Path `$AppDir ".git"))) {
+        if (Test-Truthy `$env:TRADECAT_FORCE_UPDATE) {
+            Write-Error "tradecat-update: ERROR: cannot update; git or repo is unavailable"
+            exit 1
+        }
+        Write-Warning "tradecat-update: skipped; git or repo is unavailable"
+        return
+    }
+    `$OldHead = ""
+    try {
+        `$OldHead = (git -C `$AppDir rev-parse HEAD 2>`$null)
+    } catch {
+        `$OldHead = ""
+    }
+    git -C `$AppDir fetch origin `$Branch *> `$null
+    `$FetchCode = `$LASTEXITCODE
+    git -C `$AppDir checkout `$Branch *> `$null
+    `$CheckoutCode = `$LASTEXITCODE
+    git -C `$AppDir pull --ff-only origin `$Branch *> `$null
+    `$PullCode = `$LASTEXITCODE
+    if (`$FetchCode -ne 0 -or `$CheckoutCode -ne 0 -or `$PullCode -ne 0) {
+        if (Test-Truthy `$env:TRADECAT_FORCE_UPDATE) {
+            Write-Error "tradecat-update: ERROR: update failed"
+            exit 1
+        }
+        Write-Warning "tradecat-update: update failed; continuing with local version"
+        return
+    }
+    `$NewHead = ""
+    try {
+        `$NewHead = (git -C `$AppDir rev-parse HEAD 2>`$null)
+    } catch {
+        `$NewHead = ""
+    }
+    if (`$OldHead -and `$NewHead -and `$OldHead -ne `$NewHead) {
+        & `$VenvPy -m pip install -e `$AppDir *> `$null
+        if (`$LASTEXITCODE -eq 0) {
+            Write-Host "tradecat-update: updated to latest"
+        } elseif (Test-Truthy `$env:TRADECAT_FORCE_UPDATE) {
+            Write-Error "tradecat-update: ERROR: dependency refresh failed"
+            exit 1
+        } else {
+            Write-Warning "tradecat-update: dependency refresh failed; continuing with local version"
+        }
+    }
+}
+
+Invoke-TradeCatAutoUpdate
+& `$VenvPy -m tradecat_terminal @args
+exit `$LASTEXITCODE
+"@ | Set-Content -Encoding UTF8 $LauncherPs1
     $Launcher = Join-Path $BinDir "tradecat.cmd"
-    "@echo off`r`n`"$script:VenvPy`" -m tradecat_terminal %*`r`n" | Set-Content -Encoding ASCII $Launcher
+    "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$LauncherPs1`" %*`r`n" | Set-Content -Encoding ASCII $Launcher
     $ShortLauncher = Join-Path $BinDir "tcat.cmd"
-    "@echo off`r`n`"$script:VenvPy`" -m tradecat_terminal %*`r`n" | Set-Content -Encoding ASCII $ShortLauncher
+    "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$LauncherPs1`" %*`r`n" | Set-Content -Encoding ASCII $ShortLauncher
     $UninstallLauncher = Join-Path $BinDir "tradecat-uninstall.cmd"
     "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`n" | Set-Content -Encoding ASCII $UninstallLauncher
     $ShortUninstallLauncher = Join-Path $BinDir "tcat-uninstall.cmd"
@@ -124,12 +190,16 @@ function Write-Launcher {
 }
 
 function Bootstrap-Cache {
+    $OldNoAutoUpdate = $env:TRADECAT_NO_AUTO_UPDATE
+    $env:TRADECAT_NO_AUTO_UPDATE = "1"
     & (Join-Path $BinDir "tradecat.cmd") init | Out-Null
     try {
         & (Join-Path $BinDir "tradecat.cmd") sync-all | Out-Null
         Log "已同步公开数据到本地缓存"
     } catch {
         Log "公开数据初次同步失败；安装已完成，首次运行 tradecat 时会继续探测"
+    } finally {
+        $env:TRADECAT_NO_AUTO_UPDATE = $OldNoAutoUpdate
     }
 }
 

@@ -119,8 +119,17 @@ tradecat
 3. 安装 `tradecat` 命令入口。
 4. 初始化 `.tradecat/cache`。
 5. 尝试同步一次公开数据，失败时不阻断安装。
-6. 把 `tradecat` / `tcat` / `tradecat-uninstall` 放到用户级命令目录。
-7. Linux / macOS / WSL 会把命令目录写入 shell profile；当前会话如果还没生效，可直接运行 `~/.local/bin/tradecat`。
+6. 写入默认自动更新的 `tradecat` / `tcat` launcher。
+7. 把 `tradecat-uninstall` 放到用户级命令目录。
+8. Linux / macOS / WSL 会把命令目录写入 shell profile；当前会话如果还没生效，可直接运行 `~/.local/bin/tradecat`。
+
+启动时默认自动更新：
+
+- 每次运行 `tradecat` / `tcat` 前，launcher 会尝试更新安装目录到 `origin/develop` 最新版本。
+- 如果代码有变化，会自动刷新 editable install 后再启动。
+- 更新失败时默认继续使用本地版本；设置 `TRADECAT_FORCE_UPDATE=1` 后，更新失败会直接退出。
+- 设置 `TRADECAT_NO_AUTO_UPDATE=1` 可跳过启动前自动更新。
+- 如果你安装的是旧版 launcher，需要重新执行一次上面的一键安装命令，新的启动前自动更新逻辑才会生效。
 
 ### 卸载
 
@@ -189,6 +198,8 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 | `TRADECAT_INSTALL_DIR` | 覆盖源码安装目录 |
 | `TRADECAT_BIN_DIR` | 覆盖命令入口目录 |
 | `TRADECAT_PYTHON_VERSION` | 覆盖 Python 版本，默认 `3.12` |
+| `TRADECAT_NO_AUTO_UPDATE` | 设为 `1` 时，启动 `tradecat` 前跳过自动更新 |
+| `TRADECAT_FORCE_UPDATE` | 设为 `1` 时，启动前更新失败会直接退出 |
 
 如果系统没有 Python 3.12，安装脚本会尝试安装 `uv`，并用 `uv` 托管 Python 3.12。仍然需要本机有 `git` 和 `curl`。
 
@@ -321,6 +332,8 @@ tradecat tui
 tradecat tui event_stream
 tradecat tui --plain
 tradecat tui --no-live
+tradecat tui --lang en
+TRADECAT_LANG=ko tradecat
 ```
 
 ## TUI 操作
@@ -334,10 +347,12 @@ tradecat tui --no-live
 | `n/p` | 选择可见行 |
 | `Enter/o` | 打开当前行 URL；无 URL 时打开交易对 Binance Futures 链接 |
 | `r` | 重新拉取当前 tap 并写入缓存 |
+| `l` / `L` | 在中文 / English / 한국어 之间切换 TUI 界面语言 |
 | `q` | 退出 |
 
 渲染规则：
 
+- 多语言只作用于 TUI/CLI 外壳文案；远端表格列名、单元格内容、JSON/CSV 字段名不翻译，保持机器读取契约稳定。
 - 上游数据物理第 1 行显示在顶部文本区，不进入表格区。
 - 表格区保留物理列 A/B/C... 和原始行号。
 - 表格作为一个整体渲染，不冻结主键列，也不提供右侧列横向滚动。
@@ -468,6 +483,7 @@ Agent 和脚本优先读取：
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |
 | `TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT` | 空 | 全局覆盖 TUI live 探针单次数据拉取超时秒数；未设置时 `event_stream` 默认 `1.0`，其它 tap 默认 `2.0` |
 | `TRADECAT_TERMINAL_TUI_DEFAULT_DATASET` | `event_stream` | 无参数 `tradecat` 默认打开 dataset |
+| `TRADECAT_LANG` | 系统 locale；无法识别时为 `zh` | TUI/静态兼容输出语言；可选 `zh` / `en` / `ko` |
 | `TRADECAT_TERMINAL_NO_PAUSE` | 空 | 设为 `1` 时，自动静态兼容输出后不等待 Enter；用于脚本、CI 或自动化终端 |
 | `TRADECAT_CACHE_MAX_SNAPSHOTS` | 空 | `tradecat prune` 未传 `--max-snapshots` 时读取；空表示不启用裁剪 |
 | `TRADECAT_CACHE_COMPRESSION` | `none` | 新快照压缩方式；可选 `none` / `gzip`，默认不压缩 |

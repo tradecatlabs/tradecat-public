@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import urlencode
 
+from tradecat_terminal.i18n import DEFAULT_LANG, resolve_lang
+
 DataMode = Literal["snapshot", "stream"]
 
 
@@ -24,6 +26,7 @@ class DatasetSpec:
     data_mode: DataMode
     index_columns: tuple[str, ...] = field(default_factory=tuple)
     event_key_columns: tuple[str, ...] = field(default_factory=tuple)
+    display_names: dict[str, str] = field(default_factory=dict)
     history_policy: str = "permanent"
     tui_probe_interval_seconds: float | None = None
     tui_fetch_timeout_seconds: float | None = None
@@ -49,6 +52,10 @@ class DatasetSpec:
     def is_stream(self) -> bool:
         return self.data_mode == "stream"
 
+    def display_name(self, lang: str | None = None) -> str:
+        resolved = resolve_lang(lang)
+        return self.display_names.get(resolved) or self.display_names.get(DEFAULT_LANG) or self.tab_name
+
 
 WORKBOOKS: dict[str, WorkbookSource] = {
     "market_data": WorkbookSource(
@@ -73,6 +80,7 @@ DATASETS: dict[str, DatasetSpec] = {
         description="全市场主宽表快照，本地按 JSON 快照文件缓存。",
         data_mode="snapshot",
         index_columns=("排名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"),
+        display_names={"zh": "全市场快照", "en": "Market Snapshot", "ko": "전체 시장 스냅샷"},
         table_region_policy={"header": "auto", "top": "public_info_and_meta"},
     ),
     "anomaly_panel": DatasetSpec(
@@ -83,6 +91,7 @@ DATASETS: dict[str, DatasetSpec] = {
         description="市场异动终端面板快照缓存。",
         data_mode="snapshot",
         index_columns=("榜单", "榜单名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"),
+        display_names={"zh": "异动面板", "en": "Anomaly Panel", "ko": "이상 변동 패널"},
         table_region_policy={"header": "auto", "top": "public_info_and_meta"},
     ),
     "market_stats": DatasetSpec(
@@ -93,6 +102,7 @@ DATASETS: dict[str, DatasetSpec] = {
         description="全市场统计汇总快照缓存。",
         data_mode="snapshot",
         index_columns=("窗口", "覆盖合约数", "合约数", "交易对口径"),
+        display_names={"zh": "全市场统计", "en": "Market Stats", "ko": "전체 시장 통계"},
         table_region_policy={"header": "auto", "top": "public_info_and_meta"},
     ),
     "event_stream": DatasetSpec(
@@ -104,6 +114,7 @@ DATASETS: dict[str, DatasetSpec] = {
         data_mode="stream",
         index_columns=("时间(北京)", "内容"),
         event_key_columns=("时间(北京)", "内容"),
+        display_names={"zh": "事件流", "en": "Event Stream", "ko": "이벤트 스트림"},
         tui_probe_interval_seconds=1.5,
         tui_fetch_timeout_seconds=1.0,
         table_region_policy={"header": "auto", "top": "public_info_and_meta"},
@@ -135,6 +146,7 @@ def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
         "tab_name": dataset.tab_name,
         "gid": dataset.gid,
         "description": dataset.description,
+        "display_names": dict(dataset.display_names),
         "data_mode": dataset.data_mode,
         "index_columns": list(dataset.index_columns),
         "event_key_columns": list(dataset.event_key_columns),

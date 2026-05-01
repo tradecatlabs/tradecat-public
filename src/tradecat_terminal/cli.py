@@ -7,6 +7,7 @@ import sys
 
 from tradecat_terminal.cache import init_cache, prune_cache, status_cache
 from tradecat_terminal.config import load_config
+from tradecat_terminal.i18n import LANG_ENV, resolve_lang, tr
 from tradecat_terminal.lifecycle import doctor_local_store, probe_all_datasets, probe_dataset, watch_datasets
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_datasets
 from tradecat_terminal.sync import sync_all_datasets, sync_dataset
@@ -72,6 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     tui_parser.add_argument("--plain", action="store_true", help="输出静态文本，不进入交互式 TUI")
     tui_parser.add_argument("--no-live", action="store_true", help="不启动实时探针，只浏览本地缓存")
     tui_parser.add_argument("--probe-interval", type=float, help="实时探针间隔秒数")
+    tui_parser.add_argument("--lang", choices=["zh", "en", "ko"], help=f"TUI 语言；默认读取 {LANG_ENV} 或系统 locale")
 
     return parser
 
@@ -193,10 +195,11 @@ def main(argv: list[str] | None = None) -> int:
             interactive=not args.plain,
             live=not args.no_live,
             probe_interval_seconds=args.probe_interval,
+            lang=args.lang,
         )
         if output is not None:
             print(output)
-            _pause_after_interactive_fallback(enabled=not args.plain)
+            _pause_after_interactive_fallback(enabled=not args.plain, lang=args.lang)
         return 0
 
     return 2
@@ -314,14 +317,28 @@ def _should_default_to_tui(argv: list[str]) -> bool:
 def _should_route_to_tui(argv: list[str]) -> bool:
     if not argv:
         return False
-    first = argv[0]
+    first = _first_non_global_arg(argv)
+    if first is None:
+        return False
     if first in {"init", "doctor", "status", "path", "datasets", "sync", "sync-all", "probe", "watch", "tui"}:
         return False
-    if first in {"-h", "--help", "--cache-dir"}:
-        return False
-    if first.startswith("--cache-dir="):
+    if first in {"-h", "--help"}:
         return False
     return first.startswith("-")
+
+
+def _first_non_global_arg(argv: list[str]) -> str | None:
+    index = 0
+    while index < len(argv):
+        token = argv[index]
+        if token == "--cache-dir":
+            index += 2
+            continue
+        if token.startswith("--cache-dir="):
+            index += 1
+            continue
+        return token
+    return None
 
 
 def _route_global_tui_args(argv: list[str]) -> list[str]:
@@ -343,7 +360,7 @@ def _route_global_tui_args(argv: list[str]) -> list[str]:
     return [*global_args, "tui", *tui_args]
 
 
-def _pause_after_interactive_fallback(*, enabled: bool) -> None:
+def _pause_after_interactive_fallback(*, enabled: bool, lang: str | None = None) -> None:
     if not enabled:
         return
     if _truthy_env(TUI_NO_PAUSE_ENV):
@@ -351,7 +368,7 @@ def _pause_after_interactive_fallback(*, enabled: bool) -> None:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
     try:
-        print("\n当前终端已进入静态兼容模式；按 Enter 退出。", end="", flush=True)
+        print(f"\n{tr(resolve_lang(lang), 'pause_after_fallback')}", end="", flush=True)
         sys.stdin.readline()
     except (KeyboardInterrupt, OSError):
         print()

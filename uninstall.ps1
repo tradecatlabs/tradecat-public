@@ -30,7 +30,7 @@ function Backup-Cache-If-Needed {
 }
 
 function Remove-Launchers {
-    foreach ($Name in @("tradecat.cmd", "tcat.cmd", "tradecat-uninstall.cmd", "tcat-uninstall.cmd")) {
+    foreach ($Name in @("tradecat.cmd", "tcat.cmd", "tradecat.ps1", "tradecat-uninstall.cmd", "tcat-uninstall.cmd")) {
         Remove-Item (Join-Path $BinDir $Name) -Force -ErrorAction SilentlyContinue
     }
 }

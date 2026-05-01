@@ -95,12 +95,59 @@ write_launcher() {
   mkdir -p "$BIN_DIR"
   cat >"$BIN_DIR/tradecat" <<EOF
 #!/usr/bin/env sh
+APP_DIR="$APP_DIR"
+BRANCH="$BRANCH"
+VENV_PY="$VENV_PY"
+
+truthy() {
+  case "\$(printf '%s' "\${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+auto_update() {
+  if truthy "\${TRADECAT_NO_AUTO_UPDATE:-}"; then
+    return 0
+  fi
+  if ! command -v git >/dev/null 2>&1 || [ ! -d "\$APP_DIR/.git" ]; then
+    if truthy "\${TRADECAT_FORCE_UPDATE:-}"; then
+      printf '%s\n' "tradecat-update: ERROR: cannot update; git or repo is unavailable" >&2
+      exit 1
+    fi
+    printf '%s\n' "tradecat-update: skipped; git or repo is unavailable" >&2
+    return 0
+  fi
+  old_head="\$(git -C "\$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
+  if git -C "\$APP_DIR" fetch origin "\$BRANCH" >/dev/null 2>&1 &&
+     git -C "\$APP_DIR" checkout "\$BRANCH" >/dev/null 2>&1 &&
+     git -C "\$APP_DIR" pull --ff-only origin "\$BRANCH" >/dev/null 2>&1; then
+    new_head="\$(git -C "\$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
+    if [ -n "\$old_head" ] && [ -n "\$new_head" ] && [ "\$old_head" != "\$new_head" ]; then
+      if "\$VENV_PY" -m pip install -e "\$APP_DIR" >/dev/null 2>&1; then
+        printf '%s\n' "tradecat-update: updated to latest" >&2
+      elif truthy "\${TRADECAT_FORCE_UPDATE:-}"; then
+        printf '%s\n' "tradecat-update: ERROR: dependency refresh failed" >&2
+        exit 1
+      else
+        printf '%s\n' "tradecat-update: dependency refresh failed; continuing with local version" >&2
+      fi
+    fi
+  elif truthy "\${TRADECAT_FORCE_UPDATE:-}"; then
+    printf '%s\n' "tradecat-update: ERROR: update failed" >&2
+    exit 1
+  else
+    printf '%s\n' "tradecat-update: update failed; continuing with local version" >&2
+  fi
+}
+
+auto_update
 exec "$VENV_PY" -m tradecat_terminal "\$@"
 EOF
   chmod +x "$BIN_DIR/tradecat"
   cat >"$BIN_DIR/tcat" <<EOF
 #!/usr/bin/env sh
-exec "$VENV_PY" -m tradecat_terminal "\$@"
+exec "$BIN_DIR/tradecat" "\$@"
 EOF
   chmod +x "$BIN_DIR/tcat"
   cat >"$BIN_DIR/tradecat-uninstall" <<EOF
@@ -141,8 +188,8 @@ ensure_shell_path() {
 }
 
 bootstrap_cache() {
-  "$BIN_DIR/tradecat" init >/dev/null
-  if "$BIN_DIR/tradecat" sync-all >/dev/null 2>&1; then
+  TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init >/dev/null
+  if TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" sync-all >/dev/null 2>&1; then
     log "已同步公开数据到本地缓存"
   else
     log "公开数据初次同步失败；安装已完成，首次运行 tradecat 时会继续探测"
