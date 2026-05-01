@@ -782,7 +782,8 @@ def _maybe_start_background_probe(
         return False
     interval = _background_probe_interval(dataset_key, int(job.get("consecutive_failures") or 0))
     now = time.monotonic()
-    if now - float(job.get("last_probe_at", 0.0)) < interval:
+    last_probe_at = float(job.get("last_probe_at", 0.0))
+    if last_probe_at > 0 and now - last_probe_at < interval:
         return False
     generation = int(job.get("generation") or 0) + 1
     job["generation"] = generation
