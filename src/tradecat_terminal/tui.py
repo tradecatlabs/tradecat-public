@@ -9,8 +9,13 @@ import sys
 import threading
 import time
 import unicodedata
+from io import StringIO
 from pathlib import Path
 from typing import Any
+
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
 try:
     import curses
@@ -45,18 +50,7 @@ URL_RE = re.compile(r"https?://[^\s|]+")
 
 
 def render_basic_tui(cache_dir: Path, dataset_key: str | None = None, limit: int = 0) -> str:
-    dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
-    view = read_cached_view(cache_dir, dataset_key)
-    lines = ["TradeCat", "=" * 80, f"cache: {cache_dir}", f"current: {dataset_key}"]
-    if not view["rows"]:
-        lines.append("暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat")
-        return "\n".join(lines)
-    lines.extend(view.get("top_lines") or [])
-    if view.get("top_lines"):
-        lines.append("-" * 80)
-    rows = _rows_for_display(view, start=0, limit=limit)
-    lines.append(render_rows_table(rows, columns=view.get("columns") or None))
-    return "\n".join(lines)
+    return render_safe_plain_tui(cache_dir, dataset_key=dataset_key, limit=limit)
 
 
 def render_plain_fallback(cache_dir: Path, dataset_key: str | None, limit: int, reason: str) -> str:
@@ -70,29 +64,25 @@ def render_safe_plain_tui(
     *,
     reason: str | None = None,
 ) -> str:
-    """为 Windows PowerShell / Web SSH 这类不稳定终端生成无边框静态输出。"""
+    """用 Rich 为 Windows PowerShell / Web SSH 这类不稳定终端生成无边框静态输出。"""
     dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     width = _safe_plain_output_width()
     view = read_cached_view(cache_dir, dataset_key)
-    lines: list[str] = []
+    console, buffer = _rich_plain_console(width)
     if reason:
-        lines.append(_safe_plain_line(f"提示：{reason}", width))
-        lines.append(_safe_plain_line("已自动切换为静态文本模式；该模式不使用 psql 边框，避免 Windows/Web 终端换行错位。", width))
-    lines.extend(
-        [
-            _safe_plain_line("TradeCat", width),
-            _safe_plain_line(f"cache: {cache_dir}", width),
-            _safe_plain_line(f"current: {dataset_key}", width),
-        ]
-    )
+        _rich_print_line(console, f"提示：{reason}")
+        _rich_print_line(console, "已自动切换为 Rich 静态文本模式；不使用 psql 边框，避免 Windows/Web 终端换行错位。")
+    _rich_print_line(console, "TradeCat")
+    _rich_print_line(console, f"cache: {cache_dir}")
+    _rich_print_line(console, f"current: {dataset_key}")
     if not view["rows"]:
-        lines.append(_safe_plain_line("暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat", width))
-        return "\n".join(lines)
+        _rich_print_line(console, "暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat")
+        return _rich_export_text(buffer)
     for line in view.get("top_lines") or []:
-        lines.append(_safe_plain_line(line, width))
+        _rich_print_line(console, line)
     rows = _rows_for_display(view, start=0, limit=limit)
-    lines.extend(_render_safe_plain_rows(rows, columns=view.get("columns") or None, width=width))
-    return "\n".join(lines)
+    _rich_print_rows(console, rows, columns=view.get("columns") or None, width=width)
+    return _rich_export_text(buffer)
 
 
 def render_rows_table(
@@ -124,45 +114,64 @@ def _safe_plain_output_width() -> int:
     return max(60, min(int(columns), MAX_SAFE_PLAIN_WIDTH))
 
 
-def _safe_plain_line(text: Any, width: int) -> str:
-    return _ellipsize_display(_format_cell(text), max(1, int(width)))
+def _rich_plain_console(width: int) -> tuple[Console, StringIO]:
+    buffer = StringIO()
+    console = Console(
+        file=buffer,
+        width=max(1, int(width)),
+        force_terminal=False,
+        color_system=None,
+        legacy_windows=True,
+        soft_wrap=False,
+    )
+    return console, buffer
 
 
-def _render_safe_plain_rows(
+def _rich_export_text(buffer: StringIO) -> str:
+    return buffer.getvalue().rstrip("\n")
+
+
+def _rich_print_line(console: Console, text: Any) -> None:
+    console.print(Text(_format_cell(text)), overflow="ellipsis", no_wrap=True, highlight=False, crop=True)
+
+
+def _rich_print_rows(
+    console: Console,
     rows: list[dict[str, Any]],
     *,
     columns: list[str] | None,
     width: int,
-) -> list[str]:
+) -> None:
     selected_columns = list(columns or _select_columns(rows))
     if not rows:
-        return []
+        return
     if len(selected_columns) <= 2:
-        return _render_safe_plain_two_column_rows(rows, selected_columns, width=width)
-    return _render_safe_plain_wide_rows(rows, selected_columns, width=width)
+        console.print(_rich_two_column_table(rows, selected_columns, width=width))
+        return
+    _rich_print_wide_rows(console, rows, selected_columns, width=width)
 
 
-def _render_safe_plain_two_column_rows(rows: list[dict[str, Any]], columns: list[str], *, width: int) -> list[str]:
+def _rich_two_column_table(rows: list[dict[str, Any]], columns: list[str], *, width: int) -> Table:
     selected_columns = columns[:2] or _select_columns(rows)[:2]
     row_width = min(6, max([1, *[_display_width(_format_cell(row.get("row_index", ""))) for row in rows]]))
     first_width = 0
     if selected_columns:
         first_values = [_format_cell(_row_values(row).get(selected_columns[0], "")) for row in rows]
         first_width = min(24, max([10, *[_display_width(value) for value in first_values]]))
-    output: list[str] = []
+    second_width = max(1, int(width) - row_width - first_width - 4)
+    table = Table.grid(padding=(0, 1))
+    table.add_column(justify="right", no_wrap=True, width=row_width, overflow="ellipsis")
+    table.add_column(no_wrap=True, width=first_width, overflow="ellipsis")
+    table.add_column(no_wrap=True, width=second_width, overflow="ellipsis")
     for row in rows:
         values = _row_values(row)
-        row_index = _format_cell(row.get("row_index", ""))
         first = _format_cell(values.get(selected_columns[0], "")) if selected_columns else ""
         second = _format_cell(values.get(selected_columns[1], "")) if len(selected_columns) > 1 else ""
-        prefix = f"{_pad_display(row_index, row_width)}  {_pad_display(first, first_width)}  "
-        remaining = max(1, int(width) - _display_width(prefix))
-        output.append(prefix + _ellipsize_display(second, remaining))
-    return output
+        table.add_row(_format_cell(row.get("row_index", "")), first, second)
+    return table
 
 
-def _render_safe_plain_wide_rows(rows: list[dict[str, Any]], columns: list[str], *, width: int) -> list[str]:
-    output: list[str] = []
+def _rich_print_wide_rows(console: Console, rows: list[dict[str, Any]], columns: list[str], *, width: int) -> None:
     for row in rows:
         values = _row_values(row)
         row_index = _format_cell(row.get("row_index", ""))
@@ -173,8 +182,7 @@ def _render_safe_plain_wide_rows(rows: list[dict[str, Any]], columns: list[str],
                 parts.append(f"{column}={value}")
             if _display_width("  ".join(parts)) >= width:
                 break
-        output.append(_ellipsize_display("  ".join(parts), width))
-    return output
+        console.print(Text("  ".join(parts)), overflow="ellipsis", no_wrap=True, highlight=False, crop=True)
 
 
 def run_tui(

@@ -15,6 +15,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "rich>=13.7.0",
     "windows-curses>=2.4.0; platform_system == 'Windows'",
 ]
 

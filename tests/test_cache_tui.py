@@ -4,8 +4,6 @@ import json
 import queue
 
 from tradecat_terminal import cli
-from tradecat_terminal.config import DEFAULT_APP_ROOT
-from tradecat_terminal.config import load_config
 from tradecat_terminal.cache import (
     init_cache,
     normalized_event_key_for_row,
@@ -15,13 +13,14 @@ from tradecat_terminal.cache import (
     sync_dataset,
     write_dataset_body,
 )
+from tradecat_terminal.config import DEFAULT_APP_ROOT, load_config
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
 from tradecat_terminal.sheets import find_header_row_index, parse_csv_rows
 from tradecat_terminal.tui import (
     CURSES_POLL_TIMEOUT_MS,
     MOUSE_WHEEL_STEP,
-    _build_binance_futures_url,
     _background_probe_interval,
+    _build_binance_futures_url,
     _display_slice,
     _display_width,
     _drain_probe_results,
@@ -52,8 +51,8 @@ from tradecat_terminal.tui import (
     _url_link_for_visible_row,
     render_basic_tui,
     render_plain_fallback,
-    render_safe_plain_tui,
     render_rows_table,
+    render_safe_plain_tui,
     run_tui,
 )
 
@@ -355,13 +354,13 @@ def test_tui_plain_render_reads_snapshot_cache(tmp_path):
     )
 
     output = render_basic_tui(cache_dir, dataset_key="market_snapshot", limit=0)
-    header_text, table_text = output.split("+---", 1)
 
     assert "TradeCat" in output
-    assert "https://dexscreener.com/x" in header_text
-    assert "https://dexscreener.com/x" not in table_text
-    assert "| A " in output
-    assert "| 2 | 数据源" in output
+    assert "https://dexscreener.com/x" in output
+    assert "+---" not in output
+    assert "| A " not in output
+    assert "#2" in output
+    assert "数据源" in output
     assert "BTCUSDT" in output
 
 
@@ -391,6 +390,7 @@ def test_tui_safe_plain_fallback_uses_borderless_width_capped_output(tmp_path, m
     lines = output.splitlines()
 
     assert "Windows 原生终端的 curses 渲染不稳定" in output
+    assert "已自动切换为 Rich 静态文本模式" in output
     assert "+---" not in output
     assert not any(line.startswith("+") or set(line) <= {"-", "+"} for line in lines if line)
     assert all(_display_width(line) <= 80 for line in lines)
@@ -415,6 +415,7 @@ def test_tui_safe_plain_renderer_handles_wide_snapshot_without_psql_borders(tmp_
     assert "| 字段" not in output
     assert all(_display_width(line) <= 90 for line in output.splitlines())
     assert "#2" in output
+    assert "数据源" in output
 
 
 def test_viewport_renderer_outputs_all_columns_without_freezing_or_horizontal_scroll():
@@ -990,7 +991,7 @@ def test_tui_without_curses_falls_back_to_plain(monkeypatch, tmp_path):
     output = run_tui(tmp_path / "cache", interactive=True, live=True)
 
     assert "当前 Python 环境不支持 curses" in output
-    assert "已自动切换为静态文本模式" in output
+    assert "已自动切换为 Rich 静态文本模式" in output
     assert "暂无本地快照缓存" in output
     assert calls == []
 
@@ -1006,7 +1007,7 @@ def test_tui_windows_native_defaults_to_plain(monkeypatch, tmp_path):
     output = run_tui(tmp_path / "cache", interactive=True, live=True)
 
     assert "Windows 原生终端的 curses 渲染不稳定" in output
-    assert "已自动切换为静态文本模式" in output
+    assert "已自动切换为 Rich 静态文本模式" in output
     assert calls == []
 
 
