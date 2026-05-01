@@ -398,7 +398,7 @@ def _run_curses(
                 dirty = True
             elif key in {ord("l"), ord("L")}:
                 state["lang"] = cycle_lang(str(state.get("lang") or lang))
-                state["render_cache"] = {}
+                _invalidate_view_cache(state)
                 dirty = True
             elif key in {ord("n"), ord("N")}:
                 state["selected_row_offset"] = min(
@@ -1190,7 +1190,8 @@ def _read_view_cached(
     batch_index: int,
     live: bool,
 ) -> dict[str, Any]:
-    key = (dataset_key, int(batch_index), bool(live))
+    lang = resolve_lang(str(state.get("lang") or ""))
+    key = (dataset_key, int(batch_index), bool(live), lang)
     cache = state.setdefault("view_cache", {})
     cached = cache.get(key)
     if cached:
@@ -1200,7 +1201,7 @@ def _read_view_cached(
         dataset_key,
         batch_index=batch_index,
         live=live,
-        lang=str(state.get("lang") or ""),
+        lang=lang,
     )
     if len(cache) > 16:
         cache.clear()

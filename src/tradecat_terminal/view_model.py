@@ -74,13 +74,12 @@ def build_dataset_view(
     dataset = get_dataset(dataset_key)
     raw_columns = [str(column) for column in base.get("table_columns") or []]
     physical_columns = [str(column) for column in base.get("physical_columns") or base.get("columns") or []]
-    source_rows = list(base.get("table_rows") or [])
     if not raw_columns:
         raw_columns = physical_columns
-        source_rows = list(base.get("rows") or [])
+    source_rows = _physical_table_rows(base)
     display_columns = alias_headers(raw_columns, resolved_lang)
     display_by_raw = dict(zip(raw_columns, display_columns, strict=False))
-    letter_by_raw = dict(zip(raw_columns, physical_columns, strict=False))
+    physical_by_raw = dict(zip(raw_columns, physical_columns, strict=False))
     type_by_raw = {
         str(column.get("name")): str(column.get("type") or "string")
         for column in base.get("structured_columns") or []
@@ -95,13 +94,13 @@ def build_dataset_view(
         DisplayColumn(
             raw_name=raw,
             display_name=display_by_raw.get(raw, raw),
-            letter=letter_by_raw.get(raw, ""),
+            letter=physical_by_raw.get(raw, ""),
             role=role_by_raw.get(raw, "field"),
             type=type_by_raw.get(raw, "string"),
         )
         for raw in raw_columns
     ]
-    rows = [_display_row(row, raw_columns, display_by_raw) for row in source_rows]
+    rows = [_display_row(row, raw_columns, physical_columns, physical_by_raw) for row in source_rows]
     view = DatasetView(
         ok=bool(base.get("ok")),
         cache_dir=str(base.get("cache_dir") or cache_dir),
@@ -116,7 +115,7 @@ def build_dataset_view(
         top_lines=[str(line) for line in base.get("display_top_lines") or base.get("top_lines") or []],
         meta={str(key): str(value) for key, value in (base.get("meta") or {}).items()},
         layout=base.get("layout") if isinstance(base.get("layout"), dict) else {},
-        columns=display_columns,
+        columns=physical_columns,
         raw_columns=raw_columns,
         physical_columns=physical_columns,
         column_meta=columns,
@@ -127,28 +126,37 @@ def build_dataset_view(
     return view.to_dict()
 
 
-def _display_row(row: dict[str, Any], raw_columns: list[str], display_by_raw: dict[str, str]) -> DisplayRow:
-    raw_values = _raw_values(row)
+def _physical_table_rows(base: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = list(base.get("rows") or [])
+    layout = base.get("layout") if isinstance(base.get("layout"), dict) else {}
+    physical_rows = layout.get("physical_rows") if isinstance(layout.get("physical_rows"), dict) else {}
+    header_row = int(physical_rows.get("header_row") or 1)
+    return [row for row in rows if int(row.get("row_index") or 0) >= header_row]
+
+
+def _display_row(
+    row: dict[str, Any],
+    raw_columns: list[str],
+    physical_columns: list[str],
+    physical_by_raw: dict[str, str],
+) -> DisplayRow:
     physical_values = {
         str(key): str(value)
         for key, value in (row.get("physical_values") or row.get("values") or {}).items()
         if value is not None
     }
-    display_values = {display_by_raw.get(raw, raw): str(raw_values.get(raw, "")) for raw in raw_columns}
+    raw_values = {
+        raw: str(physical_values.get(physical_columns[index], ""))
+        for index, raw in enumerate(raw_columns)
+        if index < len(physical_columns)
+    }
     return DisplayRow(
         row_index=int(row.get("row_index") or 0),
         row_number=int(row.get("row_number") or 0),
         key=str(row.get("key") or ""),
-        values=display_values,
+        values=physical_values,
         raw_values=raw_values,
         physical_values=physical_values,
-        display_column_by_raw=display_by_raw,
+        display_column_by_raw=physical_by_raw,
         links={str(key): str(value) for key, value in (row.get("links") or {}).items()},
     )
-
-
-def _raw_values(row: dict[str, Any]) -> dict[str, str]:
-    payload = row.get("raw_values") if isinstance(row.get("raw_values"), dict) else row.get("values")
-    if not isinstance(payload, dict):
-        return {}
-    return {str(key): str(value) for key, value in payload.items() if value is not None}

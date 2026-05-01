@@ -517,7 +517,9 @@ def test_cli_export_outputs_raw_csv_and_display_table(tmp_path, capsys):
 
     assert cli.main(["--cache-dir", str(cache_dir), "export", "market_snapshot", "--format", "table", "--lang", "en"]) == 0
     table_output = capsys.readouterr().out
-    assert "Symbol" in table_output
+    assert "| A " in table_output
+    assert "| B " in table_output
+    assert "交易对" in table_output
     assert "BTCUSDT" in table_output
 
 
@@ -643,12 +645,14 @@ def test_tui_plain_renderer_uses_requested_language_without_translating_data(tmp
     output = render_safe_plain_tui(cache_dir, dataset_key="event_stream", limit=0, lang="en")
 
     assert "current: event_stream (Event Stream)" in output
-    assert "Time (UTC+8)" in output
-    assert "Content" in output
+    assert " A " in output
+    assert " B " in output
+    assert "时间(北京)" in output
+    assert "内容" in output
     assert "美国总统特朗普讲话" in output
 
 
-def test_view_model_uses_display_aliases_without_mutating_raw_contract(tmp_path):
+def test_view_model_keeps_physical_columns_and_alias_metadata(tmp_path):
     cache_dir = tmp_path / "cache"
     write_dataset_body(
         cache_dir,
@@ -664,11 +668,13 @@ def test_view_model_uses_display_aliases_without_mutating_raw_contract(tmp_path)
     view = build_dataset_view(cache_dir, "market_snapshot", lang="en")
     latest = json.loads((cache_dir / "datasets" / "market_snapshot" / "latest.json").read_text(encoding="utf-8"))
 
-    assert view["columns"] == ["Rank", "Symbol", "Score", "5m Volume Change (%)"]
+    assert view["columns"] == ["A", "B", "C", "D"]
     assert view["raw_columns"] == ["排名", "交易对", "综合分", "5m量变(%)"]
-    assert view["rows"][0]["values"]["Symbol"] == "BTCUSDT"
-    assert view["rows"][0]["raw_values"]["交易对"] == "BTCUSDT"
-    assert view["rows"][0]["display_column_by_raw"]["交易对"] == "Symbol"
+    assert [item["display_name"] for item in view["column_meta"]] == ["Rank", "Symbol", "Score", "5m Volume Change (%)"]
+    assert view["rows"][0]["values"]["B"] == "交易对"
+    assert view["rows"][1]["values"]["B"] == "BTCUSDT"
+    assert view["rows"][1]["raw_values"]["交易对"] == "BTCUSDT"
+    assert view["rows"][1]["display_column_by_raw"]["交易对"] == "B"
     assert latest["columns"][1]["name"] == "交易对"
     assert latest["rows"][0]["values"]["交易对"] == "BTCUSDT"
 
@@ -684,9 +690,11 @@ def test_view_model_supports_korean_header_aliases(tmp_path):
     view = build_dataset_view(cache_dir, "event_stream", lang="ko")
 
     assert view["display_name"] == "이벤트 스트림"
-    assert view["columns"] == ["시간(UTC+8)", "내용"]
-    assert view["rows"][0]["values"]["내용"] == "美国总统特朗普讲话"
-    assert view["rows"][0]["raw_values"]["内容"] == "美国总统特朗普讲话"
+    assert view["columns"] == ["A", "B"]
+    assert [item["display_name"] for item in view["column_meta"]] == ["시간(UTC+8)", "내용"]
+    assert view["rows"][0]["values"]["B"] == "内容"
+    assert view["rows"][1]["values"]["B"] == "美国总统特朗普讲话"
+    assert view["rows"][1]["raw_values"]["内容"] == "美国总统特朗普讲话"
 
 
 def test_tui_empty_plain_renderer_uses_korean_language(tmp_path):
@@ -767,20 +775,43 @@ def test_tui_read_view_cache_reuses_snapshot_until_invalidated(tmp_path, monkeyp
     assert len(calls) == 2
 
 
-def test_tui_symbol_link_uses_raw_values_when_header_is_display_alias():
+def test_tui_read_view_cache_is_language_aware(tmp_path, monkeypatch):
+    import tradecat_terminal.tui as tui_module
+
+    cache_dir = tmp_path / "cache"
+    calls = []
+
+    def fake_build_dataset_view(path, dataset_key, *, batch_index=0, live=True, lang=None):
+        calls.append((path, dataset_key, batch_index, live, lang))
+        return {"rows": [], "columns": [], "content_hash": f"hash-{len(calls)}", "lang": lang}
+
+    monkeypatch.setattr(tui_module, "build_dataset_view", fake_build_dataset_view)
+    state = {"view_cache": {}, "render_cache": {}, "lang": "zh"}
+
+    first = _read_view_cached(cache_dir, state, "event_stream", batch_index=0, live=True)
+    second = _read_view_cached(cache_dir, state, "event_stream", batch_index=0, live=True)
+    state["lang"] = "en"
+    third = _read_view_cached(cache_dir, state, "event_stream", batch_index=0, live=True)
+
+    assert first is second
+    assert third is not first
+    assert [call[-1] for call in calls] == ["zh", "en"]
+
+
+def test_tui_symbol_link_uses_raw_values_with_physical_columns():
     rows = [
         {
             "row_index": 3,
-            "values": {"Rank": "1", "Symbol": "ETH"},
+            "values": {"A": "1", "B": "ETH"},
             "raw_values": {"排名": "1", "交易对": "ETH"},
-            "display_column_by_raw": {"排名": "Rank", "交易对": "Symbol"},
+            "display_column_by_raw": {"排名": "A", "交易对": "B"},
         }
     ]
-    viewport = _render_rows_table_viewport(rows, columns=["Rank", "Symbol"])
+    viewport = _render_rows_table_viewport(rows, columns=["A", "B"])
     spans = _symbol_link_spans(rows, viewport["columns"], viewport["widths"])
 
     assert _symbol_url_for_visible_row(rows, 0) == "https://www.binance.com/zh-CN/futures/ETHUSDT?type=perpetual"
-    assert spans[0]["column"] == "Symbol"
+    assert spans[0]["column"] == "B"
     assert spans[0]["url"] == "https://www.binance.com/zh-CN/futures/ETHUSDT?type=perpetual"
 
 
