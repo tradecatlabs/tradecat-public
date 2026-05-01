@@ -347,7 +347,7 @@ TRADECAT_LANG=ko tradecat
 | `n/p` | 选择可见行 |
 | `Enter/o` | 打开当前行 URL；无 URL 时打开交易对 Binance Futures 链接 |
 | `r` | 重新拉取当前 tap 并写入缓存 |
-| `l` / `L` | 在中文 / English / 한국어 之间切换 TUI 界面语言；TUI 顶部控制行会同时显示这三个可选语言版本 |
+| `l` / `L` | 在中文 / English / 한국어 之间切换 TUI 界面语言；TUI 顶部控制行固定显示 `切换语言 / Switch language / 언어 전환`，防止误切后看不懂如何切回 |
 | `q` | 退出 |
 
 渲染规则：

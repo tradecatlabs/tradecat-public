@@ -131,9 +131,10 @@ def test_i18n_resolves_aliases_and_cycles_language(monkeypatch):
     assert cycle_lang("en") == "ko"
     assert cycle_lang("ko") == "zh"
     assert tr("en", "mode_live") == "live"
-    assert "l 语言: 中文/English/한국어" in tr("zh", "controls")
-    assert "l language: 中文/English/한국어" in tr("en", "controls")
-    assert "l 언어: 中文/English/한국어" in tr("ko", "controls")
+    language_hint = "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어"
+    assert language_hint in tr("zh", "controls")
+    assert language_hint in tr("en", "controls")
+    assert language_hint in tr("ko", "controls")
 
 
 def test_install_launchers_enable_default_auto_update():

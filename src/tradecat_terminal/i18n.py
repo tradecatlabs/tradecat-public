@@ -37,7 +37,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "mode_history": "历史",
         "controls": (
             "<-/-> 切换 tap | up/down 快照/事件 | PgUp/PgDn 翻行 | "
-            "n/p 选行 | Enter/o 打开链接/交易对 | r 刷新 | l 语言: 中文/English/한국어 | q 退出"
+            "n/p 选行 | Enter/o 打开链接/交易对 | r 刷新 | "
+            "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어 | q 退出"
         ),
         "stream_status": "mode=stream | row={row_scroll} | probe={probe}",
         "batch_status": "batch {batch_index}/{batch_count}: {batch_label} | probe={probe}",
@@ -66,7 +67,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "mode_history": "history",
         "controls": (
             "<-/-> switch tap | up/down snapshot/event | PgUp/PgDn page | "
-            "n/p select row | Enter/o open link/symbol | r refresh | l language: 中文/English/한국어 | q quit"
+            "n/p select row | Enter/o open link/symbol | r refresh | "
+            "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어 | q quit"
         ),
         "stream_status": "mode=stream | row={row_scroll} | probe={probe}",
         "batch_status": "batch {batch_index}/{batch_count}: {batch_label} | probe={probe}",
@@ -95,7 +97,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "mode_history": "히스토리",
         "controls": (
             "<-/-> 탭 전환 | up/down 스냅샷/이벤트 | PgUp/PgDn 페이지 | "
-            "n/p 행 선택 | Enter/o 링크/거래쌍 열기 | r 새로고침 | l 언어: 中文/English/한국어 | q 종료"
+            "n/p 행 선택 | Enter/o 링크/거래쌍 열기 | r 새로고침 | "
+            "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어 | q 종료"
         ),
         "stream_status": "mode=stream | row={row_scroll} | probe={probe}",
         "batch_status": "batch {batch_index}/{batch_count}: {batch_label} | probe={probe}",
