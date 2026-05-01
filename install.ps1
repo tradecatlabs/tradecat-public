@@ -67,28 +67,30 @@ function Ensure-Uv {
     if (Test-Command "uv") {
         return
     }
-    Log "未找到 Python $PythonVersion，开始安装 uv，并由 uv 托管 Python"
+    Log "Python $PythonVersion not found; installing uv-managed Python"
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-    $env:Path = (Join-Path $env:USERPROFILE ".local\bin") + ";" + (Join-Path $env:USERPROFILE ".cargo\bin") + ";" + $env:Path
+    $UserLocalBin = Join-Path (Join-Path $env:USERPROFILE ".local") "bin"
+    $UserCargoBin = Join-Path (Join-Path $env:USERPROFILE ".cargo") "bin"
+    $env:Path = @($UserLocalBin, $UserCargoBin, $env:Path) -join ";"
     if (-not (Test-Command "uv")) {
-        Fail "uv 安装后仍不可用；请重新打开终端或确认用户 PATH"
+        Fail "uv is still unavailable after installation; reopen the terminal or check user PATH"
     }
 }
 
 function Checkout-Repo {
     if (-not (Test-Command "git")) {
-        Fail "缺少 git；请先安装 Git for Windows"
+        Fail "git is missing; install Git for Windows first"
     }
     New-Item -ItemType Directory -Force -Path (Split-Path $AppDir -Parent) | Out-Null
     if (Test-Path (Join-Path $AppDir ".git")) {
-        Log "更新源码：$AppDir"
+        Log "updating source: $AppDir"
         git -C $AppDir fetch origin $Branch
         git -C $AppDir checkout $Branch
         git -C $AppDir pull --ff-only origin $Branch
     } elseif (Test-Path $AppDir) {
-        Fail "安装目录已存在但不是 Git 仓库：$AppDir；请设置 TRADECAT_INSTALL_DIR 或先移走该目录"
+        Fail "install dir exists but is not a Git repository: $AppDir; set TRADECAT_INSTALL_DIR or move it away"
     } else {
-        Log "克隆源码：$RepoUrl#$Branch -> $AppDir"
+        Log "cloning source: $RepoUrl#$Branch -> $AppDir"
         git clone --branch $Branch --depth 1 $RepoUrl $AppDir
     }
 }
@@ -97,20 +99,20 @@ function Create-Venv {
     Set-Location $AppDir
     $Python = Find-Python
     if ($Python) {
-        Log "使用系统 Python：$Python"
+        Log "using system Python: $Python"
         Invoke-Python $Python @("-m", "venv", ".venv")
         $script:VenvPy = Join-Path $AppDir ".venv\Scripts\python.exe"
         & $script:VenvPy -m pip install -U pip
         & $script:VenvPy -m pip install -e .
     } else {
         Ensure-Uv
-        Log "使用 uv 创建 Python $PythonVersion 虚拟环境"
+        Log "creating Python $PythonVersion virtualenv with uv"
         uv venv --python $PythonVersion .venv
         $script:VenvPy = Join-Path $AppDir ".venv\Scripts\python.exe"
         uv pip install --python $script:VenvPy -e .
     }
     if (-not (Test-Path $script:VenvPy)) {
-        Fail "虚拟环境 Python 不存在：$script:VenvPy"
+        Fail "virtualenv Python not found: $script:VenvPy"
     }
 }
 
@@ -233,7 +235,7 @@ exit `$LASTEXITCODE
         }
         $env:Path = "$BinDir;$env:Path"
     } else {
-        Log "按配置跳过写入用户 PATH"
+        Log "skipping user PATH write by configuration"
     }
 }
 
@@ -242,15 +244,15 @@ function Bootstrap-Cache {
     $env:TRADECAT_NO_AUTO_UPDATE = "1"
     & (Join-Path $BinDir "tradecat.cmd") init | Out-Null
     if (Test-Truthy $env:TRADECAT_INSTALL_SKIP_SYNC) {
-        Log "已初始化本地缓存目录；按配置跳过初次公开数据同步"
+        Log "initialized local cache; skipped initial public data sync by configuration"
         $env:TRADECAT_NO_AUTO_UPDATE = $OldNoAutoUpdate
         return
     }
     try {
         & (Join-Path $BinDir "tradecat.cmd") sync-all | Out-Null
-        Log "已同步公开数据到本地缓存"
+        Log "synced public data to local cache"
     } catch {
-        Log "公开数据初次同步失败；安装已完成，首次运行 tradecat 时会继续探测"
+        Log "initial public data sync failed; installation is complete and tradecat will keep probing on first run"
     } finally {
         $env:TRADECAT_NO_AUTO_UPDATE = $OldNoAutoUpdate
     }
@@ -260,11 +262,11 @@ Checkout-Repo
 Create-Venv
 Write-Launcher
 Bootstrap-Cache
-Log "安装完成"
-Log "命令入口：$(Join-Path $BinDir 'tradecat.cmd')"
-Log "卸载命令：$(Join-Path $BinDir 'tradecat-uninstall.cmd')"
+Log "installation complete"
+Log "command entry: $(Join-Path $BinDir 'tradecat.cmd')"
+Log "uninstall command: $(Join-Path $BinDir 'tradecat-uninstall.cmd')"
 if (Test-Truthy $env:TRADECAT_INSTALL_SKIP_PATH_WRITE) {
-    Log "启动：$(Join-Path $BinDir 'tradecat.cmd')"
+    Log "start: $(Join-Path $BinDir 'tradecat.cmd')"
 } else {
-    Log "启动：tradecat"
+    Log "start: tradecat"
 }
