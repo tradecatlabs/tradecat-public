@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import queue
 
@@ -55,6 +56,23 @@ from tradecat_terminal.tui import (
     render_safe_plain_tui,
     run_tui,
 )
+
+
+class _TtyInput:
+    def __init__(self) -> None:
+        self.read_count = 0
+
+    def isatty(self) -> bool:
+        return True
+
+    def readline(self) -> str:
+        self.read_count += 1
+        return "\n"
+
+
+class _TtyOutput(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 def test_init_cache_does_not_write_registry_projection(tmp_path):
@@ -343,6 +361,44 @@ def test_cli_path_outputs_agent_friendly_cache_paths(tmp_path, capsys):
     assert payload["latest_jsonl"] == str(cache_dir / "datasets" / "event_stream" / "latest.jsonl")
     assert payload["latest_csv"] == str(cache_dir / "datasets" / "event_stream" / "latest.csv")
     assert payload["stream_events"] == str(cache_dir / "datasets" / "event_stream" / "stream_events.json")
+
+
+def test_cli_pauses_after_automatic_plain_fallback(monkeypatch):
+    stdin = _TtyInput()
+    stdout = _TtyOutput()
+    monkeypatch.delenv("TRADECAT_TERMINAL_NO_PAUSE", raising=False)
+    monkeypatch.setattr(cli.sys, "stdin", stdin)
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+
+    cli._pause_after_interactive_fallback(enabled=True)
+
+    assert stdin.read_count == 1
+    assert "按 Enter 退出" in stdout.getvalue()
+
+
+def test_cli_does_not_pause_for_explicit_plain(monkeypatch):
+    stdin = _TtyInput()
+    stdout = _TtyOutput()
+    monkeypatch.setattr(cli.sys, "stdin", stdin)
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+
+    cli._pause_after_interactive_fallback(enabled=False)
+
+    assert stdin.read_count == 0
+    assert stdout.getvalue() == ""
+
+
+def test_cli_no_pause_env_skips_interactive_fallback(monkeypatch):
+    stdin = _TtyInput()
+    stdout = _TtyOutput()
+    monkeypatch.setenv("TRADECAT_TERMINAL_NO_PAUSE", "1")
+    monkeypatch.setattr(cli.sys, "stdin", stdin)
+    monkeypatch.setattr(cli.sys, "stdout", stdout)
+
+    cli._pause_after_interactive_fallback(enabled=True)
+
+    assert stdin.read_count == 0
+    assert stdout.getvalue() == ""
 
 
 def test_tui_plain_render_reads_snapshot_cache(tmp_path):

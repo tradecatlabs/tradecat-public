@@ -192,7 +192,7 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 
 如果系统没有 Python 3.12，安装脚本会尝试安装 `uv`，并用 `uv` 托管 Python 3.12。仍然需要本机有 `git` 和 `curl`。
 
-Windows 原生终端、浏览器 Web 终端和未知 SSH 终端的 curses 宽字符渲染不稳定，`tradecat` 默认会自动降级为静态文本模式，不再抛出 Python traceback。完整交互体验优先使用 Windows Terminal + WSL 或桌面终端；如需自行测试交互模式，可设置 `TRADECAT_TERMINAL_FORCE_CURSES=1`。如果确认自己的 SSH 终端支持宽字符 curses，也可设置 `TRADECAT_TERMINAL_ALLOW_SSH_CURSES=1`。
+Windows 原生终端、浏览器 Web 终端和未知 SSH 终端的 curses 宽字符渲染不稳定，`tradecat` 默认会自动降级为静态文本模式，不再抛出 Python traceback。自动降级后会停留并等待 Enter，避免窗口或会话看起来像“闪退”；显式执行 `tradecat tui --plain` 时不等待，适合脚本读取。完整交互体验优先使用 Windows Terminal + WSL 或桌面终端；如需自行测试交互模式，可设置 `TRADECAT_TERMINAL_FORCE_CURSES=1`。如果确认自己的 SSH 终端支持宽字符 curses，也可设置 `TRADECAT_TERMINAL_ALLOW_SSH_CURSES=1`。
 
 ### 手动：从源码安装
 
@@ -468,6 +468,7 @@ Agent 和脚本优先读取：
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |
 | `TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT` | 空 | 全局覆盖 TUI live 探针单次数据拉取超时秒数；未设置时 `event_stream` 默认 `1.0`，其它 tap 默认 `2.0` |
 | `TRADECAT_TERMINAL_TUI_DEFAULT_DATASET` | `event_stream` | 无参数 `tradecat` 默认打开 dataset |
+| `TRADECAT_TERMINAL_NO_PAUSE` | 空 | 设为 `1` 时，自动静态兼容输出后不等待 Enter；用于脚本、CI 或自动化终端 |
 | `TRADECAT_CACHE_MAX_SNAPSHOTS` | 空 | `tradecat prune` 未传 `--max-snapshots` 时读取；空表示不启用裁剪 |
 | `TRADECAT_CACHE_COMPRESSION` | `none` | 新快照压缩方式；可选 `none` / `gzip`，默认不压缩 |
 | `TRADECAT_TERMINAL_RUNTIME_DIR` | `~/.tradecat-terminal/run` | 后台 watch pid/log 目录 |

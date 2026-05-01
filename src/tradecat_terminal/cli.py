@@ -12,6 +12,8 @@ from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_datase
 from tradecat_terminal.sync import sync_all_datasets, sync_dataset
 from tradecat_terminal.tui import run_tui
 
+TUI_NO_PAUSE_ENV = "TRADECAT_TERMINAL_NO_PAUSE"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tradecat", description="TradeCat 用户侧终端面板")
@@ -194,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if output is not None:
             print(output)
+            _pause_after_interactive_fallback(enabled=not args.plain)
         return 0
 
     return 2
@@ -338,6 +341,24 @@ def _route_global_tui_args(argv: list[str]) -> list[str]:
         tui_args.append(token)
         index += 1
     return [*global_args, "tui", *tui_args]
+
+
+def _pause_after_interactive_fallback(*, enabled: bool) -> None:
+    if not enabled:
+        return
+    if _truthy_env(TUI_NO_PAUSE_ENV):
+        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return
+    try:
+        print("\n当前终端已进入静态兼容模式；按 Enter 退出。", end="", flush=True)
+        sys.stdin.readline()
+    except (KeyboardInterrupt, OSError):
+        print()
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def cache_paths(cache_dir, dataset_key: str | None = None) -> dict:
