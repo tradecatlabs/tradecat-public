@@ -18,6 +18,7 @@ from tradecat_terminal.cache import (
 from tradecat_terminal.config import DEFAULT_APP_ROOT, load_config
 from tradecat_terminal.i18n import cycle_lang, resolve_lang, tr
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
+from tradecat_terminal.settings import load_settings
 from tradecat_terminal.sheets import find_header_row_index, parse_csv_rows
 from tradecat_terminal.tui import (
     CURSES_POLL_TIMEOUT_MS,
@@ -28,6 +29,7 @@ from tradecat_terminal.tui import (
     _display_width,
     _drain_probe_results,
     _effective_probe_interval,
+    _filter_rows,
     _handle_mouse_event,
     _handle_screen_resize,
     _handle_sgr_mouse_payload,
@@ -47,6 +49,7 @@ from tradecat_terminal.tui import (
     _resolve_probe_interval,
     _resolve_startup_dataset_key,
     _start_probe_thread,
+    _status_bar,
     _switch_dataset,
     _symbol_link_spans,
     _symbol_url_for_visible_row,
@@ -58,6 +61,7 @@ from tradecat_terminal.tui import (
     render_safe_plain_tui,
     run_tui,
 )
+from tradecat_terminal.view_model import build_dataset_view
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -121,6 +125,18 @@ def test_registry_has_no_freeze_columns_contract():
     assert event_stream["tui_fetch_timeout_seconds"] == 1.0
 
 
+def test_request_script_uses_shared_dataset_registry_contract():
+    request_py = (REPO_ROOT / "scripts" / "request.py").read_text(encoding="utf-8")
+    registry_json = json.loads(
+        (REPO_ROOT / "src" / "tradecat_terminal" / "dataset_registry.json").read_text(encoding="utf-8")
+    )
+
+    assert "dataset_registry.json" in request_py
+    assert "WORKBOOKS =" not in request_py
+    assert "DATASETS =" not in request_py
+    assert sorted(registry_json["datasets"]) == ["anomaly_panel", "event_stream", "market_snapshot", "market_stats"]
+
+
 def test_i18n_resolves_aliases_and_cycles_language(monkeypatch):
     monkeypatch.delenv("TRADECAT_LANG", raising=False)
 
@@ -145,13 +161,20 @@ def test_install_launchers_enable_default_auto_update():
     assert "auto_update" in install_sh
     assert 'git -C "$APP_DIR" fetch origin "$BRANCH"' in install_sh
     assert 'git -C "$APP_DIR" pull --ff-only origin "$BRANCH"' in install_sh
+    assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_sh
+    assert "run_update_blocking >/dev/null 2>&1 || true) &" in install_sh
     assert 'TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init' in install_sh
+    assert "TRADECAT_INSTALL_SKIP_SYNC" in install_sh
+    assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_sh
     assert "TRADECAT_FORCE_UPDATE" in install_sh
     assert "TRADECAT_NO_AUTO_UPDATE" in install_sh
     assert "Invoke-TradeCatAutoUpdate" in install_ps1
-    assert "git -C `$AppDir fetch origin `$Branch" in install_ps1
-    assert "git -C `$AppDir pull --ff-only origin `$Branch" in install_ps1
+    assert "tradecat-update.ps1" in install_ps1
+    assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_ps1
+    assert "Start-Process -FilePath \"powershell\"" in install_ps1
     assert "$env:TRADECAT_NO_AUTO_UPDATE = \"1\"" in install_ps1
+    assert "TRADECAT_INSTALL_SKIP_SYNC" in install_ps1
+    assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_ps1
     assert "TRADECAT_FORCE_UPDATE" in install_ps1
     assert "tradecat.ps1" in install_ps1
     assert "tradecat.ps1" in uninstall_ps1
@@ -359,6 +382,30 @@ def test_event_stream_keeps_normalized_event_key_for_diagnostics(tmp_path):
     assert "normalized_event_key" in state_path.read_text(encoding="utf-8")
 
 
+def test_event_stream_merges_same_normalized_content_when_time_drifts(tmp_path):
+    cache_dir = tmp_path / "cache"
+    dataset = get_dataset("event_stream")
+
+    first = write_dataset_body(
+        cache_dir,
+        dataset,
+        "时间(北京),内容\n2026-04-28 12:00:00,美国总统特朗普讲话\n",
+    )
+    second = write_dataset_body(
+        cache_dir,
+        dataset,
+        "时间(北京),内容\n2026-04-28 12:00:05, 美国总统特朗普讲话 \n",
+    )
+    state = json.loads((cache_dir / "datasets" / "event_stream" / "stream_events.json").read_text(encoding="utf-8"))
+
+    assert first["stream"]["new_events"] == 1
+    assert second["stream"]["new_events"] == 0
+    assert second["stream"]["updated_events"] == 1
+    assert len(state["events"]) == 1
+    assert state["events"][0]["seen_count"] == 2
+    assert len(state["events"][0]["observed_event_keys"]) == 2
+
+
 def test_cli_without_subcommand_opens_tui(tmp_path, monkeypatch):
     calls = {}
 
@@ -432,6 +479,42 @@ def test_cli_path_outputs_agent_friendly_cache_paths(tmp_path, capsys):
     assert payload["stream_events"] == str(cache_dir / "datasets" / "event_stream" / "stream_events.json")
 
 
+def test_cli_config_set_show_unset_uses_local_settings_file(tmp_path, monkeypatch, capsys):
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setenv("TRADECAT_SETTINGS_PATH", str(settings_path))
+
+    assert cli.main(["config", "set", "default_lang", "en"]) == 0
+    assert cli.main(["config", "set", "default_dataset", "event_stream"]) == 0
+    assert load_settings()["default_lang"] == "en"
+    assert load_settings()["default_dataset"] == "event_stream"
+
+    assert cli.main(["config", "show", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert payload["settings"]["default_lang"] == "en"
+
+    assert cli.main(["config", "unset", "default_lang"]) == 0
+    assert "default_lang" not in load_settings()
+
+
+def test_cli_export_outputs_raw_csv_and_display_table(tmp_path, capsys):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("market_snapshot"),
+        "https://dexscreener.com/x\n排名,交易对,综合分\n1,BTCUSDT,98.2\n",
+    )
+
+    assert cli.main(["--cache-dir", str(cache_dir), "export", "market_snapshot", "--format", "csv"]) == 0
+    csv_output = capsys.readouterr().out
+    assert csv_output.splitlines()[0] == "排名,交易对,综合分"
+    assert "BTCUSDT" in csv_output
+
+    assert cli.main(["--cache-dir", str(cache_dir), "export", "market_snapshot", "--format", "table", "--lang", "en"]) == 0
+    table_output = capsys.readouterr().out
+    assert "Symbol" in table_output
+    assert "BTCUSDT" in table_output
+
+
 def test_cli_pauses_after_automatic_plain_fallback(monkeypatch):
     stdin = _TtyInput()
     stdout = _TtyOutput()
@@ -484,7 +567,7 @@ def test_tui_plain_render_reads_snapshot_cache(tmp_path):
     assert "https://dexscreener.com/x" in output
     assert "+---" not in output
     assert "| A " not in output
-    assert "#2" in output
+    assert "#4" in output
     assert "数据源" in output
     assert "BTCUSDT" in output
 
@@ -539,7 +622,7 @@ def test_tui_safe_plain_renderer_handles_wide_snapshot_without_psql_borders(tmp_
     assert "+---" not in output
     assert "| 字段" not in output
     assert all(_display_width(line) <= 90 for line in output.splitlines())
-    assert "#2" in output
+    assert "#3" in output
     assert "数据源" in output
 
 
@@ -554,8 +637,50 @@ def test_tui_plain_renderer_uses_requested_language_without_translating_data(tmp
     output = render_safe_plain_tui(cache_dir, dataset_key="event_stream", limit=0, lang="en")
 
     assert "current: event_stream (Event Stream)" in output
-    assert "时间(北京)" in output
+    assert "Time (UTC+8)" in output
+    assert "Content" in output
     assert "美国总统特朗普讲话" in output
+
+
+def test_view_model_uses_display_aliases_without_mutating_raw_contract(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("market_snapshot"),
+        (
+            "https://dexscreener.com/x\n"
+            "数据源,market,导出时间(UTC+8),2026-05-01T12:00:00\n"
+            "排名,交易对,综合分,5m量变(%)\n"
+            "1,BTCUSDT,98.2,1.23%\n"
+        ),
+    )
+
+    view = build_dataset_view(cache_dir, "market_snapshot", lang="en")
+    latest = json.loads((cache_dir / "datasets" / "market_snapshot" / "latest.json").read_text(encoding="utf-8"))
+
+    assert view["columns"] == ["Rank", "Symbol", "Score", "5m Volume Change (%)"]
+    assert view["raw_columns"] == ["排名", "交易对", "综合分", "5m量变(%)"]
+    assert view["rows"][0]["values"]["Symbol"] == "BTCUSDT"
+    assert view["rows"][0]["raw_values"]["交易对"] == "BTCUSDT"
+    assert view["rows"][0]["display_column_by_raw"]["交易对"] == "Symbol"
+    assert latest["columns"][1]["name"] == "交易对"
+    assert latest["rows"][0]["values"]["交易对"] == "BTCUSDT"
+
+
+def test_view_model_supports_korean_header_aliases(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        "https://dexscreener.com/x\n时间(北京),内容\n2026-05-01 03:09:56,美国总统特朗普讲话\n",
+    )
+
+    view = build_dataset_view(cache_dir, "event_stream", lang="ko")
+
+    assert view["display_name"] == "이벤트 스트림"
+    assert view["columns"] == ["시간(UTC+8)", "내용"]
+    assert view["rows"][0]["values"]["내용"] == "美国总统特朗普讲话"
+    assert view["rows"][0]["raw_values"]["内容"] == "美国总统特朗普讲话"
 
 
 def test_tui_empty_plain_renderer_uses_korean_language(tmp_path):
@@ -619,11 +744,11 @@ def test_tui_read_view_cache_reuses_snapshot_until_invalidated(tmp_path, monkeyp
     cache_dir = tmp_path / "cache"
     calls = []
 
-    def fake_read_cached_view(path, dataset_key, *, batch_index=0, live=True):
-        calls.append((path, dataset_key, batch_index, live))
+    def fake_build_dataset_view(path, dataset_key, *, batch_index=0, live=True, lang=None):
+        calls.append((path, dataset_key, batch_index, live, lang))
         return {"rows": [], "columns": [], "content_hash": f"hash-{len(calls)}"}
 
-    monkeypatch.setattr(tui_module, "read_cached_view", fake_read_cached_view)
+    monkeypatch.setattr(tui_module, "build_dataset_view", fake_build_dataset_view)
     state = {"view_cache": {}, "render_cache": {}}
 
     first = _read_view_cached(cache_dir, state, "event_stream", batch_index=0, live=True)
@@ -634,6 +759,49 @@ def test_tui_read_view_cache_reuses_snapshot_until_invalidated(tmp_path, monkeyp
     assert first is second
     assert first is not third
     assert len(calls) == 2
+
+
+def test_tui_symbol_link_uses_raw_values_when_header_is_display_alias():
+    rows = [
+        {
+            "row_index": 3,
+            "values": {"Rank": "1", "Symbol": "ETH"},
+            "raw_values": {"排名": "1", "交易对": "ETH"},
+            "display_column_by_raw": {"排名": "Rank", "交易对": "Symbol"},
+        }
+    ]
+    viewport = _render_rows_table_viewport(rows, columns=["Rank", "Symbol"])
+    spans = _symbol_link_spans(rows, viewport["columns"], viewport["widths"])
+
+    assert _symbol_url_for_visible_row(rows, 0) == "https://www.binance.com/zh-CN/futures/ETHUSDT?type=perpetual"
+    assert spans[0]["column"] == "Symbol"
+    assert spans[0]["url"] == "https://www.binance.com/zh-CN/futures/ETHUSDT?type=perpetual"
+
+
+def test_tui_filter_rows_matches_display_and_raw_values():
+    rows = [
+        {"values": {"Symbol": "BTCUSDT", "Content": "hello"}, "raw_values": {"交易对": "BTCUSDT", "内容": "你好"}},
+        {"values": {"Symbol": "ETHUSDT", "Content": "world"}, "raw_values": {"交易对": "ETHUSDT", "内容": "世界"}},
+    ]
+
+    assert len(_filter_rows(rows, "ETH")) == 1
+    assert len(_filter_rows(rows, "世界")) == 1
+    assert _filter_rows(rows, "") == rows
+
+
+def test_tui_status_bar_exposes_freshness_and_cache_context(tmp_path):
+    view = {
+        "rows": [{"values": {"A": "1"}}],
+        "meta": {"导出时间(UTC+8)": "2026-05-01T17:52:26"},
+        "fetched_at": "2026-05-01T09:52:26+00:00",
+    }
+    state = {"last_probe_status": "cache", "live": True, "last_probe_at": 0.0, "effective_probe_interval_seconds": 10.0}
+
+    status = _status_bar(view, state, lang="zh", cache_dir=tmp_path)
+
+    assert "cache=cache-hit" in status
+    assert "remote=2026-05-01T17:52:26" in status
+    assert f"path={tmp_path}" in status
 
 
 def test_tui_render_view_cache_reuses_rendered_viewport(monkeypatch):

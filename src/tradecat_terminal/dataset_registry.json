@@ -1,0 +1,103 @@
+{
+  "schema": "tradecat.dataset_registry.v1",
+  "workbooks": {
+    "market_data": {
+      "spreadsheet_id": "1k16nGFCE7oBXrEqvTpHSA2Z5530GM_kou-wiWklTsfY",
+      "description": "交易猫市场数据入口"
+    },
+    "alternative_data": {
+      "spreadsheet_id": "1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4",
+      "description": "交易猫另类数据入口"
+    }
+  },
+  "datasets": {
+    "market_snapshot": {
+      "active": true,
+      "workbook_key": "market_data",
+      "tab_name": "全市场快照",
+      "gid": "1904613219",
+      "description": "全市场主宽表快照，本地按 JSON 快照文件缓存。",
+      "data_mode": "snapshot",
+      "index_columns": ["排名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+      "event_key_columns": [],
+      "display_names": {
+        "zh": "全市场快照",
+        "en": "Market Snapshot",
+        "ko": "전체 시장 스냅샷"
+      },
+      "history_policy": "permanent",
+      "tui_probe_interval_seconds": null,
+      "tui_fetch_timeout_seconds": null,
+      "table_region_policy": {
+        "header": "auto",
+        "top": "public_info_and_meta"
+      }
+    },
+    "anomaly_panel": {
+      "active": true,
+      "workbook_key": "market_data",
+      "tab_name": "异动面板",
+      "gid": "1915220137",
+      "description": "市场异动终端面板快照缓存。",
+      "data_mode": "snapshot",
+      "index_columns": ["榜单", "榜单名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+      "event_key_columns": [],
+      "display_names": {
+        "zh": "异动面板",
+        "en": "Anomaly Panel",
+        "ko": "이상 변동 패널"
+      },
+      "history_policy": "permanent",
+      "tui_probe_interval_seconds": null,
+      "tui_fetch_timeout_seconds": null,
+      "table_region_policy": {
+        "header": "auto",
+        "top": "public_info_and_meta"
+      }
+    },
+    "market_stats": {
+      "active": true,
+      "workbook_key": "market_data",
+      "tab_name": "全市场统计",
+      "gid": "1161752788",
+      "description": "全市场统计汇总快照缓存。",
+      "data_mode": "snapshot",
+      "index_columns": ["窗口", "覆盖合约数", "合约数", "交易对口径"],
+      "event_key_columns": [],
+      "display_names": {
+        "zh": "全市场统计",
+        "en": "Market Stats",
+        "ko": "전체 시장 통계"
+      },
+      "history_policy": "permanent",
+      "tui_probe_interval_seconds": null,
+      "tui_fetch_timeout_seconds": null,
+      "table_region_policy": {
+        "header": "auto",
+        "top": "public_info_and_meta"
+      }
+    },
+    "event_stream": {
+      "active": true,
+      "workbook_key": "alternative_data",
+      "tab_name": "事件流",
+      "gid": "1419246950",
+      "description": "另类数据事件流增量缓存。",
+      "data_mode": "stream",
+      "index_columns": ["时间(北京)", "内容"],
+      "event_key_columns": ["时间(北京)", "内容"],
+      "display_names": {
+        "zh": "事件流",
+        "en": "Event Stream",
+        "ko": "이벤트 스트림"
+      },
+      "history_policy": "permanent",
+      "tui_probe_interval_seconds": 1.5,
+      "tui_fetch_timeout_seconds": 1.0,
+      "table_region_policy": {
+        "header": "auto",
+        "top": "public_info_and_meta"
+      }
+    }
+  }
+}

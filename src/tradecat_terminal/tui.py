@@ -22,10 +22,17 @@ try:
 except ImportError:  # pragma: no cover
     curses = None
 
-from tradecat_terminal.cache import init_cache, read_cached_view
+from tradecat_terminal.cache import init_cache
 from tradecat_terminal.i18n import cycle_lang, lang_label, resolve_lang, tr
 from tradecat_terminal.lifecycle import probe_dataset
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
+from tradecat_terminal.settings import (
+    default_dataset_from_settings,
+    default_lang_from_settings,
+    tui_fetch_timeout_from_settings,
+    tui_probe_interval_from_settings,
+)
+from tradecat_terminal.view_model import build_dataset_view
 
 MOUSE_WHEEL_STEP = 1
 CURSES_POLL_TIMEOUT_MS = 100
@@ -70,7 +77,7 @@ def render_safe_plain_tui(
     resolved_lang = resolve_lang(lang)
     dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     width = _safe_plain_output_width()
-    view = read_cached_view(cache_dir, dataset_key)
+    view = build_dataset_view(cache_dir, dataset_key, lang=resolved_lang)
     console, buffer = _rich_plain_console(width)
     if reason:
         _rich_print_line(console, f"{tr(resolved_lang, 'notice_prefix')}: {reason}")
@@ -166,6 +173,9 @@ def _rich_two_column_table(rows: list[dict[str, Any]], columns: list[str], *, wi
     table.add_column(justify="right", no_wrap=True, width=row_width, overflow="ellipsis")
     table.add_column(no_wrap=True, width=first_width, overflow="ellipsis")
     table.add_column(no_wrap=True, width=second_width, overflow="ellipsis")
+    first_header = selected_columns[0] if selected_columns else ""
+    second_header = selected_columns[1] if len(selected_columns) > 1 else ""
+    table.add_row("#", first_header, second_header)
     for row in rows:
         values = _row_values(row)
         first = _format_cell(values.get(selected_columns[0], "")) if selected_columns else ""
@@ -199,7 +209,7 @@ def run_tui(
     lang: str | None = None,
 ) -> str | None:
     init_cache(cache_dir)
-    resolved_lang = resolve_lang(lang)
+    resolved_lang = resolve_lang(lang or default_lang_from_settings())
     startup_dataset_key = _resolve_startup_dataset_key(cache_dir, dataset_key)
     if not interactive:
         return render_basic_tui(cache_dir, dataset_key=startup_dataset_key, limit=limit, lang=resolved_lang)
@@ -292,6 +302,8 @@ def _run_curses(
     state["background_probe_enabled"] = _background_probe_enabled()
     state["view_cache"] = {}
     state["render_cache"] = {}
+    state["show_help"] = False
+    state["filter_query"] = ""
     state["screen_size"] = _observed_screen_size(stdscr)
     _update_probe_tuning_state(state, probe_interval_override)
     probe_results: queue.Queue[dict[str, Any]] = queue.Queue()
@@ -311,7 +323,24 @@ def _run_curses(
             if key in {ord("q"), ord("Q")}:
                 return
             if key == 27:
+                if state.get("show_help"):
+                    state["show_help"] = False
+                    dirty = True
+                    continue
                 dirty = _handle_raw_sgr_mouse_event(stdscr, state) or dirty
+                continue
+            if key in {ord("?"), curses.KEY_F1}:
+                state["show_help"] = not bool(state.get("show_help"))
+                dirty = True
+                continue
+            if key == ord("/"):
+                _prompt_filter(stdscr, state)
+                dirty = True
+                continue
+            if key in {ord("x"), ord("X")}:
+                state["filter_query"] = ""
+                state["row_scroll"] = 0
+                dirty = True
                 continue
             if key == curses.KEY_RESIZE:
                 dirty = _handle_screen_resize(stdscr, state) or True
@@ -354,6 +383,12 @@ def _run_curses(
                 state["row_scroll"] = max(
                     0, int(state.get("row_scroll", 0)) - max(1, int(state.get("page_limit", 1)))
                 )
+                dirty = True
+            elif key == ord("g"):
+                state["row_scroll"] = 0
+                dirty = True
+            elif key == ord("G"):
+                state["row_scroll"] = int(state.get("max_row_scroll", 0))
                 dirty = True
             elif key in {ord("r"), ord("R")}:
                 _update_probe_tuning_state(state, probe_interval_override)
@@ -399,9 +434,11 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
     state["batch_count"] = int(view.get("batch_count") or 0)
     state["batch_index"] = int(view.get("batch_index") or 0)
     top_lines = list(view.get("top_lines") or [])
-    page_limit = _page_limit(height, limit, reserved_lines=len(top_lines))
+    page_limit = _page_limit(height, limit, reserved_lines=len(top_lines) + 1)
     rows = list(view.get("rows") or [])
+    rows = _filter_rows(rows, str(state.get("filter_query") or ""))
     max_row_scroll = max(0, len(rows) - page_limit)
+    state["max_row_scroll"] = max_row_scroll
     state["row_scroll"] = min(max(0, int(state.get("row_scroll", 0))), max_row_scroll)
     visible_rows = _rows_for_display(view, start=int(state["row_scroll"]), limit=page_limit)
     state["page_limit"] = page_limit
@@ -430,15 +467,23 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
             batch_label=view.get("batch_label") or tr(lang, "no_cache"),
             probe=probe_label,
         )
+    if state.get("filter_query"):
+        batch_label += f" | filter={state['filter_query']} matched={len(rows)}"
     if state.get("last_probe_error"):
-        batch_label += f" | {tr(lang, 'error_label')}={state['last_probe_error']}"
+        batch_label += f" | {tr(lang, 'error_label')}={state['last_probe_error']} | {_recovery_hint(state)}"
     if state.get("last_open_status"):
         batch_label += f" | {tr(lang, 'open_label')}={state['last_open_status']}"
+    status_bar = _status_bar(view, state, lang=lang, cache_dir=cache_dir)
     _add_line(stdscr, 0, header, width, curses.A_REVERSE)
     _add_line(stdscr, 1, controls, width)
-    _add_line(stdscr, 2, batch_label, width)
-    _add_line(stdscr, 3, "-" * max(0, width - 1), width)
-    y = 4
+    _add_line(stdscr, 2, status_bar, width)
+    _add_line(stdscr, 3, batch_label, width)
+    _add_line(stdscr, 4, "-" * max(0, width - 1), width)
+    y = 5
+    if state.get("show_help"):
+        _draw_help(stdscr, y, width, height, lang=lang, cache_dir=cache_dir)
+        _finish_draw(stdscr, state, height, height)
+        return
     for line in top_lines:
         _add_line(stdscr, y, line, width)
         y += 1
@@ -499,7 +544,145 @@ def _load_state(dataset_key: str, *, lang: str | None = None) -> dict[str, Any]:
         "hover_row_offset": None,
         "last_open_status": None,
         "lang": resolve_lang(lang),
+        "show_help": False,
+        "filter_query": "",
     }
+
+
+def _status_bar(view: dict[str, Any], state: dict[str, Any], *, lang: str, cache_dir: Path) -> str:
+    remote_time = _remote_time_label(view)
+    fetched_at = str(view.get("fetched_at") or "-")
+    cache_state = "cache-hit" if view.get("rows") else "empty-cache"
+    probe = str(state.get("last_probe_status") or "-")
+    next_seconds = _next_probe_seconds(state)
+    parts = [
+        f"lang={lang_label(lang, lang=lang)}",
+        f"cache={cache_state}",
+        f"remote={remote_time}",
+        f"fetched={fetched_at}",
+        f"probe={probe}",
+        f"next={next_seconds}s",
+        f"path={cache_dir}",
+    ]
+    return " | ".join(parts)
+
+
+def _remote_time_label(view: dict[str, Any]) -> str:
+    meta = view.get("meta")
+    if not isinstance(meta, dict):
+        return "-"
+    for key in ("导出时间(UTC+8)", "导出时间", "更新时间", "更新时间(北京)"):
+        value = meta.get(key)
+        if value:
+            return str(value)
+    return "-"
+
+
+def _recovery_hint(state: dict[str, Any]) -> str:
+    error = str(state.get("last_probe_error") or "").lower()
+    if "timed out" in error or "timeout" in error or "超时" in error:
+        return "建议：检查网络或调大 TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT"
+    if "429" in error or "quota" in error or "rate" in error or "限流" in error:
+        return "建议：等待退避或调大刷新间隔"
+    if "no such" in error or "json" in error or "decode" in error:
+        return "建议：执行 tradecat sync-all 重建缓存"
+    return "建议：按 r 重试，或执行 tradecat doctor"
+
+
+def _draw_help(stdscr, start_y: int, width: int, height: int, *, lang: str, cache_dir: Path) -> None:
+    lines = _help_lines(lang=lang, cache_dir=cache_dir)
+    y = start_y
+    for line in lines:
+        if y >= height:
+            break
+        _add_line(stdscr, y, line, width)
+        y += 1
+
+
+def _help_lines(*, lang: str, cache_dir: Path) -> list[str]:
+    if lang == "en":
+        return [
+            "Help",
+            "←/→ or a/d/Tab: switch tap",
+            "↑/↓: switch snapshot batch for snapshot taps; scroll event_stream rows",
+            "PgUp/PgDn/Space: page rows; g/G: top/end",
+            "/: search visible rows; x: clear search",
+            "n/p: select row; Enter/o: open URL or Binance Futures symbol link",
+            "r: refresh current tap; l: switch language; ?: close help; q: quit",
+            f"cache: {cache_dir}",
+            "Recovery: network errors keep the local cache visible; press r or run tradecat sync-all.",
+        ]
+    if lang == "ko":
+        return [
+            "도움말",
+            "←/→ 또는 a/d/Tab: 탭 전환",
+            "↑/↓: 스냅샷 탭은 배치 전환, event_stream은 행 스크롤",
+            "PgUp/PgDn/Space: 페이지 이동; g/G: 처음/끝",
+            "/: 검색; x: 검색 해제",
+            "n/p: 행 선택; Enter/o: URL 또는 Binance Futures 거래쌍 열기",
+            "r: 현재 탭 새로고침; l: 언어 전환; ?: 도움말 닫기; q: 종료",
+            f"cache: {cache_dir}",
+            "복구: 네트워크 오류가 나도 로컬 캐시는 유지됩니다. r 또는 tradecat sync-all을 사용하세요.",
+        ]
+    return [
+        "帮助",
+        "←/→ 或 a/d/Tab：切换 tap",
+        "↑/↓：snapshot tap 切换快照批次；event_stream 滚动事件",
+        "PgUp/PgDn/Space：翻行；g/G：首尾跳转",
+        "/：搜索当前表；x：清除搜索",
+        "n/p：选择可见行；Enter/o：打开 URL 或交易对 Binance Futures 链接",
+        "r：刷新当前 tap；l：切换语言；?：关闭帮助；q：退出",
+        f"cache: {cache_dir}",
+        "恢复：网络失败不会清空界面；按 r 重试，或执行 tradecat sync-all。",
+    ]
+
+
+def _prompt_filter(stdscr, state: dict[str, Any]) -> None:
+    height, width = stdscr.getmaxyx()
+    prompt = "filter> "
+    value = str(state.get("filter_query") or "")
+    try:
+        curses.curs_set(1)
+    except curses.error:
+        pass
+    while True:
+        _safe_addstr(stdscr, max(0, height - 1), prompt + value, width, curses.A_REVERSE)
+        key = stdscr.getch()
+        if key in {10, 13}:
+            state["filter_query"] = value.strip()
+            state["row_scroll"] = 0
+            break
+        if key in {27}:
+            break
+        if key in {curses.KEY_BACKSPACE, 127, 8}:
+            value = value[:-1]
+            continue
+        if 32 <= key <= 0x10FFFF:
+            try:
+                value += chr(key)
+            except ValueError:
+                continue
+    try:
+        curses.curs_set(0)
+    except curses.error:
+        pass
+
+
+def _filter_rows(rows: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    needle = query.strip().lower()
+    if not needle:
+        return rows
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        haystack = " ".join(
+            [
+                *[str(value) for value in _row_values(row).values()],
+                *[str(value) for value in _raw_row_values(row).values()],
+            ]
+        ).lower()
+        if needle in haystack:
+            result.append(row)
+    return result
 
 
 def _switch_dataset(state: dict[str, Any], step: int) -> None:
@@ -756,7 +939,11 @@ def _resolve_startup_dataset_key(cache_dir: Path, dataset_key: str | None) -> st
     del cache_dir
     if dataset_key:
         return dataset_key
-    preferred = os.environ.get(TUI_DEFAULT_DATASET_ENV, DEFAULT_TUI_DATASET_KEY).strip() or DEFAULT_TUI_DATASET_KEY
+    preferred = (
+        os.environ.get(TUI_DEFAULT_DATASET_ENV)
+        or default_dataset_from_settings()
+        or DEFAULT_TUI_DATASET_KEY
+    ).strip() or DEFAULT_TUI_DATASET_KEY
     keys = [dataset.key for dataset in list_active_datasets()]
     return preferred if preferred in keys else keys[0]
 
@@ -767,6 +954,9 @@ def _resolve_probe_interval(value: float | None, dataset_key: str | None = None)
     dataset_env_value = _dataset_probe_interval_env_value(dataset_key)
     raw = dataset_env_value or os.environ.get(TUI_PROBE_INTERVAL_ENV)
     if raw is None or not str(raw).strip():
+        settings_interval = tui_probe_interval_from_settings(dataset_key)
+        if settings_interval is not None:
+            return max(1.0, float(settings_interval))
         dataset_interval = _dataset_probe_interval(dataset_key)
         if dataset_interval is not None:
             return max(1.0, float(dataset_interval))
@@ -774,6 +964,9 @@ def _resolve_probe_interval(value: float | None, dataset_key: str | None = None)
     try:
         return max(1.0, float(raw))
     except ValueError:
+        settings_interval = tui_probe_interval_from_settings(dataset_key)
+        if settings_interval is not None:
+            return max(1.0, float(settings_interval))
         dataset_interval = _dataset_probe_interval(dataset_key)
         return max(1.0, float(dataset_interval)) if dataset_interval is not None else DEFAULT_LIVE_PROBE_INTERVAL_SECONDS
 
@@ -805,12 +998,18 @@ def _resolve_fetch_timeout(
     dataset_env_value = _dataset_fetch_timeout_env_value(dataset_key)
     raw = dataset_env_value or os.environ.get(TUI_FETCH_TIMEOUT_ENV)
     if raw is None or not str(raw).strip():
+        settings_timeout = tui_fetch_timeout_from_settings(dataset_key)
+        if settings_timeout is not None:
+            return _cap_fetch_timeout(max(0.5, float(settings_timeout)), probe_interval_seconds)
         dataset_timeout = _dataset_fetch_timeout(dataset_key)
         timeout = dataset_timeout if dataset_timeout is not None else DEFAULT_LIVE_FETCH_TIMEOUT_SECONDS
         return _cap_fetch_timeout(max(0.5, float(timeout)), probe_interval_seconds)
     try:
         return _cap_fetch_timeout(max(0.5, float(raw)), probe_interval_seconds)
     except ValueError:
+        settings_timeout = tui_fetch_timeout_from_settings(dataset_key)
+        if settings_timeout is not None:
+            return _cap_fetch_timeout(max(0.5, float(settings_timeout)), probe_interval_seconds)
         dataset_timeout = _dataset_fetch_timeout(dataset_key)
         timeout = dataset_timeout if dataset_timeout is not None else DEFAULT_LIVE_FETCH_TIMEOUT_SECONDS
         return _cap_fetch_timeout(max(0.5, float(timeout)), probe_interval_seconds)
@@ -995,7 +1194,13 @@ def _read_view_cached(
     cached = cache.get(key)
     if cached:
         return cached
-    view = read_cached_view(cache_dir, dataset_key, batch_index=batch_index, live=live)
+    view = build_dataset_view(
+        cache_dir,
+        dataset_key,
+        batch_index=batch_index,
+        live=live,
+        lang=str(state.get("lang") or ""),
+    )
     if len(cache) > 16:
         cache.clear()
     cache[key] = view
@@ -1102,6 +1307,20 @@ def _ellipsize_display(text: str, width: int) -> str:
 def _row_values(row: dict[str, Any]) -> dict[str, Any]:
     payload = row.get("values")
     return payload if isinstance(payload, dict) else {}
+
+
+def _raw_row_values(row: dict[str, Any]) -> dict[str, Any]:
+    payload = row.get("raw_values")
+    if isinstance(payload, dict):
+        return payload
+    return _row_values(row)
+
+
+def _display_column_for_row(row: dict[str, Any], raw_column: Any) -> str:
+    mapping = row.get("display_column_by_raw")
+    if isinstance(mapping, dict):
+        return str(mapping.get(str(raw_column)) or raw_column)
+    return str(raw_column)
 
 
 def _select_columns(rows: list[dict[str, Any]]) -> list[str]:
@@ -1514,12 +1733,13 @@ def _link_for_visible_row(rows: list[dict[str, Any]], row_pos: int) -> dict[str,
 def _url_link_for_visible_row(rows: list[dict[str, Any]], row_pos: int) -> dict[str, Any] | None:
     if row_pos < 0 or row_pos >= len(rows):
         return None
-    for key, value in _row_values(rows[row_pos]).items():
+    row = rows[row_pos]
+    for key, value in _raw_row_values(row).items():
         match = URL_RE.search(_format_cell(value))
         if match:
             url = match.group(0).rstrip("，。；;、)")
             return {
-                "column": str(key),
+                "column": _display_column_for_row(row, key),
                 "value": url,
                 "url": url,
                 "display_offset": _display_width(_format_cell(value)[: match.start()]),
@@ -1531,28 +1751,32 @@ def _symbol_link_for_visible_row(rows: list[dict[str, Any]], row_pos: int) -> di
     if row_pos < 0 or row_pos >= len(rows):
         return None
     row = rows[row_pos]
-    values = _row_values(row)
+    values = _raw_row_values(row)
     for key, value in values.items():
         if str(key) in SYMBOL_HEADER_NAMES:
             url = _build_binance_futures_url(value)
             if url:
-                return {"column": str(key), "value": _format_cell(value), "url": url}
+                return {"column": _display_column_for_row(row, key), "value": _format_cell(value), "url": url}
     inferred_column = _infer_symbol_column(rows, row_pos)
     if inferred_column:
         value = values.get(inferred_column)
         url = _build_binance_futures_url(value)
         if url:
-            return {"column": inferred_column, "value": _format_cell(value), "url": url}
+            return {
+                "column": _display_column_for_row(row, inferred_column),
+                "value": _format_cell(value),
+                "url": url,
+            }
     for key, value in values.items():
         url = _build_binance_futures_url(value)
         if url:
-            return {"column": str(key), "value": _format_cell(value), "url": url}
+            return {"column": _display_column_for_row(row, key), "value": _format_cell(value), "url": url}
     return None
 
 
 def _infer_symbol_column(rows: list[dict[str, Any]], row_pos: int) -> str | None:
     for scan_pos in range(row_pos, -1, -1):
-        for column, value in _row_values(rows[scan_pos]).items():
+        for column, value in _raw_row_values(rows[scan_pos]).items():
             if _format_cell(value).strip() in SYMBOL_HEADER_NAMES:
                 return str(column)
     return None

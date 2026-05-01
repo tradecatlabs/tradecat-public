@@ -15,6 +15,10 @@ function Fail($Message) {
     exit 1
 }
 
+function Test-Truthy($Value) {
+    return @("1", "true", "yes", "on") -contains ([string]$Value).Trim().ToLowerInvariant()
+}
+
 function Test-Command($Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
@@ -29,7 +33,11 @@ function Invoke-Python($Python, [string[]]$Arguments) {
 
 function Test-Python($Python) {
     try {
-        Invoke-Python $Python @("-c", "import sys; raise SystemExit(0 if sys.version_info[:2] >= tuple(map(int, '$PythonVersion'.split('.')[:2])) else 1)") | Out-Null
+        if ($Python -eq "py -3.12") {
+            & py -3.12 -c "import sys; raise SystemExit(0 if sys.version_info[:2] >= tuple(map(int, '$PythonVersion'.split('.')[:2])) else 1)" *> $null
+        } else {
+            & $Python -c "import sys; raise SystemExit(0 if sys.version_info[:2] >= tuple(map(int, '$PythonVersion'.split('.')[:2])) else 1)" *> $null
+        }
         return $LASTEXITCODE -eq 0
     } catch {
         return $false
@@ -109,11 +117,52 @@ function Create-Venv {
 function Write-Launcher {
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
     $LauncherPs1 = Join-Path $BinDir "tradecat.ps1"
+    $UpdaterPs1 = Join-Path $BinDir "tradecat-update.ps1"
+    @"
+param([switch]`$Force)
+`$ErrorActionPreference = "Continue"
+`$AppDir = "$AppDir"
+`$Branch = "$Branch"
+`$VenvPy = "$script:VenvPy"
+`$OldHead = ""
+try {
+    `$OldHead = (git -C `$AppDir rev-parse HEAD 2>`$null)
+} catch {
+    `$OldHead = ""
+}
+git -C `$AppDir fetch origin `$Branch *> `$null
+`$FetchCode = `$LASTEXITCODE
+git -C `$AppDir checkout `$Branch *> `$null
+`$CheckoutCode = `$LASTEXITCODE
+git -C `$AppDir pull --ff-only origin `$Branch *> `$null
+`$PullCode = `$LASTEXITCODE
+if (`$FetchCode -ne 0 -or `$CheckoutCode -ne 0 -or `$PullCode -ne 0) {
+    if (`$Force) {
+        Write-Error "tradecat-update: ERROR: update failed"
+        exit 1
+    }
+    exit 0
+}
+`$NewHead = ""
+try {
+    `$NewHead = (git -C `$AppDir rev-parse HEAD 2>`$null)
+} catch {
+    `$NewHead = ""
+}
+if (`$OldHead -and `$NewHead -and `$OldHead -ne `$NewHead) {
+    & `$VenvPy -m pip install -e `$AppDir *> `$null
+    if (`$LASTEXITCODE -ne 0 -and `$Force) {
+        Write-Error "tradecat-update: ERROR: dependency refresh failed"
+        exit 1
+    }
+}
+"@ | Set-Content -Encoding UTF8 $UpdaterPs1
     @"
 `$ErrorActionPreference = "Continue"
 `$AppDir = "$AppDir"
 `$Branch = "$Branch"
 `$VenvPy = "$script:VenvPy"
+`$UpdaterPs1 = "$UpdaterPs1"
 
 function Test-Truthy(`$Value) {
     return @("1", "true", "yes", "on") -contains ([string]`$Value).Trim().ToLowerInvariant()
@@ -131,43 +180,38 @@ function Invoke-TradeCatAutoUpdate {
         Write-Warning "tradecat-update: skipped; git or repo is unavailable"
         return
     }
-    `$OldHead = ""
-    try {
-        `$OldHead = (git -C `$AppDir rev-parse HEAD 2>`$null)
-    } catch {
-        `$OldHead = ""
-    }
-    git -C `$AppDir fetch origin `$Branch *> `$null
-    `$FetchCode = `$LASTEXITCODE
-    git -C `$AppDir checkout `$Branch *> `$null
-    `$CheckoutCode = `$LASTEXITCODE
-    git -C `$AppDir pull --ff-only origin `$Branch *> `$null
-    `$PullCode = `$LASTEXITCODE
-    if (`$FetchCode -ne 0 -or `$CheckoutCode -ne 0 -or `$PullCode -ne 0) {
-        if (Test-Truthy `$env:TRADECAT_FORCE_UPDATE) {
-            Write-Error "tradecat-update: ERROR: update failed"
-            exit 1
+    if (Test-Truthy `$env:TRADECAT_FORCE_UPDATE) {
+        & `$UpdaterPs1 -Force
+        if (`$LASTEXITCODE -ne 0) {
+            exit `$LASTEXITCODE
         }
-        Write-Warning "tradecat-update: update failed; continuing with local version"
         return
     }
-    `$NewHead = ""
+    `$UpdateInterval = 3600
     try {
-        `$NewHead = (git -C `$AppDir rev-parse HEAD 2>`$null)
-    } catch {
-        `$NewHead = ""
-    }
-    if (`$OldHead -and `$NewHead -and `$OldHead -ne `$NewHead) {
-        & `$VenvPy -m pip install -e `$AppDir *> `$null
-        if (`$LASTEXITCODE -eq 0) {
-            Write-Host "tradecat-update: updated to latest"
-        } elseif (Test-Truthy `$env:TRADECAT_FORCE_UPDATE) {
-            Write-Error "tradecat-update: ERROR: dependency refresh failed"
-            exit 1
-        } else {
-            Write-Warning "tradecat-update: dependency refresh failed; continuing with local version"
+        if (`$env:TRADECAT_UPDATE_INTERVAL_SECONDS) {
+            `$UpdateInterval = [Math]::Max(0, [int]`$env:TRADECAT_UPDATE_INTERVAL_SECONDS)
         }
+    } catch {
+        `$UpdateInterval = 3600
     }
+    `$UpdateStamp = Join-Path `$AppDir ".tradecat-update-checked-at"
+    `$Now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    `$Last = 0
+    try {
+        if (Test-Path `$UpdateStamp) {
+            `$Last = [int64](Get-Content `$UpdateStamp -Raw)
+        }
+    } catch {
+        `$Last = 0
+    }
+    if (`$UpdateInterval -gt 0 -and `$Last -gt 0 -and (`$Now - `$Last) -lt `$UpdateInterval) {
+        return
+    }
+    try {
+        Set-Content -Encoding ASCII -Path `$UpdateStamp -Value ([string]`$Now)
+    } catch {}
+    Start-Process -FilePath "powershell" -WindowStyle Hidden -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", `$UpdaterPs1) | Out-Null
 }
 
 Invoke-TradeCatAutoUpdate
@@ -182,17 +226,26 @@ exit `$LASTEXITCODE
     "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`n" | Set-Content -Encoding ASCII $UninstallLauncher
     $ShortUninstallLauncher = Join-Path $BinDir "tcat-uninstall.cmd"
     "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`n" | Set-Content -Encoding ASCII $ShortUninstallLauncher
-    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if (-not ($UserPath.Split(";") -contains $BinDir)) {
-        [Environment]::SetEnvironmentVariable("Path", "$BinDir;$UserPath", "User")
+    if (-not (Test-Truthy $env:TRADECAT_INSTALL_SKIP_PATH_WRITE)) {
+        $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+        if (-not ($UserPath.Split(";") -contains $BinDir)) {
+            [Environment]::SetEnvironmentVariable("Path", "$BinDir;$UserPath", "User")
+        }
+        $env:Path = "$BinDir;$env:Path"
+    } else {
+        Log "按配置跳过写入用户 PATH"
     }
-    $env:Path = "$BinDir;$env:Path"
 }
 
 function Bootstrap-Cache {
     $OldNoAutoUpdate = $env:TRADECAT_NO_AUTO_UPDATE
     $env:TRADECAT_NO_AUTO_UPDATE = "1"
     & (Join-Path $BinDir "tradecat.cmd") init | Out-Null
+    if (Test-Truthy $env:TRADECAT_INSTALL_SKIP_SYNC) {
+        Log "已初始化本地缓存目录；按配置跳过初次公开数据同步"
+        $env:TRADECAT_NO_AUTO_UPDATE = $OldNoAutoUpdate
+        return
+    }
     try {
         & (Join-Path $BinDir "tradecat.cmd") sync-all | Out-Null
         Log "已同步公开数据到本地缓存"
@@ -210,4 +263,8 @@ Bootstrap-Cache
 Log "安装完成"
 Log "命令入口：$(Join-Path $BinDir 'tradecat.cmd')"
 Log "卸载命令：$(Join-Path $BinDir 'tradecat-uninstall.cmd')"
-Log "启动：tradecat"
+if (Test-Truthy $env:TRADECAT_INSTALL_SKIP_PATH_WRITE) {
+    Log "启动：$(Join-Path $BinDir 'tradecat.cmd')"
+} else {
+    Log "启动：tradecat"
+}

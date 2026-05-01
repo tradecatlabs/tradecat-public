@@ -4,44 +4,17 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from io import StringIO
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 USER_AGENT = "tradecat-request/0.1"
-
-WORKBOOKS = {
-    "market_data": "1k16nGFCE7oBXrEqvTpHSA2Z5530GM_kou-wiWklTsfY",
-    "alternative_data": "1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4",
-}
-
-DATASETS = {
-    "market_snapshot": {
-        "workbook": "market_data",
-        "tab": "全市场快照",
-        "gid": "1904613219",
-        "mode": "snapshot",
-    },
-    "anomaly_panel": {
-        "workbook": "market_data",
-        "tab": "异动面板",
-        "gid": "1915220137",
-        "mode": "snapshot",
-    },
-    "market_stats": {
-        "workbook": "market_data",
-        "tab": "全市场统计",
-        "gid": "1161752788",
-        "mode": "snapshot",
-    },
-    "event_stream": {
-        "workbook": "alternative_data",
-        "tab": "事件流",
-        "gid": "1419246950",
-        "mode": "stream",
-    },
-}
+DEFAULT_REGISTRY_URL = (
+    "https://raw.githubusercontent.com/tukuaiai/tradecat/develop/src/tradecat_terminal/dataset_registry.json"
+)
+REGISTRY_URL_ENV = "TRADECAT_REQUEST_REGISTRY_URL"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,19 +23,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=("table", "json", "jsonl", "csv", "raw"), default="table")
     parser.add_argument("--limit", type=int, default=50, help="最多输出业务数据行；0 表示不限制")
     parser.add_argument("--timeout", type=float, default=8.0, help="网络请求超时秒数")
+    parser.add_argument(
+        "--registry-url",
+        default=os.environ.get(REGISTRY_URL_ENV, DEFAULT_REGISTRY_URL),
+        help=f"dataset registry JSON URL；默认读取 {REGISTRY_URL_ENV} 或 GitHub develop",
+    )
     parser.add_argument("--meta", action="store_true", help="只输出顶部元信息")
     parser.add_argument("--headers", action="store_true", help="只输出表头")
     parser.add_argument("--datasets", action="store_true", help="列出可用 dataset")
     args = parser.parse_args(argv)
+    registry = load_registry(args.registry_url, timeout=args.timeout)
 
     if args.datasets:
-        for key, spec in DATASETS.items():
-            print(f"{key}\tmode={spec['mode']}\ttab={spec['tab']}")
+        for key, spec in registry["datasets"].items():
+            if not spec.get("active", True):
+                continue
+            print(f"{key}\tmode={spec['data_mode']}\ttab={spec['tab_name']}")
         return 0
     if not args.dataset_key:
         parser.error("需要 dataset_key；可用 --datasets 查看")
 
-    body = fetch_body(dataset_url(args.dataset_key), timeout=args.timeout)
+    body = fetch_body(dataset_url(registry, args.dataset_key), timeout=args.timeout)
     if args.format == "raw":
         print(body, end="" if body.endswith("\n") else "\n")
         return 0
@@ -97,13 +78,29 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def dataset_url(dataset_key: str) -> str:
+def load_registry(url: str, *, timeout: float) -> dict[str, dict]:
+    payload = json.loads(fetch_body(url, timeout=timeout))
+    if not isinstance(payload, dict) or not isinstance(payload.get("workbooks"), dict) or not isinstance(
+        payload.get("datasets"), dict
+    ):
+        raise SystemExit("dataset registry 格式错误")
+    return {"workbooks": payload["workbooks"], "datasets": payload["datasets"]}
+
+
+def dataset_url(registry: dict[str, dict], dataset_key: str) -> str:
     try:
-        spec = DATASETS[dataset_key]
+        spec = registry["datasets"][dataset_key]
     except KeyError as exc:
-        available = ", ".join(sorted(DATASETS))
+        available = ", ".join(sorted(registry["datasets"]))
         raise SystemExit(f"未知 dataset_key: {dataset_key}; 可用值: {available}") from exc
-    spreadsheet_id = WORKBOOKS[str(spec["workbook"])]
+    if not spec.get("active", True):
+        raise SystemExit(f"dataset_key 已停用: {dataset_key}")
+    workbook_key = str(spec["workbook_key"])
+    try:
+        workbook = registry["workbooks"][workbook_key]
+    except KeyError as exc:
+        raise SystemExit(f"dataset {dataset_key} 引用了未知 workbook: {workbook_key}") from exc
+    spreadsheet_id = str(workbook["spreadsheet_id"])
     query = urlencode({"format": "csv", "gid": str(spec["gid"])})
     return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?{query}"
 

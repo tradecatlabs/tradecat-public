@@ -37,7 +37,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "mode_history": "历史",
         "controls": (
             "<-/-> 切换 tap | up/down 快照/事件 | PgUp/PgDn 翻行 | "
-            "n/p 选行 | Enter/o 打开链接/交易对 | r 刷新 | "
+            "/ 搜索 | x 清除 | g/G 首尾 | n/p 选行 | Enter/o 打开链接/交易对 | r 刷新 | ? 帮助 | "
             "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어 | q 退出"
         ),
         "stream_status": "mode=stream | row={row_scroll} | probe={probe}",
@@ -67,7 +67,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "mode_history": "history",
         "controls": (
             "<-/-> switch tap | up/down snapshot/event | PgUp/PgDn page | "
-            "n/p select row | Enter/o open link/symbol | r refresh | "
+            "/ search | x clear | g/G top/end | n/p select | Enter/o open link/symbol | r refresh | ? help | "
             "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어 | q quit"
         ),
         "stream_status": "mode=stream | row={row_scroll} | probe={probe}",
@@ -97,7 +97,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "mode_history": "히스토리",
         "controls": (
             "<-/-> 탭 전환 | up/down 스냅샷/이벤트 | PgUp/PgDn 페이지 | "
-            "n/p 행 선택 | Enter/o 링크/거래쌍 열기 | r 새로고침 | "
+            "/ 검색 | x 지우기 | g/G 처음/끝 | n/p 선택 | Enter/o 링크/거래쌍 열기 | r 새로고침 | ? 도움말 | "
             "l 切换语言 / Switch language / 언어 전환: 中文/English/한국어 | q 종료"
         ),
         "stream_status": "mode=stream | row={row_scroll} | probe={probe}",

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from importlib.resources import files
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -57,69 +59,80 @@ class DatasetSpec:
         return self.display_names.get(resolved) or self.display_names.get(DEFAULT_LANG) or self.tab_name
 
 
-WORKBOOKS: dict[str, WorkbookSource] = {
-    "market_data": WorkbookSource(
-        key="market_data",
-        spreadsheet_id="1k16nGFCE7oBXrEqvTpHSA2Z5530GM_kou-wiWklTsfY",
-        description="交易猫市场数据入口",
-    ),
-    "alternative_data": WorkbookSource(
-        key="alternative_data",
-        spreadsheet_id="1q-2sXGsFYsKf3nV5u5golTVrLH5sfc0doiWwz_kavE4",
-        description="交易猫另类数据入口",
-    ),
-}
+REGISTRY_RESOURCE = "dataset_registry.json"
 
 
-DATASETS: dict[str, DatasetSpec] = {
-    "market_snapshot": DatasetSpec(
-        key="market_snapshot",
-        workbook_key="market_data",
-        tab_name="全市场快照",
-        gid="1904613219",
-        description="全市场主宽表快照，本地按 JSON 快照文件缓存。",
-        data_mode="snapshot",
-        index_columns=("排名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"),
-        display_names={"zh": "全市场快照", "en": "Market Snapshot", "ko": "전체 시장 스냅샷"},
-        table_region_policy={"header": "auto", "top": "public_info_and_meta"},
-    ),
-    "anomaly_panel": DatasetSpec(
-        key="anomaly_panel",
-        workbook_key="market_data",
-        tab_name="异动面板",
-        gid="1915220137",
-        description="市场异动终端面板快照缓存。",
-        data_mode="snapshot",
-        index_columns=("榜单", "榜单名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"),
-        display_names={"zh": "异动面板", "en": "Anomaly Panel", "ko": "이상 변동 패널"},
-        table_region_policy={"header": "auto", "top": "public_info_and_meta"},
-    ),
-    "market_stats": DatasetSpec(
-        key="market_stats",
-        workbook_key="market_data",
-        tab_name="全市场统计",
-        gid="1161752788",
-        description="全市场统计汇总快照缓存。",
-        data_mode="snapshot",
-        index_columns=("窗口", "覆盖合约数", "合约数", "交易对口径"),
-        display_names={"zh": "全市场统计", "en": "Market Stats", "ko": "전체 시장 통계"},
-        table_region_policy={"header": "auto", "top": "public_info_and_meta"},
-    ),
-    "event_stream": DatasetSpec(
-        key="event_stream",
-        workbook_key="alternative_data",
-        tab_name="事件流",
-        gid="1419246950",
-        description="另类数据事件流增量缓存。",
-        data_mode="stream",
-        index_columns=("时间(北京)", "内容"),
-        event_key_columns=("时间(北京)", "内容"),
-        display_names={"zh": "事件流", "en": "Event Stream", "ko": "이벤트 스트림"},
-        tui_probe_interval_seconds=1.5,
-        tui_fetch_timeout_seconds=1.0,
-        table_region_policy={"header": "auto", "top": "public_info_and_meta"},
-    ),
-}
+def _load_registry_payload() -> dict[str, object]:
+    text = files("tradecat_terminal").joinpath(REGISTRY_RESOURCE).read_text(encoding="utf-8")
+    payload = json.loads(text)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{REGISTRY_RESOURCE} 必须是 JSON object")
+    return payload
+
+
+def _load_workbooks(payload: dict[str, object]) -> dict[str, WorkbookSource]:
+    raw_workbooks = payload.get("workbooks")
+    if not isinstance(raw_workbooks, dict):
+        raise ValueError(f"{REGISTRY_RESOURCE} 缺少 workbooks")
+    workbooks: dict[str, WorkbookSource] = {}
+    for key, raw in raw_workbooks.items():
+        if not isinstance(raw, dict):
+            raise ValueError(f"workbook {key} 必须是 object")
+        workbooks[str(key)] = WorkbookSource(
+            key=str(key),
+            spreadsheet_id=str(raw.get("spreadsheet_id") or ""),
+            description=str(raw.get("description") or ""),
+        )
+    return workbooks
+
+
+def _load_datasets(payload: dict[str, object]) -> dict[str, DatasetSpec]:
+    raw_datasets = payload.get("datasets")
+    if not isinstance(raw_datasets, dict):
+        raise ValueError(f"{REGISTRY_RESOURCE} 缺少 datasets")
+    datasets: dict[str, DatasetSpec] = {}
+    for key, raw in raw_datasets.items():
+        if not isinstance(raw, dict):
+            raise ValueError(f"dataset {key} 必须是 object")
+        data_mode = str(raw.get("data_mode") or "snapshot")
+        if data_mode not in ("snapshot", "stream"):
+            raise ValueError(f"dataset {key} data_mode 非法: {data_mode}")
+        datasets[str(key)] = DatasetSpec(
+            key=str(key),
+            workbook_key=str(raw.get("workbook_key") or ""),
+            tab_name=str(raw.get("tab_name") or ""),
+            gid=str(raw.get("gid")) if raw.get("gid") is not None else None,
+            description=str(raw.get("description") or ""),
+            data_mode=data_mode,  # type: ignore[arg-type]
+            index_columns=tuple(str(item) for item in raw.get("index_columns") or []),
+            event_key_columns=tuple(str(item) for item in raw.get("event_key_columns") or []),
+            display_names={
+                str(lang): str(name) for lang, name in (raw.get("display_names") or {}).items()
+            }
+            if isinstance(raw.get("display_names"), dict)
+            else {},
+            history_policy=str(raw.get("history_policy") or "permanent"),
+            tui_probe_interval_seconds=_optional_float(raw.get("tui_probe_interval_seconds")),
+            tui_fetch_timeout_seconds=_optional_float(raw.get("tui_fetch_timeout_seconds")),
+            table_region_policy={
+                str(name): value for name, value in (raw.get("table_region_policy") or {}).items()
+            }
+            if isinstance(raw.get("table_region_policy"), dict)
+            else {},
+            active=bool(raw.get("active", True)),
+        )
+    return datasets
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+_REGISTRY_PAYLOAD = _load_registry_payload()
+WORKBOOKS = _load_workbooks(_REGISTRY_PAYLOAD)
+DATASETS = _load_datasets(_REGISTRY_PAYLOAD)
 
 
 def get_dataset(key: str) -> DatasetSpec:

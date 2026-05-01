@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
+from pathlib import Path
 
 from tradecat_terminal.cache import init_cache, prune_cache, status_cache
 from tradecat_terminal.config import load_config
 from tradecat_terminal.i18n import LANG_ENV, resolve_lang, tr
 from tradecat_terminal.lifecycle import doctor_local_store, probe_all_datasets, probe_dataset, watch_datasets
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_datasets
+from tradecat_terminal.settings import load_settings, set_setting, settings_path, unset_setting
 from tradecat_terminal.sync import sync_all_datasets, sync_dataset
-from tradecat_terminal.tui import run_tui
+from tradecat_terminal.tui import render_rows_table, run_tui
+from tradecat_terminal.view_model import build_dataset_view
 
 TUI_NO_PAUSE_ENV = "TRADECAT_TERMINAL_NO_PAUSE"
 
@@ -38,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     datasets_parser.add_argument("--all", action="store_true", help="包含 inactive dataset")
     datasets_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
+    config_parser = subparsers.add_parser("config", help="查看或修改用户侧本地配置")
+    config_parser.add_argument("action", nargs="?", choices=["show", "set", "unset"], default="show")
+    config_parser.add_argument("key", nargs="?", help="配置键，例如 default_lang / default_dataset / cache_dir")
+    config_parser.add_argument("value", nargs="?", help="配置值")
+    config_parser.add_argument("--json", action="store_true", help="输出 JSON")
+
     sync_parser = subparsers.add_parser("sync", help="按 registry 同步一个 dataset 到本地快照缓存")
     sync_parser.add_argument("dataset_key", help="dataset_key，例如 market_snapshot")
     sync_parser.add_argument("--json", action="store_true", help="输出 JSON")
@@ -59,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prune_parser.add_argument("--apply", action="store_true", help="实际删除候选快照；不加则只预览")
     prune_parser.add_argument("--json", action="store_true", help="输出 JSON")
+
+    export_parser = subparsers.add_parser("export", help="从本地缓存导出当前 dataset 视图")
+    export_parser.add_argument("dataset_key", help="dataset_key，例如 event_stream")
+    export_parser.add_argument("--format", choices=["json", "jsonl", "csv", "table"], default="json")
+    export_parser.add_argument("--limit", type=int, default=0, help="最多导出行数；0 表示不限制")
+    export_parser.add_argument("--output", help="输出文件；不传则输出 stdout")
+    export_parser.add_argument("--lang", choices=["zh", "en", "ko"], help=f"导出表头显示语言；默认读取 {LANG_ENV} 或配置")
 
     watch_parser = subparsers.add_parser("watch", help="持续探测远端变化并写入本地快照缓存")
     watch_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则持续探测全部 active dataset")
@@ -125,6 +142,18 @@ def main(argv: list[str] | None = None) -> int:
             print_datasets(datasets)
         return 0
 
+    if args.command == "config":
+        try:
+            payload = handle_config_command(args.action, args.key, args.value)
+        except ValueError as exc:
+            print(f"config error: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print_config(payload)
+        return 0
+
     if args.command == "sync":
         payload = sync_dataset(config.cache_dir, args.dataset_key)
         if args.json:
@@ -169,6 +198,20 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print_prune(payload)
         return 0 if payload.get("ok") else 1
+
+    if args.command == "export":
+        payload = export_view(
+            config.cache_dir,
+            args.dataset_key,
+            output_format=args.format,
+            limit=args.limit,
+            lang=args.lang,
+        )
+        if args.output:
+            Path(args.output).expanduser().write_text(payload, encoding="utf-8")
+        else:
+            print(payload, end="" if payload.endswith("\n") else "\n")
+        return 0
 
     if args.command == "watch":
         cycles = watch_datasets(
@@ -266,6 +309,74 @@ def print_prune(payload: dict) -> None:
         )
 
 
+def handle_config_command(action: str, key: str | None, value: str | None) -> dict:
+    if action == "show":
+        return {"ok": True, "path": str(settings_path()), "settings": load_settings()}
+    if action == "set":
+        if not key or value is None:
+            raise ValueError("config set 需要 key 和 value")
+        return {"ok": True, "path": str(settings_path()), "settings": set_setting(key, value)}
+    if action == "unset":
+        if not key:
+            raise ValueError("config unset 需要 key")
+        return {"ok": True, "path": str(settings_path()), "settings": unset_setting(key)}
+    raise ValueError(f"未知 config action: {action}")
+
+
+def print_config(payload: dict) -> None:
+    print(f"path: {payload['path']}")
+    settings = payload.get("settings") or {}
+    if not settings:
+        print("settings: {}")
+        print("常用键：default_lang, default_dataset, cache_dir, tui_probe_interval_seconds")
+        print("单 tap 键：tui_probe_interval.event_stream, tui_fetch_timeout.event_stream")
+        return
+    print(json.dumps(settings, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def export_view(
+    cache_dir,
+    dataset_key: str,
+    *,
+    output_format: str,
+    limit: int,
+    lang: str | None,
+) -> str:
+    view = build_dataset_view(cache_dir, dataset_key, lang=lang)
+    rows = list(view.get("rows") or [])
+    if limit > 0:
+        rows = rows[:limit]
+    if output_format == "json":
+        payload = {
+            "dataset_key": view.get("dataset_key"),
+            "display_name": view.get("display_name"),
+            "columns": view.get("columns"),
+            "raw_columns": view.get("raw_columns"),
+            "meta": view.get("meta"),
+            "rows": rows,
+        }
+        return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    if output_format == "jsonl":
+        return "".join(json.dumps(row.get("raw_values") or row.get("values") or {}, ensure_ascii=False) + "\n" for row in rows)
+    if output_format == "csv":
+        output = []
+        writer = csv.DictWriter(_ListWriter(output), fieldnames=list(view.get("raw_columns") or []), lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row.get("raw_values") or {})
+        return "".join(output)
+    return render_rows_table(rows, columns=list(view.get("columns") or [])) + "\n"
+
+
+class _ListWriter:
+    def __init__(self, output: list[str]) -> None:
+        self.output = output
+
+    def write(self, value: str) -> int:
+        self.output.append(value)
+        return len(value)
+
+
 def _print_json_or_text(payload: dict, as_json: bool, text: str) -> None:
     if as_json:
         print(json.dumps(payload, ensure_ascii=False))
@@ -320,7 +431,21 @@ def _should_route_to_tui(argv: list[str]) -> bool:
     first = _first_non_global_arg(argv)
     if first is None:
         return False
-    if first in {"init", "doctor", "status", "path", "datasets", "sync", "sync-all", "probe", "watch", "tui"}:
+    if first in {
+        "init",
+        "doctor",
+        "status",
+        "path",
+        "datasets",
+        "config",
+        "sync",
+        "sync-all",
+        "probe",
+        "watch",
+        "prune",
+        "export",
+        "tui",
+    }:
         return False
     if first in {"-h", "--help"}:
         return False

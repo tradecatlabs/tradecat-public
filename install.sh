@@ -16,6 +16,13 @@ fail() {
   exit 1
 }
 
+truthy() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "缺少命令：$1"
 }
@@ -118,6 +125,31 @@ auto_update() {
     printf '%s\n' "tradecat-update: skipped; git or repo is unavailable" >&2
     return 0
   fi
+  update_stamp="\$APP_DIR/.tradecat-update-checked-at"
+  update_interval="\${TRADECAT_UPDATE_INTERVAL_SECONDS:-3600}"
+  now="\$(date +%s 2>/dev/null || printf '0')"
+  last="0"
+  if [ -f "\$update_stamp" ]; then
+    last="\$(cat "\$update_stamp" 2>/dev/null || printf '0')"
+  fi
+  case "\$update_interval" in
+    ''|*[!0-9]*) update_interval=3600 ;;
+  esac
+  case "\$last" in
+    ''|*[!0-9]*) last=0 ;;
+  esac
+  if truthy "\${TRADECAT_FORCE_UPDATE:-}"; then
+    run_update_blocking
+    return 0
+  fi
+  if [ "\$now" -gt 0 ] && [ "\$last" -gt 0 ] && [ \$((now - last)) -lt "\$update_interval" ]; then
+    return 0
+  fi
+  printf '%s\n' "\$now" >"\$update_stamp" 2>/dev/null || true
+  (run_update_blocking >/dev/null 2>&1 || true) &
+}
+
+run_update_blocking() {
   old_head="\$(git -C "\$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
   if git -C "\$APP_DIR" fetch origin "\$BRANCH" >/dev/null 2>&1 &&
      git -C "\$APP_DIR" checkout "\$BRANCH" >/dev/null 2>&1 &&
@@ -163,6 +195,10 @@ EOF
 }
 
 ensure_shell_path() {
+  if truthy "${TRADECAT_INSTALL_SKIP_PATH_WRITE:-}"; then
+    log "按配置跳过写入 shell profile"
+    return 0
+  fi
   path_line="export PATH=\"$BIN_DIR:\$PATH\""
   wrote=0
   for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -189,6 +225,10 @@ ensure_shell_path() {
 
 bootstrap_cache() {
   TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init >/dev/null
+  if truthy "${TRADECAT_INSTALL_SKIP_SYNC:-}"; then
+    log "已初始化本地缓存目录；按配置跳过初次公开数据同步"
+    return 0
+  fi
   if TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" sync-all >/dev/null 2>&1; then
     log "已同步公开数据到本地缓存"
   else

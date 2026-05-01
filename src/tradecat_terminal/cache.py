@@ -281,7 +281,17 @@ def read_cached_view(
     matrix = snapshot.get("matrix") if isinstance(snapshot.get("matrix"), list) else []
     if dataset.is_stream():
         matrix = _stream_display_matrix(cache_dir, dataset, matrix)
+    header_index = find_header_row_index(matrix) if matrix else 0
+    table_columns = _table_columns(matrix, header_index)
+    table_rows = _matrix_to_table_rows(
+        dataset.key,
+        matrix[header_index + 1 :] if matrix else [],
+        table_columns,
+        start_row_index=header_index + 2,
+    )
     rows = _matrix_to_rows(dataset.key, matrix[1:], start_row_index=2)
+    physical_columns = _matrix_columns(matrix)
+    layout = _view_layout(matrix, header_index)
     return {
         "ok": True,
         "cache_dir": str(cache_dir),
@@ -293,8 +303,15 @@ def read_cached_view(
         "batch_label": snapshots[safe_index].get("fetched_at") or manifest.get("fetched_at"),
         "content_hash": snapshots[safe_index].get("content_hash") or manifest.get("current_hash"),
         "top_lines": _top_info_lines(matrix[:1]),
+        "display_top_lines": _display_top_info_lines(matrix[:header_index]),
+        "meta": layout["meta"],
+        "layout": layout,
         "rows": rows,
-        "columns": _matrix_columns(matrix),
+        "columns": physical_columns,
+        "physical_columns": physical_columns,
+        "table_columns": table_columns,
+        "table_rows": table_rows,
+        "structured_columns": _table_column_meta(table_columns),
         "fetched_at": manifest.get("fetched_at"),
     }
 
@@ -323,33 +340,50 @@ def _merge_stream_events(cache_dir: Path, dataset: DatasetSpec, matrix: list[lis
     existing: dict[str, dict[str, Any]] = {
         str(event.get("event_key")): dict(event) for event in state.get("events", []) if event.get("event_key")
     }
+    existing_by_normalized: dict[str, dict[str, Any]] = {
+        str(event.get("normalized_event_key")): event
+        for event in existing.values()
+        if event.get("normalized_event_key")
+    }
     new_events = 0
     updated_events = 0
     ordered_keys: list[str] = []
     for row in rows:
         key = event_key_for_row(dataset, row)
         normalized_key = normalized_event_key_for_row(dataset, row)
-        ordered_keys.append(key)
-        if key in existing:
-            event = existing[key]
+        event = existing.get(key) or existing_by_normalized.get(normalized_key)
+        if event:
+            key = str(event.get("event_key") or key)
+            ordered_keys.append(key)
             event["last_seen_at"] = fetched_at
             event["seen_count"] = int(event.get("seen_count") or 1) + 1
             event["normalized_event_key"] = normalized_key
+            observed_keys = list(event.get("observed_event_keys") or [])
+            if key not in observed_keys:
+                observed_keys.append(key)
+            row_key = event_key_for_row(dataset, row)
+            if row_key not in observed_keys:
+                observed_keys.append(row_key)
+            event["observed_event_keys"] = observed_keys[-20:]
             event["values"] = row
             updated_events += 1
         else:
+            ordered_keys.append(key)
             existing[key] = {
                 "event_key": key,
                 "normalized_event_key": normalized_key,
                 "first_seen_at": fetched_at,
                 "last_seen_at": fetched_at,
                 "seen_count": 1,
+                "observed_event_keys": [key],
                 "event_time": _event_time(dataset, row),
                 "values": row,
             }
+            existing_by_normalized[normalized_key] = existing[key]
             new_events += 1
-    previous_only = [key for key in existing if key not in set(ordered_keys)]
-    events = [existing[key] for key in ordered_keys if key in existing] + [existing[key] for key in previous_only]
+    ordered_unique = _dedupe_ordered(ordered_keys)
+    previous_only = [key for key in existing if key not in set(ordered_unique)]
+    events = [existing[key] for key in ordered_unique if key in existing] + [existing[key] for key in previous_only]
     _write_json(
         path,
         {
@@ -361,6 +395,17 @@ def _merge_stream_events(cache_dir: Path, dataset: DatasetSpec, matrix: list[lis
         },
     )
     return {"new_events": new_events, "updated_events": updated_events, "event_count": len(events)}
+
+
+def _dedupe_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _stream_display_matrix(cache_dir: Path, dataset: DatasetSpec, latest_matrix: list[list[str]]) -> list[list[str]]:
@@ -434,9 +479,88 @@ def _matrix_to_rows(dataset_key: str, matrix: list[list[str]], *, start_row_inde
     return rows
 
 
+def _matrix_to_table_rows(
+    dataset_key: str,
+    matrix: list[list[str]],
+    header: list[str],
+    *,
+    start_row_index: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    width = len(header)
+    for offset, raw_row in enumerate(matrix):
+        if not any(str(cell).strip() for cell in raw_row):
+            continue
+        padded = [*raw_row, *([""] * max(0, width - len(raw_row)))]
+        raw_values = {header[index]: str(padded[index]) for index in range(width)}
+        physical_values = {_column_label(index): str(padded[index]) for index in range(width)}
+        rows.append(
+            {
+                "source": dataset_key,
+                "row_index": start_row_index + offset,
+                "row_number": len(rows) + 1,
+                "values": physical_values,
+                "physical_values": physical_values,
+                "raw_values": raw_values,
+            }
+        )
+    return rows
+
+
 def _matrix_columns(matrix: list[list[str]]) -> list[str]:
     width = _matrix_width(matrix[1:] if len(matrix) > 1 else matrix)
     return [_column_label(index) for index in range(width)]
+
+
+def _table_columns(matrix: list[list[str]], header_index: int) -> list[str]:
+    if not matrix or header_index >= len(matrix):
+        return []
+    width = max(_matrix_width(matrix[header_index:]), len(matrix[header_index]))
+    raw_header = [*matrix[header_index], *([""] * max(0, width - len(matrix[header_index])))]
+    return normalize_headers(raw_header)
+
+
+def _table_column_meta(columns: list[str]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": column,
+            "index": index,
+            "letter": _column_label(index),
+            "type": "string",
+            "role": "field",
+            "nullable": True,
+        }
+        for index, column in enumerate(columns)
+    ]
+
+
+def _view_layout(matrix: list[list[str]], header_index: int) -> dict[str, Any]:
+    if not matrix:
+        return {
+            "top_lines": [],
+            "meta": {},
+            "physical_rows": {
+                "top_start_row": None,
+                "top_end_row": None,
+                "meta_row": None,
+                "header_row": 1,
+                "data_start_row": 2,
+            },
+        }
+    top_rows = matrix[:header_index]
+    top_row_numbers = [index for index, row in enumerate(top_rows, start=1) if any(str(cell).strip() for cell in row)]
+    meta, meta_row = _extract_meta(top_rows)
+    return {
+        "top_lines": _display_top_info_lines(top_rows),
+        "meta": meta,
+        "physical_rows": {
+            "top_start_row": min(top_row_numbers) if top_row_numbers else None,
+            "top_end_row": max(top_row_numbers) if top_row_numbers else None,
+            "meta_row": meta_row,
+            "header_row": header_index + 1,
+            "data_start_row": header_index + 2,
+        },
+    }
 
 
 def _column_label(index: int) -> str:
@@ -464,6 +588,54 @@ def _top_info_lines(rows: list[list[str]]) -> list[str]:
     return lines
 
 
+def _display_top_info_lines(rows: list[list[str]]) -> list[str]:
+    lines: list[str] = []
+    for row in rows:
+        non_empty = [str(cell).strip() for cell in row if str(cell).strip()]
+        if not non_empty:
+            continue
+        if len(non_empty) == 1:
+            lines.extend(line.strip() for line in non_empty[0].splitlines() if line.strip())
+        else:
+            lines.append(", ".join(non_empty))
+    return lines
+
+
+def _extract_meta(rows: list[list[str]]) -> tuple[dict[str, str], int | None]:
+    for row_index, row in enumerate(rows, start=1):
+        tokens = _meta_tokens(row)
+        if not tokens or (tokens[0] != "数据源" and "数据源" not in tokens):
+            continue
+        meta: dict[str, str] = {}
+        for index in range(0, len(tokens) - 1, 2):
+            key = str(tokens[index]).strip()
+            value = str(tokens[index + 1]).strip()
+            if key:
+                meta[key] = value
+        if meta:
+            return meta, row_index
+    return {}, None
+
+
+def _meta_tokens(row: list[str]) -> list[str]:
+    non_empty = [str(cell).strip() for cell in row if str(cell).strip()]
+    if not non_empty:
+        return []
+    if len(non_empty) > 1 and non_empty[0] == "数据源":
+        return non_empty
+    for cell in non_empty:
+        for line in str(cell).splitlines():
+            text = line.strip()
+            if text.startswith("数据源"):
+                return [token.strip() for token in text.replace("，", ",").split(",") if token.strip()]
+    if len(non_empty) == 1:
+        text = non_empty[0]
+        if text.startswith(("http://", "https://")):
+            return []
+        return [token.strip() for token in text.replace("，", ",").split(",") if token.strip()]
+    return non_empty
+
+
 def _empty_view(dataset: DatasetSpec, cache_dir: Path) -> dict[str, Any]:
     return {
         "ok": False,
@@ -476,8 +648,15 @@ def _empty_view(dataset: DatasetSpec, cache_dir: Path) -> dict[str, Any]:
         "batch_label": "",
         "content_hash": "",
         "top_lines": [],
+        "display_top_lines": [],
+        "meta": {},
+        "layout": {},
         "rows": [],
         "columns": [],
+        "physical_columns": [],
+        "table_columns": [],
+        "table_rows": [],
+        "structured_columns": [],
         "fetched_at": "",
     }
 

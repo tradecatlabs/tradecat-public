@@ -123,10 +123,23 @@ tradecat
 7. 把 `tradecat-uninstall` 放到用户级命令目录。
 8. Linux / macOS / WSL 会把命令目录写入 shell profile；当前会话如果还没生效，可直接运行 `~/.local/bin/tradecat`。
 
+弱网、离线或 CI 环境可跳过安装阶段首次远端同步，只初始化缓存目录；CI 还可以跳过写入用户 PATH / shell profile：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
+```
+
+Windows PowerShell：
+
+```powershell
+$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.ps1 | iex
+```
+
 启动时默认自动更新：
 
-- 每次运行 `tradecat` / `tcat` 前，launcher 会尝试更新安装目录到 `origin/develop` 最新版本。
-- 如果代码有变化，会自动刷新 editable install 后再启动。
+- 每次运行 `tradecat` / `tcat` 前，launcher 会按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 做节流检查，默认最多每 1 小时触发一次。
+- 普通启动使用后台更新，不阻塞 TUI；更新完成后下次启动自动使用新版本。
+- 如果设置 `TRADECAT_FORCE_UPDATE=1`，launcher 会改为阻塞更新，确认拉到最新版本后再启动。
 - 更新失败时默认继续使用本地版本；设置 `TRADECAT_FORCE_UPDATE=1` 后，更新失败会直接退出。
 - 设置 `TRADECAT_NO_AUTO_UPDATE=1` 可跳过启动前自动更新。
 - 如果你安装的是旧版 launcher，需要重新执行一次上面的一键安装命令，新的启动前自动更新逻辑才会生效。
@@ -251,6 +264,8 @@ tradecat
 python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) event_stream
 ```
 
+`request.py` 会读取同仓库的 `src/tradecat_terminal/dataset_registry.json`，与安装版使用同一个 dataset 契约；可用 `TRADECAT_REQUEST_REGISTRY_URL` 或 `--registry-url` 覆盖。
+
 常用示例：
 
 ```bash
@@ -308,6 +323,12 @@ tradecat doctor
 tradecat path
 tradecat path event_stream
 
+# 本地用户配置
+tradecat config show
+tradecat config set default_lang en
+tradecat config set default_dataset event_stream
+tradecat config set tui_probe_interval.event_stream 1.5
+
 # 同步指定 tap 到文件缓存
 tradecat sync event_stream
 tradecat sync market_snapshot
@@ -322,6 +343,11 @@ tradecat probe --json
 # 裁剪历史快照；默认只预览，不删除
 tradecat prune --max-snapshots 100
 tradecat prune market_snapshot --max-snapshots 100 --apply
+
+# 导出当前缓存视图
+tradecat export event_stream --format json
+tradecat export market_snapshot --format csv --output market_snapshot.csv
+tradecat export anomaly_panel --format table --lang en
 
 # 后台持续探测
 tradecat watch event_stream --interval 5
@@ -344,17 +370,21 @@ TRADECAT_LANG=ko tradecat
 | `a/d` 或 `Tab` | 切换 tap |
 | `↑/↓` | snapshot tap 切换快照；event_stream 滚动事件 |
 | `PgUp/PgDn` | 翻行 |
+| `g/G` | 跳到顶部 / 底部 |
+| `/` | 搜索当前表格可见数据；搜索会匹配显示值和原始值 |
+| `x` | 清除搜索 |
 | `n/p` | 选择可见行 |
 | `Enter/o` | 打开当前行 URL；无 URL 时打开交易对 Binance Futures 链接 |
 | `r` | 重新拉取当前 tap 并写入缓存 |
+| `?` | 打开 / 关闭内置帮助页 |
 | `l` / `L` | 在中文 / English / 한국어 之间切换 TUI 界面语言；TUI 顶部控制行固定显示 `切换语言 / Switch language / 언어 전환`，防止误切后看不懂如何切回 |
 | `q` | 退出 |
 
 渲染规则：
 
-- 多语言只作用于 TUI/CLI 外壳文案；远端表格列名、单元格内容、JSON/CSV 字段名不翻译，保持机器读取契约稳定。
-- 上游数据物理第 1 行显示在顶部文本区，不进入表格区。
-- 表格区保留物理列 A/B/C... 和原始行号。
+- 多语言作用于 TUI/CLI 外壳文案和 TUI 表头展示别名；远端表格原始列名、单元格内容、JSON/CSV 字段名不翻译，保持机器读取契约稳定。
+- 上游数据的广告/链接/元信息行显示在顶部文本区，不进入表格区。
+- 表格区按真实业务表头渲染；内部仍保留物理列 A/B/C...、原始字段名和原始行号，供缓存 JSON、CSV 与 Agent 检索使用。
 - 表格作为一个整体渲染，不冻结主键列，也不提供右侧列横向滚动。
 - 渲染器按真实内容宽度生成 psql 表格，不做按 tap 的自动缩放、撑满空隙或固定宽度省略。
 - 终端窗口只负责裁剪当前可见区域；超长内容要看全，直接扩大终端列数或缩小终端字体。
@@ -368,6 +398,8 @@ TUI 探针规则：
 - 非焦点 active tap 默认也会后台保鲜刷新，不需要切过去才更新。
 - TUI 启动后立即发起异步 probe；网络慢不会阻塞界面主循环。
 - 滚动、选行、hover 只读内存中的当前 view/render cache，不重复读取 JSON 快照。
+- 状态栏固定显示语言、缓存状态、远端导出时间、本地拉取时间、探针状态、下次刷新时间和缓存路径。
+- 探针失败不会清空界面；状态栏会保留缓存并显示失败原因和恢复建议。
 - `event_stream` 使用两列轻量渲染，只渲染时间与内容，避免长文本拖慢交互。
 - `event_stream` 当前焦点默认 `interval=1.5s`、`timeout=1.0s`。
 - `event_stream` 非焦点默认后台保鲜间隔 `10s`；其他非焦点 tap 默认 `60s`。
@@ -475,8 +507,22 @@ Agent 和脚本优先读取：
 
 ## 配置
 
+用户配置优先使用 `tradecat config` 写入本地 JSON，不需要长期手写环境变量：
+
+```bash
+tradecat config show
+tradecat config set default_lang en
+tradecat config set default_dataset event_stream
+tradecat config set cache_dir /path/to/cache
+tradecat config set tui_probe_interval.event_stream 1.5
+tradecat config unset default_lang
+```
+
+环境变量仍然保留，优先级高于配置文件，适合临时覆盖或脚本运行。
+
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
+| `TRADECAT_SETTINGS_PATH` | TradeCat 源码根 `.tradecat/settings.json` | 用户侧配置文件路径 |
 | `TRADECAT_CACHE_DIR` | TradeCat 源码根目录 `.tradecat/cache` | 本地快照缓存目录 |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=1.5` |
 | `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `1.5`，其它 tap 默认 `10` |
@@ -487,6 +533,12 @@ Agent 和脚本优先读取：
 | `TRADECAT_TERMINAL_NO_PAUSE` | 空 | 设为 `1` 时，自动静态兼容输出后不等待 Enter；用于脚本、CI 或自动化终端 |
 | `TRADECAT_CACHE_MAX_SNAPSHOTS` | 空 | `tradecat prune` 未传 `--max-snapshots` 时读取；空表示不启用裁剪 |
 | `TRADECAT_CACHE_COMPRESSION` | `none` | 新快照压缩方式；可选 `none` / `gzip`，默认不压缩 |
+| `TRADECAT_UPDATE_INTERVAL_SECONDS` | `3600` | launcher 启动前后台自动更新的节流间隔秒数；`0` 表示每次启动都触发后台更新 |
+| `TRADECAT_NO_AUTO_UPDATE` | 空 | 设为 `1` 时跳过 launcher 自动更新 |
+| `TRADECAT_FORCE_UPDATE` | 空 | 设为 `1` 时启动前阻塞更新，失败则退出 |
+| `TRADECAT_INSTALL_SKIP_SYNC` | 空 | 设为 `1` 时一键安装只初始化缓存目录，跳过安装阶段首次远端同步；用于 CI、弱网或离线安装 |
+| `TRADECAT_INSTALL_SKIP_PATH_WRITE` | 空 | 设为 `1` 时一键安装不写用户 PATH / shell profile；用于 CI 或临时安装测试 |
+| `TRADECAT_REQUEST_REGISTRY_URL` | GitHub develop registry | 一次性请求脚本读取的 dataset registry JSON |
 | `TRADECAT_TERMINAL_RUNTIME_DIR` | `~/.tradecat-terminal/run` | 后台 watch pid/log 目录 |
 | `TRADECAT_TERMINAL_WATCH_INTERVAL` | `60` | 后台 watch 间隔秒数 |
 | `TRADECAT_TERMINAL_WATCH_DATASET` | 空 | 为空 watch 全部 active dataset |
