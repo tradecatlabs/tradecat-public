@@ -1354,12 +1354,50 @@ def test_tui_windows_native_defaults_to_plain(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(tui_module.sys, "platform", "win32")
     monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_CURSES", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_ALLOW_WINDOWS_CURSES", raising=False)
+    monkeypatch.delenv("WT_SESSION", raising=False)
+    monkeypatch.delenv("TERM_PROGRAM", raising=False)
+    monkeypatch.delenv("ALACRITTY_WINDOW_ID", raising=False)
+    monkeypatch.delenv("KITTY_WINDOW_ID", raising=False)
     monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="zh")
 
     assert "Windows 原生终端的 curses 渲染不稳定" in output
     assert "已自动切换为 Rich 静态文本模式" in output
+    assert calls == []
+
+
+def test_tui_windows_terminal_uses_curses_when_available(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module.sys, "platform", "win32")
+    monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_CURSES", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_PLAIN", raising=False)
+    monkeypatch.setenv("WT_SESSION", "stable")
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(tui_module.curses, "wrapper", lambda callback: None)
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="zh")
+
+    assert output is None
+    assert calls == []
+
+
+def test_tui_windows_native_can_allow_curses(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setattr(tui_module.sys, "platform", "win32")
+    monkeypatch.delenv("TRADECAT_TERMINAL_FORCE_CURSES", raising=False)
+    monkeypatch.setenv("TRADECAT_TERMINAL_ALLOW_WINDOWS_CURSES", "1")
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(tui_module.curses, "wrapper", lambda callback: None)
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="zh")
+
+    assert output is None
     assert calls == []
 
 

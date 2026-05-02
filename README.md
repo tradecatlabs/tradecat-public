@@ -216,7 +216,7 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 
 如果系统没有 Python 3.12，安装脚本会尝试安装 `uv`，并用 `uv` 托管 Python 3.12。仍然需要本机有 `git` 和 `curl`。
 
-Windows 原生终端、浏览器 Web 终端和未知 SSH 终端的 curses 宽字符渲染不稳定，`tradecat` 默认会自动降级为静态文本模式，不再抛出 Python traceback。自动降级后会停留并等待 Enter，避免窗口或会话看起来像“闪退”；显式执行 `tradecat tui --plain` 时不等待，适合脚本读取。完整交互体验优先使用 Windows Terminal + WSL 或桌面终端；如需自行测试交互模式，可设置 `TRADECAT_TERMINAL_FORCE_CURSES=1`。如果确认自己的 SSH 终端支持宽字符 curses，也可设置 `TRADECAT_TERMINAL_ALLOW_SSH_CURSES=1`。
+Windows Terminal、VS Code Terminal、WezTerm、Alacritty、Kitty 等稳定终端会默认启用交互式 TUI；浏览器 Web 终端、未知 SSH 终端和未知 Windows 控制台会自动降级为静态文本模式，不再抛出 Python traceback。自动降级后会停留并等待 Enter，避免窗口或会话看起来像“闪退”；显式执行 `tradecat tui --plain` 时不等待，适合脚本读取。如需自行测试交互模式，可设置 `TRADECAT_TERMINAL_FORCE_CURSES=1`；如确认未知 Windows 控制台也支持 curses，可设置 `TRADECAT_TERMINAL_ALLOW_WINDOWS_CURSES=1`；如果确认自己的 SSH 终端支持宽字符 curses，也可设置 `TRADECAT_TERMINAL_ALLOW_SSH_CURSES=1`。
 
 ### 手动：从源码安装
 
@@ -389,7 +389,7 @@ TRADECAT_LANG=ko tradecat
 - 渲染器按真实内容宽度生成 psql 表格，不做按 tap 的自动缩放、撑满空隙或固定宽度省略。
 - 终端窗口只负责裁剪当前可见区域；超长内容要看全，直接扩大终端列数或缩小终端字体。
 - 终端窗口或字体缩放后，TUI 会检测尺寸变化并立即重绘，不需要手动按 `r`。
-- Windows 原生 PowerShell、网页 SSH 或无 curses 环境会自动切换到 Rich 无边框静态文本模式，避免长边框在终端换行后错位。
+- Windows Terminal / VS Code Terminal / WezTerm 等稳定终端默认进入交互式 TUI；网页 SSH、未知 SSH、未知 Windows 控制台或无 curses 环境会自动切换到 Rich 无边框静态文本模式，避免长边框在终端换行后错位。
 - 缓存文件始终保留完整值。
 
 TUI 探针规则：

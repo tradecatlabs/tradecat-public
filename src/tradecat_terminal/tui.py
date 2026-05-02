@@ -48,6 +48,7 @@ TUI_BACKGROUND_PROBE_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE"
 TUI_BACKGROUND_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL"
 TUI_FORCE_CURSES_ENV = "TRADECAT_TERMINAL_FORCE_CURSES"
 TUI_FORCE_PLAIN_ENV = "TRADECAT_TERMINAL_FORCE_PLAIN"
+TUI_ALLOW_WINDOWS_CURSES_ENV = "TRADECAT_TERMINAL_ALLOW_WINDOWS_CURSES"
 TUI_PLAIN_WIDTH_ENV = "TRADECAT_TERMINAL_PLAIN_WIDTH"
 DEFAULT_SAFE_PLAIN_WIDTH = 120
 MAX_SAFE_PLAIN_WIDTH = 160
@@ -242,11 +243,15 @@ def _plain_mode_reason(lang: str | None = None) -> str:
         return ""
     if _truthy_env(TUI_FORCE_PLAIN_ENV):
         return tr(resolved_lang, "force_plain_reason")
-    if sys.platform == "win32":
+    if sys.platform == "win32" and not _windows_native_curses_allowed():
         return tr(resolved_lang, "windows_plain_reason")
     if _is_web_or_unknown_ssh_terminal():
         return tr(resolved_lang, "ssh_plain_reason")
     return ""
+
+
+def _windows_native_curses_allowed() -> bool:
+    return _known_stable_terminal() or _truthy_env(TUI_ALLOW_WINDOWS_CURSES_ENV)
 
 
 def _is_web_or_unknown_ssh_terminal() -> bool:
