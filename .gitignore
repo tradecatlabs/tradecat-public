@@ -11,7 +11,8 @@ build/
 htmlcov/
 .tradecat/
 
-# Local-only agent/debug notes. Keep them on the developer machine, not in the public repo.
+# Local-only agent/debug notes. Keep root/project copies on the developer machine,
+# not in the public repo.
 AGENTS.md
 DEBUG.md
 DEBUG.archive.md

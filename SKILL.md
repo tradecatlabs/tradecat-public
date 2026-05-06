@@ -67,6 +67,8 @@ PYTHONPATH=src python3 -m tradecat_terminal path event_stream --json
 
 ```text
 tradecat-public/
+|-- README.md
+|-- AGENTS.md              # local-only when present, ignored by Git
 |-- SKILL.md
 |-- agents/
 |   `-- openai.yaml
@@ -78,6 +80,7 @@ tradecat-public/
 |   `-- install-uninstall.md
 `-- scripts/
     |-- verify.sh
+    |-- run-tradecat.sh
     `-- project/
         |-- pyproject.toml
         |-- scripts/

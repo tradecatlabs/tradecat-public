@@ -45,6 +45,8 @@ Public Google Sheets CSV
 
 ## Documentation Map
 
+- `README.md`: root boundary map for the Skill wrapper, Git metadata, and bundled project location.
+- `AGENTS.md`: local-only root operating contract for directory governance and movement rules.
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `references/*.md`: long-form skill references loaded on demand.
 - `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
@@ -52,4 +54,4 @@ Public Google Sheets CSV
 - `scripts/project/DEBUG.md`: local-only current truth and recent debugging notes.
 - `scripts/project/DEBUG.archive.md`: local-only historical accident record.
 
-`AGENTS.md` and `DEBUG*.md` are intentionally local-only and ignored by Git; public, reusable guidance belongs in `SKILL.md` and `references/`.
+Root/project `AGENTS.md` and project `DEBUG*.md` are intentionally local-only and ignored by Git; public, reusable guidance belongs in `README.md`, `SKILL.md`, and `references/`.

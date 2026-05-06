@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel)"
+
+cd "$REPO_ROOT"
 
 blocked=(
   "AGENTS.md"
   "DEBUG.md"
   "DEBUG.archive.md"
+  "scripts/project/AGENTS.md"
+  "scripts/project/DEBUG.md"
+  "scripts/project/DEBUG.archive.md"
 )
 
 failed=0
@@ -18,7 +24,7 @@ for path in "${blocked[@]}"; do
 done
 
 if [[ "$failed" -ne 0 ]]; then
-  echo "Fix: git rm --cached AGENTS.md DEBUG.md DEBUG.archive.md" >&2
+  echo "Fix: git rm --cached <listed local-only paths>" >&2
   exit 1
 fi
 
