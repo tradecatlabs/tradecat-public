@@ -13,22 +13,29 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
+        working-directory: scripts/project
         run: python -m pip install -e ".[dev]"
       - name: Guard local-only files
+        working-directory: scripts/project
         run: bash scripts/guard_public_local_files.sh
       - name: Lint
+        working-directory: scripts/project
         run: ruff check src tests
       - name: Test
+        working-directory: scripts/project
         run: PYTHONPATH=src pytest -q
       - name: Shell syntax
+        working-directory: scripts/project
         run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
       - name: PowerShell syntax
         shell: pwsh
+        working-directory: scripts/project
         run: |
           [scriptblock]::Create((Get-Content install.ps1 -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content uninstall.ps1 -Raw)) | Out-Null
       - name: Wheel package data
         shell: bash
+        working-directory: scripts/project
         run: |
           python -m pip wheel . --no-deps -w /tmp/tradecat-wheel
           python - <<'PY'
@@ -61,6 +68,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install package
+        working-directory: scripts/project
         run: python -m pip install -e ".[dev]"
       - name: CLI smoke
         shell: bash
@@ -101,7 +109,7 @@ jobs:
           export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-bin"
           export TRADECAT_INSTALL_SKIP_SYNC=1
           export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
-          sh install.sh
+          sh scripts/project/install.sh
           "$RUNNER_TEMP/tradecat-bin/tradecat" --help >/dev/null
           "$RUNNER_TEMP/tradecat-bin/tradecat" status --json >/dev/null
           TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-bin/tradecat-uninstall"
@@ -116,7 +124,7 @@ jobs:
           $env:TRADECAT_BIN_DIR = Join-Path $env:RUNNER_TEMP "tradecat-bin"
           $env:TRADECAT_INSTALL_SKIP_SYNC = "1"
           $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
-          powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/project/install.ps1
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json | Out-Null
           $env:TRADECAT_KEEP_CACHE = "1"

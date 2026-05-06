@@ -5,6 +5,7 @@ $Branch = if ($env:TRADECAT_INSTALL_BRANCH) { $env:TRADECAT_INSTALL_BRANCH } els
 $AppDir = if ($env:TRADECAT_INSTALL_DIR) { $env:TRADECAT_INSTALL_DIR } else { Join-Path $env:USERPROFILE ".tradecat\app" }
 $BinDir = if ($env:TRADECAT_BIN_DIR) { $env:TRADECAT_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
 $PythonVersion = if ($env:TRADECAT_PYTHON_VERSION) { $env:TRADECAT_PYTHON_VERSION } else { "3.12" }
+$ProjectSubdir = if ($env:TRADECAT_PROJECT_SUBDIR) { $env:TRADECAT_PROJECT_SUBDIR } else { "scripts\project" }
 
 function Log($Message) {
     Write-Host "tradecat-install: $Message"
@@ -95,20 +96,32 @@ function Checkout-Repo {
     }
 }
 
+function Resolve-ProjectDir {
+    $ProjectDir = Join-Path $AppDir $ProjectSubdir
+    if (Test-Path (Join-Path $ProjectDir "pyproject.toml")) {
+        return $ProjectDir
+    }
+    if (Test-Path (Join-Path $AppDir "pyproject.toml")) {
+        return $AppDir
+    }
+    Fail "TradeCat pyproject.toml not found: $ProjectDir"
+}
+
 function Create-Venv {
-    Set-Location $AppDir
+    $script:ProjectDir = Resolve-ProjectDir
+    Set-Location $script:ProjectDir
     $Python = Find-Python
     if ($Python) {
         Log "using system Python: $Python"
         Invoke-Python $Python @("-m", "venv", ".venv")
-        $script:VenvPy = Join-Path $AppDir ".venv\Scripts\python.exe"
+        $script:VenvPy = Join-Path $script:ProjectDir ".venv\Scripts\python.exe"
         & $script:VenvPy -m pip install -U pip
         & $script:VenvPy -m pip install -e .
     } else {
         Ensure-Uv
         Log "creating Python $PythonVersion virtualenv with uv"
         uv venv --python $PythonVersion .venv
-        $script:VenvPy = Join-Path $AppDir ".venv\Scripts\python.exe"
+        $script:VenvPy = Join-Path $script:ProjectDir ".venv\Scripts\python.exe"
         uv pip install --python $script:VenvPy -e .
     }
     if (-not (Test-Path $script:VenvPy)) {
@@ -117,6 +130,9 @@ function Create-Venv {
 }
 
 function Write-Launcher {
+    if (-not $script:ProjectDir) {
+        $script:ProjectDir = Resolve-ProjectDir
+    }
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
     $LauncherPs1 = Join-Path $BinDir "tradecat.ps1"
     $UpdaterPs1 = Join-Path $BinDir "tradecat-update.ps1"
@@ -124,6 +140,7 @@ function Write-Launcher {
 param([switch]`$Force)
 `$ErrorActionPreference = "Continue"
 `$AppDir = "$AppDir"
+`$ProjectDir = "$script:ProjectDir"
 `$Branch = "$Branch"
 `$VenvPy = "$script:VenvPy"
 `$OldHead = ""
@@ -152,7 +169,7 @@ try {
     `$NewHead = ""
 }
 if (`$OldHead -and `$NewHead -and `$OldHead -ne `$NewHead) {
-    & `$VenvPy -m pip install -e `$AppDir *> `$null
+    & `$VenvPy -m pip install -e `$ProjectDir *> `$null
     if (`$LASTEXITCODE -ne 0 -and `$Force) {
         Write-Error "tradecat-update: ERROR: dependency refresh failed"
         exit 1
@@ -162,6 +179,7 @@ if (`$OldHead -and `$NewHead -and `$OldHead -ne `$NewHead) {
     @"
 `$ErrorActionPreference = "Continue"
 `$AppDir = "$AppDir"
+`$ProjectDir = "$script:ProjectDir"
 `$Branch = "$Branch"
 `$VenvPy = "$script:VenvPy"
 `$UpdaterPs1 = "$UpdaterPs1"
@@ -225,9 +243,9 @@ exit `$LASTEXITCODE
     $ShortLauncher = Join-Path $BinDir "tcat.cmd"
     "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$LauncherPs1`" %*`r`n" | Set-Content -Encoding ASCII $ShortLauncher
     $UninstallLauncher = Join-Path $BinDir "tradecat-uninstall.cmd"
-    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`nset `"TRADECAT_UNINSTALL_CURRENT_CMD=%~f0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`nset `"_TC_CODE=%ERRORLEVEL%`"`r`nstart `"`" /b powershell -NoProfile -WindowStyle Hidden -Command `"Start-Sleep -Seconds 1; Remove-Item -LiteralPath '%~f0' -Force -ErrorAction SilentlyContinue`" >nul 2>nul`r`nexit /b %_TC_CODE%`r`n" | Set-Content -Encoding ASCII $UninstallLauncher
+    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`nset `"TRADECAT_UNINSTALL_CURRENT_CMD=%~f0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$script:ProjectDir\uninstall.ps1`" %*`r`nset `"_TC_CODE=%ERRORLEVEL%`"`r`nstart `"`" /b powershell -NoProfile -WindowStyle Hidden -Command `"Start-Sleep -Seconds 1; Remove-Item -LiteralPath '%~f0' -Force -ErrorAction SilentlyContinue`" >nul 2>nul`r`nexit /b %_TC_CODE%`r`n" | Set-Content -Encoding ASCII $UninstallLauncher
     $ShortUninstallLauncher = Join-Path $BinDir "tcat-uninstall.cmd"
-    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`nset `"TRADECAT_UNINSTALL_CURRENT_CMD=%~f0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$AppDir\uninstall.ps1`" %*`r`nset `"_TC_CODE=%ERRORLEVEL%`"`r`nstart `"`" /b powershell -NoProfile -WindowStyle Hidden -Command `"Start-Sleep -Seconds 1; Remove-Item -LiteralPath '%~f0' -Force -ErrorAction SilentlyContinue`" >nul 2>nul`r`nexit /b %_TC_CODE%`r`n" | Set-Content -Encoding ASCII $ShortUninstallLauncher
+    "@echo off`r`nset `"TRADECAT_INSTALL_DIR=$AppDir`"`r`nset `"TRADECAT_BIN_DIR=$BinDir`"`r`nset `"TRADECAT_UNINSTALL_CURRENT_CMD=%~f0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"$script:ProjectDir\uninstall.ps1`" %*`r`nset `"_TC_CODE=%ERRORLEVEL%`"`r`nstart `"`" /b powershell -NoProfile -WindowStyle Hidden -Command `"Start-Sleep -Seconds 1; Remove-Item -LiteralPath '%~f0' -Force -ErrorAction SilentlyContinue`" >nul 2>nul`r`nexit /b %_TC_CODE%`r`n" | Set-Content -Encoding ASCII $ShortUninstallLauncher
     if (-not (Test-Truthy $env:TRADECAT_INSTALL_SKIP_PATH_WRITE)) {
         $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
         if (-not ($UserPath.Split(";") -contains $BinDir)) {

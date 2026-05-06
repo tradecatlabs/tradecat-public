@@ -6,6 +6,7 @@ BRANCH="${TRADECAT_INSTALL_BRANCH:-develop}"
 APP_DIR="${TRADECAT_INSTALL_DIR:-$HOME/.tradecat/app}"
 BIN_DIR="${TRADECAT_BIN_DIR:-$HOME/.local/bin}"
 PYTHON_VERSION="${TRADECAT_PYTHON_VERSION:-3.12}"
+PROJECT_SUBDIR="${TRADECAT_PROJECT_SUBDIR:-scripts/project}"
 
 log() {
   printf '%s\n' "tradecat-install: $*"
@@ -73,14 +74,28 @@ checkout_repo() {
   fi
 }
 
+resolve_project_dir() {
+  project_dir="$APP_DIR/$PROJECT_SUBDIR"
+  if [ -f "$project_dir/pyproject.toml" ]; then
+    printf '%s\n' "$project_dir"
+    return 0
+  fi
+  if [ -f "$APP_DIR/pyproject.toml" ]; then
+    printf '%s\n' "$APP_DIR"
+    return 0
+  fi
+  fail "未找到 TradeCat 项目 pyproject.toml：$project_dir"
+}
+
 create_venv() {
-  cd "$APP_DIR"
+  PROJECT_DIR="$(resolve_project_dir)"
+  cd "$PROJECT_DIR"
   if PYTHON_BIN="$(find_python)"; then
     log "使用系统 Python：$($PYTHON_BIN --version 2>&1)"
     "$PYTHON_BIN" -m venv .venv
-    VENV_PY="$APP_DIR/.venv/bin/python"
-    if [ ! -x "$VENV_PY" ] && [ -x "$APP_DIR/.venv/Scripts/python.exe" ]; then
-      VENV_PY="$APP_DIR/.venv/Scripts/python.exe"
+    VENV_PY="$PROJECT_DIR/.venv/bin/python"
+    if [ ! -x "$VENV_PY" ] && [ -x "$PROJECT_DIR/.venv/Scripts/python.exe" ]; then
+      VENV_PY="$PROJECT_DIR/.venv/Scripts/python.exe"
     fi
     "$VENV_PY" -m pip install -U pip
     "$VENV_PY" -m pip install -e .
@@ -88,10 +103,10 @@ create_venv() {
     ensure_uv
     log "使用 uv 创建 Python $PYTHON_VERSION 虚拟环境"
     uv venv --python "$PYTHON_VERSION" .venv
-    if [ -x "$APP_DIR/.venv/bin/python" ]; then
-      VENV_PY="$APP_DIR/.venv/bin/python"
+    if [ -x "$PROJECT_DIR/.venv/bin/python" ]; then
+      VENV_PY="$PROJECT_DIR/.venv/bin/python"
     else
-      VENV_PY="$APP_DIR/.venv/Scripts/python.exe"
+      VENV_PY="$PROJECT_DIR/.venv/Scripts/python.exe"
     fi
     uv pip install --python "$VENV_PY" -e .
   fi
@@ -99,10 +114,12 @@ create_venv() {
 }
 
 write_launcher() {
+  PROJECT_DIR="$(resolve_project_dir)"
   mkdir -p "$BIN_DIR"
   cat >"$BIN_DIR/tradecat" <<EOF
 #!/usr/bin/env sh
 APP_DIR="$APP_DIR"
+PROJECT_DIR="$PROJECT_DIR"
 BRANCH="$BRANCH"
 VENV_PY="$VENV_PY"
 
@@ -156,7 +173,7 @@ run_update_blocking() {
      git -C "\$APP_DIR" pull --ff-only origin "\$BRANCH" >/dev/null 2>&1; then
     new_head="\$(git -C "\$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
     if [ -n "\$old_head" ] && [ -n "\$new_head" ] && [ "\$old_head" != "\$new_head" ]; then
-      if "\$VENV_PY" -m pip install -e "\$APP_DIR" >/dev/null 2>&1; then
+      if "\$VENV_PY" -m pip install -e "\$PROJECT_DIR" >/dev/null 2>&1; then
         printf '%s\n' "tradecat-update: updated to latest" >&2
       elif truthy "\${TRADECAT_FORCE_UPDATE:-}"; then
         printf '%s\n' "tradecat-update: ERROR: dependency refresh failed" >&2
@@ -184,12 +201,12 @@ EOF
   chmod +x "$BIN_DIR/tcat"
   cat >"$BIN_DIR/tradecat-uninstall" <<EOF
 #!/usr/bin/env sh
-TRADECAT_INSTALL_DIR="$APP_DIR" TRADECAT_BIN_DIR="$BIN_DIR" exec sh "$APP_DIR/uninstall.sh" "\$@"
+TRADECAT_INSTALL_DIR="$APP_DIR" TRADECAT_BIN_DIR="$BIN_DIR" exec sh "$PROJECT_DIR/uninstall.sh" "\$@"
 EOF
   chmod +x "$BIN_DIR/tradecat-uninstall"
   cat >"$BIN_DIR/tcat-uninstall" <<EOF
 #!/usr/bin/env sh
-TRADECAT_INSTALL_DIR="$APP_DIR" TRADECAT_BIN_DIR="$BIN_DIR" exec sh "$APP_DIR/uninstall.sh" "\$@"
+TRADECAT_INSTALL_DIR="$APP_DIR" TRADECAT_BIN_DIR="$BIN_DIR" exec sh "$PROJECT_DIR/uninstall.sh" "\$@"
 EOF
   chmod +x "$BIN_DIR/tcat-uninstall"
 }

@@ -1,0 +1,26 @@
+# Install And Uninstall
+
+The bundled project keeps installer logic in `scripts/project/install.sh` and `scripts/project/install.ps1`.
+
+## Install
+
+- Clone or update the configured repository/branch.
+- Use Python 3.12 when available.
+- Fall back to `uv` for Python 3.12 environment creation when needed.
+- Install the bundled project from `scripts/project`.
+- Write `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` launchers.
+- Run `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`.
+- Run initial `tradecat sync-all` best-effort unless skipped.
+
+## Launcher Auto-update
+
+- Auto-update belongs to launcher scripts, not imported Python modules.
+- `TRADECAT_NO_AUTO_UPDATE=1` skips update.
+- `TRADECAT_FORCE_UPDATE=1` blocks startup until update succeeds; failure exits.
+- Normal update is throttled by `TRADECAT_UPDATE_INTERVAL_SECONDS` and runs in background.
+
+## Uninstall
+
+- Remove TradeCat install directory, launcher files, and local watch runtime.
+- Do not remove system Python, Git, uv, or user PATH.
+- `TRADECAT_KEEP_CACHE=1` preserves cache before deleting the install directory.

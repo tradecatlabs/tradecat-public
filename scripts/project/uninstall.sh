@@ -5,13 +5,17 @@ APP_DIR="${TRADECAT_INSTALL_DIR:-$HOME/.tradecat/app}"
 BIN_DIR="${TRADECAT_BIN_DIR:-$HOME/.local/bin}"
 RUNTIME_DIR="${TRADECAT_TERMINAL_RUNTIME_DIR:-$HOME/.tradecat-terminal/run}"
 KEEP_CACHE="${TRADECAT_KEEP_CACHE:-0}"
+PROJECT_SUBDIR="${TRADECAT_PROJECT_SUBDIR:-scripts/project}"
 
 log() {
   printf '%s\n' "tradecat-uninstall: $*"
 }
 
 backup_cache_if_needed() {
-  cache_dir="$APP_DIR/.tradecat/cache"
+  cache_dir="$APP_DIR/$PROJECT_SUBDIR/.tradecat/cache"
+  if [ ! -d "$cache_dir" ]; then
+    cache_dir="$APP_DIR/.tradecat/cache"
+  fi
   if [ "$KEEP_CACHE" = "1" ] && [ -d "$cache_dir" ]; then
     backup_dir="$HOME/.tradecat/cache-backup-$(date +%Y%m%d%H%M%S)"
     mkdir -p "$(dirname "$backup_dir")"

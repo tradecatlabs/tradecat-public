@@ -1,0 +1,3 @@
+display_name: TradeCat Public
+short_description: Operate and maintain the bundled TradeCat public terminal project.
+default_prompt: "Use the TradeCat public skill to inspect, validate, or modify the bundled cache-first CLI/TUI project under scripts/project."

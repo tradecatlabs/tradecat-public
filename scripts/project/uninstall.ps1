@@ -4,6 +4,7 @@ $AppDir = if ($env:TRADECAT_INSTALL_DIR) { $env:TRADECAT_INSTALL_DIR } else { Jo
 $BinDir = if ($env:TRADECAT_BIN_DIR) { $env:TRADECAT_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
 $RuntimeDir = if ($env:TRADECAT_TERMINAL_RUNTIME_DIR) { $env:TRADECAT_TERMINAL_RUNTIME_DIR } else { Join-Path $env:USERPROFILE ".tradecat-terminal\run" }
 $KeepCache = if ($env:TRADECAT_KEEP_CACHE) { $env:TRADECAT_KEEP_CACHE } else { "0" }
+$ProjectSubdir = if ($env:TRADECAT_PROJECT_SUBDIR) { $env:TRADECAT_PROJECT_SUBDIR } else { "scripts\project" }
 
 if ($PSCommandPath -and -not $env:TRADECAT_UNINSTALL_TEMP_RUN) {
     $TempScript = Join-Path $env:TEMP ("tradecat-uninstall-{0}.ps1" -f ([guid]::NewGuid().ToString("N")))
@@ -20,7 +21,10 @@ function Log($Message) {
 }
 
 function Backup-Cache-If-Needed {
-    $CacheDir = Join-Path $AppDir ".tradecat\cache"
+    $CacheDir = Join-Path (Join-Path $AppDir $ProjectSubdir) ".tradecat\cache"
+    if (-not (Test-Path $CacheDir)) {
+        $CacheDir = Join-Path $AppDir ".tradecat\cache"
+    }
     if ($KeepCache -eq "1" -and (Test-Path $CacheDir)) {
         $BackupDir = Join-Path (Join-Path $env:USERPROFILE ".tradecat") ("cache-backup-{0}" -f (Get-Date -Format "yyyyMMddHHmmss"))
         New-Item -ItemType Directory -Force -Path (Split-Path $BackupDir -Parent) | Out-Null

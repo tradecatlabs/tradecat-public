@@ -101,14 +101,14 @@ flowchart TD
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | sh
 tradecat
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
 tradecat
 ```
 
@@ -126,13 +126,13 @@ tradecat
 弱网、离线或 CI 环境可跳过安装阶段首次远端同步，只初始化缓存目录；CI 还可以跳过写入用户 PATH / shell profile：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/install.ps1 | iex
+$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
 ```
 
 启动时默认自动更新：
@@ -161,13 +161,13 @@ tradecat-uninstall
 也可以不依赖本地安装，直接远程卸载默认安装位置：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/uninstall.sh | sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/uninstall.ps1 | iex
 ```
 
 卸载会删除：
@@ -261,32 +261,32 @@ tradecat
 不安装、不克隆、不写缓存，直接请求公开数据：
 
 ```bash
-python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) event_stream
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py) event_stream
 ```
 
-`request.py` 会读取同仓库的 `src/tradecat_terminal/dataset_registry.json`，与安装版使用同一个 dataset 契约；可用 `TRADECAT_REQUEST_REGISTRY_URL` 或 `--registry-url` 覆盖。
+`request.py` 会读取同仓库的 `scripts/project/src/tradecat_terminal/dataset_registry.json`，与安装版使用同一个 dataset 契约；可用 `TRADECAT_REQUEST_REGISTRY_URL` 或 `--registry-url` 覆盖。
 
 常用示例：
 
 ```bash
 # 列出可用 dataset
-python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) --datasets
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py) --datasets
 
 # 查看事件流前 20 行
-python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) event_stream --limit 20
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py) event_stream --limit 20
 
 # JSONL 输出，方便脚本或 Agent 消费
-python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) market_snapshot --format jsonl --limit 10
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py) market_snapshot --format jsonl --limit 10
 
 # 只看元信息或表头
-python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) market_stats --meta
-python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py) anomaly_panel --headers
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py) market_stats --meta
+python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py) anomaly_panel --headers
 ```
 
 不支持 process substitution 的 shell 可使用：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/request.py -o /tmp/tradecat-request.py
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/scripts/request.py -o /tmp/tradecat-request.py
 python3 /tmp/tradecat-request.py event_stream
 ```
 

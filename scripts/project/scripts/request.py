@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 USER_AGENT = "tradecat-request/0.1"
 DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/tukuaiai/tradecat/develop/src/tradecat_terminal/dataset_registry.json"
+    "https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/src/tradecat_terminal/dataset_registry.json"
 )
 REGISTRY_URL_ENV = "TRADECAT_REQUEST_REGISTRY_URL"
 

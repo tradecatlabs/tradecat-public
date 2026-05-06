@@ -5,4 +5,5 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_DIR="$ROOT_DIR/scripts/project"
 
 cd "$PROJECT_DIR"
-exec bash scripts/verify.sh
+export PYTHONPATH="$PROJECT_DIR/src:${PYTHONPATH:-}"
+exec python3 -m tradecat_terminal "$@"
