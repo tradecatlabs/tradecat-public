@@ -12,6 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Skill strict
+        run: bash scripts/validate-skill.sh --strict
       - name: Install
         working-directory: scripts/project
         run: python -m pip install -e ".[dev]"
@@ -27,6 +29,8 @@ jobs:
       - name: Shell syntax
         working-directory: scripts/project
         run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
+      - name: Root shell syntax
+        run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh
       - name: PowerShell syntax
         shell: pwsh
         working-directory: scripts/project
