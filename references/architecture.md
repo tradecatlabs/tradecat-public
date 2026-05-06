@@ -42,3 +42,14 @@ Public Google Sheets CSV
 - `view_model.py`: display/raw/physical column model.
 - `tui.py`: cache-first terminal browser and background probes.
 - `scripts/project/scripts/request.py`: zero-install standard-library public request entry.
+
+## Documentation Map
+
+- `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
+- `references/*.md`: long-form skill references loaded on demand.
+- `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
+- `scripts/project/AGENTS.md`: local-only project engineering contract and linear flows.
+- `scripts/project/DEBUG.md`: local-only current truth and recent debugging notes.
+- `scripts/project/DEBUG.archive.md`: local-only historical accident record.
+
+`AGENTS.md` and `DEBUG*.md` are intentionally local-only and ignored by Git; public, reusable guidance belongs in `SKILL.md` and `references/`.

@@ -5,6 +5,7 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 ## Install
 
 - Clone or update the configured repository/branch.
+- Locate the project inside the repository by `TRADECAT_PROJECT_SUBDIR`, defaulting to `scripts/project`.
 - Use Python 3.12 when available.
 - Fall back to `uv` for Python 3.12 environment creation when needed.
 - Install the bundled project from `scripts/project`.
@@ -23,4 +24,4 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 
 - Remove TradeCat install directory, launcher files, and local watch runtime.
 - Do not remove system Python, Git, uv, or user PATH.
-- `TRADECAT_KEEP_CACHE=1` preserves cache before deleting the install directory.
+- `TRADECAT_KEEP_CACHE=1` preserves `scripts/project/.tradecat/cache` before deleting the install directory, with legacy root cache as a fallback.

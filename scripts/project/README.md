@@ -115,7 +115,7 @@ tradecat
 安装脚本会自动完成：
 
 1. 克隆或更新 `https://github.com/tukuaiai/tradecat.git` 的 `develop` 分支。
-2. 创建项目内 `.venv`。
+2. 进入仓库内 `scripts/project/` 项目目录并创建项目内 `.venv`。
 3. 安装 `tradecat` 命令入口。
 4. 初始化 `.tradecat/cache`。
 5. 尝试同步一次公开数据，失败时不阻断安装。
@@ -209,6 +209,7 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 | `TRADECAT_INSTALL_REPO` | 覆盖 Git 仓库地址 |
 | `TRADECAT_INSTALL_BRANCH` | 覆盖安装分支，默认 `develop` |
 | `TRADECAT_INSTALL_DIR` | 覆盖源码安装目录 |
+| `TRADECAT_PROJECT_SUBDIR` | 覆盖仓库内项目子目录，默认 `scripts/project` |
 | `TRADECAT_BIN_DIR` | 覆盖命令入口目录 |
 | `TRADECAT_PYTHON_VERSION` | 覆盖 Python 版本，默认 `3.12` |
 | `TRADECAT_NO_AUTO_UPDATE` | 设为 `1` 时，启动 `tradecat` 前跳过自动更新 |
@@ -222,7 +223,7 @@ Windows Terminal、VS Code Terminal、WezTerm、Alacritty、Kitty 等稳定终�
 
 ```bash
 git clone https://github.com/tukuaiai/tradecat.git
-cd tradecat
+cd tradecat/scripts/project
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
@@ -298,7 +299,7 @@ python3 /tmp/tradecat-request.py event_stream
 请帮我安装并运行 TradeCat：
 
 1. 克隆 https://github.com/tukuaiai/tradecat.git
-2. 进入仓库后创建 Python 3.12 虚拟环境
+2. 进入仓库内 scripts/project 目录后创建 Python 3.12 虚拟环境
 3. 执行 pip install -e ".[dev]"
 4. 运行 bash scripts/verify.sh
 5. 运行 tradecat init 和 tradecat
@@ -311,7 +312,7 @@ python3 /tmp/tradecat-request.py event_stream
 # 默认打开终端面板；先读本地缓存，进入后按 tap 独立间隔探测
 tradecat
 
-# 初始化缓存目录，默认 TradeCat 源码根目录 .tradecat/cache
+# 初始化缓存目录，默认 TradeCat 项目根目录 .tradecat/cache
 tradecat init
 
 # 查看 dataset 和缓存状态
@@ -439,7 +440,7 @@ TUI 探针规则：
 结构化 JSON 的固定默认位置：
 
 ```text
-<TradeCat 源码根目录>/.tradecat/cache
+<TradeCat 项目根目录>/.tradecat/cache
 ```
 
 在本仓库开发态，固定为：
@@ -467,7 +468,7 @@ Agent 和脚本优先读取：
 .tradecat/cache/datasets/market_stats/latest.json
 ```
 
-`TRADECAT_CACHE_DIR` 可以覆盖缓存根目录；未设置时一律使用 TradeCat 源码根目录下的 `.tradecat/cache`。`.tradecat/` 是运行时缓存目录，已加入 `.gitignore`，不提交到仓库。
+`TRADECAT_CACHE_DIR` 可以覆盖缓存根目录；未设置时一律使用 TradeCat 项目根目录下的 `.tradecat/cache`。`.tradecat/` 是运行时缓存目录，已加入 `.gitignore`，不提交到仓库。
 
 ```text
 .tradecat/cache/
@@ -522,8 +523,8 @@ tradecat config unset default_lang
 
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
-| `TRADECAT_SETTINGS_PATH` | TradeCat 源码根 `.tradecat/settings.json` | 用户侧配置文件路径 |
-| `TRADECAT_CACHE_DIR` | TradeCat 源码根目录 `.tradecat/cache` | 本地快照缓存目录 |
+| `TRADECAT_SETTINGS_PATH` | TradeCat 项目根 `scripts/project/.tradecat/settings.json` | 用户侧配置文件路径 |
+| `TRADECAT_CACHE_DIR` | TradeCat 项目根 `scripts/project/.tradecat/cache` | 本地快照缓存目录 |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=1.5` |
 | `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `1.5`，其它 tap 默认 `10` |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |
@@ -546,6 +547,7 @@ tradecat config unset default_lang
 ## 开发与验证
 
 ```bash
+cd scripts/project
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
