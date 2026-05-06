@@ -31,15 +31,16 @@ Trigger when any of these applies:
 cd scripts/project
 ```
 
-### Validate Everything
+### Validate Skill And Project
 
 ```bash
 bash scripts/verify.sh
 ```
 
-From the skill root:
+### Validate Project Only
 
 ```bash
+cd scripts/project
 bash scripts/verify.sh
 ```
 
@@ -76,8 +77,7 @@ git check-ignore -v AGENTS.md scripts/project/AGENTS.md scripts/project/DEBUG.md
 ### Skill Quality Gate
 
 ```bash
-(cd .. && bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict)
-bash scripts/verify.sh
+bash scripts/validate-skill.sh --strict
 ```
 
 ## Project Layout
@@ -93,6 +93,7 @@ tradecat-public/
 |   |-- index.md
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- linear-flows.md
 |   |-- tui-contract.md
 |   |-- quality-gate.md
 |   `-- install-uninstall.md
@@ -111,6 +112,7 @@ tradecat-public/
 - `references/index.md`: navigation.
 - `references/architecture.md`: project purpose, forbidden paths, and data flows.
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
+- `references/linear-flows.md`: public six-flow map for cache, TUI, one-shot request, install, uninstall, and export/config flows.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
 - `references/quality-gate.md`: pre-delivery checklist for Skill wrapper and bundled project changes.
@@ -156,5 +158,5 @@ tradecat-public/
 ## Maintenance
 
 - Source project: `scripts/project/`
-- Validation: `bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict` from the parent directory, then `bash scripts/verify.sh` from the Skill root.
+- Validation: `bash scripts/verify.sh` from the Skill root; run `bash scripts/validate-skill.sh --strict` when only the Skill gate is needed.
 - Skill root should remain an operator entrypoint, not a second copy of the project.

@@ -19,6 +19,7 @@ tradecat-public/
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- install-uninstall.md
+|   |-- linear-flows.md
 |   |-- quality-gate.md
 |   `-- tui-contract.md
 `-- scripts/
@@ -54,7 +55,8 @@ TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snap
 - Keep `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`, and root thin scripts in the Skill root.
 - Keep Python project files, installers, project README, project scripts, `src/`, and `tests/` in `scripts/project/`.
 - Keep root/project `AGENTS.md` and project `DEBUG*.md` local-only unless the public repository policy is explicitly changed.
-- When the layout changes, update `README.md`, `SKILL.md`, `references/index.md`, this file, and the local `AGENTS.md` copies.
+- Public reusable rules must live in `README.md`, `SKILL.md`, and `references/`; local `AGENTS.md` copies are convenience memory, not the only source of truth.
+- When the layout changes, update `README.md`, `SKILL.md`, `references/index.md`, this file, `references/linear-flows.md` when flow behavior changes, and the local `AGENTS.md` copies when present.
 
 ## Main Flow
 
@@ -82,6 +84,7 @@ Public Google Sheets CSV
 - `AGENTS.md`: local-only root operating contract for directory governance and movement rules.
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `references/*.md`: long-form skill references loaded on demand.
+- `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, and export/config paths.
 - `references/quality-gate.md`: validation, root audit, and release evidence checklist.
 - `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
 - `scripts/project/AGENTS.md`: local-only project engineering contract and linear flows.

@@ -3,6 +3,23 @@
 这是一个标准 Skill 外壳仓库，真正的 TradeCat 用户侧源码统一放在
 `scripts/project/`。
 
+## 用户安装入口
+
+TradeCat 用户侧安装、运行和卸载说明见
+[scripts/project/README.md](scripts/project/README.md)。
+
+Linux / macOS / WSL / Git Bash：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
+```
+
 根目录只承担三件事：
 
 1. 作为 Git 仓库边界。
@@ -26,6 +43,7 @@ tradecat-public/
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- install-uninstall.md
+|   |-- linear-flows.md
 |   |-- quality-gate.md
 |   `-- tui-contract.md
 `-- scripts/
@@ -84,7 +102,7 @@ scripts/project/
 
 ```bash
 bash scripts/verify.sh
-(cd .. && bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict)
+bash scripts/validate-skill.sh --strict
 bash scripts/run-tradecat.sh --help
 cd scripts/project
 PYTHONPATH=src python3 -m tradecat_terminal --help

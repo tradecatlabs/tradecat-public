@@ -5,12 +5,10 @@ TradeCat public project.
 
 ## Skill Gate
 
-Run the strict validator from the parent directory so the directory name matches
-the frontmatter name:
+Run the strict validator from the Skill root:
 
 ```bash
-cd ..
-bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict
+bash scripts/validate-skill.sh --strict
 ```
 
 Acceptance:
@@ -35,24 +33,19 @@ Acceptance:
 - `scripts/project/scripts/guard_public_local_files.sh` passes.
 - Python source and tests compile.
 - `pytest` passes.
+- `ruff` runs when installed; if it is unavailable locally, the script prints
+  the local limitation and CI remains the definitive lint gate.
 - Shell syntax checks pass.
 - `scripts/project/scripts/request.py` compiles.
-
-If `ruff` is available, also run:
-
-```bash
-cd scripts/project
-ruff check src tests
-```
+- Project verification removes generated `__pycache__`, `.pytest_cache`, and
+  `.ruff_cache` directories before exit.
 
 ## Root Boundary Gate
 
 Run these checks after any layout or documentation movement:
 
 ```bash
-test ! -e assets
-git ls-files | sort
-git check-ignore -v AGENTS.md scripts/project/AGENTS.md scripts/project/DEBUG.md scripts/project/DEBUG.archive.md || true
+bash scripts/project/scripts/guard_public_local_files.sh
 ```
 
 Acceptance:
@@ -73,6 +66,7 @@ quality rule changes, update the matching documentation in the same change:
 
 - Root movement or Skill behavior: `README.md`, `SKILL.md`,
   `references/index.md`, `references/architecture.md`.
+- Public flow behavior: `references/linear-flows.md`.
 - Cache behavior: `references/cache-contract.md`.
 - TUI behavior: `references/tui-contract.md`.
 - Installer or uninstall behavior: `references/install-uninstall.md`.
