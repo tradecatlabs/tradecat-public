@@ -26,6 +26,7 @@ tradecat-public/
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- install-uninstall.md
+|   |-- quality-gate.md
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
@@ -83,6 +84,7 @@ scripts/project/
 
 ```bash
 bash scripts/verify.sh
+(cd .. && bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict)
 bash scripts/run-tradecat.sh --help
 cd scripts/project
 PYTHONPATH=src python3 -m tradecat_terminal --help

@@ -1,6 +1,6 @@
 ---
 name: tradecat-public
-description: "TradeCat public terminal skill: operate the bundled user-side TradeCat project, inspect public Google Sheets CSV snapshot caches, run CLI/TUI/export flows, validate installers, and maintain the cache-first no-database contract."
+description: "TradeCat public terminal skill: operate the bundled user-side TradeCat project, inspect public Google Sheets CSV snapshot caches, run CLI/TUI/export flows, validate installers, govern the Skill root vs scripts/project layout, and maintain the cache-first no-database contract."
 ---
 
 # tradecat-public Skill
@@ -13,6 +13,7 @@ Trigger when any of these applies:
 - The user asks to run, install, debug, validate, or modify TradeCat public terminal behavior.
 - The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, or one-shot request script.
 - The task needs the project contracts for cache-first TUI, local JSON snapshots, structured `latest.*` files, or zero-install public requests.
+- The task asks to reorganize, audit, or optimize the Skill wrapper, root files, references, `AGENTS.md`, or the `scripts/project/` project boundary.
 
 ## Not For / Boundaries
 
@@ -20,6 +21,7 @@ Trigger when any of these applies:
 - Do not add SQLite, SQL query layers, database repair, vacuum, or server production-chain coupling.
 - Do not commit credentials, Google keys, private `.env` files, generated cache files, or local runtime files.
 - Keep the skill root clean: project source and project docs live in `scripts/project/`; long-form skill references live in `references/`.
+- Do not add root `assets/` or `assets/examples/`; project examples, if ever needed, belong under `scripts/project/` and must be documented.
 
 ## Quick Reference
 
@@ -63,6 +65,21 @@ cd scripts/project
 PYTHONPATH=src python3 -m tradecat_terminal path event_stream --json
 ```
 
+### Audit The Root Boundary
+
+```bash
+test ! -e assets
+git ls-files | sort
+git check-ignore -v AGENTS.md scripts/project/AGENTS.md scripts/project/DEBUG.md scripts/project/DEBUG.archive.md || true
+```
+
+### Skill Quality Gate
+
+```bash
+(cd .. && bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict)
+bash scripts/verify.sh
+```
+
 ## Project Layout
 
 ```text
@@ -77,6 +94,7 @@ tradecat-public/
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- tui-contract.md
+|   |-- quality-gate.md
 |   `-- install-uninstall.md
 `-- scripts/
     |-- verify.sh
@@ -95,6 +113,7 @@ tradecat-public/
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
+- `references/quality-gate.md`: pre-delivery checklist for Skill wrapper and bundled project changes.
 
 ## Examples
 
@@ -124,8 +143,18 @@ tradecat-public/
   4. Run `bash scripts/verify.sh`.
 - Expected output / acceptance: cache-first startup, background probe, failure backoff, and plain fallback contracts remain intact.
 
+### Example 4: Optimize The Skill Wrapper
+
+- Input: "Use auto-skill to optimize this skill and fill missing files."
+- Steps:
+  1. Read `SKILL.md`, `references/index.md`, and `references/quality-gate.md`.
+  2. Keep root files limited to Skill/Git metadata, references, and thin scripts.
+  3. Put project source, tests, installers, and project README under `scripts/project/`.
+  4. Run the strict skill validator and `bash scripts/verify.sh`.
+- Expected output / acceptance: `SKILL.md` remains short and actionable, references are navigable, root remains clean, and project validation passes.
+
 ## Maintenance
 
 - Source project: `scripts/project/`
-- Validation: `bash scripts/verify.sh`
+- Validation: `bash /home/lenovo/.codex/skills/auto-skill/scripts/validate-skill.sh tradecat-public --strict` from the parent directory, then `bash scripts/verify.sh` from the Skill root.
 - Skill root should remain an operator entrypoint, not a second copy of the project.

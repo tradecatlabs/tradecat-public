@@ -2,6 +2,31 @@
 
 `tradecat-public` is a Codex skill wrapper around a bundled user-side TradeCat project.
 
+The Skill root is not the Python project root. It exists to hold Skill metadata,
+Git metadata, references, and thin entry scripts.
+
+```text
+tradecat-public/
+|-- README.md
+|-- AGENTS.md                 # local-only when present, ignored by Git
+|-- .git/                     # Git metadata, hidden, never moved
+|-- .github/workflows/ci.yml  # CI metadata, hidden, never moved
+|-- .gitignore
+|-- SKILL.md
+|-- agents/openai.yaml
+|-- references/
+|   |-- index.md
+|   |-- architecture.md
+|   |-- cache-contract.md
+|   |-- install-uninstall.md
+|   |-- quality-gate.md
+|   `-- tui-contract.md
+`-- scripts/
+    |-- verify.sh
+    |-- run-tradecat.sh
+    `-- project/
+```
+
 The project itself lives in `scripts/project/` and keeps its original Python package shape:
 
 ```text
@@ -22,6 +47,14 @@ TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snap
 - No SQLite or SQL query layer.
 - No server production-chain dependency.
 - No private credentials or generated cache files in Git.
+- No root `assets/` or `assets/examples/`.
+
+## Movement Rules
+
+- Keep `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`, and root thin scripts in the Skill root.
+- Keep Python project files, installers, project README, project scripts, `src/`, and `tests/` in `scripts/project/`.
+- Keep root/project `AGENTS.md` and project `DEBUG*.md` local-only unless the public repository policy is explicitly changed.
+- When the layout changes, update `README.md`, `SKILL.md`, `references/index.md`, this file, and the local `AGENTS.md` copies.
 
 ## Main Flow
 
@@ -49,6 +82,7 @@ Public Google Sheets CSV
 - `AGENTS.md`: local-only root operating contract for directory governance and movement rules.
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `references/*.md`: long-form skill references loaded on demand.
+- `references/quality-gate.md`: validation, root audit, and release evidence checklist.
 - `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
 - `scripts/project/AGENTS.md`: local-only project engineering contract and linear flows.
 - `scripts/project/DEBUG.md`: local-only current truth and recent debugging notes.
