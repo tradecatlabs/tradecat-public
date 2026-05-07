@@ -11,6 +11,7 @@ Defaults:
 
 Environment:
   CODEX_HOME overrides the Codex home directory used to find auto-skill.
+  TRADECAT_SKILL_NAME overrides the expected frontmatter name.
 EOF
 }
 
@@ -30,6 +31,7 @@ strip_outer_quotes() {
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+EXPECTED_SKILL_NAME="${TRADECAT_SKILL_NAME:-tradecat-public}"
 strict=0
 skill_dir="$ROOT_DIR"
 
@@ -132,8 +134,8 @@ if [[ ! "$name" =~ ^[a-z][a-z0-9-]*$ ]]; then
   die "Invalid skill name: $name"
 fi
 
-if [[ "$strict" -eq 1 && "$name" != "$base_name" ]]; then
-  die "Strict mode: frontmatter name '$name' must match directory name '$base_name'"
+if [[ "$strict" -eq 1 && "$name" != "$base_name" && "$name" != "$EXPECTED_SKILL_NAME" ]]; then
+  die "Strict mode: frontmatter name '$name' must match directory name '$base_name' or expected name '$EXPECTED_SKILL_NAME'"
 fi
 
 filtered_md="$(mktemp)"
