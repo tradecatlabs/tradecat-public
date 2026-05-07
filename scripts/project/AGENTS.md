@@ -33,6 +33,8 @@ tradecat-public/
 │   └── tui-contract.md
 └── scripts/
     ├── validate-skill.sh
+    ├── bootstrap-dev.sh
+    ├── security-scan.sh
     ├── run-tradecat.sh
     ├── verify.sh
     └── project/
@@ -122,11 +124,11 @@ Input(输入)：`python3 <(curl .../scripts/project/scripts/request.py) <dataset
 
 ```text
 Input(输入)：`curl .../scripts/project/install.sh | sh` 或 `irm .../scripts/project/install.ps1 | iex`
--> 节点1：安装脚本解析安装目录、bin 目录、仓库地址、分支与 Python 版本环境变量
--> 节点2：安装脚本克隆或更新公开仓库到用户目录
+-> 节点1：安装脚本解析安装目录、bin 目录、仓库地址、分支/ref 与 Python 版本环境变量
+-> 节点2：安装脚本克隆或更新公开仓库到用户目录；设置 `TRADECAT_INSTALL_REF` 时固定 checkout 指定 tag/ref
 -> 节点3：安装脚本优先使用本机 Python 3.12；缺失时尝试安装 uv 并由 uv 创建 Python 3.12 虚拟环境
 -> 节点4：安装脚本定位仓库内 `scripts/project/` 项目目录，创建 `.venv` 并执行 editable install
--> 节点5：安装脚本写入用户级 `tradecat` / `tcat` launcher；launcher 默认按节流规则后台更新安装仓库，`TRADECAT_FORCE_UPDATE=1` 时阻塞更新
+-> 节点5：安装脚本写入用户级 `tradecat` / `tcat` launcher；branch 安装默认按节流规则后台更新安装仓库，`TRADECAT_FORCE_UPDATE=1` 时阻塞更新；固定 ref 安装不自动更新
 -> 节点6：安装脚本写入用户级 `tradecat-uninstall` / `tcat-uninstall` launcher
 -> 节点7：安装脚本设置 `TRADECAT_NO_AUTO_UPDATE=1` 执行 `tradecat init`，并 best-effort 执行 `tradecat sync-all`
 -> Output(输出)：用户可在任意目录运行 `tradecat`，也可运行 `tradecat-uninstall` 卸载
@@ -242,6 +244,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 python3 -m compileall src tests
 pytest -q
 bash scripts/verify.sh
+bash ../../scripts/security-scan.sh
 ```
 
 ## 本地命令入口

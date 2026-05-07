@@ -3,6 +3,9 @@ set -eu
 
 REPO_URL="${TRADECAT_INSTALL_REPO:-https://github.com/tukuaiai/tradecat.git}"
 BRANCH="${TRADECAT_INSTALL_BRANCH:-develop}"
+REF="${TRADECAT_INSTALL_REF:-$BRANCH}"
+PINNED_REF=0
+[ -n "${TRADECAT_INSTALL_REF:-}" ] && PINNED_REF=1
 APP_DIR="${TRADECAT_INSTALL_DIR:-$HOME/.tradecat/app}"
 BIN_DIR="${TRADECAT_BIN_DIR:-$HOME/.local/bin}"
 PYTHON_VERSION="${TRADECAT_PYTHON_VERSION:-3.12}"
@@ -63,15 +66,22 @@ checkout_repo() {
   mkdir -p "$(dirname "$APP_DIR")"
   if [ -d "$APP_DIR/.git" ]; then
     log "更新源码：$APP_DIR"
-    git -C "$APP_DIR" fetch origin "$BRANCH"
-    git -C "$APP_DIR" checkout "$BRANCH"
-    git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
+    fetch_ref
+    git -C "$APP_DIR" checkout "$REF"
+    if [ "$PINNED_REF" -eq 0 ]; then
+      git -C "$APP_DIR" pull --ff-only origin "$REF"
+    fi
   elif [ -e "$APP_DIR" ]; then
     fail "安装目录已存在但不是 Git 仓库：$APP_DIR；请设置 TRADECAT_INSTALL_DIR 或先移走该目录"
   else
-    log "克隆源码：$REPO_URL#$BRANCH -> $APP_DIR"
-    git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$APP_DIR"
+    log "克隆源码：$REPO_URL#$REF -> $APP_DIR"
+    git clone --branch "$REF" --depth 1 "$REPO_URL" "$APP_DIR"
   fi
+}
+
+fetch_ref() {
+  git -C "$APP_DIR" fetch origin "$REF" ||
+    git -C "$APP_DIR" fetch origin "refs/tags/$REF:refs/tags/$REF"
 }
 
 resolve_project_dir() {
@@ -121,6 +131,8 @@ write_launcher() {
 APP_DIR="$APP_DIR"
 PROJECT_DIR="$PROJECT_DIR"
 BRANCH="$BRANCH"
+REF="$REF"
+PINNED_REF="$PINNED_REF"
 VENV_PY="$VENV_PY"
 
 truthy() {
@@ -131,6 +143,9 @@ truthy() {
 }
 
 auto_update() {
+  if [ "\$PINNED_REF" = "1" ]; then
+    return 0
+  fi
   if truthy "\${TRADECAT_NO_AUTO_UPDATE:-}"; then
     return 0
   fi
@@ -168,9 +183,9 @@ auto_update() {
 
 run_update_blocking() {
   old_head="\$(git -C "\$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
-  if git -C "\$APP_DIR" fetch origin "\$BRANCH" >/dev/null 2>&1 &&
-     git -C "\$APP_DIR" checkout "\$BRANCH" >/dev/null 2>&1 &&
-     git -C "\$APP_DIR" pull --ff-only origin "\$BRANCH" >/dev/null 2>&1; then
+  if git -C "\$APP_DIR" fetch origin "\$REF" >/dev/null 2>&1 &&
+     git -C "\$APP_DIR" checkout "\$REF" >/dev/null 2>&1 &&
+     git -C "\$APP_DIR" pull --ff-only origin "\$REF" >/dev/null 2>&1; then
     new_head="\$(git -C "\$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
     if [ -n "\$old_head" ] && [ -n "\$new_head" ] && [ "\$old_head" != "\$new_head" ]; then
       if "\$VENV_PY" -m pip install -e "\$PROJECT_DIR" >/dev/null 2>&1; then

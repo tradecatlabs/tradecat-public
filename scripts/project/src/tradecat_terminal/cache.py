@@ -34,22 +34,43 @@ def init_cache(cache_dir: Path) -> dict[str, Any]:
 def status_cache(cache_dir: Path) -> dict[str, Any]:
     datasets: list[dict[str, Any]] = []
     for dataset in list_datasets(include_inactive=True):
+        dataset_dir = _dataset_dir(cache_dir, dataset.key)
         manifest = read_manifest(cache_dir, dataset.key)
+        latest_json_exists = (dataset_dir / LATEST_JSON_FILE).exists()
+        latest_jsonl_exists = (dataset_dir / LATEST_JSONL_FILE).exists()
+        latest_csv_exists = (dataset_dir / LATEST_CSV_FILE).exists()
         datasets.append(
             {
                 "dataset_key": dataset.key,
                 "tab_name": dataset.tab_name,
                 "data_mode": dataset.data_mode,
                 "active": dataset.active,
+                "cache_state": _dataset_cache_state(dataset_dir, latest_json_exists),
+                "dataset_dir": str(dataset_dir),
+                "latest_json_exists": latest_json_exists,
+                "latest_jsonl_exists": latest_jsonl_exists,
+                "latest_csv_exists": latest_csv_exists,
                 "snapshot_count": len(manifest.get("snapshots") or []),
                 "event_count": _stream_event_count(cache_dir, dataset.key) if dataset.is_stream() else 0,
                 "current_hash": manifest.get("current_hash"),
                 "fetched_at": manifest.get("fetched_at"),
                 "row_count": manifest.get("row_count", 0),
                 "column_count": manifest.get("column_count", 0),
+                "cache_bytes": _directory_size(dataset_dir),
             }
         )
-    return {"ok": True, "cache_dir": str(cache_dir), "exists": cache_dir.exists(), "datasets": datasets}
+    ready_count = sum(1 for item in datasets if item["active"] and item["cache_state"] == "ready")
+    missing_count = sum(1 for item in datasets if item["active"] and item["cache_state"] != "ready")
+    return {
+        "ok": True,
+        "cache_dir": str(cache_dir),
+        "exists": cache_dir.exists(),
+        "dataset_count": len(datasets),
+        "ready_dataset_count": ready_count,
+        "missing_dataset_count": missing_count,
+        "cache_bytes": _directory_size(cache_dir),
+        "datasets": datasets,
+    }
 
 
 def sync_dataset(
@@ -666,6 +687,27 @@ def _stream_event_count(cache_dir: Path, dataset_key: str) -> int:
     if not path.exists():
         return 0
     return len(_read_json(path).get("events") or [])
+
+
+def _dataset_cache_state(dataset_dir: Path, latest_json_exists: bool) -> str:
+    if latest_json_exists:
+        return "ready"
+    if dataset_dir.exists():
+        return "initialized"
+    return "missing"
+
+
+def _directory_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    total = 0
+    for item in path.rglob("*"):
+        if item.is_file():
+            try:
+                total += item.stat().st_size
+            except OSError:
+                continue
+    return total
 
 
 def _split_snapshot_prune_plan(

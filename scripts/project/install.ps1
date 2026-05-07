@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $RepoUrl = if ($env:TRADECAT_INSTALL_REPO) { $env:TRADECAT_INSTALL_REPO } else { "https://github.com/tukuaiai/tradecat.git" }
 $Branch = if ($env:TRADECAT_INSTALL_BRANCH) { $env:TRADECAT_INSTALL_BRANCH } else { "develop" }
+$Ref = if ($env:TRADECAT_INSTALL_REF) { $env:TRADECAT_INSTALL_REF } else { $Branch }
+$PinnedRef = if ($env:TRADECAT_INSTALL_REF) { "1" } else { "0" }
 $AppDir = if ($env:TRADECAT_INSTALL_DIR) { $env:TRADECAT_INSTALL_DIR } else { Join-Path $env:USERPROFILE ".tradecat\app" }
 $BinDir = if ($env:TRADECAT_BIN_DIR) { $env:TRADECAT_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
 $PythonVersion = if ($env:TRADECAT_PYTHON_VERSION) { $env:TRADECAT_PYTHON_VERSION } else { "3.12" }
@@ -85,15 +87,25 @@ function Checkout-Repo {
     New-Item -ItemType Directory -Force -Path (Split-Path $AppDir -Parent) | Out-Null
     if (Test-Path (Join-Path $AppDir ".git")) {
         Log "updating source: $AppDir"
-        git -C $AppDir fetch origin $Branch
-        git -C $AppDir checkout $Branch
-        git -C $AppDir pull --ff-only origin $Branch
+        Fetch-Ref
+        git -C $AppDir checkout $Ref
+        if ($PinnedRef -ne "1") {
+            git -C $AppDir pull --ff-only origin $Ref
+        }
     } elseif (Test-Path $AppDir) {
         Fail "install dir exists but is not a Git repository: $AppDir; set TRADECAT_INSTALL_DIR or move it away"
     } else {
-        Log "cloning source: $RepoUrl#$Branch -> $AppDir"
-        git clone --branch $Branch --depth 1 $RepoUrl $AppDir
+        Log "cloning source: $RepoUrl#$Ref -> $AppDir"
+        git clone --branch $Ref --depth 1 $RepoUrl $AppDir
     }
+}
+
+function Fetch-Ref {
+    git -C $AppDir fetch origin $Ref
+    if ($LASTEXITCODE -eq 0) {
+        return
+    }
+    git -C $AppDir fetch origin "refs/tags/$($Ref):refs/tags/$($Ref)"
 }
 
 function Resolve-ProjectDir {
@@ -142,6 +154,7 @@ param([switch]`$Force)
 `$AppDir = "$AppDir"
 `$ProjectDir = "$script:ProjectDir"
 `$Branch = "$Branch"
+`$Ref = "$Ref"
 `$VenvPy = "$script:VenvPy"
 `$OldHead = ""
 try {
@@ -149,11 +162,11 @@ try {
 } catch {
     `$OldHead = ""
 }
-git -C `$AppDir fetch origin `$Branch *> `$null
+git -C `$AppDir fetch origin `$Ref *> `$null
 `$FetchCode = `$LASTEXITCODE
-git -C `$AppDir checkout `$Branch *> `$null
+git -C `$AppDir checkout `$Ref *> `$null
 `$CheckoutCode = `$LASTEXITCODE
-git -C `$AppDir pull --ff-only origin `$Branch *> `$null
+git -C `$AppDir pull --ff-only origin `$Ref *> `$null
 `$PullCode = `$LASTEXITCODE
 if (`$FetchCode -ne 0 -or `$CheckoutCode -ne 0 -or `$PullCode -ne 0) {
     if (`$Force) {
@@ -181,6 +194,8 @@ if (`$OldHead -and `$NewHead -and `$OldHead -ne `$NewHead) {
 `$AppDir = "$AppDir"
 `$ProjectDir = "$script:ProjectDir"
 `$Branch = "$Branch"
+`$Ref = "$Ref"
+`$PinnedRef = "$PinnedRef"
 `$VenvPy = "$script:VenvPy"
 `$UpdaterPs1 = "$UpdaterPs1"
 
@@ -189,6 +204,9 @@ function Test-Truthy(`$Value) {
 }
 
 function Invoke-TradeCatAutoUpdate {
+    if (`$PinnedRef -eq "1") {
+        return
+    }
     if (Test-Truthy `$env:TRADECAT_NO_AUTO_UPDATE) {
         return
     }

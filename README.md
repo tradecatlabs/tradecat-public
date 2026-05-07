@@ -48,6 +48,8 @@ tradecat-public/
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
+    |-- bootstrap-dev.sh
+    |-- security-scan.sh
     |-- run-tradecat.sh
     `-- project/
 ```
@@ -85,7 +87,8 @@ scripts/project/
 - `SKILL.md`：Skill 激活入口。
 - `agents/`：Agent marketplace / profile 元数据。
 - `references/`：Skill 长文档与契约。
-- `scripts/verify.sh`、`scripts/run-tradecat.sh`：从 Skill 根进入项目的薄封装。
+- `scripts/verify.sh`、`scripts/bootstrap-dev.sh`、`scripts/security-scan.sh`、
+  `scripts/run-tradecat.sh`：从 Skill 根进入项目或治理门禁的薄封装。
 
 应放入 `scripts/project/`：
 
@@ -94,7 +97,8 @@ scripts/project/
 - Python 包源码 `src/`。
 - 测试 `tests/`。
 - 项目脚本 `scripts/request.py`、`scripts/start.sh`、`scripts/watchdog.sh`、
-  `scripts/verify.sh`、`scripts/guard_public_local_files.sh`。
+  `scripts/verify.sh`、`scripts/guard_public_local_files.sh`；根级
+  `scripts/security-scan.sh` 留在 Skill 根。
 - 项目治理文档 `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`；这些文件随仓库提交，
   但必须保持脱敏，不得写入凭证、缓存内容或私密环境变量。
 
@@ -104,7 +108,9 @@ scripts/project/
 ## 常用入口
 
 ```bash
+bash scripts/bootstrap-dev.sh
 bash scripts/verify.sh
+bash scripts/security-scan.sh
 bash scripts/validate-skill.sh --strict
 bash scripts/run-tradecat.sh --help
 cd scripts/project

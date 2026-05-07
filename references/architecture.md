@@ -24,6 +24,8 @@ tradecat-public/
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
+    |-- bootstrap-dev.sh
+    |-- security-scan.sh
     |-- run-tradecat.sh
     `-- project/
 ```
@@ -55,7 +57,7 @@ TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snap
 
 ## Movement Rules
 
-- Keep `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`, and root thin scripts in the Skill root.
+- Keep `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`, and root thin validation/helper scripts in the Skill root.
 - Keep Python project files, installers, project README, project scripts, `src/`, and `tests/` in `scripts/project/`.
 - Keep root/project `AGENTS.md` and project `DEBUG*.md` tracked as public governance and debugging memory.
 - Never put credentials, generated cache data, private `.env` values, or machine-local runtime state into tracked governance/debug files.
@@ -80,6 +82,8 @@ Public Google Sheets CSV
 - `view_model.py`: display/raw/physical column model.
 - `tui.py`: cache-first terminal browser and background probes.
 - `scripts/project/scripts/request.py`: zero-install standard-library public request entry.
+- `scripts/bootstrap-dev.sh`: root developer bootstrap wrapper for `scripts/project/.venv`.
+- `scripts/security-scan.sh`: root secret-scan wrapper; scans tracked files by default and commit ranges in CI.
 
 ## Documentation Map
 

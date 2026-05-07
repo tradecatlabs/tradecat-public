@@ -9,13 +9,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Skill strict
         run: bash scripts/validate-skill.sh --strict
       - name: Secret scan
-        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest dir --redact --verbose /repo
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            log_opts="origin/${{ github.base_ref }}..HEAD"
+          elif [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            log_opts="${{ github.event.before }}..${{ github.sha }}"
+          else
+            log_opts="HEAD~1..HEAD"
+          fi
+          bash scripts/security-scan.sh --history "$log_opts"
       - name: Install
         working-directory: scripts/project
         run: python -m pip install -e ".[dev]"
@@ -32,7 +45,7 @@ jobs:
         working-directory: scripts/project
         run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
       - name: Root shell syntax
-        run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh
+        run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/security-scan.sh scripts/bootstrap-dev.sh
       - name: PowerShell syntax
         shell: pwsh
         working-directory: scripts/project

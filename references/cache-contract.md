@@ -39,3 +39,13 @@ datasets/event_stream/stream_events.json
 - `tradecat export` reads only local cache and must not fetch remote CSV.
 - `csv` and `jsonl` preserve raw fields.
 - `table` preserves physical `A/B/C...` columns and raw header rows.
+
+## Status Rules
+
+- `tradecat status` reports aggregate dataset counts, cache byte size, and one
+  row per dataset.
+- Per-dataset `cache_state` is `ready` when `latest.json` exists, `initialized`
+  when the dataset directory exists without latest files, and `missing` when no
+  dataset cache directory exists.
+- `tradecat doctor` returns non-zero only for local cache errors; unsynced active
+  datasets are warnings so first-run users get actionable guidance.

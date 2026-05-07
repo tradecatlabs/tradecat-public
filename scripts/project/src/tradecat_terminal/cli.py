@@ -209,7 +209,9 @@ def main(argv: list[str] | None = None) -> int:
             lang=args.lang,
         )
         if args.output:
-            Path(args.output).expanduser().write_text(payload, encoding="utf-8")
+            output_path = Path(args.output).expanduser()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
         else:
             print(payload, end="" if payload.endswith("\n") else "\n")
         return 0
@@ -253,13 +255,24 @@ def print_status(payload: dict) -> None:
     print(f"ok: {payload.get('ok')}")
     print(f"cache_dir: {payload.get('cache_dir')}")
     print(f"exists: {payload.get('exists', True)}")
+    print(
+        "summary: "
+        f"datasets={payload.get('dataset_count', 0)} "
+        f"ready={payload.get('ready_dataset_count', 0)} "
+        f"missing={payload.get('missing_dataset_count', 0)} "
+        f"bytes={payload.get('cache_bytes', 0)}"
+    )
     for dataset in payload.get("datasets", []):
         print(
             "dataset: "
             f"{dataset['dataset_key']} mode={dataset['data_mode']} active={dataset['active']} "
+            f"state={dataset.get('cache_state')} latest={dataset.get('latest_json_exists')} "
             f"snapshots={dataset['snapshot_count']} events={dataset['event_count']} "
-            f"rows={dataset['row_count']} cols={dataset['column_count']} fetched_at={dataset.get('fetched_at')}"
+            f"rows={dataset['row_count']} cols={dataset['column_count']} bytes={dataset.get('cache_bytes', 0)} "
+            f"fetched_at={dataset.get('fetched_at')}"
         )
+    for warning in payload.get("warnings", []):
+        print(f"warning: {warning}", file=sys.stderr)
     for error in payload.get("errors", []):
         print(f"error: {error}", file=sys.stderr)
 

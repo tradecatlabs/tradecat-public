@@ -4,7 +4,8 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 
 ## Install
 
-- Clone or update the configured repository/branch.
+- Clone or update the configured repository branch, or checkout a fixed
+  `TRADECAT_INSTALL_REF` tag/ref.
 - Locate the project inside the repository by `TRADECAT_PROJECT_SUBDIR`, defaulting to `scripts/project`.
 - Use Python 3.12 when available.
 - Fall back to `uv` for Python 3.12 environment creation when needed.
@@ -16,6 +17,7 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 ## Launcher Auto-update
 
 - Auto-update belongs to launcher scripts, not imported Python modules.
+- Installs pinned with `TRADECAT_INSTALL_REF` do not auto-update.
 - `TRADECAT_NO_AUTO_UPDATE=1` skips update.
 - `TRADECAT_FORCE_UPDATE=1` blocks startup until update succeeds; failure exits.
 - Normal update is throttled by `TRADECAT_UPDATE_INTERVAL_SECONDS` and runs in background.

@@ -15,9 +15,14 @@ def ensure_local_store(cache_dir: Path) -> dict[str, Any]:
 def doctor_local_store(cache_dir: Path) -> dict[str, Any]:
     payload = status_cache(cache_dir)
     errors: list[str] = []
+    warnings: list[str] = []
     if not Path(cache_dir).exists():
         errors.append("缓存目录不存在")
+    for dataset in payload.get("datasets", []):
+        if dataset.get("active") and dataset.get("cache_state") != "ready":
+            warnings.append(f"{dataset['dataset_key']} 尚无 latest 缓存；可执行 tradecat sync {dataset['dataset_key']}")
     payload["errors"] = errors
+    payload["warnings"] = warnings
     payload["ok"] = not errors
     return payload
 

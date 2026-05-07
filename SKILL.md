@@ -37,6 +37,12 @@ cd scripts/project
 bash scripts/verify.sh
 ```
 
+### Bootstrap Development Environment
+
+```bash
+bash scripts/bootstrap-dev.sh
+```
+
 ### Validate Project Only
 
 ```bash
@@ -80,6 +86,12 @@ bash scripts/project/scripts/guard_public_local_files.sh
 bash scripts/validate-skill.sh --strict
 ```
 
+### Secret Scan
+
+```bash
+bash scripts/security-scan.sh
+```
+
 ## Project Layout
 
 ```text
@@ -99,6 +111,8 @@ tradecat-public/
 |   `-- install-uninstall.md
 `-- scripts/
     |-- verify.sh
+    |-- bootstrap-dev.sh
+    |-- security-scan.sh
     |-- run-tradecat.sh
     `-- project/
         |-- AGENTS.md

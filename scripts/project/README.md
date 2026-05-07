@@ -114,7 +114,7 @@ tradecat
 
 安装脚本会自动完成：
 
-1. 克隆或更新 `https://github.com/tukuaiai/tradecat.git` 的 `develop` 分支。
+1. 克隆或更新 `https://github.com/tukuaiai/tradecat.git` 的 `develop` 分支，或按 `TRADECAT_INSTALL_REF` 固定到指定 tag/ref。
 2. 进入仓库内 `scripts/project/` 项目目录并创建项目内 `.venv`。
 3. 安装 `tradecat` 命令入口。
 4. 初始化 `.tradecat/cache`。
@@ -133,6 +133,23 @@ Windows PowerShell：
 
 ```powershell
 $env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
+```
+
+### 固定版本安装
+
+如果你要避免启动前自动跟随 `develop` 更新，可以安装固定 tag。固定 ref 安装后，
+launcher 不会自动 pull 远端分支。
+
+Linux / macOS / WSL / Git Bash：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
+```
+
+Windows PowerShell：
+
+```powershell
+$env:TRADECAT_INSTALL_REF = "v0.1.0"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.ps1 | iex
 ```
 
 启动时默认自动更新：
@@ -207,6 +224,7 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 | 变量 | 说明 |
 |:---|:---|
 | `TRADECAT_INSTALL_REPO` | 覆盖 Git 仓库地址 |
+| `TRADECAT_INSTALL_REF` | 固定安装 tag/ref；设置后 launcher 不自动更新 |
 | `TRADECAT_INSTALL_BRANCH` | 覆盖安装分支，默认 `develop` |
 | `TRADECAT_INSTALL_DIR` | 覆盖源码安装目录 |
 | `TRADECAT_PROJECT_SUBDIR` | 覆盖仓库内项目子目录，默认 `scripts/project` |
@@ -319,6 +337,8 @@ tradecat init
 tradecat datasets
 tradecat status
 tradecat doctor
+tradecat status --json
+tradecat doctor --json
 
 # 查看结构化 JSON/JSONL/CSV 固定路径
 tradecat path
@@ -348,6 +368,7 @@ tradecat prune market_snapshot --max-snapshots 100 --apply
 # 导出当前缓存视图
 tradecat export event_stream --format json
 tradecat export market_snapshot --format csv --output market_snapshot.csv
+tradecat export market_snapshot --format csv --output exports/market_snapshot.csv
 tradecat export anomaly_panel --format table --lang en
 
 # 后台持续探测
@@ -362,6 +383,10 @@ tradecat tui --no-live
 tradecat tui --lang en
 TRADECAT_LANG=ko tradecat
 ```
+
+`status` 会显示每个 dataset 的 `ready/initialized/missing` 状态、`latest.*`
+文件是否存在、行列数、缓存体积和最近拉取时间；`doctor` 在缓存未同步时给出
+warning，并保留非零退出码给真正的本地缓存错误。
 
 ## TUI 操作
 
@@ -547,13 +572,14 @@ tradecat config unset default_lang
 ## 开发与验证
 
 ```bash
+bash scripts/bootstrap-dev.sh
 cd scripts/project
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e ".[dev]"
-
 bash scripts/verify.sh
+bash ../../scripts/security-scan.sh
 ```
+
+不使用根脚本时，也可以在 `scripts/project/` 内手动创建 `.venv` 并执行
+`pip install -e ".[dev]"`。
 
 CI 会执行：
 

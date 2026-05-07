@@ -53,11 +53,11 @@ Input: `python3 <(curl .../scripts/project/scripts/request.py) <dataset_key>`, p
 
 ```text
 Input: `curl .../scripts/project/install.sh | sh` or `irm .../scripts/project/install.ps1 | iex`
--> Node 1: installer parses install dir, bin dir, repository, branch, project subdir, and Python version environment variables
--> Node 2: installer clones or updates the configured repository and branch
+-> Node 1: installer parses install dir, bin dir, repository, branch/ref, project subdir, and Python version environment variables
+-> Node 2: installer clones or updates the configured repository branch, or checks out a fixed `TRADECAT_INSTALL_REF`
 -> Node 3: installer prefers local Python 3.12 and falls back to uv-managed Python 3.12 when needed
 -> Node 4: installer locates `scripts/project/`, creates `.venv`, and performs editable install
--> Node 5: installer writes `tradecat` and `tcat` launchers with throttled background update and force-update support
+-> Node 5: installer writes `tradecat` and `tcat` launchers with throttled background update and force-update support; pinned ref installs skip auto-update
 -> Node 6: installer writes `tradecat-uninstall` and `tcat-uninstall` launchers
 -> Node 7: installer runs `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1` and best-effort `tradecat sync-all` unless skipped
 -> Output: user can run `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` from the configured bin dir

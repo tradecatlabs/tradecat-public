@@ -17,6 +17,7 @@ from tradecat_terminal.cache import (
 )
 from tradecat_terminal.config import DEFAULT_APP_ROOT, load_config
 from tradecat_terminal.i18n import cycle_lang, resolve_lang, tr
+from tradecat_terminal.lifecycle import doctor_local_store
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
 from tradecat_terminal.settings import load_settings
 from tradecat_terminal.sheets import find_header_row_index, parse_csv_rows
@@ -64,6 +65,7 @@ from tradecat_terminal.tui import (
 from tradecat_terminal.view_model import build_dataset_view
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SKILL_ROOT = REPO_ROOT.parents[1]
 
 
 class _TtyInput:
@@ -98,6 +100,59 @@ def test_init_cache_does_not_write_registry_projection(tmp_path):
         "market_stats",
         "event_stream",
     ]
+    assert status["ready_dataset_count"] == 0
+    assert status["missing_dataset_count"] == 4
+    assert status["datasets"][0]["cache_state"] == "initialized"
+    assert status["datasets"][0]["latest_json_exists"] is False
+
+
+def test_status_cache_reports_ready_datasets_and_cache_size(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        "时间(北京),内容\n2026-05-07 10:00:00,hello\n",
+    )
+
+    status = status_cache(cache_dir)
+    event_stream = next(item for item in status["datasets"] if item["dataset_key"] == "event_stream")
+
+    assert status["ready_dataset_count"] == 1
+    assert status["missing_dataset_count"] == 3
+    assert status["cache_bytes"] > 0
+    assert event_stream["cache_state"] == "ready"
+    assert event_stream["latest_json_exists"] is True
+    assert event_stream["latest_jsonl_exists"] is True
+    assert event_stream["latest_csv_exists"] is True
+    assert event_stream["cache_bytes"] > 0
+
+
+def test_doctor_warns_for_initialized_but_unsynced_cache(tmp_path):
+    cache_dir = tmp_path / "cache"
+    init_cache(cache_dir)
+
+    payload = doctor_local_store(cache_dir)
+
+    assert payload["ok"] is True
+    assert payload["errors"] == []
+    assert len(payload["warnings"]) == 4
+    assert "tradecat sync event_stream" in payload["warnings"][-1]
+
+
+def test_cli_status_prints_summary_and_dataset_state(tmp_path, capsys):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        "时间(北京),内容\n2026-05-07 10:00:00,hello\n",
+    )
+
+    assert cli.main(["--cache-dir", str(cache_dir), "status"]) == 0
+    output = capsys.readouterr().out
+
+    assert "summary: datasets=4 ready=1 missing=3" in output
+    assert "dataset: event_stream" in output
+    assert "state=ready latest=True" in output
 
 
 def test_default_cache_dir_is_app_root_dot_tradecat_cache(tmp_path, monkeypatch):
@@ -159,8 +214,11 @@ def test_install_launchers_enable_default_auto_update():
     uninstall_ps1 = (REPO_ROOT / "uninstall.ps1").read_text(encoding="utf-8")
 
     assert "auto_update" in install_sh
-    assert 'git -C "$APP_DIR" fetch origin "$BRANCH"' in install_sh
-    assert 'git -C "$APP_DIR" pull --ff-only origin "$BRANCH"' in install_sh
+    assert "TRADECAT_INSTALL_REF" in install_sh
+    assert 'git -C "$APP_DIR" fetch origin "$REF"' in install_sh
+    assert 'git -C "$APP_DIR" fetch origin "refs/tags/$REF:refs/tags/$REF"' in install_sh
+    assert 'git -C "$APP_DIR" pull --ff-only origin "$REF"' in install_sh
+    assert '[ "$PINNED_REF" -eq 0 ]' in install_sh
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_sh
     assert "run_update_blocking >/dev/null 2>&1 || true) &" in install_sh
     assert 'TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init' in install_sh
@@ -170,6 +228,9 @@ def test_install_launchers_enable_default_auto_update():
     assert "TRADECAT_NO_AUTO_UPDATE" in install_sh
     assert "Invoke-TradeCatAutoUpdate" in install_ps1
     assert "tradecat-update.ps1" in install_ps1
+    assert "TRADECAT_INSTALL_REF" in install_ps1
+    assert '$PinnedRef -eq "1"' in install_ps1
+    assert "refs/tags/$($Ref):refs/tags/$($Ref)" in install_ps1
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_ps1
     assert "Start-Process -FilePath \"powershell\"" in install_ps1
     assert "$env:TRADECAT_NO_AUTO_UPDATE = \"1\"" in install_ps1
@@ -178,6 +239,18 @@ def test_install_launchers_enable_default_auto_update():
     assert "TRADECAT_FORCE_UPDATE" in install_ps1
     assert "tradecat.ps1" in install_ps1
     assert "tradecat.ps1" in uninstall_ps1
+
+
+def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
+    ci_yml = (SKILL_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    security_scan = (SKILL_ROOT / "scripts" / "security-scan.sh").read_text(encoding="utf-8")
+    bootstrap = (SKILL_ROOT / "scripts" / "bootstrap-dev.sh").read_text(encoding="utf-8")
+
+    assert "fetch-depth: 0" in ci_yml
+    assert "bash scripts/security-scan.sh --history" in ci_yml
+    assert "ghcr.io/gitleaks/gitleaks:v8.30.1" in security_scan
+    assert "git -C \"$ROOT_DIR\" ls-files" in security_scan
+    assert "uv pip install --python .venv/bin/python -e \".[dev]\"" in bootstrap
 
 
 def test_powershell_installers_are_ascii_for_windows_powershell_51():
@@ -523,6 +596,34 @@ def test_cli_export_outputs_raw_csv_and_display_table(tmp_path, capsys):
     assert "BTCUSDT" in table_output
 
 
+def test_cli_export_creates_output_parent_directories(tmp_path):
+    cache_dir = tmp_path / "cache"
+    output_path = tmp_path / "exports" / "nested" / "market_snapshot.csv"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("market_snapshot"),
+        "https://dexscreener.com/x\n排名,交易对,综合分\n1,BTCUSDT,98.2\n",
+    )
+
+    assert (
+        cli.main(
+            [
+                "--cache-dir",
+                str(cache_dir),
+                "export",
+                "market_snapshot",
+                "--format",
+                "csv",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    assert output_path.read_text(encoding="utf-8").splitlines()[0] == "排名,交易对,综合分"
+
+
 def test_cli_pauses_after_automatic_plain_fallback(monkeypatch):
     stdin = _TtyInput()
     stdout = _TtyOutput()
@@ -838,6 +939,7 @@ def test_tui_status_bar_exposes_freshness_and_cache_context(tmp_path):
 
     assert "cache=cache-hit" in status
     assert "remote=2026-05-01T17:52:26" in status
+    assert "next=" in status
     assert f"path={tmp_path}" in status
 
 
@@ -1345,6 +1447,20 @@ def test_tui_without_curses_falls_back_to_plain(monkeypatch, tmp_path):
     assert "当前 Python 环境不支持 curses" in output
     assert "已自动切换为 Rich 静态文本模式" in output
     assert "暂无本地快照缓存" in output
+    assert calls == []
+
+
+def test_tui_force_plain_fallback_does_not_probe_before_render(monkeypatch, tmp_path):
+    import tradecat_terminal.tui as tui_module
+
+    calls = []
+    monkeypatch.setenv("TRADECAT_TERMINAL_FORCE_PLAIN", "1")
+    monkeypatch.setattr(tui_module, "_probe_latest", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    output = run_tui(tmp_path / "cache", interactive=True, live=True, lang="en")
+
+    assert "TRADECAT_TERMINAL_FORCE_PLAIN=1" in output
+    assert "No local snapshot cache" in output
     assert calls == []
 
 

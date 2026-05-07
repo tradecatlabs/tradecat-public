@@ -28,6 +28,8 @@ tradecat-public/
 `-- scripts/
     |-- validate-skill.sh
     |-- verify.sh
+    |-- bootstrap-dev.sh
+    |-- security-scan.sh
     |-- run-tradecat.sh
     `-- project/
         |-- README.md
@@ -45,9 +47,9 @@ tradecat-public/
 - `.git/`、`.github/`、`.gitignore` 是 Git / CI 边界，禁止移动到
   `scripts/project/`。
 - `SKILL.md`、`agents/`、`references/` 是 Skill 边界，禁止混入项目源码。
-- `scripts/validate-skill.sh`、`scripts/verify.sh` 和 `scripts/run-tradecat.sh`
-  只是薄入口，业务逻辑在
-  `scripts/project/`。
+- `scripts/validate-skill.sh`、`scripts/verify.sh`、`scripts/bootstrap-dev.sh`、
+  `scripts/security-scan.sh` 和 `scripts/run-tradecat.sh` 只是薄入口，业务逻辑在
+  `scripts/project/`，治理扫描只读取 Git 跟踪文件或指定提交范围。
 - 根目录禁止创建 `assets/`、`assets/examples/`、`src/`、`tests/`、
   `pyproject.toml`、`Makefile`、安装脚本或卸载脚本。
 
@@ -69,7 +71,9 @@ tradecat-public/
 从根目录执行：
 
 ```bash
+bash scripts/bootstrap-dev.sh
 bash scripts/verify.sh
+bash scripts/security-scan.sh
 ```
 
 从根目录执行 Skill 严格校验：

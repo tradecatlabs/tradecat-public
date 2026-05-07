@@ -25,7 +25,9 @@ Acceptance:
 Run project verification from the Skill root:
 
 ```bash
+bash scripts/bootstrap-dev.sh
 bash scripts/verify.sh
+bash scripts/security-scan.sh
 ```
 
 Acceptance:
@@ -40,6 +42,8 @@ Acceptance:
 - Project verification removes generated `__pycache__`, `.pytest_cache`, and
   `.ruff_cache` directories before exit.
 - CI runs a Gitleaks secret scan before project install/test steps.
+- `scripts/security-scan.sh` scans tracked files only by default, excluding
+  ignored runtime directories such as `.venv/` and `.tradecat/`.
 
 ## Root Boundary Gate
 
@@ -81,6 +85,7 @@ Before commit or handoff:
 
 ```bash
 git diff --check
+bash scripts/security-scan.sh
 git status --short --branch --ignored
 ```
 
