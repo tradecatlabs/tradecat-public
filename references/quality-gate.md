@@ -57,7 +57,8 @@ Acceptance:
   `scripts/verify.sh`, and `scripts/run-tradecat.sh` remain at root.
 - Project source, tests, installers, project README, and project scripts remain
   under `scripts/project/`.
-- Local-only `AGENTS.md` and `DEBUG*.md` files are ignored by Git.
+- Root/project `AGENTS.md` and project `DEBUG*.md` are tracked public governance
+  files and contain no secrets, cache payloads, or private environment values.
 
 ## Documentation Gate
 
@@ -71,7 +72,7 @@ quality rule changes, update the matching documentation in the same change:
 - TUI behavior: `references/tui-contract.md`.
 - Installer or uninstall behavior: `references/install-uninstall.md`.
 - Quality requirements: `references/quality-gate.md`.
-- Local operating memory: root/project `AGENTS.md` when present.
+- Governance/debug memory: root/project `AGENTS.md` and project `DEBUG*.md`.
 
 ## Git Evidence
 
@@ -85,6 +86,7 @@ git status --short --branch --ignored
 Acceptance:
 
 - Public changes are staged intentionally.
-- Ignored runtime files such as `.venv/`, `.tradecat/`, local `AGENTS.md`, and
-  project `DEBUG*.md` stay untracked.
+- Ignored runtime files such as `.venv/` and `.tradecat/` stay untracked.
+- Tracked governance/debug files such as `AGENTS.md` and project `DEBUG*.md`
+  are reviewed for public-safe content before commit.
 - No generated cache, credentials, private `.env`, or runtime state enters Git.

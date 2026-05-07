@@ -17,7 +17,7 @@ jobs:
       - name: Install
         working-directory: scripts/project
         run: python -m pip install -e ".[dev]"
-      - name: Guard local-only files
+      - name: Guard root boundary
         working-directory: scripts/project
         run: bash scripts/guard_public_local_files.sh
       - name: Lint

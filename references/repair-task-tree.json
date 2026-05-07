@@ -18,12 +18,12 @@
       "title": "新增可移植 Skill 校验脚本",
       "priority": "P0",
       "type": "action",
-      "objective": "新增根脚本封装 auto-skill validator，使用 CODEX_HOME 或 HOME 推导校验器路径，消除 /home/lenovo 硬编码。",
+      "objective": "新增根脚本封装 auto-skill validator，使用 CODEX_HOME 或 HOME 推导校验器路径，消除本机绝对路径硬编码。",
       "parent": "TP-01",
       "status": "Done",
       "parallelizable": false,
       "verify": "从仓库根执行新脚本 strict 模式，换用 CODEX_HOME 覆盖路径后仍能定位校验器。",
-      "gate": "README、SKILL.md、quality-gate 不再要求用户直接复制 /home/lenovo/.codex 路径。",
+      "gate": "README、SKILL.md、quality-gate 不再要求用户直接复制本机 Codex 安装绝对路径。",
       "evidence": "SKILL.md:79、README.md:87、references/quality-gate.md:13 当前引用本机绝对路径。"
     },
     {
@@ -131,18 +131,18 @@
       "title": "修复公开文档与 Skill 可用性",
       "priority": "P1",
       "type": "package",
-      "objective": "解决公开/本地文档边界、GitHub 默认 README、Quick Reference 冗余和公开线性流缺失。",
+      "objective": "解决公开治理文档边界、GitHub 默认 README、Quick Reference 冗余和公开线性流缺失。",
       "parent": null,
       "status": "Done",
       "parallelizable": true,
-      "evidence": "审查发现 AGENTS 本地化、根 README 用户入口弱、SKILL Quick Reference 重复、公开架构 reference 过度压缩。"
+      "evidence": "审查发现 AGENTS 治理口径、根 README 用户入口弱、SKILL Quick Reference 重复、公开架构 reference 过度压缩。"
     },
     {
       "id": "TP-03.01",
-      "title": "明确 AGENTS 本地化策略",
+      "title": "明确 AGENTS 公开治理策略",
       "priority": "P1",
       "type": "action",
-      "objective": "在保持当前 local-only 策略的前提下，把可公开复用规则全部沉淀到 README/SKILL/references，或明确切换为提交脱敏 AGENTS 的策略。",
+      "objective": "明确采用提交脱敏 AGENTS 与 DEBUG 的公开治理策略，并保持 README/SKILL/references 同步。",
       "parent": "TP-03",
       "depends_on": [
         "TP-01.03"
@@ -150,8 +150,8 @@
       "status": "Done",
       "parallelizable": false,
       "verify": "guard、.gitignore、architecture、quality-gate 对 AGENTS 的描述不冲突。",
-      "gate": "公开 clone 后仍能从 README/SKILL/references 获得完整治理规则；本地 AGENTS 不再是唯一真相源。",
-      "evidence": ".gitignore 和 guard 禁止 AGENTS 提交，但 architecture 要求目录变化同步更新 local AGENTS。"
+      "gate": "公开 clone 后能从 README/SKILL/references 与 tracked AGENTS/DEBUG 获得完整治理规则。",
+      "evidence": "策略已从忽略本地 AGENTS/DEBUG 切换为提交脱敏治理文档；guard 不再禁止 AGENTS/DEBUG 入库。"
     },
     {
       "id": "TP-03.02",
@@ -193,7 +193,7 @@
       "parallelizable": true,
       "verify": "references/linear-flows.md 覆盖六条 flow，且每个节点能追溯到代码、脚本、配置或文档。",
       "gate": "公开 references 不再只保留压缩版 Main Flow。",
-      "evidence": "references/architecture.md 当前只有主缓存流；完整 flow 主要在 local-only scripts/project/AGENTS.md。"
+      "evidence": "references/architecture.md 当前只有主缓存流；完整 flow 同步沉淀到 tracked scripts/project/AGENTS.md 与 references/linear-flows.md。"
     },
     {
       "id": "TP-03.05",

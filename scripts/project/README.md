@@ -446,7 +446,7 @@ TUI 探针规则：
 在本仓库开发态，固定为：
 
 ```text
-/home/lenovo/.projects/cat/tradecat-public/.tradecat/cache
+<repo>/scripts/project/.tradecat/cache
 ```
 
 Agent 和脚本优先读取：
@@ -557,9 +557,11 @@ bash scripts/verify.sh
 
 CI 会执行：
 
-- local-only 文件门禁：`AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md` 不允许进入公开仓。
+- 根边界门禁：禁止根目录重新出现项目源码、安装脚本、卸载脚本或 `assets/`。
+- 运行态文件门禁：`.venv/`、`.tradecat/` 等缓存和虚拟环境不得进入仓库。
 - Ruff lint。
 - Pytest。
 - Shell 语法检查。
 
-本地 Agent / Debug 文档可保留在工作区，但被 `.gitignore` 忽略，不进入公开仓。
+`AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md` 是随仓库提交的治理与调试记忆，
+必须保持公开安全，不得包含凭证、缓存内容或私密环境变量。

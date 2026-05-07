@@ -71,7 +71,7 @@ PYTHONPATH=src python3 -m tradecat_terminal path event_stream --json
 ```bash
 test ! -e assets
 git ls-files | sort
-git check-ignore -v AGENTS.md scripts/project/AGENTS.md scripts/project/DEBUG.md scripts/project/DEBUG.archive.md || true
+bash scripts/project/scripts/guard_public_local_files.sh
 ```
 
 ### Skill Quality Gate
@@ -85,7 +85,7 @@ bash scripts/validate-skill.sh --strict
 ```text
 tradecat-public/
 |-- README.md
-|-- AGENTS.md              # local-only when present, ignored by Git
+|-- AGENTS.md              # tracked root governance contract
 |-- SKILL.md
 |-- agents/
 |   `-- openai.yaml
@@ -101,6 +101,9 @@ tradecat-public/
     |-- verify.sh
     |-- run-tradecat.sh
     `-- project/
+        |-- AGENTS.md
+        |-- DEBUG.md
+        |-- DEBUG.archive.md
         |-- pyproject.toml
         |-- scripts/
         |-- src/

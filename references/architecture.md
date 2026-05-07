@@ -8,7 +8,7 @@ Git metadata, references, and thin entry scripts.
 ```text
 tradecat-public/
 |-- README.md
-|-- AGENTS.md                 # local-only when present, ignored by Git
+|-- AGENTS.md                 # tracked root governance contract
 |-- .git/                     # Git metadata, hidden, never moved
 |-- .github/workflows/ci.yml  # CI metadata, hidden, never moved
 |-- .gitignore
@@ -32,6 +32,9 @@ The project itself lives in `scripts/project/` and keeps its original Python pac
 
 ```text
 scripts/project/
+|-- AGENTS.md
+|-- DEBUG.md
+|-- DEBUG.archive.md
 |-- pyproject.toml
 |-- scripts/
 |-- src/tradecat_terminal/
@@ -54,9 +57,9 @@ TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snap
 
 - Keep `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`, and root thin scripts in the Skill root.
 - Keep Python project files, installers, project README, project scripts, `src/`, and `tests/` in `scripts/project/`.
-- Keep root/project `AGENTS.md` and project `DEBUG*.md` local-only unless the public repository policy is explicitly changed.
-- Public reusable rules must live in `README.md`, `SKILL.md`, and `references/`; local `AGENTS.md` copies are convenience memory, not the only source of truth.
-- When the layout changes, update `README.md`, `SKILL.md`, `references/index.md`, this file, `references/linear-flows.md` when flow behavior changes, and the local `AGENTS.md` copies when present.
+- Keep root/project `AGENTS.md` and project `DEBUG*.md` tracked as public governance and debugging memory.
+- Never put credentials, generated cache data, private `.env` values, or machine-local runtime state into tracked governance/debug files.
+- When the layout changes, update `README.md`, `SKILL.md`, `references/index.md`, this file, `references/linear-flows.md` when flow behavior changes, and the tracked `AGENTS.md` copies.
 
 ## Main Flow
 
@@ -81,14 +84,14 @@ Public Google Sheets CSV
 ## Documentation Map
 
 - `README.md`: root boundary map for the Skill wrapper, Git metadata, and bundled project location.
-- `AGENTS.md`: local-only root operating contract for directory governance and movement rules.
+- `AGENTS.md`: tracked root operating contract for directory governance and movement rules.
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `references/*.md`: long-form skill references loaded on demand.
 - `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, and export/config paths.
 - `references/quality-gate.md`: validation, root audit, and release evidence checklist.
 - `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
-- `scripts/project/AGENTS.md`: local-only project engineering contract and linear flows.
-- `scripts/project/DEBUG.md`: local-only current truth and recent debugging notes.
-- `scripts/project/DEBUG.archive.md`: local-only historical accident record.
+- `scripts/project/AGENTS.md`: tracked project engineering contract and linear flows.
+- `scripts/project/DEBUG.md`: tracked current truth and recent debugging notes.
+- `scripts/project/DEBUG.archive.md`: tracked historical accident record.
 
-Root/project `AGENTS.md` and project `DEBUG*.md` are intentionally local-only and ignored by Git; public, reusable guidance belongs in `README.md`, `SKILL.md`, and `references/`.
+Root/project `AGENTS.md` and project `DEBUG*.md` are intentionally tracked. Keep them concise, public-safe, and aligned with `README.md`, `SKILL.md`, and `references/`.

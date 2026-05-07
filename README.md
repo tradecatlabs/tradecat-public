@@ -31,7 +31,7 @@ irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/
 ```text
 tradecat-public/
 |-- README.md
-|-- AGENTS.md                 # 本地治理说明，按公开仓库规则忽略
+|-- AGENTS.md                 # 根治理说明，随仓库提交
 |-- .git/                     # Git 元数据，隐藏目录，不移动
 |-- .github/workflows/ci.yml  # GitHub CI，隐藏目录，不移动
 |-- .gitignore
@@ -66,6 +66,9 @@ scripts/project/
 |-- install.ps1
 |-- uninstall.sh
 |-- uninstall.ps1
+|-- AGENTS.md
+|-- DEBUG.md
+|-- DEBUG.archive.md
 |-- scripts/
 |-- src/tradecat_terminal/
 `-- tests/
@@ -92,8 +95,8 @@ scripts/project/
 - 测试 `tests/`。
 - 项目脚本 `scripts/request.py`、`scripts/start.sh`、`scripts/watchdog.sh`、
   `scripts/verify.sh`、`scripts/guard_public_local_files.sh`。
-- 项目本地文档 `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`，这些文件按公开
-  仓库规则忽略，不提交。
+- 项目治理文档 `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`；这些文件随仓库提交，
+  但必须保持脱敏，不得写入凭证、缓存内容或私密环境变量。
 
 根目录禁止重新出现 `assets/` 或 `assets/examples/`。如果以后确实需要项目示例
 资产，应放入 `scripts/project/` 内部，并同步更新项目文档。
