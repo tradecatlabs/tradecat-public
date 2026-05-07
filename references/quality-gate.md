@@ -28,6 +28,7 @@ Run project verification from the Skill root:
 bash scripts/bootstrap-dev.sh
 bash scripts/verify.sh
 bash scripts/security-scan.sh
+bash scripts/supply-chain-audit.sh
 ```
 
 Acceptance:
@@ -44,6 +45,12 @@ Acceptance:
 - CI runs a Gitleaks secret scan before project install/test steps.
 - `scripts/security-scan.sh` scans tracked files only by default, excluding
   ignored runtime directories such as `.venv/` and `.tradecat/`.
+- `scripts/security-scan.sh` uses a digest-pinned Gitleaks container when Docker
+  is needed, and can bootstrap a local Gitleaks binary when Docker is absent.
+- `scripts/supply-chain-audit.sh` audits the Python project with pinned
+  `pip-audit`.
+- `scripts/project/scripts/validate_data_contract.py --remote` validates the
+  public Google Sheets CSV shape for active datasets in CI.
 
 ## Root Boundary Gate
 
@@ -59,7 +66,9 @@ Acceptance:
 - No root `src/`, `tests/`, `pyproject.toml`, `Makefile`, install script, or
   uninstall script.
 - `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`,
-  `scripts/verify.sh`, and `scripts/run-tradecat.sh` remain at root.
+  `.pre-commit-config.yaml`, and root thin scripts such as
+  `scripts/verify.sh`, `scripts/security-scan.sh`, `scripts/supply-chain-audit.sh`,
+  and `scripts/run-tradecat.sh` remain at root.
 - Project source, tests, installers, project README, and project scripts remain
   under `scripts/project/`.
 - Root/project `AGENTS.md` and project `DEBUG*.md` are tracked public governance
@@ -77,6 +86,7 @@ quality rule changes, update the matching documentation in the same change:
 - TUI behavior: `references/tui-contract.md`.
 - Installer or uninstall behavior: `references/install-uninstall.md`.
 - Quality requirements: `references/quality-gate.md`.
+- Release evidence: `references/release.md`.
 - Governance/debug memory: root/project `AGENTS.md` and project `DEBUG*.md`.
 
 ## Git Evidence
@@ -86,6 +96,7 @@ Before commit or handoff:
 ```bash
 git diff --check
 bash scripts/security-scan.sh
+bash scripts/supply-chain-audit.sh
 git status --short --branch --ignored
 ```
 
@@ -97,3 +108,5 @@ Acceptance:
   are reviewed for public-safe content before commit.
 - No generated cache, credentials, private `.env`, or runtime state enters Git.
 - Secret scanning passes locally when available and in GitHub Actions.
+- `bash scripts/clean-local-runtime.sh --apply` may be used at the end of local
+  work to remove ignored runtime directories from the working tree.

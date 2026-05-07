@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GITLEAKS_IMAGE="${GITLEAKS_IMAGE:-ghcr.io/gitleaks/gitleaks:v8.30.1}"
+GITLEAKS_IMAGE="${GITLEAKS_IMAGE:-ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f}"
+LOCAL_TOOLS_DIR="${TRADECAT_LOCAL_TOOLS_DIR:-$ROOT_DIR/.tools/bin}"
 
 usage() {
   cat <<'EOF'
@@ -15,8 +16,29 @@ directories such as .venv/ and .tradecat/ are not included.
 EOF
 }
 
+ensure_gitleaks() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -x "$LOCAL_TOOLS_DIR/gitleaks" ]]; then
+    PATH="$LOCAL_TOOLS_DIR:$PATH"
+    export PATH
+    return 0
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ "${TRADECAT_SECURITY_AUTO_INSTALL:-1}" == "0" ]]; then
+    return 0
+  fi
+  bash "$ROOT_DIR/scripts/install-security-tools.sh" --tool gitleaks --bin-dir "$LOCAL_TOOLS_DIR"
+  PATH="$LOCAL_TOOLS_DIR:$PATH"
+  export PATH
+}
+
 run_dir_scan() {
   scan_dir="$1"
+  ensure_gitleaks
   if command -v gitleaks >/dev/null 2>&1; then
     gitleaks dir --redact --verbose "$scan_dir"
     return
@@ -31,6 +53,7 @@ run_dir_scan() {
 
 run_history_scan() {
   log_opts="$1"
+  ensure_gitleaks
   if command -v gitleaks >/dev/null 2>&1; then
     gitleaks detect --source "$ROOT_DIR" --log-opts "$log_opts" --redact --verbose
     return

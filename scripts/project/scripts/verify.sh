@@ -14,6 +14,7 @@ cleanup_generated
 bash scripts/guard_public_local_files.sh
 PYTHONPATH=src python3 -m compileall src tests
 PYTHONPATH=src pytest -q -p no:cacheprovider tests
+PYTHONPATH=src python3 scripts/validate_data_contract.py
 if command -v ruff >/dev/null 2>&1; then
   ruff check src tests
 elif [[ -x ".venv/bin/ruff" ]]; then
@@ -24,4 +25,4 @@ else
   exit 1
 fi
 bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/guard_public_local_files.sh
-python3 -m py_compile scripts/request.py
+python3 -m py_compile scripts/request.py scripts/validate_data_contract.py

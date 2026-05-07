@@ -13,6 +13,8 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 - Write `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` launchers.
 - Run `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`.
 - Run initial `tradecat sync-all` best-effort unless skipped.
+- CI validates both local checkout installers and published
+  `raw.githubusercontent.com/.../v0.1.0/...` installers.
 
 ## Launcher Auto-update
 

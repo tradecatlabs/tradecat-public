@@ -7,6 +7,7 @@
 
 TradeCat 用户侧安装、运行和卸载说明见
 [scripts/project/README.md](scripts/project/README.md)。
+固定版本发布说明见 [references/release.md](references/release.md)。
 
 Linux / macOS / WSL / Git Bash：
 
@@ -35,6 +36,7 @@ tradecat-public/
 |-- .git/                     # Git 元数据，隐藏目录，不移动
 |-- .github/workflows/ci.yml  # GitHub CI，隐藏目录，不移动
 |-- .gitignore
+|-- .pre-commit-config.yaml
 |-- SKILL.md
 |-- agents/
 |   `-- openai.yaml
@@ -45,11 +47,15 @@ tradecat-public/
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md
+|   |-- release.md
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
     |-- security-scan.sh
+    |-- supply-chain-audit.sh
+    |-- install-security-tools.sh
+    |-- clean-local-runtime.sh
     |-- run-tradecat.sh
     `-- project/
 ```
@@ -88,7 +94,8 @@ scripts/project/
 - `agents/`：Agent marketplace / profile 元数据。
 - `references/`：Skill 长文档与契约。
 - `scripts/verify.sh`、`scripts/bootstrap-dev.sh`、`scripts/security-scan.sh`、
-  `scripts/run-tradecat.sh`：从 Skill 根进入项目或治理门禁的薄封装。
+  `scripts/supply-chain-audit.sh`、`scripts/install-security-tools.sh`、
+  `scripts/clean-local-runtime.sh`、`scripts/run-tradecat.sh`：从 Skill 根进入项目或治理门禁的薄封装。
 
 应放入 `scripts/project/`：
 
@@ -111,8 +118,15 @@ scripts/project/
 bash scripts/bootstrap-dev.sh
 bash scripts/verify.sh
 bash scripts/security-scan.sh
+bash scripts/supply-chain-audit.sh
 bash scripts/validate-skill.sh --strict
 bash scripts/run-tradecat.sh --help
 cd scripts/project
 PYTHONPATH=src python3 -m tradecat_terminal --help
+```
+
+本地收尾清理忽略运行态目录：
+
+```bash
+bash scripts/clean-local-runtime.sh --apply
 ```

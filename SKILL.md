@@ -92,12 +92,26 @@ bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 ```
 
+### Supply-chain Audit
+
+```bash
+bash scripts/supply-chain-audit.sh
+```
+
+### Data Contract Check
+
+```bash
+cd scripts/project
+PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
+```
+
 ## Project Layout
 
 ```text
 tradecat-public/
 |-- README.md
 |-- AGENTS.md              # tracked root governance contract
+|-- .pre-commit-config.yaml
 |-- SKILL.md
 |-- agents/
 |   `-- openai.yaml
@@ -113,6 +127,9 @@ tradecat-public/
     |-- verify.sh
     |-- bootstrap-dev.sh
     |-- security-scan.sh
+    |-- supply-chain-audit.sh
+    |-- install-security-tools.sh
+    |-- clean-local-runtime.sh
     |-- run-tradecat.sh
     `-- project/
         |-- AGENTS.md
@@ -133,6 +150,7 @@ tradecat-public/
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
 - `references/quality-gate.md`: pre-delivery checklist for Skill wrapper and bundled project changes.
+- `references/release.md`: release evidence, fixed-ref install commands, known limits, and rollback.
 
 ## Examples
 

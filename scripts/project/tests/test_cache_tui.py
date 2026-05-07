@@ -137,6 +137,30 @@ def test_doctor_warns_for_initialized_but_unsynced_cache(tmp_path):
     assert payload["errors"] == []
     assert len(payload["warnings"]) == 4
     assert "tradecat sync event_stream" in payload["warnings"][-1]
+    assert "tradecat sync-all" in payload["repair_hints"][-1]
+    assert payload["fixes"] == []
+
+
+def test_doctor_fix_initializes_missing_cache_dir(tmp_path):
+    cache_dir = tmp_path / "cache"
+
+    payload = doctor_local_store(cache_dir, fix=True)
+
+    assert payload["ok"] is True
+    assert payload["errors"] == []
+    assert payload["fixes"] == ["已初始化本地缓存目录和 dataset 目录"]
+    assert (cache_dir / "datasets" / "event_stream" / "snapshots").exists()
+
+
+def test_cli_doctor_prints_repair_hints(tmp_path, capsys):
+    cache_dir = tmp_path / "cache"
+    init_cache(cache_dir)
+
+    assert cli.main(["--cache-dir", str(cache_dir), "doctor"]) == 0
+    captured = capsys.readouterr()
+
+    assert "summary: datasets=4 ready=0 missing=4" in captured.out
+    assert "hint: 执行 tradecat sync-all 拉取全部 active dataset" in captured.err
 
 
 def test_cli_status_prints_summary_and_dataset_state(tmp_path, capsys):
@@ -245,12 +269,25 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     ci_yml = (SKILL_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     security_scan = (SKILL_ROOT / "scripts" / "security-scan.sh").read_text(encoding="utf-8")
     bootstrap = (SKILL_ROOT / "scripts" / "bootstrap-dev.sh").read_text(encoding="utf-8")
+    supply_chain = (SKILL_ROOT / "scripts" / "supply-chain-audit.sh").read_text(encoding="utf-8")
+    data_contract = (REPO_ROOT / "scripts" / "validate_data_contract.py").read_text(encoding="utf-8")
 
+    assert "actions/checkout@v5" in ci_yml
+    assert "actions/setup-python@v6" in ci_yml
+    assert "windows-2025-vs2026" in ci_yml
     assert "fetch-depth: 0" in ci_yml
     assert "bash scripts/security-scan.sh --history" in ci_yml
-    assert "ghcr.io/gitleaks/gitleaks:v8.30.1" in security_scan
+    assert "published-install-smoke" in ci_yml
+    assert "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/scripts/project/install.sh" in ci_yml
+    assert "python scripts/validate_data_contract.py --remote" in ci_yml
+    assert "bash scripts/supply-chain-audit.sh" in ci_yml
+    assert "ghcr.io/gitleaks/gitleaks@sha256:" in security_scan
+    assert "scripts/install-security-tools.sh" in security_scan
     assert "git -C \"$ROOT_DIR\" ls-files" in security_scan
     assert "uv pip install --python .venv/bin/python -e \".[dev]\"" in bootstrap
+    assert 'PIP_AUDIT_VERSION="${PIP_AUDIT_VERSION:-2.10.0}"' in supply_chain
+    assert "pip-audit==$PIP_AUDIT_VERSION" in supply_chain
+    assert "tradecat.dataset_registry.v1" in data_contract
 
 
 def test_powershell_installers_are_ascii_for_windows_powershell_51():

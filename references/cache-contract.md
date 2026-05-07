@@ -49,3 +49,5 @@ datasets/event_stream/stream_events.json
   dataset cache directory exists.
 - `tradecat doctor` returns non-zero only for local cache errors; unsynced active
   datasets are warnings so first-run users get actionable guidance.
+- `tradecat doctor` includes `repair_hints`; `tradecat doctor --fix` may create
+  local cache directories but must not trigger remote CSV sync.

@@ -337,6 +337,7 @@ tradecat init
 tradecat datasets
 tradecat status
 tradecat doctor
+tradecat doctor --fix
 tradecat status --json
 tradecat doctor --json
 
@@ -386,7 +387,9 @@ TRADECAT_LANG=ko tradecat
 
 `status` 会显示每个 dataset 的 `ready/initialized/missing` 状态、`latest.*`
 文件是否存在、行列数、缓存体积和最近拉取时间；`doctor` 在缓存未同步时给出
-warning，并保留非零退出码给真正的本地缓存错误。
+warning 和 repair hint，并保留非零退出码给真正的本地缓存错误。`doctor --fix`
+只初始化本地目录骨架，不触发远端网络同步；缺失数据仍按提示执行 `tradecat sync`
+或 `tradecat sync-all`。
 
 ## TUI 操作
 
@@ -575,7 +578,9 @@ tradecat config unset default_lang
 bash scripts/bootstrap-dev.sh
 cd scripts/project
 bash scripts/verify.sh
+PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
 bash ../../scripts/security-scan.sh
+bash ../../scripts/supply-chain-audit.sh
 ```
 
 不使用根脚本时，也可以在 `scripts/project/` 内手动创建 `.venv` 并执行
@@ -586,6 +591,11 @@ CI 会执行：
 - 根边界门禁：禁止根目录重新出现项目源码、安装脚本、卸载脚本或 `assets/`。
 - 运行态文件门禁：`.venv/`、`.tradecat/` 等缓存和虚拟环境不得进入仓库。
 - Secret scan：治理与调试文档入库后，CI 使用 Gitleaks 阻断凭证误提交。
+- Supply-chain audit：CI 使用 pinned `pip-audit` 检查 Python 依赖漏洞。
+- Data contract：CI 校验内置 dataset registry，并拉取公开 Google Sheets CSV
+  做表头和数据行 smoke。
+- Published installer smoke：push 后 CI 会直接执行 `v0.1.0` 的
+  `raw.githubusercontent.com` 安装入口，验证用户看到的公网脚本可用。
 - Ruff lint。
 - Pytest。
 - Shell 语法检查。

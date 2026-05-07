@@ -8,10 +8,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Skill strict
@@ -41,11 +41,16 @@ jobs:
       - name: Test
         working-directory: scripts/project
         run: PYTHONPATH=src pytest -q
+      - name: Data contract
+        working-directory: scripts/project
+        run: PYTHONPATH=src python scripts/validate_data_contract.py --remote --timeout 10
+      - name: Supply-chain audit
+        run: bash scripts/supply-chain-audit.sh
       - name: Shell syntax
         working-directory: scripts/project
         run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
       - name: Root shell syntax
-        run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/security-scan.sh scripts/bootstrap-dev.sh
+        run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh scripts/clean-local-runtime.sh
       - name: PowerShell syntax
         shell: pwsh
         working-directory: scripts/project
@@ -79,11 +84,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install package
@@ -110,11 +115,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Installer smoke Unix
@@ -144,6 +149,47 @@ jobs:
           $env:TRADECAT_INSTALL_SKIP_SYNC = "1"
           $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/project/install.ps1
+          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
+          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json | Out-Null
+          $env:TRADECAT_KEEP_CACHE = "1"
+          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat-uninstall.cmd")
+
+  published-install-smoke:
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
+    runs-on: ${{ matrix.os }}
+    env:
+      TRADECAT_PUBLIC_INSTALL_REF: v0.1.0
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Public raw installer smoke Unix
+        shell: bash
+        if: runner.os != 'Windows'
+        run: |
+          export TRADECAT_INSTALL_REF="$TRADECAT_PUBLIC_INSTALL_REF"
+          export TRADECAT_INSTALL_DIR="$RUNNER_TEMP/tradecat-public-app"
+          export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-public-bin"
+          export TRADECAT_INSTALL_SKIP_SYNC=1
+          export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
+          curl -fsSL "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/scripts/project/install.sh" | sh
+          "$RUNNER_TEMP/tradecat-public-bin/tradecat" --help >/dev/null
+          "$RUNNER_TEMP/tradecat-public-bin/tradecat" status --json >/dev/null
+          TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat-uninstall"
+      - name: Public raw installer smoke Windows
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          $env:TRADECAT_INSTALL_REF = $env:TRADECAT_PUBLIC_INSTALL_REF
+          $env:TRADECAT_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "tradecat-public-app"
+          $env:TRADECAT_BIN_DIR = Join-Path $env:RUNNER_TEMP "tradecat-public-bin"
+          $env:TRADECAT_INSTALL_SKIP_SYNC = "1"
+          $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
+          irm "https://raw.githubusercontent.com/tukuaiai/tradecat/$($env:TRADECAT_PUBLIC_INSTALL_REF)/scripts/project/install.ps1" | iex
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json | Out-Null
           $env:TRADECAT_KEEP_CACHE = "1"

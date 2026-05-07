@@ -30,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_parser = subparsers.add_parser("doctor", help="检查本地缓存状态")
     doctor_parser.add_argument("--json", action="store_true", help="输出 JSON")
+    doctor_parser.add_argument("--fix", action="store_true", help="只修复本地目录骨架，不触发远端同步")
 
     status_parser = subparsers.add_parser("status", help="查看本地缓存状态")
     status_parser.add_argument("--json", action="store_true", help="输出 JSON")
@@ -112,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "doctor":
-        payload = doctor_local_store(config.cache_dir)
+        payload = doctor_local_store(config.cache_dir, fix=args.fix)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -271,8 +272,12 @@ def print_status(payload: dict) -> None:
             f"rows={dataset['row_count']} cols={dataset['column_count']} bytes={dataset.get('cache_bytes', 0)} "
             f"fetched_at={dataset.get('fetched_at')}"
         )
+    for fixed in payload.get("fixes", []):
+        print(f"fixed: {fixed}")
     for warning in payload.get("warnings", []):
         print(f"warning: {warning}", file=sys.stderr)
+    for hint in payload.get("repair_hints", []):
+        print(f"hint: {hint}", file=sys.stderr)
     for error in payload.get("errors", []):
         print(f"error: {error}", file=sys.stderr)
 

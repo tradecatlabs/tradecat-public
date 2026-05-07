@@ -12,19 +12,41 @@ def ensure_local_store(cache_dir: Path) -> dict[str, Any]:
     return init_cache(cache_dir)
 
 
-def doctor_local_store(cache_dir: Path) -> dict[str, Any]:
+def doctor_local_store(cache_dir: Path, *, fix: bool = False) -> dict[str, Any]:
+    fixes: list[str] = []
+    if fix:
+        init_cache(cache_dir)
+        fixes.append("已初始化本地缓存目录和 dataset 目录")
     payload = status_cache(cache_dir)
     errors: list[str] = []
     warnings: list[str] = []
+    repair_hints: list[str] = []
     if not Path(cache_dir).exists():
         errors.append("缓存目录不存在")
+        repair_hints.append("执行 tradecat doctor --fix 初始化本地缓存目录")
     for dataset in payload.get("datasets", []):
         if dataset.get("active") and dataset.get("cache_state") != "ready":
             warnings.append(f"{dataset['dataset_key']} 尚无 latest 缓存；可执行 tradecat sync {dataset['dataset_key']}")
+            repair_hints.append(f"执行 tradecat sync {dataset['dataset_key']} 拉取该 dataset")
+    if payload.get("missing_dataset_count"):
+        repair_hints.append("执行 tradecat sync-all 拉取全部 active dataset")
     payload["errors"] = errors
     payload["warnings"] = warnings
+    payload["repair_hints"] = _unique(repair_hints)
+    payload["fixes"] = fixes
     payload["ok"] = not errors
     return payload
+
+
+def _unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def probe_dataset(

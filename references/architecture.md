@@ -12,6 +12,7 @@ tradecat-public/
 |-- .git/                     # Git metadata, hidden, never moved
 |-- .github/workflows/ci.yml  # CI metadata, hidden, never moved
 |-- .gitignore
+|-- .pre-commit-config.yaml
 |-- SKILL.md
 |-- agents/openai.yaml
 |-- references/
@@ -21,11 +22,15 @@ tradecat-public/
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md
+|   |-- release.md
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
     |-- security-scan.sh
+    |-- supply-chain-audit.sh
+    |-- install-security-tools.sh
+    |-- clean-local-runtime.sh
     |-- run-tradecat.sh
     `-- project/
 ```
@@ -84,6 +89,9 @@ Public Google Sheets CSV
 - `scripts/project/scripts/request.py`: zero-install standard-library public request entry.
 - `scripts/bootstrap-dev.sh`: root developer bootstrap wrapper for `scripts/project/.venv`.
 - `scripts/security-scan.sh`: root secret-scan wrapper; scans tracked files by default and commit ranges in CI.
+- `scripts/supply-chain-audit.sh`: root pip-audit wrapper for Python dependency vulnerability checks.
+- `scripts/install-security-tools.sh`: optional local Gitleaks installer for machines without Docker.
+- `scripts/clean-local-runtime.sh`: local cleanup helper for ignored runtime directories.
 
 ## Documentation Map
 
@@ -93,6 +101,7 @@ Public Google Sheets CSV
 - `references/*.md`: long-form skill references loaded on demand.
 - `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, and export/config paths.
 - `references/quality-gate.md`: validation, root audit, and release evidence checklist.
+- `references/release.md`: public release notes, fixed-ref install commands, CI evidence, and rollback.
 - `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
 - `scripts/project/AGENTS.md`: tracked project engineering contract and linear flows.
 - `scripts/project/DEBUG.md`: tracked current truth and recent debugging notes.

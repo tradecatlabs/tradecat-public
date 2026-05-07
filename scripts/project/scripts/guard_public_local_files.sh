@@ -9,6 +9,7 @@ cd "$REPO_ROOT"
 runtime_paths=(
   ".venv"
   ".tradecat"
+  ".tools"
   "scripts/project/.venv"
   "scripts/project/.tradecat"
 )

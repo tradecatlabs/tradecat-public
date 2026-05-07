@@ -52,6 +52,7 @@ tradecat-public/
         │   ├── guard_public_local_files.sh
         │   ├── request.py
         │   ├── start.sh
+        │   ├── validate_data_contract.py
         │   ├── verify.sh
         │   └── watchdog.sh
         ├── src/
@@ -176,9 +177,10 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `i18n.py`：TUI/CLI 外壳文案的轻量多语言表；只处理中文、英文、韩语 UI 文案。
 - `install.sh`：POSIX 一键安装入口，覆盖 Linux / macOS / WSL / Git Bash。
 - `install.ps1`：Windows PowerShell 一键安装入口。
-- `lifecycle.py`：用户侧 ensure / probe / watch 生命周期闭环；不包含 repair/backfill。
+- `lifecycle.py`：用户侧 ensure / probe / watch 生命周期闭环；`doctor --fix` 只修复本地目录骨架，不触发远端同步。
 - `registry.py`：从 `dataset_registry.json` 加载 workbook、tab、dataset、data_mode、TUI 探针间隔与多语言展示名。
 - `scripts/request.py`：零安装一次性公开数据请求脚本；公开 curl 路径为 `scripts/project/scripts/request.py`；读取共享 registry，只能用标准库，只输出 stdout。
+- `scripts/validate_data_contract.py`：公开 dataset registry 与 Google Sheets CSV 契约校验入口；CI 可用 `--remote` 做公网 smoke。
 - `settings.py`：用户侧本地配置文件读写；管理默认语言、默认 tap、缓存目录和探针间隔。
 - `sheets.py`：Google Sheets CSV 只读拉取与 matrix 解析。
 - `structured_cache.py`：结构化缓存投影层；负责 `latest.json` / `latest.jsonl` / `latest.csv` / 根 manifest。
@@ -243,8 +245,10 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 ```bash
 python3 -m compileall src tests
 pytest -q
+PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
 bash scripts/verify.sh
 bash ../../scripts/security-scan.sh
+bash ../../scripts/supply-chain-audit.sh
 ```
 
 ## 本地命令入口
