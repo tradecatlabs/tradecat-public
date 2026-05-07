@@ -26,7 +26,7 @@ run_audit() {
 }
 
 if command -v pipx >/dev/null 2>&1; then
-  run_audit python3 -m pipx run --spec "pip-audit==$PIP_AUDIT_VERSION" pip-audit
+  run_audit pipx run --spec "pip-audit==$PIP_AUDIT_VERSION" pip-audit
   exit 0
 fi
 

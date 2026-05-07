@@ -287,6 +287,7 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "uv pip install --python .venv/bin/python -e \".[dev]\"" in bootstrap
     assert 'PIP_AUDIT_VERSION="${PIP_AUDIT_VERSION:-2.10.0}"' in supply_chain
     assert "pip-audit==$PIP_AUDIT_VERSION" in supply_chain
+    assert "run_audit pipx run --spec" in supply_chain
     assert "tradecat.dataset_registry.v1" in data_contract
 
 
