@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "overall_status": "Not Started",
+  "overall_status": "Done",
   "nodes": [
     {
       "id": "TP-01",
@@ -9,7 +9,7 @@
       "type": "package",
       "objective": "把 Skill strict 校验、根目录边界和 CI 门禁从文档要求升级为可执行约束。",
       "parent": null,
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "evidence": "审查发现 strict skill 校验未进入 CI、校验命令硬编码本机路径、根目录边界只在文档中约束。"
     },
@@ -20,7 +20,7 @@
       "type": "action",
       "objective": "新增根脚本封装 auto-skill validator，使用 CODEX_HOME 或 HOME 推导校验器路径，消除 /home/lenovo 硬编码。",
       "parent": "TP-01",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "从仓库根执行新脚本 strict 模式，换用 CODEX_HOME 覆盖路径后仍能定位校验器。",
       "gate": "README、SKILL.md、quality-gate 不再要求用户直接复制 /home/lenovo/.codex 路径。",
@@ -36,7 +36,7 @@
       "depends_on": [
         "TP-01.01"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "CI YAML 包含 Skill strict step；本地可用 bash -n 或 actionlint 等价检查 YAML 结构。",
       "gate": "CI 能在项目测试前后稳定执行 Skill strict gate，失败时阻断合并。",
@@ -49,7 +49,7 @@
       "type": "action",
       "objective": "扩展 guard_public_local_files.sh，检查 root assets、assets/examples、src、tests、pyproject、Makefile、安装脚本和卸载脚本等禁放路径。",
       "parent": "TP-01",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "构造临时禁放路径时 guard 返回非零；正常仓库状态下 guard 返回零。",
       "gate": "根目录边界不再只靠 README 和 quality-gate 文档约束。",
@@ -65,7 +65,7 @@
       "depends_on": [
         "TP-01.03"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "bash scripts/project/scripts/guard_public_local_files.sh 和 bash scripts/verify.sh 均通过；CI step 名称和文档口径一致。",
       "gate": "根目录误放文件能在本地 verify 与 CI 中被同一脚本拦截。",
@@ -78,7 +78,7 @@
       "type": "package",
       "objective": "减少 verify 产生的忽略产物，并让本地验证路径覆盖 CI 中的重要检查。",
       "parent": null,
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": true,
       "evidence": "实测 bash scripts/verify.sh 后产生 __pycache__ 与 .pytest_cache。"
     },
@@ -89,7 +89,7 @@
       "type": "action",
       "objective": "调整项目 verify，使用 pytest 缓存关闭参数或末尾清理 .pytest_cache，并统一清理 __pycache__。",
       "parent": "TP-02",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": true,
       "verify": "连续两次执行 bash scripts/verify.sh 后，scripts/project 下不残留 __pycache__、.pytest_cache、.ruff_cache。",
       "gate": "verify 仍通过 compileall、pytest、shell syntax 和 request.py py_compile。",
@@ -102,7 +102,7 @@
       "type": "action",
       "objective": "让本地验证明确覆盖 ruff，或在 ruff 不可用时输出清晰降级信息，避免 CI 与本地门禁不对称。",
       "parent": "TP-02",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": true,
       "verify": "ruff 可用时 verify 或 documented gate 能跑 ruff check src tests；ruff 不可用时输出明确说明且不伪造通过。",
       "gate": "本地质量门禁与 CI lint 口径一致或显式说明差异。",
@@ -120,7 +120,7 @@
         "TP-02.01",
         "TP-02.02"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "文档中的命令可从对应目录直接复制执行；不存在相互矛盾的 verify 说明。",
       "gate": "质量门禁文档反映真实脚本行为。",
@@ -133,7 +133,7 @@
       "type": "package",
       "objective": "解决公开/本地文档边界、GitHub 默认 README、Quick Reference 冗余和公开线性流缺失。",
       "parent": null,
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": true,
       "evidence": "审查发现 AGENTS 本地化、根 README 用户入口弱、SKILL Quick Reference 重复、公开架构 reference 过度压缩。"
     },
@@ -147,7 +147,7 @@
       "depends_on": [
         "TP-01.03"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "guard、.gitignore、architecture、quality-gate 对 AGENTS 的描述不冲突。",
       "gate": "公开 clone 后仍能从 README/SKILL/references 获得完整治理规则；本地 AGENTS 不再是唯一真相源。",
@@ -160,7 +160,7 @@
       "type": "action",
       "objective": "在根 README 顶部增加用户安装入口，链接 scripts/project/README.md，并提供 Linux/macOS/WSL 与 PowerShell 的最短安装命令。",
       "parent": "TP-03",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": true,
       "verify": "打开根 README 前 40 行即可看到用户安装入口和项目 README 链接。",
       "gate": "GitHub 默认首页不会只呈现 Skill 外壳说明。",
@@ -176,7 +176,7 @@
       "depends_on": [
         "TP-01.01"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "SKILL.md Quick Reference 不再出现两段同义 bash scripts/verify.sh；Maintenance 与 Quick Reference 使用同一校验脚本。",
       "gate": "SKILL.md 保持短、直接、无重复。",
@@ -189,7 +189,7 @@
       "type": "action",
       "objective": "新增 references/linear-flows.md，把缓存、TUI、一次性请求、安装、卸载、配置/export 六条主链路从本地 AGENTS 抽成公开 reference。",
       "parent": "TP-03",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": true,
       "verify": "references/linear-flows.md 覆盖六条 flow，且每个节点能追溯到代码、脚本、配置或文档。",
       "gate": "公开 references 不再只保留压缩版 Main Flow。",
@@ -205,7 +205,7 @@
       "depends_on": [
         "TP-03.04"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "references/index.md 能按任务类型定位 architecture、quality-gate、linear-flows、repair-task-tree。",
       "gate": "references 入口完整且无重复文档堆叠。",
@@ -223,7 +223,7 @@
         "TP-02",
         "TP-03"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "evidence": "当前 develop ahead 5，远端尚未获得本地治理提交。"
     },
@@ -234,7 +234,7 @@
       "type": "action",
       "objective": "执行 Skill strict、项目 verify、ruff、root boundary guard、git diff --check，并确认无生成物残留。",
       "parent": "TP-04",
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "所有本地 gate 命令返回零；git status 只显示预期 tracked changes 或干净状态。",
       "gate": "本地证据覆盖质量门禁、项目验证、根目录边界、lint 和生成物清理。",
@@ -250,7 +250,7 @@
       "depends_on": [
         "TP-04.01"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "git log --oneline 显示语义清晰的提交；git show --stat 能对应任务树范围。",
       "gate": "每个提交都可独立解释、可回滚。",
@@ -266,7 +266,7 @@
       "depends_on": [
         "TP-04.02"
       ],
-      "status": "Not Started",
+      "status": "Done",
       "parallelizable": false,
       "verify": "git status 显示本地分支与 origin/develop 对齐；GitHub Actions 最新 run 成功或失败原因已记录。",
       "gate": "远端 CI 对本地治理成果形成闭环。",

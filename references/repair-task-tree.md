@@ -8,7 +8,7 @@ Machine-readable source: `references/repair-task-tree.json`.
 
 ## Task Context
 
-- Status: `Not Started`
+- Status: `Done`
 - Review verdict source: repository WARN audit covering quality gates, CI,
   public/local documentation boundaries, validation side effects, and remote
   delivery.
@@ -89,12 +89,21 @@ references so public clones remain reproducible.
 
 ## Next Executable Leaves
 
-- `TP-01.01`: no dependencies. Gate: `README`、`SKILL.md`、`quality-gate` no longer require copying `/home/lenovo/.codex`.
-- `TP-01.03`: no dependencies. Gate: root boundary is enforced by script, not only documentation.
-- `TP-02.01`: no dependencies. Gate: `verify` still passes all existing compile/test/syntax checks and leaves no generated cache.
-- `TP-02.02`: no dependencies. Gate: local lint behavior matches CI or explicitly documents the difference.
-- `TP-03.02`: no dependencies. Gate: root README exposes user installation immediately.
-- `TP-03.04`: no dependencies. Gate: public references include full linear flows.
+- None. All leaf tasks are complete.
+
+## Completion Evidence
+
+- `scripts/validate-skill.sh` now validates the Skill from the root and supports
+  `CODEX_HOME` plus `TRADECAT_SKILL_NAME` for CI checkout paths.
+- GitHub Actions runs `bash scripts/validate-skill.sh --strict`.
+- `scripts/project/scripts/guard_public_local_files.sh` now blocks root
+  forbidden paths as well as tracked local-only files.
+- `bash scripts/verify.sh` runs the Skill gate, project compile/test/syntax
+  checks, optional local ruff, and cleans generated cache directories.
+- Root README exposes user install commands before the Skill wrapper details.
+- `references/linear-flows.md` publishes the six main project flows.
+- Latest observed GitHub Actions run after pushing the implementation:
+  `25468434729`, status `success`.
 
 ## Leaf Task Details
 
