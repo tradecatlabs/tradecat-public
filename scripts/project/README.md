@@ -559,6 +559,7 @@ CI 会执行：
 
 - 根边界门禁：禁止根目录重新出现项目源码、安装脚本、卸载脚本或 `assets/`。
 - 运行态文件门禁：`.venv/`、`.tradecat/` 等缓存和虚拟环境不得进入仓库。
+- Secret scan：治理与调试文档入库后，CI 使用 Gitleaks 阻断凭证误提交。
 - Ruff lint。
 - Pytest。
 - Shell 语法检查。

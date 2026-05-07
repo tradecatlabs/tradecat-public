@@ -9,7 +9,6 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 3. TUI startup, live probe, rendering, language, or links: `tui-contract.md`.
 4. Installer, launcher update, or uninstall behavior: `install-uninstall.md`.
 5. End-to-end public data and install flows: `linear-flows.md`.
-6. WARN finding remediation planning: `repair-task-tree.md` and `repair-task-tree.json`.
 
 ## Reference Map
 
@@ -19,8 +18,8 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 - `install-uninstall.md`: installer, launcher auto-update, uninstall behavior, and cache preservation.
 - `linear-flows.md`: six public linear flows covering cache sync, TUI, one-shot request, install, uninstall, and config/export.
 - `quality-gate.md`: pre-delivery checklist, validation commands, root/project boundary audit, and release evidence.
-- `repair-task-tree.md`: human-readable TP-XX remediation tree for the current WARN findings.
-- `repair-task-tree.json`: machine-readable recursive task tree spec rendered by auto-tasks tooling.
+- `archive/repair-task-tree.md`: completed historical TP-XX remediation tree, kept only for audit evidence.
+- `archive/repair-task-tree.json`: machine-readable archived task tree spec.
 
 ## Source Rule
 

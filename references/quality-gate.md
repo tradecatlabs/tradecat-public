@@ -33,12 +33,13 @@ Acceptance:
 - `scripts/project/scripts/guard_public_local_files.sh` passes.
 - Python source and tests compile.
 - `pytest` passes.
-- `ruff` runs when installed; if it is unavailable locally, the script prints
-  the local limitation and CI remains the definitive lint gate.
+- `ruff` runs locally; missing `ruff` is a verification failure. Install project
+  dev dependencies before running this gate.
 - Shell syntax checks pass.
 - `scripts/project/scripts/request.py` compiles.
 - Project verification removes generated `__pycache__`, `.pytest_cache`, and
   `.ruff_cache` directories before exit.
+- CI runs a Gitleaks secret scan before project install/test steps.
 
 ## Root Boundary Gate
 
@@ -90,3 +91,4 @@ Acceptance:
 - Tracked governance/debug files such as `AGENTS.md` and project `DEBUG*.md`
   are reviewed for public-safe content before commit.
 - No generated cache, credentials, private `.env`, or runtime state enters Git.
+- Secret scanning passes locally when available and in GitHub Actions.

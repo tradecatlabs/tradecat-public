@@ -1,10 +1,13 @@
-# Repair Task Tree
+# Completed Repair Task Tree Archive
 
-This task tree decomposes the current WARN findings into executable `TP-XX`
-packages. It is stored under `references/` instead of root `assets/tasks/`
-because this repository's Skill root explicitly forbids root `assets/`.
+This is a completed historical governance remediation tree. It is kept only for
+audit evidence and should not be interpreted as current pending work.
 
-Machine-readable source: `references/repair-task-tree.json`.
+It originally decomposed WARN findings into executable `TP-XX` packages. It is
+stored under `references/archive/` instead of root `assets/tasks/` because this
+repository's Skill root explicitly forbids root `assets/`.
+
+Machine-readable source: `references/archive/repair-task-tree.json`.
 
 ## Task Context
 
