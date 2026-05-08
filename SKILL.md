@@ -111,6 +111,7 @@ PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
 tradecat-public/
 |-- README.md
 |-- AGENTS.md              # tracked root governance contract
+|-- lessons.md             # tracked accident lessons and prevention rules
 |-- .pre-commit-config.yaml
 |-- SKILL.md
 |-- agents/
@@ -119,10 +120,12 @@ tradecat-public/
 |   |-- index.md
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- first-run-cache.md
 |   |-- linear-flows.md
 |   |-- tui-contract.md
 |   |-- quality-gate.md
-|   `-- install-uninstall.md
+|   |-- install-uninstall.md
+|   `-- release.md
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
@@ -146,6 +149,7 @@ tradecat-public/
 - `references/index.md`: navigation.
 - `references/architecture.md`: project purpose, forbidden paths, and data flows.
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
+- `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
 - `references/linear-flows.md`: public six-flow map for cache, TUI, one-shot request, install, uninstall, and export/config flows.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.

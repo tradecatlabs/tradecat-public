@@ -12,6 +12,7 @@
 tradecat-public/
 |-- README.md
 |-- AGENTS.md
+|-- lessons.md
 |-- .git/
 |-- .github/workflows/ci.yml
 |-- .gitignore
@@ -22,6 +23,7 @@ tradecat-public/
 |   |-- index.md
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md
@@ -52,6 +54,7 @@ tradecat-public/
 - `.git/`、`.github/`、`.gitignore` 是 Git / CI 边界，禁止移动到
   `scripts/project/`。
 - `SKILL.md`、`agents/`、`references/` 是 Skill 边界，禁止混入项目源码。
+- `lessons.md` 是事故经验与防复发规则，必须保持脱敏、短句、可执行。
 - `scripts/validate-skill.sh`、`scripts/verify.sh`、`scripts/bootstrap-dev.sh`、
   `scripts/security-scan.sh`、`scripts/supply-chain-audit.sh`、
   `scripts/install-security-tools.sh`、`scripts/clean-local-runtime.sh` 和

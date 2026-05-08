@@ -87,7 +87,8 @@ def render_safe_plain_tui(
     _rich_print_line(console, f"{tr(resolved_lang, 'cache_label')}: {cache_dir}")
     _rich_print_line(console, f"{tr(resolved_lang, 'current_label')}: {dataset_key} ({_display_name_for_key(dataset_key, resolved_lang)})")
     if not view["rows"]:
-        _rich_print_line(console, tr(resolved_lang, "empty_cache_plain"))
+        for line in _empty_cache_lines(resolved_lang, state={}, interactive=False):
+            _rich_print_line(console, line)
         return _rich_export_text(buffer)
     for line in view.get("top_lines") or []:
         _rich_print_line(console, line)
@@ -500,8 +501,12 @@ def _draw(stdscr, cache_dir: Path, state: dict, limit: int) -> None:
         y += 1
     if not visible_rows:
         state["data_start_y"] = None
-        _add_line(stdscr, y, tr(lang, "empty_cache_curses"), width)
-        _finish_draw(stdscr, state, y + 1, height)
+        for line in _empty_cache_lines(lang, state=state, interactive=True):
+            if y >= height:
+                break
+            _add_line(stdscr, y, line, width)
+            y += 1
+        _finish_draw(stdscr, state, y, height)
         return
     viewport = _render_viewport_cached(
         state,
@@ -558,6 +563,7 @@ def _status_bar(view: dict[str, Any], state: dict[str, Any], *, lang: str, cache
     remote_time = _remote_time_label(view)
     fetched_at = str(view.get("fetched_at") or "-")
     cache_state = "cache-hit" if view.get("rows") else "empty-cache"
+    cold_start = _cold_start_status(view, state)
     probe = str(state.get("last_probe_status") or "-")
     next_seconds = _next_probe_seconds(state)
     parts = [
@@ -569,7 +575,31 @@ def _status_bar(view: dict[str, Any], state: dict[str, Any], *, lang: str, cache
         f"next={next_seconds}s",
         f"path={cache_dir}",
     ]
+    if cold_start:
+        parts.insert(2, f"cold-start={cold_start}")
     return " | ".join(parts)
+
+
+def _cold_start_status(view: dict[str, Any], state: dict[str, Any]) -> str | None:
+    if view.get("rows"):
+        return None
+    if state.get("probe_inflight") or state.get("last_probe_status") == "probing":
+        return "warming"
+    if state.get("last_probe_error"):
+        return "probe-failed"
+    return "sync-needed"
+
+
+def _empty_cache_lines(lang: str, *, state: dict[str, Any], interactive: bool) -> list[str]:
+    lines = [tr(lang, "empty_cache_curses" if interactive else "empty_cache_plain")]
+    if state.get("last_probe_status") == "probing" or state.get("probe_inflight"):
+        lines.append(tr(lang, "empty_cache_warming"))
+    elif state.get("last_probe_error"):
+        lines.append(f"{tr(lang, 'empty_cache_probe_failed')} {_recovery_hint(state)}")
+    else:
+        lines.append(tr(lang, "empty_cache_sync_hint"))
+    lines.append(tr(lang, "empty_cache_weak_network_hint"))
+    return lines
 
 
 def _remote_time_label(view: dict[str, Any]) -> str:

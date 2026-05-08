@@ -84,10 +84,11 @@ quality rule changes, update the matching documentation in the same change:
 - Public flow behavior: `references/linear-flows.md`.
 - Cache behavior: `references/cache-contract.md`.
 - TUI behavior: `references/tui-contract.md`.
+- First-run cache behavior: `references/first-run-cache.md`.
 - Installer or uninstall behavior: `references/install-uninstall.md`.
 - Quality requirements: `references/quality-gate.md`.
 - Release evidence: `references/release.md`.
-- Governance/debug memory: root/project `AGENTS.md` and project `DEBUG*.md`.
+- Governance/debug memory: root/project `AGENTS.md`, root `lessons.md`, and project `DEBUG*.md`.
 
 ## Git Evidence
 

@@ -33,6 +33,7 @@ irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/
 tradecat-public/
 |-- README.md
 |-- AGENTS.md                 # 根治理说明，随仓库提交
+|-- lessons.md                # 本仓长期事故经验与防复发规则
 |-- .git/                     # Git 元数据，隐藏目录，不移动
 |-- .github/workflows/ci.yml  # GitHub CI，隐藏目录，不移动
 |-- .gitignore
@@ -44,6 +45,7 @@ tradecat-public/
 |   |-- index.md
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md

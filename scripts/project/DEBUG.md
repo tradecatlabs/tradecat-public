@@ -44,6 +44,9 @@
 - 本机已执行 `tradecat sync-all` 补齐 4 个 active dataset 缓存。
 - 本机配置已写入 `tui_probe_interval.event_stream=3`、`tui_fetch_timeout.event_stream=3`。
 - 项目 dataset 契约同步调整为 `event_stream` 前台探针默认 `3s/3s`。
+- 安装脚本在 `sync-all` 失败后兜底执行 `tradecat sync event_stream`，优先保证默认入口有数据。
+- TUI 状态栏新增 `cold-start=warming/sync-needed/probe-failed`，空缓存不再只是裸状态码。
+- `doctor` 对全空缓存新增首次冷启动 warning 和弱网 timeout 修复建议。
 
 ### 回归
 

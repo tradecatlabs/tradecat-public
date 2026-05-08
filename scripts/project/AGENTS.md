@@ -20,12 +20,14 @@
 tradecat-public/
 ├── README.md
 ├── AGENTS.md
+├── lessons.md
 ├── SKILL.md
 ├── agents/
 │   └── openai.yaml
 ├── references/
 │   ├── architecture.md
 │   ├── cache-contract.md
+│   ├── first-run-cache.md
 │   ├── index.md
 │   ├── install-uninstall.md
 │   ├── linear-flows.md
@@ -131,7 +133,7 @@ Input(输入)：`curl .../scripts/project/install.sh | sh` 或 `irm .../scripts/
 -> 节点4：安装脚本定位仓库内 `scripts/project/` 项目目录，创建 `.venv` 并执行 editable install
 -> 节点5：安装脚本写入用户级 `tradecat` / `tcat` launcher；branch 安装默认按节流规则后台更新安装仓库，`TRADECAT_FORCE_UPDATE=1` 时阻塞更新；固定 ref 安装不自动更新
 -> 节点6：安装脚本写入用户级 `tradecat-uninstall` / `tcat-uninstall` launcher
--> 节点7：安装脚本设置 `TRADECAT_NO_AUTO_UPDATE=1` 执行 `tradecat init`，并 best-effort 执行 `tradecat sync-all`
+-> 节点7：安装脚本设置 `TRADECAT_NO_AUTO_UPDATE=1` 执行 `tradecat init`，best-effort 执行 `tradecat sync-all`；全量同步失败时兜底同步 `event_stream`
 -> Output(输出)：用户可在任意目录运行 `tradecat`，也可运行 `tradecat-uninstall` 卸载
 ```
 
@@ -236,7 +238,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `install.sh` / `install.ps1` 生成的 `tradecat` / `tcat` launcher 必须默认按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 后台自动更新安装仓库；`TRADECAT_NO_AUTO_UPDATE=1` 跳过，`TRADECAT_FORCE_UPDATE=1` 改为阻塞更新且失败直接退出。
 - 安装脚本写 launcher 时必须替换 `TRADECAT_BIN_DIR` 下已有旧文件或失效 symlink，禁止跟随旧 symlink 写入已不存在的开发虚拟环境。
 - 启动前自动更新只能发生在 launcher 层，禁止在 `cli.py` / `tui.py` 导入业务模块后再修改源码。
-- 安装过程执行 `tradecat init` / `tradecat sync-all` 时必须临时设置 `TRADECAT_NO_AUTO_UPDATE=1`，避免安装链路重复自更新。
+- 安装过程执行 `tradecat init` / `tradecat sync-all` / `tradecat sync event_stream` 时必须临时设置 `TRADECAT_NO_AUTO_UPDATE=1`，避免安装链路重复自更新；`sync-all` 失败后必须兜底同步默认 `event_stream`。
 - `install.sh` / `install.ps1` 必须写入本地短命令 `tradecat-uninstall`。
 - `uninstall.sh` / `uninstall.ps1` 禁止删除系统 Python、git、uv 或用户 PATH；只能删除 TradeCat 安装目录、launcher 和运行态目录。
 - 架构或目录变化必须同步更新 `SKILL.md`、`references/` 与本文件。

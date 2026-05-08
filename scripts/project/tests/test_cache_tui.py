@@ -26,10 +26,12 @@ from tradecat_terminal.tui import (
     MOUSE_WHEEL_STEP,
     _background_probe_interval,
     _build_binance_futures_url,
+    _cold_start_status,
     _display_slice,
     _display_width,
     _drain_probe_results,
     _effective_probe_interval,
+    _empty_cache_lines,
     _filter_rows,
     _handle_mouse_event,
     _handle_screen_resize,
@@ -135,8 +137,10 @@ def test_doctor_warns_for_initialized_but_unsynced_cache(tmp_path):
 
     assert payload["ok"] is True
     assert payload["errors"] == []
-    assert len(payload["warnings"]) == 4
+    assert len(payload["warnings"]) == 5
+    assert "首次缓存为空" in payload["warnings"][0]
     assert "tradecat sync event_stream" in payload["warnings"][-1]
+    assert "tui_fetch_timeout.event_stream" in payload["repair_hints"][-2]
     assert "tradecat sync-all" in payload["repair_hints"][-1]
     assert payload["fixes"] == []
 
@@ -160,6 +164,7 @@ def test_cli_doctor_prints_repair_hints(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert "summary: datasets=4 ready=0 missing=4" in captured.out
+    assert "warning: 首次缓存为空" in captured.err
     assert "hint: 执行 tradecat sync-all 拉取全部 active dataset" in captured.err
 
 
@@ -249,6 +254,7 @@ def test_install_launchers_enable_default_auto_update():
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_sh
     assert "run_update_blocking >/dev/null 2>&1 || true) &" in install_sh
     assert 'TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init' in install_sh
+    assert 'sync event_stream' in install_sh
     assert "TRADECAT_INSTALL_SKIP_SYNC" in install_sh
     assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_sh
     assert "TRADECAT_FORCE_UPDATE" in install_sh
@@ -261,6 +267,7 @@ def test_install_launchers_enable_default_auto_update():
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_ps1
     assert "Start-Process -FilePath \"powershell\"" in install_ps1
     assert "$env:TRADECAT_NO_AUTO_UPDATE = \"1\"" in install_ps1
+    assert "sync event_stream" in install_ps1
     assert "TRADECAT_INSTALL_SKIP_SYNC" in install_ps1
     assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_ps1
     assert "TRADECAT_FORCE_UPDATE" in install_ps1
@@ -982,6 +989,49 @@ def test_tui_status_bar_exposes_freshness_and_cache_context(tmp_path):
     assert "remote=2026-05-01T17:52:26" in status
     assert "next=" in status
     assert f"path={tmp_path}" in status
+
+
+def test_tui_status_bar_exposes_cold_start_state(tmp_path):
+    view = {"rows": [], "meta": {}, "fetched_at": None}
+    warming_state = {
+        "last_probe_status": "probing",
+        "probe_inflight": True,
+        "live": True,
+        "last_probe_at": 0.0,
+        "effective_probe_interval_seconds": 3.0,
+    }
+    failed_state = {
+        "last_probe_status": "error",
+        "last_probe_error": "timeout",
+        "live": True,
+        "last_probe_at": 0.0,
+        "effective_probe_interval_seconds": 3.0,
+    }
+    idle_state = {"last_probe_status": "cache", "live": True, "last_probe_at": 0.0}
+
+    warming_status = _status_bar(view, warming_state, lang="zh", cache_dir=tmp_path)
+    failed_status = _status_bar(view, failed_state, lang="zh", cache_dir=tmp_path)
+    idle_status = _status_bar(view, idle_state, lang="zh", cache_dir=tmp_path)
+
+    assert _cold_start_status(view, warming_state) == "warming"
+    assert "cache=empty-cache" in warming_status
+    assert "cold-start=warming" in warming_status
+    assert "cold-start=probe-failed" in failed_status
+    assert "cold-start=sync-needed" in idle_status
+
+
+def test_empty_cache_guidance_is_actionable_for_plain_and_curses():
+    plain_lines = _empty_cache_lines("zh", state={}, interactive=False)
+    curses_lines = _empty_cache_lines(
+        "zh",
+        state={"last_probe_status": "error", "last_probe_error": "timeout"},
+        interactive=True,
+    )
+
+    assert "tradecat sync event_stream" in plain_lines[0]
+    assert any("tradecat sync-all" in line for line in plain_lines)
+    assert any("首次拉取失败" in line for line in curses_lines)
+    assert any("tui_fetch_timeout.event_stream" in line for line in curses_lines)
 
 
 def test_tui_render_view_cache_reuses_rendered_viewport(monkeypatch):

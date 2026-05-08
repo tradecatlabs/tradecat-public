@@ -33,6 +33,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cache_label": "cache",
         "current_label": "current",
         "empty_cache_plain": "暂无本地快照缓存，请执行：tradecat sync event_stream 或 tradecat",
+        "empty_cache_warming": "首次缓存正在后台拉取；网络慢时界面会先显示空缓存。",
+        "empty_cache_probe_failed": "首次拉取失败。",
+        "empty_cache_sync_hint": "首次缓存为空；执行 tradecat sync-all 可一次性拉取全部公开数据。",
+        "empty_cache_weak_network_hint": "弱网可执行：tradecat config set tui_fetch_timeout.event_stream 3",
         "mode_live": "实时",
         "mode_history": "历史",
         "controls": (
@@ -63,6 +67,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cache_label": "cache",
         "current_label": "current",
         "empty_cache_plain": "No local snapshot cache. Run: tradecat sync event_stream or tradecat",
+        "empty_cache_warming": "First cache fill is running in the background; slow networks may show an empty cache first.",
+        "empty_cache_probe_failed": "First fetch failed.",
+        "empty_cache_sync_hint": "First cache is empty. Run tradecat sync-all to fetch all public datasets.",
+        "empty_cache_weak_network_hint": "On weak networks, run: tradecat config set tui_fetch_timeout.event_stream 3",
         "mode_live": "live",
         "mode_history": "history",
         "controls": (
@@ -93,6 +101,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "cache_label": "cache",
         "current_label": "current",
         "empty_cache_plain": "로컬 스냅샷 캐시가 없습니다. 실행: tradecat sync event_stream 또는 tradecat",
+        "empty_cache_warming": "첫 캐시 채우기가 백그라운드에서 실행 중입니다. 느린 네트워크에서는 먼저 빈 캐시가 보일 수 있습니다.",
+        "empty_cache_probe_failed": "첫 가져오기에 실패했습니다.",
+        "empty_cache_sync_hint": "첫 캐시가 비어 있습니다. tradecat sync-all 로 모든 공개 데이터셋을 가져오세요.",
+        "empty_cache_weak_network_hint": "느린 네트워크에서는 실행: tradecat config set tui_fetch_timeout.event_stream 3",
         "mode_live": "실시간",
         "mode_history": "히스토리",
         "controls": (

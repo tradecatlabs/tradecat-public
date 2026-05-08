@@ -341,6 +341,10 @@ tradecat doctor --fix
 tradecat status --json
 tradecat doctor --json
 
+# 首次缓存为空或弱网时
+tradecat sync-all
+tradecat config set tui_fetch_timeout.event_stream 3
+
 # 查看结构化 JSON/JSONL/CSV 固定路径
 tradecat path
 tradecat path event_stream
@@ -389,7 +393,8 @@ TRADECAT_LANG=ko tradecat
 文件是否存在、行列数、缓存体积和最近拉取时间；`doctor` 在缓存未同步时给出
 warning 和 repair hint，并保留非零退出码给真正的本地缓存错误。`doctor --fix`
 只初始化本地目录骨架，不触发远端网络同步；缺失数据仍按提示执行 `tradecat sync`
-或 `tradecat sync-all`。
+或 `tradecat sync-all`。当全部 active dataset 都没有 latest 缓存时，doctor 会明确标记
+首次空缓存，并给出 `sync-all` 与弱网 timeout 修复命令。
 
 ## TUI 操作
 
@@ -431,6 +436,8 @@ TUI 探针规则：
 - 探针失败不会清空界面；状态栏会保留缓存并显示失败原因和恢复建议。
 - `event_stream` 使用两列轻量渲染，只渲染时间与内容，避免长文本拖慢交互。
 - `event_stream` 当前焦点默认 `interval=3.0s`、`timeout=3.0s`。
+- 空缓存状态会显示 cold-start 诊断：`warming` 表示后台首次拉取中，`sync-needed`
+  表示需要手动同步，`probe-failed` 表示首次拉取失败但程序仍可继续重试。
 - `event_stream` 非焦点默认后台保鲜间隔 `10s`；其他非焦点 tap 默认 `60s`。
 - timeout 会被限制为不超过对应 tap 的基础 interval。
 - 连续失败自动退避：1 次失败退到 `3s`，2 次退到 `5s`，3 次及以上退到 `15s`；成功后恢复基础 interval。

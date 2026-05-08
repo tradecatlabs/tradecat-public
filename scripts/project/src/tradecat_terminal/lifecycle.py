@@ -29,6 +29,9 @@ def doctor_local_store(cache_dir: Path, *, fix: bool = False) -> dict[str, Any]:
             warnings.append(f"{dataset['dataset_key']} 尚无 latest 缓存；可执行 tradecat sync {dataset['dataset_key']}")
             repair_hints.append(f"执行 tradecat sync {dataset['dataset_key']} 拉取该 dataset")
     if payload.get("missing_dataset_count"):
+        if payload.get("ready_dataset_count") == 0:
+            warnings.insert(0, "首次缓存为空；TUI 会先显示 empty-cache，并在后台继续探测远端")
+            repair_hints.append("弱网可执行 tradecat config set tui_fetch_timeout.event_stream 3")
         repair_hints.append("执行 tradecat sync-all 拉取全部 active dataset")
     payload["errors"] = errors
     payload["warnings"] = warnings

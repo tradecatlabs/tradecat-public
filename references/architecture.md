@@ -13,12 +13,14 @@ tradecat-public/
 |-- .github/workflows/ci.yml  # CI metadata, hidden, never moved
 |-- .gitignore
 |-- .pre-commit-config.yaml
+|-- lessons.md
 |-- SKILL.md
 |-- agents/openai.yaml
 |-- references/
 |   |-- index.md
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md
@@ -97,8 +99,10 @@ Public Google Sheets CSV
 
 - `README.md`: root boundary map for the Skill wrapper, Git metadata, and bundled project location.
 - `AGENTS.md`: tracked root operating contract for directory governance and movement rules.
+- `lessons.md`: tracked accident lessons and prevention rules.
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `references/*.md`: long-form skill references loaded on demand.
+- `references/first-run-cache.md`: first-run empty cache, cold-start diagnosis, and weak-network recovery.
 - `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, and export/config paths.
 - `references/quality-gate.md`: validation, root audit, and release evidence checklist.
 - `references/release.md`: public release notes, fixed-ref install commands, CI evidence, and rollback.
