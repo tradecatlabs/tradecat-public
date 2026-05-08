@@ -13,7 +13,7 @@ from tradecat_terminal.contracts import attach_contract, attach_results_contract
 from tradecat_terminal.diagnostics import bundle_to_json, write_support_bundle
 from tradecat_terminal.i18n import LANG_ENV, resolve_lang, tr
 from tradecat_terminal.lifecycle import doctor_local_store, probe_all_datasets, probe_dataset, watch_datasets
-from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_datasets
+from tradecat_terminal.registry import UnknownDatasetError, dataset_to_dict, get_dataset, list_datasets
 from tradecat_terminal.settings import load_settings, set_setting, settings_path, unset_setting
 from tradecat_terminal.sync import sync_all_datasets, sync_dataset
 from tradecat_terminal.tui import render_rows_table, run_tui
@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "path":
         try:
             payload = cache_paths(config.cache_dir, args.dataset_key)
-        except ValueError as exc:
+        except UnknownDatasetError as exc:
             return _command_error(
                 "path",
                 exc,
@@ -178,6 +178,8 @@ def main(argv: list[str] | None = None) -> int:
                 code="invalid_dataset_key",
                 hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
             )
+        except Exception as exc:
+            return _runtime_command_error("path", exc, as_json=args.json)
         if args.json:
             _print_json(attach_contract(payload, "path"))
         else:
@@ -212,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sync":
         try:
             payload = sync_dataset(config.cache_dir, args.dataset_key, fetch_timeout=args.timeout)
-        except ValueError as exc:
+        except UnknownDatasetError as exc:
             return _command_error(
                 "sync",
                 exc,
@@ -220,6 +222,17 @@ def main(argv: list[str] | None = None) -> int:
                 code="invalid_dataset_key",
                 hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
             )
+        except ValueError as exc:
+            return _command_error(
+                "sync",
+                exc,
+                as_json=args.json,
+                code="invalid_runtime_configuration",
+                hint="检查本地配置、环境变量和缓存压缩参数后重试。",
+                kind="configuration",
+            )
+        except Exception as exc:
+            return _runtime_command_error("sync", exc, as_json=args.json)
         if args.json:
             _print_json(attach_contract(payload, "sync"))
         else:
@@ -246,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 payload = probe_all_datasets(config.cache_dir, write=not args.no_write, fetch_timeout=args.timeout)
-        except ValueError as exc:
+        except UnknownDatasetError as exc:
             return _command_error(
                 "probe",
                 exc,
@@ -254,6 +267,17 @@ def main(argv: list[str] | None = None) -> int:
                 code="invalid_dataset_key",
                 hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
             )
+        except ValueError as exc:
+            return _command_error(
+                "probe",
+                exc,
+                as_json=args.json,
+                code="invalid_runtime_configuration",
+                hint="检查本地配置、环境变量和缓存压缩参数后重试。",
+                kind="configuration",
+            )
+        except Exception as exc:
+            return _runtime_command_error("probe", exc, as_json=args.json)
         if args.json:
             if isinstance(payload, list):
                 _print_json(attach_results_contract(payload, "probe-all"))
@@ -271,6 +295,14 @@ def main(argv: list[str] | None = None) -> int:
                 max_snapshots_per_dataset=_resolve_max_snapshots(args.max_snapshots),
                 apply=args.apply,
             )
+        except UnknownDatasetError as exc:
+            return _command_error(
+                "prune",
+                exc,
+                as_json=args.json,
+                code="invalid_dataset_key",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
+            )
         except ValueError as exc:
             return _command_error(
                 "prune",
@@ -279,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
                 code="invalid_prune_request",
                 hint="先执行 tradecat datasets --json 查看可用 dataset_key，并确认 --max-snapshots 为整数。",
             )
+        except Exception as exc:
+            return _runtime_command_error("prune", exc, as_json=args.json)
         if args.json:
             _print_json(attach_contract(payload, "prune"))
         else:
@@ -294,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                 limit=args.limit,
                 lang=args.lang,
             )
-        except ValueError as exc:
+        except UnknownDatasetError as exc:
             return _command_error(
                 "export",
                 exc,
@@ -302,6 +336,16 @@ def main(argv: list[str] | None = None) -> int:
                 code="invalid_dataset_key",
                 hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
             )
+        except ValueError as exc:
+            return _command_error(
+                "export",
+                exc,
+                as_json=args.format == "json",
+                code="invalid_export_request",
+                hint="检查导出参数、本地缓存状态和环境配置后重试。",
+            )
+        except Exception as exc:
+            return _runtime_command_error("export", exc, as_json=args.format == "json")
         if args.output:
             output_path = Path(args.output).expanduser()
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -311,13 +355,33 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "watch":
-        cycles = watch_datasets(
-            config.cache_dir,
-            dataset_key=args.dataset_key,
-            interval_seconds=args.interval,
-            max_cycles=args.max_cycles,
-            write=not args.no_write,
-        )
+        try:
+            cycles = watch_datasets(
+                config.cache_dir,
+                dataset_key=args.dataset_key,
+                interval_seconds=args.interval,
+                max_cycles=args.max_cycles,
+                write=not args.no_write,
+            )
+        except UnknownDatasetError as exc:
+            return _command_error(
+                "watch",
+                exc,
+                as_json=args.json,
+                code="invalid_dataset_key",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
+            )
+        except ValueError as exc:
+            return _command_error(
+                "watch",
+                exc,
+                as_json=args.json,
+                code="invalid_runtime_configuration",
+                hint="检查本地配置、环境变量和 watch 参数后重试。",
+                kind="configuration",
+            )
+        except Exception as exc:
+            return _runtime_command_error("watch", exc, as_json=args.json)
         if args.json:
             for index, results in enumerate(cycles, start=1):
                 payload = attach_results_contract(results, "watch")
@@ -565,6 +629,23 @@ def _command_error(
     else:
         print(f"{command} error: {error}", file=sys.stderr)
     return 2
+
+
+def _runtime_command_error(command: str, error: Exception, *, as_json: bool) -> int:
+    if as_json:
+        _print_json(
+            error_contract(
+                command,
+                error,
+                code="local_runtime_error",
+                kind="runtime",
+                hint="执行 tradecat doctor --verbose 或 doctor --bundle - 获取本地诊断信息。",
+                retryable=False,
+            )
+        )
+    else:
+        print(f"{command} error: {error}", file=sys.stderr)
+    return 1
 
 
 def _payload_exit_code(payload: dict | list) -> int:

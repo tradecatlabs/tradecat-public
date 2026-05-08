@@ -25,6 +25,7 @@ def test_manifest_advertises_required_agent_json_schemas():
     assert {
         "tradecat.status.v1",
         "tradecat.dataset_list.v1",
+        "tradecat.request_dataset_list.v1",
         "tradecat.path_map.v1",
         "tradecat.sync_result.v1",
         "tradecat.request_result.v1",

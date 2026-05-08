@@ -59,6 +59,11 @@
       "command": "python3 scripts/project/scripts/request.py --datasets",
       "risk_class": "network_readonly",
       "schema": "text/tsv",
+      "json_alternative": {
+        "command": "python3 scripts/project/scripts/request.py --datasets --format json",
+        "schema": "tradecat.request_dataset_list.v1",
+        "schema_version": "1.0.0"
+      },
       "exit_codes": {
         "0": "public registry reachable",
         "1": "network/runtime failure",
@@ -180,6 +185,11 @@
       "schema_version": "1.0.0"
     },
     {
+      "command": "python3 scripts/project/scripts/request.py --datasets --format json",
+      "schema": "tradecat.request_dataset_list.v1",
+      "schema_version": "1.0.0"
+    },
+    {
       "command": "bash scripts/run-tradecat.sh export event_stream --format json --limit 5",
       "schema": "tradecat.dataset_view.v1",
       "schema_version": "1.0.0"
@@ -290,6 +300,20 @@
       "meaning": "Local cache has been initialized but no active dataset has a latest projection yet.",
       "retryable": true,
       "repair": "Run bash scripts/run-tradecat.sh doctor --sync --timeout 10 after checking network."
+    },
+    {
+      "code": "invalid_runtime_configuration",
+      "kind": "configuration",
+      "meaning": "A local setting or environment variable is invalid.",
+      "retryable": false,
+      "repair": "Check the reported message, unset the bad environment variable, or repair local settings."
+    },
+    {
+      "code": "local_runtime_error",
+      "kind": "runtime",
+      "meaning": "A local command failed unexpectedly after argument validation.",
+      "retryable": false,
+      "repair": "Run tradecat doctor --verbose or doctor --bundle - and inspect the stable error object."
     }
   ],
   "safe_order_of_operations": [

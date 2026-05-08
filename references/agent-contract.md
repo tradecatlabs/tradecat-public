@@ -83,6 +83,7 @@ Known JSON schemas:
 | `export <dataset> --format json` | `tradecat.dataset_view.v1` |
 | `doctor --bundle -` | `tradecat.support_bundle.v1` |
 | `request.py <dataset> --format json` | `tradecat.request_result.v1` |
+| `request.py --datasets --format json` | `tradecat.request_dataset_list.v1` |
 
 Breaking JSON changes require updating `agents/manifest.json`, this document,
 and `scripts/project/tests/test_json_contract.py` in the same change.
@@ -96,6 +97,11 @@ and `scripts/project/tests/test_json_contract.py` in the same change.
   when the command supports JSON.
 
 Non-interactive commands must not return `0` with `ok=false`.
+
+Dataset lookup failures use `error.code=invalid_dataset_key`. Local
+configuration failures, such as an unsupported `TRADECAT_CACHE_COMPRESSION`, use
+`error.code=invalid_runtime_configuration`; unexpected local failures use
+`error.code=local_runtime_error`. Do not collapse these into dataset errors.
 
 ## Remote Fetch Contract
 

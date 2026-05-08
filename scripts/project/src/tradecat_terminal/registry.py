@@ -11,6 +11,10 @@ from tradecat_terminal.i18n import DEFAULT_LANG, resolve_lang
 DataMode = Literal["snapshot", "stream"]
 
 
+class UnknownDatasetError(ValueError):
+    """Raised only when a requested dataset_key is absent from the registry."""
+
+
 @dataclass(frozen=True)
 class WorkbookSource:
     key: str
@@ -140,7 +144,7 @@ def get_dataset(key: str) -> DatasetSpec:
         return DATASETS[key]
     except KeyError as exc:
         available = ", ".join(sorted(DATASETS))
-        raise ValueError(f"未知 dataset_key: {key}; 可用值: {available}") from exc
+        raise UnknownDatasetError(f"未知 dataset_key: {key}; 可用值: {available}") from exc
 
 
 def list_active_datasets() -> list[DatasetSpec]:

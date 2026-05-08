@@ -113,6 +113,33 @@ def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) ->
     for dataset in list_active_datasets():
         try:
             results.append(sync_dataset(cache_dir, dataset.key, fetch_timeout=fetch_timeout))
+        except ValueError as exc:
+            error = {
+                "code": "invalid_runtime_configuration",
+                "kind": "configuration",
+                "message": str(exc),
+                "hint": "检查本地配置、环境变量和缓存压缩参数后重试。",
+                "retryable": False,
+            }
+            record_recent_error(cache_dir, source="sync-all", dataset_key=dataset.key, error=error)
+            results.append(
+                {
+                    "ok": False,
+                    "dataset_key": dataset.key,
+                    "tab_name": dataset.tab_name,
+                    "data_mode": dataset.data_mode,
+                    "status": "error",
+                    "changed": False,
+                    "wrote": False,
+                    "error": str(exc),
+                    "error_code": error["code"],
+                    "error_kind": error["kind"],
+                    "error_retryable": error["retryable"],
+                    "error_hint": error["hint"],
+                    "error_info": error,
+                    "cache_dir": str(cache_dir),
+                }
+            )
         except Exception as exc:
             error = sanitize_error(exc)
             record_recent_error(cache_dir, source="sync-all", dataset_key=dataset.key, error=error)

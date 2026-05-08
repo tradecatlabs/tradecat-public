@@ -8,6 +8,14 @@
 - 防复发：所有广告给 Agent 解析的 JSON 必须带 `schema/schema_version`；失败必须是 object error；非交互失败必须返回非 0。
 - 验证：每次改 CLI JSON、request.py、wrapper、manifest 或 references，都必须跑 `bash scripts/agent-smoke.sh` 和 `pytest tests/test_*contract*.py tests/test_exit_codes.py`。
 
+## 2026-05-08 Stable Error Objects Must Also Be Semantically Correct
+
+- 现象：`sync` 曾把任意 `ValueError` 都包装成 `invalid_dataset_key`，导致 `TRADECAT_CACHE_COMPRESSION=bad` 被误报成 dataset_key 错。
+- 本质：有稳定 JSON envelope 不等于 contract 正确；错误分类必须保留真实失败域，否则 Agent 会沿错误修复路径继续误操作。
+- 规则：dataset 缺失必须使用专用异常；配置错误、参数错误、远端错误、本地运行时错误必须拆分成不同 `error.code/kind/hint`。
+- 防复发：CLI 捕获异常时禁止用宽泛 `ValueError` 直接映射为业务特定错误码。
+- 验证：新增错误分类时必须覆盖“非 dataset ValueError 不得返回 invalid_dataset_key”和“未知 runtime exception 返回稳定 JSON error”。
+
 ## 2026-05-08 First-run Cache Must Be A Product Contract
 
 - 现象：`tradecat` 启动后显示 `cache=empty-cache`、`remote=-`、`fetched=-`，后台 probe 在弱网下超时。

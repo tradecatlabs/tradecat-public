@@ -34,6 +34,8 @@
 - 修正 `__main__.py` 为 `raise SystemExit(main())`，并补 `test_exit_codes.py`。
 - `request.py --format json` 输出 `tradecat.request_result.v1`，失败也返回 JSON error。
 - 新增 `references/agent-contract.md`、`scripts/agent-smoke.sh` 和 CI `agent-readiness` job。
+- `UnknownDatasetError` 专门表示 dataset_key 不存在；非 dataset 的 `ValueError`
+  不能映射成 `invalid_dataset_key`。
 
 ### 回归
 
