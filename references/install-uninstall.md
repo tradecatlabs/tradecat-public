@@ -19,7 +19,7 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
   so the default no-argument TUI has a useful first cache whenever the default
   dataset can be fetched.
 - CI validates both local checkout installers and published
-  `raw.githubusercontent.com/.../v0.1.0/...` installers.
+  `raw.githubusercontent.com/.../v0.1.1/...` installers.
 
 ## Launcher Auto-update
 

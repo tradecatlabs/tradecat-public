@@ -165,7 +165,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
     runs-on: ${{ matrix.os }}
     env:
-      TRADECAT_PUBLIC_INSTALL_REF: v0.1.0
+      TRADECAT_PUBLIC_INSTALL_REF: v0.1.1
     steps:
       - uses: actions/setup-python@v6
         with:

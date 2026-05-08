@@ -1,5 +1,48 @@
 # Release Notes
 
+## v0.1.1
+
+Release date: 2026-05-08.
+
+Commit: `v0.1.1` tag target.
+
+GitHub Release: <https://github.com/tukuaiai/tradecat/releases/tag/v0.1.1>.
+
+CI evidence:
+
+- Develop CI: <https://github.com/tukuaiai/tradecat/actions/runs/25531028458>
+
+Install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
+```
+
+Windows PowerShell:
+
+```powershell
+$env:TRADECAT_INSTALL_REF = "v0.1.1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.ps1 | iex
+```
+
+Highlights:
+
+- Replaces stale launcher symlinks instead of following broken symlink targets.
+- Hardens first-run cache behavior with `event_stream` installer fallback.
+- Adds cold-start diagnostics for empty-cache TUI states.
+- Adds explicit sync timeout controls and `tradecat doctor --sync`.
+
+Known limits:
+
+- Public data still depends on public Google Sheets CSV availability.
+- Fixed ref installs intentionally skip launcher auto-update.
+
+Rollback:
+
+```bash
+tradecat-uninstall
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
+```
+
 ## v0.1.0
 
 Release date: 2026-05-07.

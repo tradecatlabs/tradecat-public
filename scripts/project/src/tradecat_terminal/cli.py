@@ -31,6 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="检查本地缓存状态")
     doctor_parser.add_argument("--json", action="store_true", help="输出 JSON")
     doctor_parser.add_argument("--fix", action="store_true", help="只修复本地目录骨架，不触发远端同步")
+    doctor_parser.add_argument("--sync", action="store_true", help="显式同步全部 active dataset，修复首次空缓存")
+    doctor_parser.add_argument("--timeout", type=_positive_float_arg, help="doctor --sync 时的单次远端请求超时秒数")
 
     status_parser = subparsers.add_parser("status", help="查看本地缓存状态")
     status_parser.add_argument("--json", action="store_true", help="输出 JSON")
@@ -51,14 +53,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_parser = subparsers.add_parser("sync", help="按 registry 同步一个 dataset 到本地快照缓存")
     sync_parser.add_argument("dataset_key", help="dataset_key，例如 market_snapshot")
+    sync_parser.add_argument("--timeout", type=_positive_float_arg, help="单次远端请求超时秒数")
     sync_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     sync_all_parser = subparsers.add_parser("sync-all", help="同步全部 active dataset 到本地快照缓存")
+    sync_all_parser.add_argument("--timeout", type=_positive_float_arg, help="每个 dataset 的单次远端请求超时秒数")
     sync_all_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     probe_parser = subparsers.add_parser("probe", help="探测远端变化；发现变化后写入本地快照缓存")
     probe_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则探测全部 active dataset")
     probe_parser.add_argument("--no-write", action="store_true", help="只做 dry-run，不写缓存")
+    probe_parser.add_argument("--timeout", type=_positive_float_arg, help="写缓存探测时的单次远端请求超时秒数")
     probe_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     prune_parser = subparsers.add_parser("prune", help="按保留数量裁剪本地历史快照；默认 dry-run 不删除")
@@ -113,7 +118,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "doctor":
-        payload = doctor_local_store(config.cache_dir, fix=args.fix)
+        if args.timeout is not None and not args.sync:
+            print("doctor error: --timeout 仅用于 --sync", file=sys.stderr)
+            return 2
+        payload = doctor_local_store(config.cache_dir, fix=args.fix, sync=args.sync, fetch_timeout=args.timeout)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -157,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "sync":
-        payload = sync_dataset(config.cache_dir, args.dataset_key)
+        payload = sync_dataset(config.cache_dir, args.dataset_key, fetch_timeout=args.timeout)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -165,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload.get("ok") else 1
 
     if args.command == "sync-all":
-        results = sync_all_datasets(config.cache_dir)
+        results = sync_all_datasets(config.cache_dir, fetch_timeout=args.timeout)
         if args.json:
             print(json.dumps(results, ensure_ascii=False))
         else:
@@ -179,9 +187,10 @@ def main(argv: list[str] | None = None) -> int:
                 config.cache_dir,
                 args.dataset_key,
                 write=not args.no_write,
+                fetch_timeout=args.timeout,
             )
         else:
-            payload = probe_all_datasets(config.cache_dir, write=not args.no_write)
+            payload = probe_all_datasets(config.cache_dir, write=not args.no_write, fetch_timeout=args.timeout)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
@@ -274,6 +283,8 @@ def print_status(payload: dict) -> None:
         )
     for fixed in payload.get("fixes", []):
         print(f"fixed: {fixed}")
+    for result in payload.get("sync_results", []):
+        print_sync(result)
     for warning in payload.get("warnings", []):
         print(f"warning: {warning}", file=sys.stderr)
     for hint in payload.get("repair_hints", []):
@@ -351,6 +362,16 @@ def print_config(payload: dict) -> None:
         print("单 tap 键：tui_probe_interval.event_stream, tui_fetch_timeout.event_stream")
         return
     print(json.dumps(settings, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def _positive_float_arg(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("必须是数字") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("必须大于 0")
+    return parsed
 
 
 def export_view(

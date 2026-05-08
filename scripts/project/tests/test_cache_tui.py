@@ -156,6 +156,45 @@ def test_doctor_fix_initializes_missing_cache_dir(tmp_path):
     assert (cache_dir / "datasets" / "event_stream" / "snapshots").exists()
 
 
+def test_doctor_sync_explicitly_fills_cache_with_timeout(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    calls = []
+
+    import tradecat_terminal.lifecycle as lifecycle_module
+
+    def fake_sync_all(target_cache_dir, *, fetch_timeout=None):
+        calls.append((target_cache_dir, fetch_timeout))
+        write_dataset_body(
+            target_cache_dir,
+            get_dataset("event_stream"),
+            "时间(北京),内容\n2026-05-08 10:00:00,hello\n",
+        )
+        return [
+            {
+                "ok": True,
+                "dataset_key": "event_stream",
+                "tab_name": "事件流",
+                "data_mode": "stream",
+                "status": "written",
+                "changed": True,
+                "wrote": True,
+                "row_count": 2,
+                "column_count": 2,
+                "cache_dir": str(target_cache_dir),
+            }
+        ]
+
+    monkeypatch.setattr(lifecycle_module, "sync_all_datasets", fake_sync_all)
+
+    payload = lifecycle_module.doctor_local_store(cache_dir, sync=True, fetch_timeout=8.0)
+
+    assert calls == [(cache_dir, 8.0)]
+    assert payload["ok"] is True
+    assert payload["ready_dataset_count"] == 1
+    assert "已尝试同步全部 active dataset" in payload["fixes"]
+    assert payload["sync_results"][0]["dataset_key"] == "event_stream"
+
+
 def test_cli_doctor_prints_repair_hints(tmp_path, capsys):
     cache_dir = tmp_path / "cache"
     init_cache(cache_dir)
@@ -166,6 +205,54 @@ def test_cli_doctor_prints_repair_hints(tmp_path, capsys):
     assert "summary: datasets=4 ready=0 missing=4" in captured.out
     assert "warning: 首次缓存为空" in captured.err
     assert "hint: 执行 tradecat sync-all 拉取全部 active dataset" in captured.err
+
+
+def test_cli_doctor_rejects_timeout_without_sync(tmp_path, capsys):
+    assert cli.main(["--cache-dir", str(tmp_path / "cache"), "doctor", "--timeout", "10"]) == 2
+
+    assert "--timeout 仅用于 --sync" in capsys.readouterr().err
+
+
+def test_cli_sync_passes_timeout_to_remote_fetch(tmp_path, monkeypatch, capsys):
+    cache_dir = tmp_path / "cache"
+    seen_timeouts = []
+
+    import tradecat_terminal.cache as cache_module
+
+    def fake_fetch_csv_body(url, timeout=30.0):
+        seen_timeouts.append(timeout)
+        return "https://dexscreener.com/x\n数据源,market\n排名,交易对,价格\n1,BTCUSDT,100\n"
+
+    monkeypatch.setattr(cache_module, "fetch_csv_body", fake_fetch_csv_body)
+
+    assert cli.main(["--cache-dir", str(cache_dir), "sync", "market_snapshot", "--timeout", "4", "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert seen_timeouts == [4.0]
+
+
+def test_cli_probe_all_passes_timeout(monkeypatch, tmp_path, capsys):
+    calls = []
+
+    def fake_probe_all(cache_dir, *, write=True, fetch_timeout=None):
+        calls.append((cache_dir, write, fetch_timeout))
+        return [
+            {
+                "ok": True,
+                "dataset_key": "event_stream",
+                "status": "dry-run",
+                "changed": False,
+                "wrote": False,
+            }
+        ]
+
+    monkeypatch.setattr(cli, "probe_all_datasets", fake_probe_all)
+
+    assert cli.main(["--cache-dir", str(tmp_path / "cache"), "probe", "--timeout", "6", "--json"]) == 0
+
+    assert calls == [(tmp_path / "cache", True, 6.0)]
+    assert json.loads(capsys.readouterr().out)[0]["dataset_key"] == "event_stream"
 
 
 def test_cli_status_prints_summary_and_dataset_state(tmp_path, capsys):
@@ -288,6 +375,7 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "fetch-depth: 0" in ci_yml
     assert "bash scripts/security-scan.sh --history" in ci_yml
     assert "published-install-smoke" in ci_yml
+    assert "TRADECAT_PUBLIC_INSTALL_REF: v0.1.1" in ci_yml
     assert "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/scripts/project/install.sh" in ci_yml
     assert "python scripts/validate_data_contract.py --remote" in ci_yml
     assert "bash scripts/supply-chain-audit.sh" in ci_yml

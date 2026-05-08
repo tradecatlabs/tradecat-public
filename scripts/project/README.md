@@ -135,6 +135,8 @@ Windows PowerShell：
 $env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
 ```
 
+`TRADECAT_INSTALL_SKIP_SYNC=1` 只建议 CI、离线或弱网排障时使用；普通用户不要设置。跳过后首次启动前建议执行 `tradecat sync-all`。
+
 ### 固定版本安装
 
 如果你要避免启动前自动跟随 `develop` 更新，可以安装固定 tag。固定 ref 安装后，
@@ -143,13 +145,13 @@ launcher 不会自动 pull 远端分支。
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:TRADECAT_INSTALL_REF = "v0.1.0"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.ps1 | iex
+$env:TRADECAT_INSTALL_REF = "v0.1.1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.ps1 | iex
 ```
 
 启动时默认自动更新：
@@ -344,6 +346,7 @@ tradecat doctor --json
 # 首次缓存为空或弱网时
 tradecat sync-all
 tradecat config set tui_fetch_timeout.event_stream 3
+tradecat doctor --sync --timeout 10
 
 # 查看结构化 JSON/JSONL/CSV 固定路径
 tradecat path
@@ -357,13 +360,16 @@ tradecat config set tui_probe_interval.event_stream 3
 
 # 同步指定 tap 到文件缓存
 tradecat sync event_stream
+tradecat sync event_stream --timeout 10
 tradecat sync market_snapshot
 
 # 同步全部 active dataset
 tradecat sync-all
+tradecat sync-all --timeout 10
 
 # 单次探测；发现变化后写缓存
 tradecat probe event_stream
+tradecat probe event_stream --timeout 10
 tradecat probe --json
 
 # 裁剪历史快照；默认只预览，不删除
@@ -394,7 +400,8 @@ TRADECAT_LANG=ko tradecat
 warning 和 repair hint，并保留非零退出码给真正的本地缓存错误。`doctor --fix`
 只初始化本地目录骨架，不触发远端网络同步；缺失数据仍按提示执行 `tradecat sync`
 或 `tradecat sync-all`。当全部 active dataset 都没有 latest 缓存时，doctor 会明确标记
-首次空缓存，并给出 `sync-all` 与弱网 timeout 修复命令。
+首次空缓存，并给出 `sync-all` 与弱网 timeout 修复命令。需要一键联网修复时，显式执行
+`tradecat doctor --sync --timeout 10`。
 
 ## TUI 操作
 
@@ -601,7 +608,7 @@ CI 会执行：
 - Supply-chain audit：CI 使用 pinned `pip-audit` 检查 Python 依赖漏洞。
 - Data contract：CI 校验内置 dataset registry，并拉取公开 Google Sheets CSV
   做表头和数据行 smoke。
-- Published installer smoke：push 后 CI 会直接执行 `v0.1.0` 的
+- Published installer smoke：push 后 CI 会直接执行 `v0.1.1` 的
   `raw.githubusercontent.com` 安装入口，验证用户看到的公网脚本可用。
 - Ruff lint。
 - Pytest。

@@ -51,6 +51,8 @@ datasets/event_stream/stream_events.json
   datasets are warnings so first-run users get actionable guidance.
 - `tradecat doctor` includes `repair_hints`; `tradecat doctor --fix` may create
   local cache directories but must not trigger remote CSV sync.
+- `tradecat doctor --sync` is the explicit network repair path; it may sync all
+  active datasets and should fail non-zero when the requested remote sync fails.
 - When all active datasets are unsynced, `tradecat doctor` must call this out as
   first-run empty cache and include both `tradecat sync-all` and weak-network
   timeout guidance.

@@ -12,11 +12,21 @@ def ensure_local_store(cache_dir: Path) -> dict[str, Any]:
     return init_cache(cache_dir)
 
 
-def doctor_local_store(cache_dir: Path, *, fix: bool = False) -> dict[str, Any]:
+def doctor_local_store(
+    cache_dir: Path,
+    *,
+    fix: bool = False,
+    sync: bool = False,
+    fetch_timeout: float | None = None,
+) -> dict[str, Any]:
     fixes: list[str] = []
-    if fix:
+    sync_results: list[dict[str, Any]] = []
+    if fix or sync:
         init_cache(cache_dir)
         fixes.append("已初始化本地缓存目录和 dataset 目录")
+    if sync:
+        sync_results = sync_all_datasets(cache_dir, fetch_timeout=fetch_timeout)
+        fixes.append("已尝试同步全部 active dataset")
     payload = status_cache(cache_dir)
     errors: list[str] = []
     warnings: list[str] = []
@@ -33,10 +43,16 @@ def doctor_local_store(cache_dir: Path, *, fix: bool = False) -> dict[str, Any]:
             warnings.insert(0, "首次缓存为空；TUI 会先显示 empty-cache，并在后台继续探测远端")
             repair_hints.append("弱网可执行 tradecat config set tui_fetch_timeout.event_stream 3")
         repair_hints.append("执行 tradecat sync-all 拉取全部 active dataset")
+    failed_syncs = [result for result in sync_results if not result.get("ok")]
+    if failed_syncs:
+        failed_keys = ", ".join(str(result.get("dataset_key")) for result in failed_syncs)
+        errors.append(f"远端同步失败：{failed_keys}")
+        repair_hints.append("检查网络后重试 tradecat doctor --sync --timeout 10")
     payload["errors"] = errors
     payload["warnings"] = warnings
     payload["repair_hints"] = _unique(repair_hints)
     payload["fixes"] = fixes
+    payload["sync_results"] = sync_results
     payload["ok"] = not errors
     return payload
 
@@ -74,10 +90,15 @@ def probe_dataset(
     return sync_dataset(cache_dir, dataset_key, fetch_timeout=fetch_timeout)
 
 
-def probe_all_datasets(cache_dir: Path, *, write: bool = True) -> list[dict[str, Any]]:
+def probe_all_datasets(
+    cache_dir: Path,
+    *,
+    write: bool = True,
+    fetch_timeout: float | None = None,
+) -> list[dict[str, Any]]:
     if not write:
         return [probe_dataset(cache_dir, dataset.key, write=False) for dataset in list_active_datasets()]
-    return sync_all_datasets(cache_dir)
+    return sync_all_datasets(cache_dir, fetch_timeout=fetch_timeout)
 
 
 def watch_datasets(

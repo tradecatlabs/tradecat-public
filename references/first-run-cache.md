@@ -21,7 +21,9 @@ TradeCat 的默认用户体验是 `tradecat` 直接打开 `event_stream`。因�
 
 ```bash
 tradecat doctor
+tradecat doctor --sync --timeout 10
 tradecat sync-all
+tradecat sync-all --timeout 10
 tradecat config set tui_fetch_timeout.event_stream 3
 tradecat config set tui_probe_interval.event_stream 3
 ```
