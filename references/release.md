@@ -1,5 +1,58 @@
 # Release Notes
 
+## v0.1.2
+
+Release date: 2026-05-08.
+
+Commit: `v0.1.2` tag target.
+
+GitHub Release: <https://github.com/tukuaiai/tradecat/releases/tag/v0.1.2>.
+
+CI evidence:
+
+- Develop workflow query: <https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml?query=branch%3Adevelop+event%3Apush>
+- Tag workflow query: <https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml?query=branch%3Av0.1.2>
+
+Release evidence rule:
+
+- Tag-bound release notes use stable tag/workflow URLs instead of post-tag run
+  IDs. Exact GitHub Actions run IDs belong in the GitHub Release body and final
+  delivery report, so a release tag never needs mutation after publication.
+
+Install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
+```
+
+Highlights:
+
+- Makes stable `v0.1.2` the default install ref for ordinary users.
+- Aligns Python package metadata and runtime `__version__` with `0.1.2`.
+- Keeps `TRADECAT_INSTALL_BRANCH=develop` as the explicit auto-update channel.
+- Makes published raw installer CI perform real initial sync and assert that
+  `event_stream` is ready after install or explicit repair.
+- Allows root/project verify scripts to bootstrap missing dev tooling instead
+  of failing on a bare checkout.
+
+Known limits:
+
+- Public data still depends on public Google Sheets CSV availability.
+- Branch-channel installs auto-update; stable tag installs intentionally do not.
+
+Rollback:
+
+```bash
+tradecat-uninstall
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
+```
+
 ## v0.1.1
 
 Release date: 2026-05-08.

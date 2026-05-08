@@ -1,6 +1,6 @@
 [project]
 name = "tradecat-terminal"
-version = "0.1.0"
+version = "0.1.2"
 description = "User-side TradeCat terminal panel backed by local snapshot cache files"
 readme = "README.md"
 requires-python = ">=3.12"

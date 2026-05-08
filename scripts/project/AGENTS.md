@@ -235,7 +235,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `scripts/project/scripts/request.py` 是公开 curl 入口，必须保持无第三方依赖、无本地写入、无私密源，并且 dataset/workbook/gid 必须来自共享 `dataset_registry.json`。
 - `install.sh` 必须保持 POSIX `sh` 兼容，禁止依赖 bash-only 语法。
 - `install.ps1` 是 Windows 原生入口；不要承诺 `curl ... | sh` 能覆盖原生 PowerShell。
-- `install.sh` / `install.ps1` 生成的 `tradecat` / `tcat` launcher 必须默认按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 后台自动更新安装仓库；`TRADECAT_NO_AUTO_UPDATE=1` 跳过，`TRADECAT_FORCE_UPDATE=1` 改为阻塞更新且失败直接退出。
+- `install.sh` / `install.ps1` 默认安装稳定 tag；只有显式 `TRADECAT_INSTALL_BRANCH=develop` 这类分支通道安装才让 `tradecat` / `tcat` launcher 按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 后台自动更新安装仓库；`TRADECAT_NO_AUTO_UPDATE=1` 跳过，`TRADECAT_FORCE_UPDATE=1` 改为阻塞更新且失败直接退出。
 - 安装脚本写 launcher 时必须替换 `TRADECAT_BIN_DIR` 下已有旧文件或失效 symlink，禁止跟随旧 symlink 写入已不存在的开发虚拟环境。
 - 启动前自动更新只能发生在 launcher 层，禁止在 `cli.py` / `tui.py` 导入业务模块后再修改源码。
 - 安装过程执行 `tradecat init` / `tradecat sync-all` / `tradecat sync event_stream` 时必须临时设置 `TRADECAT_NO_AUTO_UPDATE=1`，避免安装链路重复自更新；`sync-all` 失败后必须兜底同步默认 `event_stream`。

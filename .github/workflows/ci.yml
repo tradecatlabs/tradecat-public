@@ -165,7 +165,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
     runs-on: ${{ matrix.os }}
     env:
-      TRADECAT_PUBLIC_INSTALL_REF: v0.1.1
+      TRADECAT_PUBLIC_INSTALL_REF: v0.1.2
     steps:
       - uses: actions/setup-python@v6
         with:
@@ -177,11 +177,39 @@ jobs:
           export TRADECAT_INSTALL_REF="$TRADECAT_PUBLIC_INSTALL_REF"
           export TRADECAT_INSTALL_DIR="$RUNNER_TEMP/tradecat-public-app"
           export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-public-bin"
-          export TRADECAT_INSTALL_SKIP_SYNC=1
           export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
           curl -fsSL "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/scripts/project/install.sh" | sh
           "$RUNNER_TEMP/tradecat-public-bin/tradecat" --help >/dev/null
-          "$RUNNER_TEMP/tradecat-public-bin/tradecat" status --json >/dev/null
+          "$RUNNER_TEMP/tradecat-public-bin/tradecat" status --json >"$RUNNER_TEMP/tradecat-status.json"
+          python - "$RUNNER_TEMP/tradecat-status.json" <<'PY' || {
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          datasets = {item["dataset_key"]: item for item in payload.get("datasets", [])}
+          event_stream = datasets.get("event_stream", {})
+          if payload.get("ready_dataset_count", 0) >= 1 and event_stream.get("cache_state") == "ready":
+              raise SystemExit(0)
+          print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+          raise SystemExit("public installer did not warm event_stream cache")
+          PY
+            "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --sync --timeout 15 >/dev/null
+            "$RUNNER_TEMP/tradecat-public-bin/tradecat" status --json >"$RUNNER_TEMP/tradecat-status.json"
+            python - "$RUNNER_TEMP/tradecat-status.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          datasets = {item["dataset_key"]: item for item in payload.get("datasets", [])}
+          event_stream = datasets.get("event_stream", {})
+          if payload.get("ready_dataset_count", 0) < 1 or event_stream.get("cache_state") != "ready":
+              print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+              raise SystemExit("public installer did not warm event_stream cache after repair")
+          PY
+          }
+          TRADECAT_TERMINAL_NO_PAUSE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat" tui event_stream --plain --limit 3 >/dev/null
           TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat-uninstall"
       - name: Public raw installer smoke Windows
         shell: pwsh
@@ -190,10 +218,23 @@ jobs:
           $env:TRADECAT_INSTALL_REF = $env:TRADECAT_PUBLIC_INSTALL_REF
           $env:TRADECAT_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "tradecat-public-app"
           $env:TRADECAT_BIN_DIR = Join-Path $env:RUNNER_TEMP "tradecat-public-bin"
-          $env:TRADECAT_INSTALL_SKIP_SYNC = "1"
           $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
           irm "https://raw.githubusercontent.com/tukuaiai/tradecat/$($env:TRADECAT_PUBLIC_INSTALL_REF)/scripts/project/install.ps1" | iex
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json | Out-Null
+          $StatusJson = & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json
+          $Status = $StatusJson | ConvertFrom-Json
+          $EventStream = $Status.datasets | Where-Object { $_.dataset_key -eq "event_stream" } | Select-Object -First 1
+          if ($Status.ready_dataset_count -lt 1 -or -not $EventStream -or $EventStream.cache_state -ne "ready") {
+            & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --sync --timeout 15 | Out-Null
+            $StatusJson = & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json
+            $Status = $StatusJson | ConvertFrom-Json
+            $EventStream = $Status.datasets | Where-Object { $_.dataset_key -eq "event_stream" } | Select-Object -First 1
+            if ($Status.ready_dataset_count -lt 1 -or -not $EventStream -or $EventStream.cache_state -ne "ready") {
+              $Status | ConvertTo-Json -Depth 10
+              throw "public installer did not warm event_stream cache"
+            }
+          }
+          $env:TRADECAT_TERMINAL_NO_PAUSE = "1"
+          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") tui event_stream --plain --limit 3 | Out-Null
           $env:TRADECAT_KEEP_CACHE = "1"
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat-uninstall.cmd")

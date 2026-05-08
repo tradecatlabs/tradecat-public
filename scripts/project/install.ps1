@@ -1,9 +1,18 @@
 $ErrorActionPreference = "Stop"
 
 $RepoUrl = if ($env:TRADECAT_INSTALL_REPO) { $env:TRADECAT_INSTALL_REPO } else { "https://github.com/tukuaiai/tradecat.git" }
+$DefaultRef = if ($env:TRADECAT_INSTALL_DEFAULT_REF) { $env:TRADECAT_INSTALL_DEFAULT_REF } else { "v0.1.2" }
 $Branch = if ($env:TRADECAT_INSTALL_BRANCH) { $env:TRADECAT_INSTALL_BRANCH } else { "develop" }
-$Ref = if ($env:TRADECAT_INSTALL_REF) { $env:TRADECAT_INSTALL_REF } else { $Branch }
-$PinnedRef = if ($env:TRADECAT_INSTALL_REF) { "1" } else { "0" }
+if ($env:TRADECAT_INSTALL_REF) {
+    $Ref = $env:TRADECAT_INSTALL_REF
+    $PinnedRef = "1"
+} elseif ($env:TRADECAT_INSTALL_BRANCH) {
+    $Ref = $Branch
+    $PinnedRef = "0"
+} else {
+    $Ref = $DefaultRef
+    $PinnedRef = "1"
+}
 $AppDir = if ($env:TRADECAT_INSTALL_DIR) { $env:TRADECAT_INSTALL_DIR } else { Join-Path $env:USERPROFILE ".tradecat\app" }
 $BinDir = if ($env:TRADECAT_BIN_DIR) { $env:TRADECAT_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
 $PythonVersion = if ($env:TRADECAT_PYTHON_VERSION) { $env:TRADECAT_PYTHON_VERSION } else { "3.12" }

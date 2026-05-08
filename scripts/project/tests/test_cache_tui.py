@@ -5,7 +5,7 @@ import json
 import queue
 from pathlib import Path
 
-from tradecat_terminal import cli
+from tradecat_terminal import __version__, cli
 from tradecat_terminal.cache import (
     init_cache,
     normalized_event_key_for_row,
@@ -324,13 +324,15 @@ def test_i18n_resolves_aliases_and_cycles_language(monkeypatch):
     assert language_hint in tr("ko", "controls")
 
 
-def test_install_launchers_enable_default_auto_update():
+def test_install_launchers_separate_stable_and_branch_channels():
     install_sh = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
     install_ps1 = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
     uninstall_ps1 = (REPO_ROOT / "uninstall.ps1").read_text(encoding="utf-8")
 
     assert "auto_update" in install_sh
+    assert 'DEFAULT_REF="${TRADECAT_INSTALL_DEFAULT_REF:-v0.1.2}"' in install_sh
     assert "TRADECAT_INSTALL_REF" in install_sh
+    assert 'elif [ -n "${TRADECAT_INSTALL_BRANCH:-}" ]; then' in install_sh
     assert "write_executable" in install_sh
     assert 'rm -f "$target"' in install_sh
     assert "tradecat-launcher" in install_sh
@@ -348,7 +350,9 @@ def test_install_launchers_enable_default_auto_update():
     assert "TRADECAT_NO_AUTO_UPDATE" in install_sh
     assert "Invoke-TradeCatAutoUpdate" in install_ps1
     assert "tradecat-update.ps1" in install_ps1
+    assert '$DefaultRef = if ($env:TRADECAT_INSTALL_DEFAULT_REF) { $env:TRADECAT_INSTALL_DEFAULT_REF } else { "v0.1.2" }' in install_ps1
     assert "TRADECAT_INSTALL_REF" in install_ps1
+    assert "} elseif ($env:TRADECAT_INSTALL_BRANCH) {" in install_ps1
     assert '$PinnedRef -eq "1"' in install_ps1
     assert "refs/tags/$($Ref):refs/tags/$($Ref)" in install_ps1
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_ps1
@@ -375,18 +379,32 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "fetch-depth: 0" in ci_yml
     assert "bash scripts/security-scan.sh --history" in ci_yml
     assert "published-install-smoke" in ci_yml
-    assert "TRADECAT_PUBLIC_INSTALL_REF: v0.1.1" in ci_yml
+    assert "TRADECAT_PUBLIC_INSTALL_REF: v0.1.2" in ci_yml
     assert "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/scripts/project/install.sh" in ci_yml
+    published_smoke = ci_yml.split("published-install-smoke:", 1)[1]
+    assert "TRADECAT_INSTALL_SKIP_SYNC" not in published_smoke
+    assert "doctor --sync --timeout 15" in published_smoke
+    assert "public installer did not warm event_stream cache" in published_smoke
     assert "python scripts/validate_data_contract.py --remote" in ci_yml
     assert "bash scripts/supply-chain-audit.sh" in ci_yml
     assert "ghcr.io/gitleaks/gitleaks@sha256:" in security_scan
     assert "scripts/install-security-tools.sh" in security_scan
     assert "git -C \"$ROOT_DIR\" ls-files" in security_scan
     assert "uv pip install --python .venv/bin/python -e \".[dev]\"" in bootstrap
+    assert "bootstrapping $PROJECT_DIR/.venv" in (SKILL_ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
     assert 'PIP_AUDIT_VERSION="${PIP_AUDIT_VERSION:-2.10.0}"' in supply_chain
     assert "pip-audit==$PIP_AUDIT_VERSION" in supply_chain
     assert "run_audit pipx run --spec" in supply_chain
     assert "tradecat.dataset_registry.v1" in data_contract
+
+
+def test_release_version_metadata_matches_stable_ref():
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    release_notes = (SKILL_ROOT / "references" / "release.md").read_text(encoding="utf-8")
+
+    assert 'version = "0.1.2"' in pyproject
+    assert __version__ == "0.1.2"
+    assert "## v0.1.2" in release_notes
 
 
 def test_powershell_installers_are_ascii_for_windows_powershell_51():

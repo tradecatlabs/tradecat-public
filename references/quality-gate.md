@@ -36,8 +36,9 @@ Acceptance:
 - `scripts/project/scripts/guard_public_local_files.sh` passes.
 - Python source and tests compile.
 - `pytest` passes.
-- `ruff` runs locally; missing `ruff` is a verification failure. Install project
-  dev dependencies before running this gate.
+- Root/project verification bootstraps the project `.venv` when `pytest` or
+  `ruff` is missing on a bare checkout, then runs `ruff` from the bootstrapped
+  environment.
 - Shell syntax checks pass.
 - `scripts/project/scripts/request.py` compiles.
 - Project verification removes generated `__pycache__`, `.pytest_cache`, and
@@ -51,6 +52,9 @@ Acceptance:
   `pip-audit`.
 - `scripts/project/scripts/validate_data_contract.py --remote` validates the
   public Google Sheets CSV shape for active datasets in CI.
+- Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
+  fails if the default `event_stream` cache is still not ready after install and
+  explicit `doctor --sync` repair.
 
 ## Root Boundary Gate
 

@@ -101,63 +101,64 @@ flowchart TD
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | sh
 tradecat
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
 tradecat
 ```
 
 安装脚本会自动完成：
 
-1. 克隆或更新 `https://github.com/tukuaiai/tradecat.git` 的 `develop` 分支，或按 `TRADECAT_INSTALL_REF` 固定到指定 tag/ref。
+1. 默认安装当前稳定 tag `v0.1.2`；设置 `TRADECAT_INSTALL_BRANCH=develop` 时改为开发分支通道。
 2. 进入仓库内 `scripts/project/` 项目目录并创建项目内 `.venv`。
 3. 安装 `tradecat` 命令入口；已有旧文件或失效 symlink 会被替换。
 4. 初始化 `.tradecat/cache`。
 5. 尝试同步一次公开数据，失败时不阻断安装。
-6. 写入默认自动更新的 `tradecat` / `tcat` launcher。
+6. 写入 `tradecat` / `tcat` launcher；稳定 tag 安装不自动更新，分支通道安装才按节流策略自动更新。
 7. 把 `tradecat-uninstall` 放到用户级命令目录。
 8. Linux / macOS / WSL 会把命令目录写入 shell profile；当前会话如果还没生效，可直接运行 `~/.local/bin/tradecat`。
 
 弱网、离线或 CI 环境可跳过安装阶段首次远端同步，只初始化缓存目录；CI 还可以跳过写入用户 PATH / shell profile：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
+$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
 ```
 
 `TRADECAT_INSTALL_SKIP_SYNC=1` 只建议 CI、离线或弱网排障时使用；普通用户不要设置。跳过后首次启动前建议执行 `tradecat sync-all`。
 
-### 固定版本安装
+### 开发通道安装
 
-如果你要避免启动前自动跟随 `develop` 更新，可以安装固定 tag。固定 ref 安装后，
-launcher 不会自动 pull 远端分支。
+普通用户默认使用稳定 tag。如果你需要跟随 `develop`，显式选择开发通道；这种安装会在
+launcher 启动前按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 节流检查远端更新。
 
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | TRADECAT_INSTALL_BRANCH=develop sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:TRADECAT_INSTALL_REF = "v0.1.1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.ps1 | iex
+$env:TRADECAT_INSTALL_BRANCH = "develop"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.ps1 | iex
 ```
 
-启动时默认自动更新：
+更新策略：
 
-- 每次运行 `tradecat` / `tcat` 前，launcher 会按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 做节流检查，默认最多每 1 小时触发一次。
-- 普通启动使用后台更新，不阻塞 TUI；更新完成后下次启动自动使用新版本。
+- 稳定 tag 安装默认不自动更新，保证用户入口可复现。
+- 分支通道安装会在每次运行 `tradecat` / `tcat` 前按 `TRADECAT_UPDATE_INTERVAL_SECONDS` 做节流检查，默认最多每 1 小时触发一次。
+- 分支通道普通启动使用后台更新，不阻塞 TUI；更新完成后下次启动自动使用新版本。
 - 如果设置 `TRADECAT_FORCE_UPDATE=1`，launcher 会改为阻塞更新，确认拉到最新版本后再启动。
 - 更新失败时默认继续使用本地版本；设置 `TRADECAT_FORCE_UPDATE=1` 后，更新失败会直接退出。
 - 设置 `TRADECAT_NO_AUTO_UPDATE=1` 可跳过启动前自动更新。
@@ -226,8 +227,9 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 | 变量 | 说明 |
 |:---|:---|
 | `TRADECAT_INSTALL_REPO` | 覆盖 Git 仓库地址 |
+| `TRADECAT_INSTALL_DEFAULT_REF` | 一键安装未显式设置分支或 ref 时使用的稳定 tag，默认 `v0.1.2` |
 | `TRADECAT_INSTALL_REF` | 固定安装 tag/ref；设置后 launcher 不自动更新 |
-| `TRADECAT_INSTALL_BRANCH` | 覆盖安装分支，默认 `develop` |
+| `TRADECAT_INSTALL_BRANCH` | 覆盖为分支通道安装，常用 `develop`；设置后 launcher 按该分支自动更新 |
 | `TRADECAT_INSTALL_DIR` | 覆盖源码安装目录 |
 | `TRADECAT_PROJECT_SUBDIR` | 覆盖仓库内项目子目录，默认 `scripts/project` |
 | `TRADECAT_BIN_DIR` | 覆盖命令入口目录 |
@@ -579,6 +581,9 @@ tradecat config unset default_lang
 | `TRADECAT_UPDATE_INTERVAL_SECONDS` | `3600` | launcher 启动前后台自动更新的节流间隔秒数；`0` 表示每次启动都触发后台更新 |
 | `TRADECAT_NO_AUTO_UPDATE` | 空 | 设为 `1` 时跳过 launcher 自动更新 |
 | `TRADECAT_FORCE_UPDATE` | 空 | 设为 `1` 时启动前阻塞更新，失败则退出 |
+| `TRADECAT_INSTALL_DEFAULT_REF` | `v0.1.2` | 一键安装未显式设置分支或 ref 时使用的稳定 tag |
+| `TRADECAT_INSTALL_REF` | 空 | 固定安装 tag/ref；设置后 launcher 不自动更新 |
+| `TRADECAT_INSTALL_BRANCH` | 空 | 覆盖为分支通道安装，常用 `develop`；设置后 launcher 按该分支自动更新 |
 | `TRADECAT_INSTALL_SKIP_SYNC` | 空 | 设为 `1` 时一键安装只初始化缓存目录，跳过安装阶段首次远端同步；用于 CI、弱网或离线安装 |
 | `TRADECAT_INSTALL_SKIP_PATH_WRITE` | 空 | 设为 `1` 时一键安装不写用户 PATH / shell profile；用于 CI 或临时安装测试 |
 | `TRADECAT_REQUEST_REGISTRY_URL` | GitHub develop registry | 一次性请求脚本读取的 dataset registry JSON |
@@ -608,8 +613,8 @@ CI 会执行：
 - Supply-chain audit：CI 使用 pinned `pip-audit` 检查 Python 依赖漏洞。
 - Data contract：CI 校验内置 dataset registry，并拉取公开 Google Sheets CSV
   做表头和数据行 smoke。
-- Published installer smoke：push 后 CI 会直接执行 `v0.1.1` 的
-  `raw.githubusercontent.com` 安装入口，验证用户看到的公网脚本可用。
+- Published installer smoke：push 后 CI 会直接执行 `v0.1.2` 的
+  `raw.githubusercontent.com` 安装入口，并断言默认 `event_stream` 缓存已预热。
 - Ruff lint。
 - Pytest。
 - Shell 语法检查。
