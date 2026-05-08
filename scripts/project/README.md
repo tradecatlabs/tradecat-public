@@ -116,7 +116,7 @@ tradecat
 
 1. 克隆或更新 `https://github.com/tukuaiai/tradecat.git` 的 `develop` 分支，或按 `TRADECAT_INSTALL_REF` 固定到指定 tag/ref。
 2. 进入仓库内 `scripts/project/` 项目目录并创建项目内 `.venv`。
-3. 安装 `tradecat` 命令入口。
+3. 安装 `tradecat` 命令入口；已有旧文件或失效 symlink 会被替换。
 4. 初始化 `.tradecat/cache`。
 5. 尝试同步一次公开数据，失败时不阻断安装。
 6. 写入默认自动更新的 `tradecat` / `tcat` launcher。

@@ -133,6 +133,9 @@ jobs:
           export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-bin"
           export TRADECAT_INSTALL_SKIP_SYNC=1
           export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
+          mkdir -p "$TRADECAT_BIN_DIR"
+          ln -sf "$RUNNER_TEMP/missing-old-tradecat" "$TRADECAT_BIN_DIR/tradecat"
+          ln -sf "$RUNNER_TEMP/missing-old-tcat" "$TRADECAT_BIN_DIR/tcat"
           sh scripts/project/install.sh
           "$RUNNER_TEMP/tradecat-bin/tradecat" --help >/dev/null
           "$RUNNER_TEMP/tradecat-bin/tradecat" status --json >/dev/null

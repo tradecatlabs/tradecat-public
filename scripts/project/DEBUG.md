@@ -25,6 +25,33 @@
 
 该文件只作为历史复盘材料，不是当前运行契约。
 
+## 2026-05-08 安装后 tradecat command not found
+
+### 现象
+
+- 用户在 WSL 内执行 `curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop/scripts/project/install.sh | sh`。
+- 安装过程完成源码更新和 editable install 后失败：
+  `sh: 129: cannot create /home/lenovo/.local/bin/tradecat: Directory nonexistent`。
+- 随后执行 `tradecat` 仍然提示 `command not found`。
+
+### 根因
+
+- 本机 `~/.local/bin/tradecat` 和 `~/.local/bin/tcat` 已存在旧 symlink。
+- 旧 symlink 指向已被清理的开发仓库 `.venv/bin/tradecat`，目标父目录不存在。
+- POSIX redirection `cat > "$BIN_DIR/tradecat"` 会跟随 symlink 写入目标路径，而不是替换 symlink 本身。
+- 因此即使 `mkdir -p "$BIN_DIR"` 已执行，写 launcher 仍会落到已失效的旧目标上并失败。
+
+### 修复
+
+- `install.sh` 写 launcher 改为先写临时文件，再 `rm -f` 旧入口并 `mv` 到目标路径。
+- 这样会替换坏 symlink 本身，不再跟随旧目标。
+- CI Unix installer smoke 预置坏 symlink，确保后续安装脚本能覆盖旧入口。
+
+### 回归
+
+- `test_install_launchers_enable_default_auto_update`
+- GitHub Actions `installer-smoke (ubuntu-latest/macOS)` 中的 stale symlink 覆盖场景。
+
 ## 2026-04-30 TUI 缩放后不重绘
 
 ### 现象

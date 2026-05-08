@@ -125,8 +125,7 @@ create_venv() {
 
 write_launcher() {
   PROJECT_DIR="$(resolve_project_dir)"
-  mkdir -p "$BIN_DIR"
-  cat >"$BIN_DIR/tradecat" <<EOF
+  write_executable "$BIN_DIR/tradecat" <<EOF
 #!/usr/bin/env sh
 APP_DIR="$APP_DIR"
 PROJECT_DIR="$PROJECT_DIR"
@@ -208,22 +207,44 @@ run_update_blocking() {
 auto_update
 exec "$VENV_PY" -m tradecat_terminal "\$@"
 EOF
-  chmod +x "$BIN_DIR/tradecat"
-  cat >"$BIN_DIR/tcat" <<EOF
+  write_executable "$BIN_DIR/tcat" <<EOF
 #!/usr/bin/env sh
 exec "$BIN_DIR/tradecat" "\$@"
 EOF
-  chmod +x "$BIN_DIR/tcat"
-  cat >"$BIN_DIR/tradecat-uninstall" <<EOF
+  write_executable "$BIN_DIR/tradecat-uninstall" <<EOF
 #!/usr/bin/env sh
 TRADECAT_INSTALL_DIR="$APP_DIR" TRADECAT_BIN_DIR="$BIN_DIR" exec sh "$PROJECT_DIR/uninstall.sh" "\$@"
 EOF
-  chmod +x "$BIN_DIR/tradecat-uninstall"
-  cat >"$BIN_DIR/tcat-uninstall" <<EOF
+  write_executable "$BIN_DIR/tcat-uninstall" <<EOF
 #!/usr/bin/env sh
 TRADECAT_INSTALL_DIR="$APP_DIR" TRADECAT_BIN_DIR="$BIN_DIR" exec sh "$PROJECT_DIR/uninstall.sh" "\$@"
 EOF
-  chmod +x "$BIN_DIR/tcat-uninstall"
+}
+
+write_executable() {
+  target="$1"
+  target_dir="$(dirname "$target")"
+  tmp_file="$(mktemp "${TMPDIR:-/tmp}/tradecat-launcher.XXXXXX")" || fail "无法创建临时 launcher 文件"
+  cat >"$tmp_file" || {
+    rm -f "$tmp_file"
+    fail "无法写入临时 launcher 文件"
+  }
+  chmod 0755 "$tmp_file" || {
+    rm -f "$tmp_file"
+    fail "无法设置 launcher 可执行权限：$target"
+  }
+  mkdir -p "$target_dir" || {
+    rm -f "$tmp_file"
+    fail "无法创建命令目录：$target_dir"
+  }
+  rm -f "$target" || {
+    rm -f "$tmp_file"
+    fail "无法替换旧命令入口：$target"
+  }
+  mv "$tmp_file" "$target" || {
+    rm -f "$tmp_file"
+    fail "无法安装命令入口：$target"
+  }
 }
 
 ensure_shell_path() {

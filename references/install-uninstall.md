@@ -11,6 +11,8 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 - Fall back to `uv` for Python 3.12 environment creation when needed.
 - Install the bundled project from `scripts/project`.
 - Write `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` launchers.
+- Existing launcher files or stale symlinks under `TRADECAT_BIN_DIR` are replaced
+  in place; installer must not follow old symlink targets.
 - Run `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`.
 - Run initial `tradecat sync-all` best-effort unless skipped.
 - CI validates both local checkout installers and published

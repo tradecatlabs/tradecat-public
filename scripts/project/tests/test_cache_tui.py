@@ -239,6 +239,9 @@ def test_install_launchers_enable_default_auto_update():
 
     assert "auto_update" in install_sh
     assert "TRADECAT_INSTALL_REF" in install_sh
+    assert "write_executable" in install_sh
+    assert 'rm -f "$target"' in install_sh
+    assert "tradecat-launcher" in install_sh
     assert 'git -C "$APP_DIR" fetch origin "$REF"' in install_sh
     assert 'git -C "$APP_DIR" fetch origin "refs/tags/$REF:refs/tags/$REF"' in install_sh
     assert 'git -C "$APP_DIR" pull --ff-only origin "$REF"' in install_sh
