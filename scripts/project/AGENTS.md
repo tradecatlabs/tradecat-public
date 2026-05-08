@@ -205,9 +205,9 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - 用户偏好必须通过 `settings.py` 写入本地 JSON；环境变量只作为更高优先级的临时覆盖。
 - `tradecat export` 必须只读本地缓存，不得触发远端网络请求。
 - export 的 `csv/jsonl` 必须保留原始字段；`table` 必须保持物理列 A/B/C... 与原始表头行，方便对照在线表格。
-- TUI 探针间隔必须支持 dataset 独立配置；`event_stream` 默认 1.5s，其它 tap 默认 10s。
+- TUI 探针间隔必须支持 dataset 独立配置；`event_stream` 默认 3.0s，其它 tap 默认 10s。
 - 单 tap 环境变量 `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` 优先于全局 `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL`，命令行 `--probe-interval` 优先级最高。
-- TUI fetch timeout 必须支持 dataset 独立配置；`event_stream` 默认 1.0s，其它 tap 默认 2.0s，且 timeout 不得超过当前基础 interval。
+- TUI fetch timeout 必须支持 dataset 独立配置；`event_stream` 默认 3.0s，其它 tap 默认 2.0s，且 timeout 不得超过当前基础 interval。
 - TUI 高频探针必须有连续失败退避：1 次失败不低于 3s，2 次不低于 5s，3 次及以上不低于 15s，成功后恢复基础 interval。
 - TUI 启动必须 cache-first，禁止在进入界面前阻塞式 probe。
 - TUI live probe 必须后台化；禁止在 curses 主循环内同步拉远端 CSV。

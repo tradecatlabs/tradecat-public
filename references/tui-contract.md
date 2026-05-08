@@ -24,6 +24,7 @@ The TUI is a cache-first terminal browser over local JSON cache files.
 - No frozen columns and no right-side horizontal table scrolling.
 - Width is based on real content display width; terminal viewport crops visible output.
 - `event_stream` uses a lightweight two-column path.
+- `event_stream` foreground live probing defaults to a 3 second interval and a 3 second fetch timeout, so first-run WSL or weak-network sessions do not immediately render an empty cache after a transient Google Sheets timeout.
 
 ## Terminal Compatibility
 

@@ -92,8 +92,8 @@
         "ko": "이벤트 스트림"
       },
       "history_policy": "permanent",
-      "tui_probe_interval_seconds": 1.5,
-      "tui_fetch_timeout_seconds": 1.0,
+      "tui_probe_interval_seconds": 3.0,
+      "tui_fetch_timeout_seconds": 3.0,
       "table_region_policy": {
         "header": "auto",
         "top": "public_info_and_meta"

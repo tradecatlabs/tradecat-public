@@ -200,8 +200,8 @@ def test_registry_has_no_freeze_columns_contract():
     assert "freeze_columns" not in event_stream
     assert snapshot["display_names"]["en"] == "Market Snapshot"
     assert get_dataset("event_stream").display_name("ko") == "이벤트 스트림"
-    assert event_stream["tui_probe_interval_seconds"] == 1.5
-    assert event_stream["tui_fetch_timeout_seconds"] == 1.0
+    assert event_stream["tui_probe_interval_seconds"] == 3.0
+    assert event_stream["tui_fetch_timeout_seconds"] == 3.0
 
 
 def test_request_script_uses_shared_dataset_registry_contract():
@@ -1282,25 +1282,25 @@ def test_tui_fetch_timeout_defaults_to_short_live_timeout(monkeypatch):
     monkeypatch.delenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_FETCH_TIMEOUT", raising=False)
 
     assert _resolve_fetch_timeout(None) == 2.0
-    assert _resolve_fetch_timeout(None, "event_stream", 1.5) == 1.0
+    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 3.0
     assert _resolve_fetch_timeout(None, "market_snapshot", 10.0) == 2.0
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT", "0.1")
-    assert _resolve_fetch_timeout(None, "event_stream", 1.5) == 0.5
+    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 0.5
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT", "3.5")
-    assert _resolve_fetch_timeout(None, "event_stream", 1.5) == 1.5
+    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 3.0
 
     monkeypatch.setenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_FETCH_TIMEOUT", "0.8")
-    assert _resolve_fetch_timeout(None, "event_stream", 1.5) == 0.8
-    assert _resolve_fetch_timeout(4.0, "event_stream", 1.5) == 1.5
+    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 0.8
+    assert _resolve_fetch_timeout(4.0, "event_stream", 3.0) == 3.0
 
 
 def test_tui_probe_interval_is_dataset_specific(monkeypatch):
     monkeypatch.delenv("TRADECAT_TERMINAL_TUI_PROBE_INTERVAL", raising=False)
     monkeypatch.delenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL", raising=False)
 
-    assert _resolve_probe_interval(None, "event_stream") == 1.5
+    assert _resolve_probe_interval(None, "event_stream") == 3.0
     assert _resolve_probe_interval(None, "market_snapshot") == 10.0
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_PROBE_INTERVAL", "3")
@@ -1321,15 +1321,15 @@ def test_tui_probe_backoff_and_state_label_for_high_frequency_stream():
         "consecutive_probe_failures": 0,
     }
 
-    assert _effective_probe_interval(1.5, 0) == 1.5
-    assert _effective_probe_interval(1.5, 1) == 3.0
+    assert _effective_probe_interval(3.0, 0) == 3.0
+    assert _effective_probe_interval(3.0, 1) == 3.0
     assert _effective_probe_interval(1.5, 2) == 5.0
     assert _effective_probe_interval(1.5, 3) == 15.0
 
     _update_probe_tuning_state(state, None)
-    assert state["base_probe_interval_seconds"] == 1.5
-    assert state["effective_probe_interval_seconds"] == 1.5
-    assert state["current_fetch_timeout_seconds"] == 1.0
+    assert state["base_probe_interval_seconds"] == 3.0
+    assert state["effective_probe_interval_seconds"] == 3.0
+    assert state["current_fetch_timeout_seconds"] == 3.0
 
     _record_probe_result(state, {"ok": False, "status": "error", "error": "timeout"})
     _update_probe_tuning_state(state, None)
@@ -1337,14 +1337,14 @@ def test_tui_probe_backoff_and_state_label_for_high_frequency_stream():
     label = _probe_state_label(state)
     assert state["consecutive_probe_failures"] == 1
     assert state["effective_probe_interval_seconds"] == 3.0
-    assert "interval=3s(base=1.5s)" in label
-    assert "timeout=1s" in label
+    assert "interval=3s" in label
+    assert "timeout=3s" in label
     assert "fail=1" in label
 
     _record_probe_result(state, {"ok": True, "status": "unchanged"})
     _update_probe_tuning_state(state, None)
     assert state["consecutive_probe_failures"] == 0
-    assert state["effective_probe_interval_seconds"] == 1.5
+    assert state["effective_probe_interval_seconds"] == 3.0
 
 
 def test_tui_background_probe_does_not_block_main_thread(monkeypatch, tmp_path):

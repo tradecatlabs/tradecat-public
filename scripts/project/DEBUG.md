@@ -25,6 +25,31 @@
 
 该文件只作为历史复盘材料，不是当前运行契约。
 
+## 2026-05-08 TUI 首屏 empty-cache 与 event_stream 探针超时
+
+### 现象
+
+- 安装入口修复后执行 `tradecat`，TUI 显示 `cache=empty-cache`、`remote=-`、`fetched=-`、`probe=probing`。
+- 第二行显示 `timeout=1s fail=1`，说明前台 live probe 已经出现一次失败。
+
+### 根因
+
+- 本机修复安装入口时使用了 `TRADECAT_INSTALL_SKIP_SYNC=1`，因此只有缓存目录骨架，没有首次公开数据快照。
+- 空缓存首屏只能依赖 live probe 拉取 Google Sheets。
+- 1 秒 `event_stream` 拉取实验三次只有一次成功，另外两次分别在 read 和 TLS handshake 阶段超时。
+- 原默认 `interval=1.5s/timeout=1.0s` 对 WSL 弱网链路过于激进，容易先显示空缓存和一次失败。
+
+### 修复
+
+- 本机已执行 `tradecat sync-all` 补齐 4 个 active dataset 缓存。
+- 本机配置已写入 `tui_probe_interval.event_stream=3`、`tui_fetch_timeout.event_stream=3`。
+- 项目 dataset 契约同步调整为 `event_stream` 前台探针默认 `3s/3s`。
+
+### 回归
+
+- `tradecat status --json` 显示 `ready_dataset_count=4`、`missing_dataset_count=0`。
+- `tradecat tui event_stream --plain --limit 3` 已直接显示事件流数据。
+
 ## 2026-05-08 安装后 tradecat command not found
 
 ### 现象

@@ -349,7 +349,7 @@ tradecat path event_stream
 tradecat config show
 tradecat config set default_lang en
 tradecat config set default_dataset event_stream
-tradecat config set tui_probe_interval.event_stream 1.5
+tradecat config set tui_probe_interval.event_stream 3
 
 # 同步指定 tap 到文件缓存
 tradecat sync event_stream
@@ -430,7 +430,7 @@ TUI 探针规则：
 - 状态栏固定显示语言、缓存状态、远端导出时间、本地拉取时间、探针状态、下次刷新时间和缓存路径。
 - 探针失败不会清空界面；状态栏会保留缓存并显示失败原因和恢复建议。
 - `event_stream` 使用两列轻量渲染，只渲染时间与内容，避免长文本拖慢交互。
-- `event_stream` 当前焦点默认 `interval=1.5s`、`timeout=1.0s`。
+- `event_stream` 当前焦点默认 `interval=3.0s`、`timeout=3.0s`。
 - `event_stream` 非焦点默认后台保鲜间隔 `10s`；其他非焦点 tap 默认 `60s`。
 - timeout 会被限制为不超过对应 tap 的基础 interval。
 - 连续失败自动退避：1 次失败退到 `3s`，2 次退到 `5s`，3 次及以上退到 `15s`；成功后恢复基础 interval。
@@ -543,7 +543,7 @@ tradecat config show
 tradecat config set default_lang en
 tradecat config set default_dataset event_stream
 tradecat config set cache_dir /path/to/cache
-tradecat config set tui_probe_interval.event_stream 1.5
+tradecat config set tui_probe_interval.event_stream 3
 tradecat config unset default_lang
 ```
 
@@ -553,10 +553,10 @@ tradecat config unset default_lang
 |:---|:---|:---|
 | `TRADECAT_SETTINGS_PATH` | TradeCat 项目根 `scripts/project/.tradecat/settings.json` | 用户侧配置文件路径 |
 | `TRADECAT_CACHE_DIR` | TradeCat 项目根 `scripts/project/.tradecat/cache` | 本地快照缓存目录 |
-| `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=1.5` |
-| `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `1.5`，其它 tap 默认 `10` |
-| `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `1.0` |
-| `TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT` | 空 | 全局覆盖 TUI live 探针单次数据拉取超时秒数；未设置时 `event_stream` 默认 `1.0`，其它 tap 默认 `2.0` |
+| `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=3` |
+| `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `3.0`，其它 tap 默认 `10` |
+| `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `3.0` |
+| `TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT` | 空 | 全局覆盖 TUI live 探针单次数据拉取超时秒数；未设置时 `event_stream` 默认 `3.0`，其它 tap 默认 `2.0` |
 | `TRADECAT_TERMINAL_TUI_DEFAULT_DATASET` | `event_stream` | 无参数 `tradecat` 默认打开 dataset |
 | `TRADECAT_LANG` | 系统 locale；无法识别时为 `zh` | TUI/静态兼容输出语言；可选 `zh` / `en` / `ko` |
 | `TRADECAT_TERMINAL_NO_PAUSE` | 空 | 设为 `1` 时，自动静态兼容输出后不等待 Enter；用于脚本、CI 或自动化终端 |
