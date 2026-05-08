@@ -1,6 +1,6 @@
 # Architecture
 
-`tradecat-public` is a Codex skill wrapper around a bundled user-side TradeCat project.
+`tradecat-public` is a multi-Agent skill wrapper around a bundled user-side TradeCat project.
 
 The Skill root is not the Python project root. It exists to hold Skill metadata,
 Git metadata, references, and thin entry scripts.
@@ -15,9 +15,15 @@ tradecat-public/
 |-- .pre-commit-config.yaml
 |-- lessons.md
 |-- SKILL.md
-|-- agents/openai.yaml
+|-- agents/
+|   |-- manifest.json
+|   |-- hermes.yaml
+|   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- agent-contract.md
+|   |-- agent-readiness-remediation-task-tree.md
+|   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- first-run-cache.md
@@ -25,10 +31,13 @@ tradecat-public/
 |   |-- linear-flows.md
 |   |-- quality-gate.md
 |   |-- release.md
+|   |-- stability-hardening-task-tree.md
+|   |-- stability-hardening-task-tree.json
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
+    |-- agent-smoke.sh
     |-- security-scan.sh
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
@@ -45,6 +54,8 @@ scripts/project/
 |-- DEBUG.md
 |-- DEBUG.archive.md
 |-- pyproject.toml
+|-- constraints.txt
+|-- contracts/
 |-- scripts/
 |-- src/tradecat_terminal/
 `-- tests/
@@ -52,7 +63,7 @@ scripts/project/
 
 ## Mission
 
-TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snapshot cache files, and exposes CLI/TUI/export flows for users and agents.
+TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snapshot cache files, and exposes CLI/TUI/export flows for users and agents. `agents/manifest.json` is the canonical machine contract for Agent/Hermes consumption.
 
 ## Forbidden Paths
 
@@ -89,7 +100,9 @@ Public Google Sheets CSV
 - `view_model.py`: display/raw/physical column model.
 - `tui.py`: cache-first terminal browser and background probes.
 - `scripts/project/scripts/request.py`: zero-install standard-library public request entry.
+- `contracts.py`: CLI JSON schema/version and stable error object helpers.
 - `scripts/bootstrap-dev.sh`: root developer bootstrap wrapper for `scripts/project/.venv`.
+- `scripts/agent-smoke.sh`: root Agent readiness smoke gate for manifest, JSON schema, and exit code contracts.
 - `scripts/security-scan.sh`: root secret-scan wrapper; scans tracked files by default and commit ranges in CI.
 - `scripts/supply-chain-audit.sh`: root pip-audit wrapper for Python dependency vulnerability checks.
 - `scripts/install-security-tools.sh`: optional local Gitleaks installer for machines without Docker.
@@ -101,11 +114,17 @@ Public Google Sheets CSV
 - `AGENTS.md`: tracked root operating contract for directory governance and movement rules.
 - `lessons.md`: tracked accident lessons and prevention rules.
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
+- `agents/manifest.json`: canonical machine-readable Agent contract.
+- `references/agent-contract.md`: Agent fast path, risk classes, exit codes, JSON schemas, and remote fetch contract.
 - `references/*.md`: long-form skill references loaded on demand.
 - `references/first-run-cache.md`: first-run empty cache, cold-start diagnosis, and weak-network recovery.
-- `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, and export/config paths.
+- `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, export/config, and doctor diagnostics.
 - `references/quality-gate.md`: validation, root audit, and release evidence checklist.
 - `references/release.md`: public release notes, fixed-ref install commands, CI evidence, and rollback.
+- `references/stability-hardening-task-tree.md`: current robustness hardening backlog, execution waves, and validation gates.
+- `references/stability-hardening-task-tree.json`: machine-readable TP-XX hardening task tree spec.
+- `references/agent-readiness-remediation-task-tree.md`: Agent/Hermes readiness remediation backlog, execution waves, and validation gates.
+- `references/agent-readiness-remediation-task-tree.json`: machine-readable Agent readiness task tree spec.
 - `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
 - `scripts/project/AGENTS.md`: tracked project engineering contract and linear flows.
 - `scripts/project/DEBUG.md`: tracked current truth and recent debugging notes.

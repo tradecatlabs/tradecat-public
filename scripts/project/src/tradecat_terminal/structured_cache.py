@@ -11,6 +11,7 @@ from typing import Any
 
 from tradecat_terminal.registry import DatasetSpec, list_datasets
 from tradecat_terminal.sheets import find_header_row_index, normalize_headers
+from tradecat_terminal.state import atomic_write_json, locked_path, read_json_file
 
 DATASET_SCHEMA = "tradecat.dataset.v1"
 CACHE_MANIFEST_SCHEMA = "tradecat.cache_manifest.v1"
@@ -52,50 +53,54 @@ def write_structured_latest(
 
 
 def write_cache_manifest(cache_dir: Path) -> None:
-    datasets: list[dict[str, Any]] = []
-    for dataset in list_datasets(include_inactive=True):
-        manifest = _read_json(_dataset_dir(cache_dir, dataset.key) / MANIFEST_FILE)
-        datasets.append(
+    with locked_path(cache_dir / MANIFEST_FILE):
+        datasets: list[dict[str, Any]] = []
+        for dataset in list_datasets(include_inactive=True):
+            try:
+                manifest = _read_json(_dataset_dir(cache_dir, dataset.key) / MANIFEST_FILE)
+            except Exception:
+                manifest = {}
+            datasets.append(
+                {
+                    "dataset_key": dataset.key,
+                    "display_name": dataset.tab_name,
+                    "workbook": dataset.workbook_key,
+                    "tab_name": dataset.tab_name,
+                    "mode": dataset.data_mode,
+                    "primary_key": _manifest_primary_key(cache_dir, dataset),
+                    "latest_json": f"datasets/{dataset.key}/{LATEST_JSON_FILE}",
+                    "latest_jsonl": f"datasets/{dataset.key}/{LATEST_JSONL_FILE}",
+                    "latest_csv": f"datasets/{dataset.key}/{LATEST_CSV_FILE}",
+                    "snapshot_dir": f"datasets/{dataset.key}/snapshots",
+                    "snapshot_count": len(manifest.get("snapshots") or []),
+                    "row_count": manifest.get("row_count", 0),
+                    "column_count": manifest.get("column_count", 0),
+                    "content_hash": manifest.get("current_hash", ""),
+                    "last_success_at_utc8": manifest.get("fetched_at", ""),
+                    "last_status": "available" if manifest else "missing",
+                    "enabled": dataset.active,
+                }
+            )
+        _write_json(
+            cache_dir / MANIFEST_FILE,
             {
-                "dataset_key": dataset.key,
-                "display_name": dataset.tab_name,
-                "workbook": dataset.workbook_key,
-                "tab_name": dataset.tab_name,
-                "mode": dataset.data_mode,
-                "primary_key": _manifest_primary_key(cache_dir, dataset),
-                "latest_json": f"datasets/{dataset.key}/{LATEST_JSON_FILE}",
-                "latest_jsonl": f"datasets/{dataset.key}/{LATEST_JSONL_FILE}",
-                "latest_csv": f"datasets/{dataset.key}/{LATEST_CSV_FILE}",
-                "snapshot_dir": f"datasets/{dataset.key}/snapshots",
-                "snapshot_count": len(manifest.get("snapshots") or []),
-                "row_count": manifest.get("row_count", 0),
-                "column_count": manifest.get("column_count", 0),
-                "content_hash": manifest.get("current_hash", ""),
-                "last_success_at_utc8": manifest.get("fetched_at", ""),
-                "last_status": "available" if manifest else "missing",
-                "enabled": dataset.active,
-            }
+                "schema": CACHE_MANIFEST_SCHEMA,
+                "app": {
+                    "name": "TradeCat",
+                    "cache_version": "1",
+                    "generated_by": "tradecat",
+                    "generated_at_utc8": _now_iso(),
+                },
+                "cache": {
+                    "root": str(cache_dir),
+                    "mode": "local_structured_cache",
+                    "storage": "json_files",
+                    "latest_policy": "overwrite",
+                    "snapshot_policy": "append_on_content_hash_change",
+                },
+                "datasets": datasets,
+            },
         )
-    _write_json(
-        cache_dir / MANIFEST_FILE,
-        {
-            "schema": CACHE_MANIFEST_SCHEMA,
-            "app": {
-                "name": "TradeCat",
-                "cache_version": "1",
-                "generated_by": "tradecat",
-                "generated_at_utc8": _now_iso(),
-            },
-            "cache": {
-                "root": str(cache_dir),
-                "mode": "local_structured_cache",
-                "storage": "json_files",
-                "latest_policy": "overwrite",
-                "snapshot_policy": "append_on_content_hash_change",
-            },
-            "datasets": datasets,
-        },
-    )
 
 
 def _structured_dataset_payload(
@@ -533,16 +538,11 @@ def _column_label(index: int) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return read_json_file(path)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_json(path, payload)
 
 
 def _hash_json(payload: Any) -> str:

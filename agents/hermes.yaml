@@ -1,0 +1,15 @@
+display_name: TradeCat Public Hermes
+short_description: Hermes adapter for the TradeCat public multi-agent Skill wrapper.
+manifest: agents/manifest.json
+agent_contract: references/agent-contract.md
+default_workdir: .
+project_root: scripts/project
+fast_path:
+  - read agents/manifest.json
+  - bash scripts/run-tradecat.sh status --json
+  - bash scripts/run-tradecat.sh datasets --json
+  - bash scripts/run-tradecat.sh path event_stream --json
+  - python3 scripts/project/scripts/request.py event_stream --format json --limit 5
+notes:
+  - Treat manifest.json as the only canonical machine contract.
+  - Prefer readonly commands before sync/install/uninstall.

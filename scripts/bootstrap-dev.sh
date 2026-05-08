@@ -9,11 +9,19 @@ cd "$PROJECT_DIR"
 
 if command -v uv >/dev/null 2>&1; then
   uv venv .venv
-  uv pip install --python .venv/bin/python -e ".[dev]"
+  if [[ -f constraints.txt ]]; then
+    uv pip install --python .venv/bin/python -c constraints.txt -e ".[dev]"
+  else
+    uv pip install --python .venv/bin/python -e ".[dev]"
+  fi
 else
   "$PYTHON_BIN" -m venv .venv
   .venv/bin/python -m pip install -U pip
-  .venv/bin/python -m pip install -e ".[dev]"
+  if [[ -f constraints.txt ]]; then
+    .venv/bin/python -m pip install -c constraints.txt -e ".[dev]"
+  else
+    .venv/bin/python -m pip install -e ".[dev]"
+  fi
 fi
 
 echo "dev environment ready: $PROJECT_DIR/.venv"

@@ -26,6 +26,7 @@ Run project verification from the Skill root:
 
 ```bash
 bash scripts/bootstrap-dev.sh
+bash scripts/agent-smoke.sh
 bash scripts/verify.sh
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
@@ -50,11 +51,28 @@ Acceptance:
   is needed, and can bootstrap a local Gitleaks binary when Docker is absent.
 - `scripts/supply-chain-audit.sh` audits the Python project with pinned
   `pip-audit`.
+- Python dependency installation uses `scripts/project/constraints.txt` for
+  local bootstrap, CI install, and user installer paths.
+- CI uploads dependency freeze/constraints evidence for release audit.
 - `scripts/project/scripts/validate_data_contract.py --remote` validates the
   public Google Sheets CSV shape for active datasets in CI.
+- `scripts/agent-smoke.sh` validates `agents/manifest.json`, advertised JSON
+  schemas, non-zero failure exit codes, and the zero-install request fallback.
+- CI has an independent `agent-readiness` job so Agent contract drift fails even
+  when ordinary human-facing docs still look valid.
+- Advertised JSON commands include `schema` and `schema_version`; failed JSON
+  commands include an object `error` with `code`, `kind`, `message`, `hint`, and
+  `retryable`.
+- Formal JSON Schema drafts under `scripts/project/contracts/*.schema.json` stay
+  valid JSON and match the advertised manifest/envelope/error contract.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.
+- Published raw installer smoke uses limited retry and uploads status/support
+  bundle artifacts; scheduled/manual runs are canaries, push/PR gates remain
+  deterministic except for the explicitly live public data checks.
+- Python 3.12 and 3.13 must pass the main verify job; cross-platform smoke covers
+  Unix shell, PowerShell, status JSON, and plain TUI.
 
 ## Root Boundary Gate
 
@@ -72,7 +90,7 @@ Acceptance:
 - `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`,
   `.pre-commit-config.yaml`, and root thin scripts such as
   `scripts/verify.sh`, `scripts/security-scan.sh`, `scripts/supply-chain-audit.sh`,
-  and `scripts/run-tradecat.sh` remain at root.
+  `scripts/agent-smoke.sh`, and `scripts/run-tradecat.sh` remain at root.
 - Project source, tests, installers, project README, and project scripts remain
   under `scripts/project/`.
 - Root/project `AGENTS.md` and project `DEBUG*.md` are tracked public governance
@@ -85,6 +103,8 @@ quality rule changes, update the matching documentation in the same change:
 
 - Root movement or Skill behavior: `README.md`, `SKILL.md`,
   `references/index.md`, `references/architecture.md`.
+- Agent machine contract behavior: `agents/manifest.json`, `agents/*.yaml`,
+  `references/agent-contract.md`, `references/quality-gate.md`.
 - Public flow behavior: `references/linear-flows.md`.
 - Cache behavior: `references/cache-contract.md`.
 - TUI behavior: `references/tui-contract.md`.
@@ -100,6 +120,7 @@ Before commit or handoff:
 
 ```bash
 git diff --check
+bash scripts/agent-smoke.sh
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
 git status --short --branch --ignored

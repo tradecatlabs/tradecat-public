@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 import hashlib
 import json
 import os
@@ -8,8 +7,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tradecat_terminal.diagnostics import record_recent_error, sanitize_error
+from tradecat_terminal.migrations import CURRENT_CACHE_SCHEMA_VERSION, migrate_cache
 from tradecat_terminal.registry import DatasetSpec, get_dataset, list_active_datasets, list_datasets
-from tradecat_terminal.sheets import fetch_csv_body, find_header_row_index, normalize_headers, parse_csv_matrix
+from tradecat_terminal.sheets import (
+    RemoteCsvError,
+    fetch_csv_body,
+    find_header_row_index,
+    normalize_headers,
+    parse_csv_matrix,
+)
+from tradecat_terminal.state import (
+    atomic_write_json,
+    atomic_write_json_gzip,
+    locked_path,
+    preserve_corrupt_file,
+    read_json_file,
+)
 from tradecat_terminal.structured_cache import (
     LATEST_CSV_FILE,
     LATEST_JSON_FILE,
@@ -18,7 +32,7 @@ from tradecat_terminal.structured_cache import (
     write_structured_latest,
 )
 
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = CURRENT_CACHE_SCHEMA_VERSION
 MANIFEST_FILE = "manifest.json"
 STREAM_FILE = "stream_events.json"
 CACHE_COMPRESSION_ENV = "TRADECAT_CACHE_COMPRESSION"
@@ -52,6 +66,9 @@ def status_cache(cache_dir: Path) -> dict[str, Any]:
                 "latest_csv_exists": latest_csv_exists,
                 "snapshot_count": len(manifest.get("snapshots") or []),
                 "event_count": _stream_event_count(cache_dir, dataset.key) if dataset.is_stream() else 0,
+                "manifest_corrupt": bool(manifest.get("corrupt")),
+                "manifest_error": manifest.get("error", ""),
+                "manifest_corrupt_backup": manifest.get("corrupt_backup", ""),
                 "current_hash": manifest.get("current_hash"),
                 "fetched_at": manifest.get("fetched_at"),
                 "row_count": manifest.get("row_count", 0),
@@ -81,8 +98,13 @@ def sync_dataset(
 ) -> dict[str, Any]:
     dataset = get_dataset(dataset_key)
     url = dataset.export_url()
-    body = fetch_csv_body(url, timeout=fetch_timeout or 30.0)
-    return write_dataset_body(cache_dir, dataset, body)
+    try:
+        body = fetch_csv_body(url, timeout=fetch_timeout or 30.0)
+        return write_dataset_body(cache_dir, dataset, body)
+    except RemoteCsvError as exc:
+        error = exc.to_dict()
+        record_recent_error(cache_dir, source="sync", dataset_key=dataset.key, error=error)
+        return _sync_error_result(cache_dir, dataset, error)
 
 
 def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) -> list[dict[str, Any]]:
@@ -92,6 +114,8 @@ def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) ->
         try:
             results.append(sync_dataset(cache_dir, dataset.key, fetch_timeout=fetch_timeout))
         except Exception as exc:
+            error = sanitize_error(exc)
+            record_recent_error(cache_dir, source="sync-all", dataset_key=dataset.key, error=error)
             results.append(
                 {
                     "ok": False,
@@ -99,6 +123,7 @@ def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) ->
                     "tab_name": dataset.tab_name,
                     "data_mode": dataset.data_mode,
                     "error": str(exc),
+                    "error_info": error,
                     "cache_dir": str(cache_dir),
                 }
             )
@@ -106,6 +131,13 @@ def sync_all_datasets(cache_dir: Path, *, fetch_timeout: float | None = None) ->
 
 
 def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict[str, Any]:
+    init_cache(cache_dir)
+    migrate_cache(cache_dir, reason="write")
+    with locked_path(_manifest_path(cache_dir, dataset.key)):
+        return _write_dataset_body_locked(cache_dir, dataset, body)
+
+
+def _write_dataset_body_locked(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict[str, Any]:
     init_cache(cache_dir)
     matrix = parse_csv_matrix(body)
     matrix_hash = hash_matrix(matrix)
@@ -209,11 +241,41 @@ def write_dataset_body(cache_dir: Path, dataset: DatasetSpec, body: str) -> dict
     }
 
 
+def _sync_error_result(cache_dir: Path, dataset: DatasetSpec, error: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "dataset_key": dataset.key,
+        "tab_name": dataset.tab_name,
+        "data_mode": dataset.data_mode,
+        "status": "error",
+        "changed": False,
+        "wrote": False,
+        "error": str(error.get("message") or error.get("code") or "remote sync failed"),
+        "error_code": error.get("code"),
+        "error_kind": error.get("kind"),
+        "error_retryable": error.get("retryable"),
+        "error_hint": error.get("hint"),
+        "error_info": error,
+        "cache_dir": str(cache_dir),
+    }
+
+
 def read_manifest(cache_dir: Path, dataset_key: str) -> dict[str, Any]:
     path = _manifest_path(cache_dir, dataset_key)
     if not path.exists():
         return {}
-    return _read_json(path)
+    try:
+        return _read_json(path)
+    except Exception as exc:
+        backup = preserve_corrupt_file(path)
+        return {
+            "schema_version": CACHE_SCHEMA_VERSION,
+            "dataset_key": dataset_key,
+            "corrupt": True,
+            "error": str(exc),
+            "corrupt_backup": str(backup or ""),
+            "snapshots": [],
+        }
 
 
 def list_snapshot_refs(cache_dir: Path, dataset_key: str) -> list[dict[str, Any]]:
@@ -233,46 +295,49 @@ def prune_cache(
     datasets = [get_dataset(dataset_key)] if dataset_key else list_datasets(include_inactive=True)
     results: list[dict[str, Any]] = []
     for dataset in datasets:
-        manifest = read_manifest(cache_dir, dataset.key)
-        snapshots = list(manifest.get("snapshots") or [])
-        if max_count <= 0:
+        with locked_path(_manifest_path(cache_dir, dataset.key)):
+            manifest = read_manifest(cache_dir, dataset.key)
+            snapshots = list(manifest.get("snapshots") or [])
+            if max_count <= 0:
+                results.append(
+                    {
+                        "dataset_key": dataset.key,
+                        "mode": "disabled",
+                        "snapshot_count": len(snapshots),
+                        "candidate_count": 0,
+                        "deleted_count": 0,
+                        "candidates": [],
+                    }
+                )
+                continue
+            keep, candidates = _split_snapshot_prune_plan(manifest, snapshots, max_count)
+            deleted = []
+            if apply and candidates:
+                for item in candidates:
+                    ref = str(item.get("snapshot") or "")
+                    if not ref:
+                        continue
+                    path = _dataset_dir(cache_dir, dataset.key) / ref
+                    if path.exists():
+                        path.unlink()
+                    deleted.append(ref)
+                manifest["snapshots"] = keep
+                manifest["updated_at"] = _now_iso()
+                _write_json(_manifest_path(cache_dir, dataset.key), manifest)
             results.append(
                 {
                     "dataset_key": dataset.key,
-                    "mode": "disabled",
+                    "mode": "apply" if apply else "dry-run",
                     "snapshot_count": len(snapshots),
-                    "candidate_count": 0,
-                    "deleted_count": 0,
-                    "candidates": [],
+                    "keep_count": len(keep),
+                    "candidate_count": len(candidates),
+                    "deleted_count": len(deleted),
+                    "candidates": candidates,
+                    "deleted": deleted,
                 }
             )
-            continue
-        keep, candidates = _split_snapshot_prune_plan(manifest, snapshots, max_count)
-        deleted = []
-        if apply and candidates:
-            for item in candidates:
-                ref = str(item.get("snapshot") or "")
-                if not ref:
-                    continue
-                path = _dataset_dir(cache_dir, dataset.key) / ref
-                if path.exists():
-                    path.unlink()
-                deleted.append(ref)
-            manifest["snapshots"] = keep
-            manifest["updated_at"] = _now_iso()
-            _write_json(_manifest_path(cache_dir, dataset.key), manifest)
-        results.append(
-            {
-                "dataset_key": dataset.key,
-                "mode": "apply" if apply else "dry-run",
-                "snapshot_count": len(snapshots),
-                "keep_count": len(keep),
-                "candidate_count": len(candidates),
-                "deleted_count": len(deleted),
-                "candidates": candidates,
-                "deleted": deleted,
-            }
-        )
+    if apply:
+        write_cache_manifest(cache_dir)
     return {
         "ok": True,
         "cache_dir": str(cache_dir),
@@ -749,22 +814,14 @@ def _matrix_width(matrix: list[list[str]]) -> int:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    if path.name.endswith(".gz"):
-        with gzip.open(path, "rt", encoding="utf-8") as file:
-            return json.load(file)
-    return json.loads(path.read_text(encoding="utf-8"))
+    return read_json_file(path)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     if path.name.endswith(".gz"):
-        with gzip.open(tmp, "wt", encoding="utf-8") as file:
-            file.write(text)
-    else:
-        tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+        atomic_write_json_gzip(path, payload)
+        return
+    atomic_write_json(path, payload)
 
 
 def _snapshot_compression() -> tuple[str, str]:

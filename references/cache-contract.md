@@ -27,6 +27,10 @@ datasets/event_stream/stream_events.json
 - Historical snapshots are permanent by default.
 - Prune is explicit and dry-run by default; deletion requires `tradecat prune --apply`.
 - `TRADECAT_CACHE_COMPRESSION=gzip` only affects newly written snapshots.
+- Dataset manifest, stream state, structured latest files, and root manifest
+  writes must use same-directory atomic replacement.
+- Runtime cache mutation must be protected by cross-platform `filelock` locks;
+  lock timeout is controlled by `TRADECAT_LOCAL_STATE_LOCK_TIMEOUT`.
 
 ## Stream Rules
 
@@ -56,3 +60,25 @@ datasets/event_stream/stream_events.json
 - When all active datasets are unsynced, `tradecat doctor` must call this out as
   first-run empty cache and include both `tradecat sync-all` and weak-network
   timeout guidance.
+- `tradecat doctor --repair` may migrate local cache metadata and preserve
+  backups; it must not silently delete snapshots or fetch remote data.
+- `tradecat doctor --verbose` includes settings health, migration status, recent
+  typed errors, and cache disk-waterline diagnostics.
+- `tradecat doctor --bundle [PATH]` writes a public-safe JSON support bundle; no
+  credential values, cache row payloads, or private environment dumps are allowed.
+
+## Migration Rules
+
+- Current cache metadata schema version is `1`.
+- Dataset manifests and `event_stream` state files must carry `schema_version`.
+- Migrations are explicit, idempotent, and backed up under
+  `migration_backups/<timestamp>/` before metadata is rewritten.
+- Failed migration must restore backed-up metadata before surfacing the error.
+- Future schema changes must add fixtures and doctor migration status coverage.
+
+## Settings Rules
+
+- Settings writes use lock + atomic replace.
+- Existing settings are copied to `settings.json.bak` before successful writes.
+- Corrupt settings are preserved as `settings.json.corrupt-*.bak` and surfaced by
+  doctor instead of being silently treated as a healthy empty config.

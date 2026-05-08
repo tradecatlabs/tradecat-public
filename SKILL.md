@@ -5,7 +5,7 @@ description: "TradeCat public terminal skill: operate the bundled user-side Trad
 
 # tradecat-public Skill
 
-Use this skill when working on the bundled TradeCat public consumer project stored under `scripts/project/`.
+Use this skill when working on the bundled TradeCat public consumer project stored under `scripts/project/`, or when an Agent needs to consume TradeCat data through the machine contract in `agents/manifest.json`.
 
 ## When to Use This Skill
 
@@ -31,10 +31,25 @@ Trigger when any of these applies:
 cd scripts/project
 ```
 
+### Agent Fast Path
+
+```bash
+python3 -m json.tool agents/manifest.json >/dev/null
+bash scripts/run-tradecat.sh status --json
+bash scripts/run-tradecat.sh datasets --json
+bash scripts/run-tradecat.sh path event_stream --json
+```
+
 ### Validate Skill And Project
 
 ```bash
 bash scripts/verify.sh
+```
+
+### Validate Agent Contract
+
+```bash
+bash scripts/agent-smoke.sh
 ```
 
 ### Bootstrap Development Environment
@@ -115,9 +130,14 @@ tradecat-public/
 |-- .pre-commit-config.yaml
 |-- SKILL.md
 |-- agents/
+|   |-- manifest.json
+|   |-- hermes.yaml
 |   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- agent-contract.md
+|   |-- agent-readiness-remediation-task-tree.md
+|   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- first-run-cache.md
@@ -125,10 +145,13 @@ tradecat-public/
 |   |-- tui-contract.md
 |   |-- quality-gate.md
 |   |-- install-uninstall.md
-|   `-- release.md
+|   |-- release.md
+|   |-- stability-hardening-task-tree.md
+|   `-- stability-hardening-task-tree.json
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
+    |-- agent-smoke.sh
     |-- security-scan.sh
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
@@ -139,6 +162,8 @@ tradecat-public/
         |-- DEBUG.md
         |-- DEBUG.archive.md
         |-- pyproject.toml
+        |-- constraints.txt
+        |-- contracts/
         |-- scripts/
         |-- src/
         `-- tests/
@@ -150,11 +175,15 @@ tradecat-public/
 - `references/architecture.md`: project purpose, forbidden paths, and data flows.
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
 - `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
-- `references/linear-flows.md`: public six-flow map for cache, TUI, one-shot request, install, uninstall, and export/config flows.
+- `references/linear-flows.md`: public seven-flow map for cache, TUI, one-shot request, install, uninstall, export/config, and doctor diagnostics.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
 - `references/quality-gate.md`: pre-delivery checklist for Skill wrapper and bundled project changes.
 - `references/release.md`: release evidence, fixed-ref install commands, known limits, and rollback.
+- `references/stability-hardening-task-tree.md`: current robustness hardening backlog, execution waves, and validation gates.
+- `references/stability-hardening-task-tree.json`: machine-readable TP-XX hardening task tree spec.
+- `references/agent-readiness-remediation-task-tree.md`: current Agent/Hermes readiness remediation backlog, execution waves, and validation gates.
+- `references/agent-readiness-remediation-task-tree.json`: machine-readable Agent readiness task tree spec.
 
 ## Examples
 

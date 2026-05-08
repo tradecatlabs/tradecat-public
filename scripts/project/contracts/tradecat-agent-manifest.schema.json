@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-agent-manifest.schema.json",
+  "title": "TradeCat Agent Manifest",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "name",
+    "project_root",
+    "default_workdir",
+    "preferred_readonly_entrypoints",
+    "json_outputs",
+    "safe_order_of_operations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat.agent_manifest.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "name": {
+      "type": "string"
+    },
+    "project_root": {
+      "const": "scripts/project"
+    },
+    "default_workdir": {
+      "const": "."
+    },
+    "preferred_readonly_entrypoints": {
+      "type": "array",
+      "minItems": 3
+    },
+    "json_outputs": {
+      "type": "array",
+      "minItems": 6
+    },
+    "safe_order_of_operations": {
+      "type": "array",
+      "minItems": 5
+    }
+  },
+  "additionalProperties": true
+}

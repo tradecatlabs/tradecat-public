@@ -10,4 +10,5 @@ build/
 .coverage
 htmlcov/
 .tradecat/
+.hermes/
 .tools/

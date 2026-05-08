@@ -19,8 +19,8 @@ from tradecat_terminal.config import DEFAULT_APP_ROOT, load_config
 from tradecat_terminal.i18n import cycle_lang, resolve_lang, tr
 from tradecat_terminal.lifecycle import doctor_local_store
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_active_datasets
-from tradecat_terminal.settings import load_settings
-from tradecat_terminal.sheets import find_header_row_index, parse_csv_rows
+from tradecat_terminal.settings import load_settings, set_setting, settings_health
+from tradecat_terminal.sheets import RemoteCsvError, find_header_row_index, parse_csv_rows
 from tradecat_terminal.tui import (
     CURSES_POLL_TIMEOUT_MS,
     MOUSE_WHEEL_STEP,
@@ -213,6 +213,105 @@ def test_cli_doctor_rejects_timeout_without_sync(tmp_path, capsys):
     assert "--timeout 仅用于 --sync" in capsys.readouterr().err
 
 
+def test_cli_doctor_bundle_writes_public_safe_json(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    bundle_path = tmp_path / "bundle" / "doctor.json"
+    monkeypatch.setenv("TRADECAT_SETTINGS_PATH", str(tmp_path / "settings.json"))
+
+    assert cli.main(["--cache-dir", str(cache_dir), "doctor", "--fix", "--bundle", str(bundle_path)]) == 0
+
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    assert payload["schema"] == "tradecat.support_bundle.v1"
+    assert payload["cache"]["cache_dir"] == str(cache_dir)
+    assert payload["settings"]["path"] == str(tmp_path / "settings.json")
+
+
+def test_sync_dataset_returns_typed_remote_error_and_records_ledger(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+
+    import tradecat_terminal.cache as cache_module
+
+    def fake_fetch_csv_body(url, timeout=30.0):
+        raise RemoteCsvError(
+            code="remote_timeout",
+            kind="timeout",
+            message="remote request timed out",
+            hint="网络超时；可执行 tradecat sync-all --timeout 10 或稍后重试。",
+            retryable=True,
+            attempts=3,
+            url=url,
+        )
+
+    monkeypatch.setattr(cache_module, "fetch_csv_body", fake_fetch_csv_body)
+
+    result = sync_dataset(cache_dir, "event_stream", fetch_timeout=1.0)
+    doctor = doctor_local_store(cache_dir, verbose=True)
+
+    assert result["ok"] is False
+    assert result["error_code"] == "remote_timeout"
+    assert result["error_kind"] == "timeout"
+    assert result["error_retryable"] is True
+    assert doctor["recent_errors"][0]["error"]["code"] == "remote_timeout"
+    assert doctor["support_bundle"]["recent_errors"][0]["dataset_key"] == "event_stream"
+
+
+def test_settings_atomic_write_preserves_backup_and_reports_corrupt_file(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text("{broken", encoding="utf-8")
+
+    assert load_settings(path) == {}
+    corrupt_health = settings_health(path)
+    saved = set_setting("default_lang", "en", path)
+
+    assert corrupt_health["status"] == "corrupt"
+    assert list(tmp_path.glob("settings.json.corrupt-*.bak"))
+    assert saved["default_lang"] == "en"
+    assert (tmp_path / "settings.json.bak").exists()
+    assert json.loads(path.read_text(encoding="utf-8"))["default_lang"] == "en"
+
+
+def test_cache_write_uses_file_locks_and_migration_framework(tmp_path):
+    cache_dir = tmp_path / "cache"
+    dataset_dir = cache_dir / "datasets" / "event_stream"
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset_key": "event_stream",
+                "current_hash": "",
+                "snapshots": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = doctor_local_store(cache_dir, repair=True, verbose=True)
+    write_dataset_body(cache_dir, get_dataset("event_stream"), "时间(北京),内容\n2026-05-08 10:00:00,hello\n")
+    manifest = json.loads((dataset_dir / "manifest.json").read_text(encoding="utf-8"))
+
+    assert payload["migration_result"]["changed"] is True
+    assert payload["migration_result"]["status"]["needed"] is False
+    assert manifest["schema_version"] == 1
+    assert json.loads((dataset_dir / "latest.json").read_text(encoding="utf-8"))["stats"]["row_count"] == 1
+
+
+def test_doctor_bundle_reports_disk_waterline_and_settings_health(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setenv("TRADECAT_CACHE_WARN_BYTES", "1")
+    write_dataset_body(
+        cache_dir,
+        get_dataset("market_snapshot"),
+        "https://dexscreener.com/x\n排名,交易对,价格\n1,BTCUSDT,100\n",
+    )
+
+    payload = doctor_local_store(cache_dir, verbose=True, bundle=True)
+
+    assert payload["disk_waterline"]["level"] in {"warning", "critical"}
+    assert "tradecat prune" in payload["repair_hints"][-1]
+    assert payload["support_bundle"]["schema"] == "tradecat.support_bundle.v1"
+    assert payload["support_bundle"]["settings"]["status"] in {"missing", "ok", "corrupt"}
+
+
 def test_cli_sync_passes_timeout_to_remote_fetch(tmp_path, monkeypatch, capsys):
     cache_dir = tmp_path / "cache"
     seen_timeouts = []
@@ -252,7 +351,9 @@ def test_cli_probe_all_passes_timeout(monkeypatch, tmp_path, capsys):
     assert cli.main(["--cache-dir", str(tmp_path / "cache"), "probe", "--timeout", "6", "--json"]) == 0
 
     assert calls == [(tmp_path / "cache", True, 6.0)]
-    assert json.loads(capsys.readouterr().out)[0]["dataset_key"] == "event_stream"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "tradecat.probe_results.v1"
+    assert payload["results"][0]["dataset_key"] == "event_stream"
 
 
 def test_cli_status_prints_summary_and_dataset_state(tmp_path, capsys):
@@ -346,6 +447,9 @@ def test_install_launchers_separate_stable_and_branch_channels():
     assert 'sync event_stream' in install_sh
     assert "TRADECAT_INSTALL_SKIP_SYNC" in install_sh
     assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_sh
+    assert "TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP" in install_sh
+    assert 'pip install -c "$PROJECT_DIR/constraints.txt" -e .' in install_sh
+    assert 'uv pip install --python "$VENV_PY" -c "$PROJECT_DIR/constraints.txt" -e .' in install_sh
     assert "TRADECAT_FORCE_UPDATE" in install_sh
     assert "TRADECAT_NO_AUTO_UPDATE" in install_sh
     assert "Invoke-TradeCatAutoUpdate" in install_ps1
@@ -361,6 +465,9 @@ def test_install_launchers_separate_stable_and_branch_channels():
     assert "sync event_stream" in install_ps1
     assert "TRADECAT_INSTALL_SKIP_SYNC" in install_ps1
     assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_ps1
+    assert "TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP" in install_ps1
+    assert "pip install -c $Constraints -e ." in install_ps1
+    assert "uv pip install --python $script:VenvPy -c $Constraints -e ." in install_ps1
     assert "TRADECAT_FORCE_UPDATE" in install_ps1
     assert "tradecat.ps1" in install_ps1
     assert "tradecat.ps1" in uninstall_ps1
@@ -376,6 +483,9 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "actions/checkout@v5" in ci_yml
     assert "actions/setup-python@v6" in ci_yml
     assert "windows-2025-vs2026" in ci_yml
+    assert 'python-version: ["3.12", "3.13"]' in ci_yml
+    assert "workflow_dispatch:" in ci_yml
+    assert "schedule:" in ci_yml
     assert "fetch-depth: 0" in ci_yml
     assert "bash scripts/security-scan.sh --history" in ci_yml
     assert "published-install-smoke" in ci_yml
@@ -384,13 +494,16 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     published_smoke = ci_yml.split("published-install-smoke:", 1)[1]
     assert "TRADECAT_INSTALL_SKIP_SYNC" not in published_smoke
     assert "doctor --sync --timeout 15" in published_smoke
+    assert "actions/upload-artifact@v4" in published_smoke
+    assert "tradecat-public-smoke" in published_smoke
+    assert "doctor --bundle" in published_smoke
     assert "public installer did not warm event_stream cache" in published_smoke
     assert "python scripts/validate_data_contract.py --remote" in ci_yml
     assert "bash scripts/supply-chain-audit.sh" in ci_yml
     assert "ghcr.io/gitleaks/gitleaks@sha256:" in security_scan
     assert "scripts/install-security-tools.sh" in security_scan
     assert "git -C \"$ROOT_DIR\" ls-files" in security_scan
-    assert "uv pip install --python .venv/bin/python -e \".[dev]\"" in bootstrap
+    assert "uv pip install --python .venv/bin/python -c constraints.txt -e \".[dev]\"" in bootstrap
     assert "bootstrapping $PROJECT_DIR/.venv" in (SKILL_ROOT / "scripts" / "verify.sh").read_text(encoding="utf-8")
     assert 'PIP_AUDIT_VERSION="${PIP_AUDIT_VERSION:-2.10.0}"' in supply_chain
     assert "pip-audit==$PIP_AUDIT_VERSION" in supply_chain

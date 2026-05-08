@@ -10,8 +10,12 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
   explicitly set, or checkout a fixed `TRADECAT_INSTALL_REF` tag/ref.
 - Locate the project inside the repository by `TRADECAT_PROJECT_SUBDIR`, defaulting to `scripts/project`.
 - Use Python 3.12 when available.
-- Fall back to `uv` for Python 3.12 environment creation when needed.
-- Install the bundled project from `scripts/project`.
+- Fall back to an existing `uv` for Python 3.12 environment creation when needed.
+- If neither Python 3.12+ nor `uv` exists, fail with a clear supply-chain
+  message unless the user explicitly sets `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1`.
+- Install the bundled project from `scripts/project`; when `constraints.txt`
+  exists, POSIX and PowerShell installers must pass that constraints file to
+  `pip` / `uv pip`.
 - Write `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` launchers.
 - Existing launcher files or stale symlinks under `TRADECAT_BIN_DIR` are replaced
   in place; installer must not follow old symlink targets.
@@ -24,6 +28,9 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
   `raw.githubusercontent.com/.../v0.1.2/...` installers. Published installer
   smoke must not set `TRADECAT_INSTALL_SKIP_SYNC`; it must assert that
   `event_stream` is ready after install or explicit `doctor --sync` repair.
+- Published installer smoke keeps retry logs, status JSON, and support bundle
+  artifacts so live Google Sheets/network failures can be diagnosed separately
+  from code regressions.
 
 ## Launcher Auto-update
 
@@ -33,6 +40,8 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 - `TRADECAT_NO_AUTO_UPDATE=1` skips update.
 - `TRADECAT_FORCE_UPDATE=1` blocks startup until update succeeds; failure exits.
 - Normal update is throttled by `TRADECAT_UPDATE_INTERVAL_SECONDS` and runs in background.
+- `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1` is the only supported path that lets
+  the installer execute the remote uv bootstrap script.
 
 ## Uninstall
 

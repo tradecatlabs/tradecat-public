@@ -234,10 +234,14 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 | `TRADECAT_PROJECT_SUBDIR` | 覆盖仓库内项目子目录，默认 `scripts/project` |
 | `TRADECAT_BIN_DIR` | 覆盖命令入口目录 |
 | `TRADECAT_PYTHON_VERSION` | 覆盖 Python 版本，默认 `3.12` |
+| `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP` | 无 Python/uv 时显式允许安装器执行远程 uv bootstrap；默认不静默执行 |
 | `TRADECAT_NO_AUTO_UPDATE` | 设为 `1` 时，启动 `tradecat` 前跳过自动更新 |
 | `TRADECAT_FORCE_UPDATE` | 设为 `1` 时，启动前更新失败会直接退出 |
 
-如果系统没有 Python 3.12，安装脚本会尝试安装 `uv`，并用 `uv` 托管 Python 3.12。仍然需要本机有 `git` 和 `curl`。
+如果系统没有 Python 3.12，但已有 `uv`，安装脚本会用 `uv` 托管 Python 3.12。
+如果 Python 和 `uv` 都不存在，安装器默认直接失败并提示安全边界；只有显式设置
+`TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1` 时才会执行远程 uv bootstrap。仍然需要本机有
+`git` 和 `curl`。
 
 Windows Terminal、VS Code Terminal、WezTerm、Alacritty、Kitty 等稳定终端会默认启用交互式 TUI；浏览器 Web 终端、未知 SSH 终端和未知 Windows 控制台会自动降级为静态文本模式，不再抛出 Python traceback。自动降级后会停留并等待 Enter，避免窗口或会话看起来像“闪退”；显式执行 `tradecat tui --plain` 时不等待，适合脚本读取。如需自行测试交互模式，可设置 `TRADECAT_TERMINAL_FORCE_CURSES=1`；如确认未知 Windows 控制台也支持 curses，可设置 `TRADECAT_TERMINAL_ALLOW_WINDOWS_CURSES=1`；如果确认自己的 SSH 终端支持宽字符 curses，也可设置 `TRADECAT_TERMINAL_ALLOW_SSH_CURSES=1`。
 
@@ -248,7 +252,7 @@ git clone https://github.com/tukuaiai/tradecat.git
 cd tradecat/scripts/project
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -e ".[dev]"
+pip install -c constraints.txt -e ".[dev]"
 
 tradecat init
 tradecat datasets
@@ -288,6 +292,16 @@ python3 <(curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/develop
 ```
 
 `request.py` 会读取同仓库的 `scripts/project/src/tradecat_terminal/dataset_registry.json`，与安装版使用同一个 dataset 契约；可用 `TRADECAT_REQUEST_REGISTRY_URL` 或 `--registry-url` 覆盖。
+
+Agent 推荐使用 JSON 契约模式：
+
+```bash
+python3 scripts/request.py --datasets --format json
+python3 scripts/request.py event_stream --format json --limit 5
+```
+
+成功 payload 会带 `schema` / `schema_version`，失败 payload 会带稳定
+`error.code` / `error.kind` / `error.hint` / `error.retryable`。
 
 常用示例：
 
@@ -343,7 +357,12 @@ tradecat status
 tradecat doctor
 tradecat doctor --fix
 tradecat status --json
+tradecat datasets --json
+tradecat path event_stream --json
 tradecat doctor --json
+tradecat doctor --verbose
+tradecat doctor --bundle doctor-bundle.json
+tradecat doctor --repair
 
 # 首次缓存为空或弱网时
 tradecat sync-all
@@ -400,9 +419,12 @@ TRADECAT_LANG=ko tradecat
 `status` 会显示每个 dataset 的 `ready/initialized/missing` 状态、`latest.*`
 文件是否存在、行列数、缓存体积和最近拉取时间；`doctor` 在缓存未同步时给出
 warning 和 repair hint，并保留非零退出码给真正的本地缓存错误。`doctor --fix`
-只初始化本地目录骨架，不触发远端网络同步；缺失数据仍按提示执行 `tradecat sync`
-或 `tradecat sync-all`。当全部 active dataset 都没有 latest 缓存时，doctor 会明确标记
-首次空缓存，并给出 `sync-all` 与弱网 timeout 修复命令。需要一键联网修复时，显式执行
+只初始化本地目录骨架，不触发远端网络同步；`doctor --repair` 只迁移本地缓存
+metadata，不删除快照、不联网；`doctor --verbose` 会显示 settings 健康、cache
+migration、最近 typed error 和磁盘水位；`doctor --bundle [PATH]` 生成可公开分享的
+诊断 JSON。缺失数据仍按提示执行 `tradecat sync` 或 `tradecat sync-all`。当全部
+active dataset 都没有 latest 缓存时，doctor 会明确标记首次空缓存，并给出
+`sync-all` 与弱网 timeout 修复命令。需要一键联网修复时，显式执行
 `tradecat doctor --sync --timeout 10`。
 
 ## TUI 操作
@@ -578,11 +600,14 @@ tradecat config unset default_lang
 | `TRADECAT_TERMINAL_NO_PAUSE` | 空 | 设为 `1` 时，自动静态兼容输出后不等待 Enter；用于脚本、CI 或自动化终端 |
 | `TRADECAT_CACHE_MAX_SNAPSHOTS` | 空 | `tradecat prune` 未传 `--max-snapshots` 时读取；空表示不启用裁剪 |
 | `TRADECAT_CACHE_COMPRESSION` | `none` | 新快照压缩方式；可选 `none` / `gzip`，默认不压缩 |
+| `TRADECAT_CACHE_WARN_BYTES` | `104857600` | doctor 磁盘水位 warning 阈值，默认 100MB |
+| `TRADECAT_LOCAL_STATE_LOCK_TIMEOUT` | `10` | 本地 cache/settings 文件锁等待秒数 |
 | `TRADECAT_UPDATE_INTERVAL_SECONDS` | `3600` | launcher 启动前后台自动更新的节流间隔秒数；`0` 表示每次启动都触发后台更新 |
 | `TRADECAT_NO_AUTO_UPDATE` | 空 | 设为 `1` 时跳过 launcher 自动更新 |
 | `TRADECAT_FORCE_UPDATE` | 空 | 设为 `1` 时启动前阻塞更新，失败则退出 |
 | `TRADECAT_INSTALL_DEFAULT_REF` | `v0.1.2` | 一键安装未显式设置分支或 ref 时使用的稳定 tag |
 | `TRADECAT_INSTALL_REF` | 空 | 固定安装 tag/ref；设置后 launcher 不自动更新 |
+| `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP` | 空 | 设为 `1` 时允许安装器在无 Python/uv 环境下执行远程 uv bootstrap |
 | `TRADECAT_INSTALL_BRANCH` | 空 | 覆盖为分支通道安装，常用 `develop`；设置后 launcher 按该分支自动更新 |
 | `TRADECAT_INSTALL_SKIP_SYNC` | 空 | 设为 `1` 时一键安装只初始化缓存目录，跳过安装阶段首次远端同步；用于 CI、弱网或离线安装 |
 | `TRADECAT_INSTALL_SKIP_PATH_WRITE` | 空 | 设为 `1` 时一键安装不写用户 PATH / shell profile；用于 CI 或临时安装测试 |
@@ -603,7 +628,7 @@ bash ../../scripts/supply-chain-audit.sh
 ```
 
 不使用根脚本时，也可以在 `scripts/project/` 内手动创建 `.venv` 并执行
-`pip install -e ".[dev]"`。
+`pip install -c constraints.txt -e ".[dev]"`。
 
 CI 会执行：
 

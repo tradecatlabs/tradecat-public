@@ -1,0 +1,304 @@
+{
+  "schema": "tradecat.agent_manifest.v1",
+  "schema_version": "1.0.0",
+  "name": "tradecat-public",
+  "display_name": "TradeCat Public",
+  "repo_role": "multi-agent skill wrapper around the bundled TradeCat cache-first CLI/TUI project",
+  "skill_root": ".",
+  "project_root": "scripts/project",
+  "default_workdir": ".",
+  "agent_profiles": [
+    {
+      "id": "openai",
+      "path": "agents/openai.yaml",
+      "role": "platform adapter"
+    },
+    {
+      "id": "hermes",
+      "path": "agents/hermes.yaml",
+      "role": "platform adapter"
+    }
+  ],
+  "command_risk_classes": {
+    "local_readonly": "Reads local tracked files, settings, or cache metadata only.",
+    "network_readonly": "Reads public network resources without writing local cache.",
+    "local_cache_write": "Writes only local TradeCat cache, settings, or diagnostics.",
+    "background_long_running": "Starts or supervises a long-running local watcher.",
+    "install_or_uninstall": "Changes user installation paths, launchers, virtual environments, or shell PATH guidance.",
+    "security_or_supply_chain": "Runs scanners or dependency audit tools; may download tool metadata."
+  },
+  "preferred_readonly_entrypoints": [
+    {
+      "command": "bash scripts/run-tradecat.sh status --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat.status.v1",
+      "exit_codes": {
+        "0": "status payload produced",
+        "nonzero": "local runtime or argument failure"
+      }
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh datasets --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat.dataset_list.v1",
+      "exit_codes": {
+        "0": "dataset registry loaded",
+        "nonzero": "registry or runtime failure"
+      }
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh path event_stream --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat.path_map.v1",
+      "exit_codes": {
+        "0": "path map produced",
+        "2": "invalid dataset key"
+      }
+    },
+    {
+      "command": "python3 scripts/project/scripts/request.py --datasets",
+      "risk_class": "network_readonly",
+      "schema": "text/tsv",
+      "exit_codes": {
+        "0": "public registry reachable",
+        "1": "network/runtime failure",
+        "2": "validation failure"
+      }
+    },
+    {
+      "command": "python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+      "risk_class": "network_readonly",
+      "schema": "tradecat.request_result.v1",
+      "exit_codes": {
+        "0": "public data fetched and parsed",
+        "1": "network/runtime failure",
+        "2": "validation failure"
+      }
+    }
+  ],
+  "preferred_mutating_entrypoints": [
+    {
+      "command": "bash scripts/run-tradecat.sh init --json",
+      "risk_class": "local_cache_write",
+      "schema": "tradecat.init.v1"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
+      "risk_class": "local_cache_write",
+      "schema": "tradecat.sync_result.v1"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh sync-all --json --timeout 10",
+      "risk_class": "local_cache_write",
+      "schema": "tradecat.sync_results.v1"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh doctor --repair --json",
+      "risk_class": "local_cache_write",
+      "schema": "tradecat.doctor.v1"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh prune --max-snapshots 20 --apply --json",
+      "risk_class": "local_cache_write",
+      "schema": "tradecat.prune_result.v1"
+    }
+  ],
+  "network_entrypoints": [
+    {
+      "command": "python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+      "mode": "zero-install fallback",
+      "writes": false
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
+      "mode": "production cache writer",
+      "writes": true
+    },
+    {
+      "command": "cd scripts/project && PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10",
+      "mode": "production transport contract smoke",
+      "writes": false
+    }
+  ],
+  "interactive_entrypoints": [
+    {
+      "command": "bash scripts/run-tradecat.sh tui event_stream",
+      "risk_class": "background_long_running",
+      "agent_default": false,
+      "non_interactive_alternative": "bash scripts/run-tradecat.sh tui event_stream --plain --limit 10"
+    }
+  ],
+  "json_outputs": [
+    {
+      "command": "bash scripts/run-tradecat.sh status --json",
+      "schema": "tradecat.status.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh doctor --json",
+      "schema": "tradecat.doctor.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh path event_stream --json",
+      "schema": "tradecat.path_map.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh datasets --json",
+      "schema": "tradecat.dataset_list.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh sync event_stream --json",
+      "schema": "tradecat.sync_result.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh sync-all --json",
+      "schema": "tradecat.sync_results.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh probe --json --no-write",
+      "schema": "tradecat.probe_results.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh prune --json",
+      "schema": "tradecat.prune_result.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh config show --json",
+      "schema": "tradecat.config.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+      "schema": "tradecat.request_result.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh export event_stream --format json --limit 5",
+      "schema": "tradecat.dataset_view.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh doctor --bundle -",
+      "schema": "tradecat.support_bundle.v1",
+      "schema_version": "1.0.0"
+    }
+  ],
+  "validation_commands": [
+    {
+      "command": "bash scripts/agent-smoke.sh",
+      "risk_class": "local_readonly",
+      "purpose": "Validate manifest, JSON schemas, exit codes, and zero-install request fallback without live data writes."
+    },
+    {
+      "command": "bash scripts/validate-skill.sh --strict",
+      "risk_class": "local_readonly",
+      "purpose": "Validate Skill wrapper structure."
+    },
+    {
+      "command": "bash scripts/verify.sh",
+      "risk_class": "local_readonly",
+      "purpose": "Run project tests, lint, contract checks, and shell syntax."
+    },
+    {
+      "command": "bash scripts/security-scan.sh",
+      "risk_class": "security_or_supply_chain",
+      "purpose": "Scan tracked files or selected history for leaked secrets."
+    },
+    {
+      "command": "bash scripts/supply-chain-audit.sh",
+      "risk_class": "security_or_supply_chain",
+      "purpose": "Audit Python dependencies with pinned tooling."
+    }
+  ],
+  "high_risk_commands": [
+    {
+      "command": "sh scripts/project/install.sh",
+      "risk_class": "install_or_uninstall",
+      "reason": "Creates or updates user app checkout, virtualenv, launchers, and optional PATH guidance."
+    },
+    {
+      "command": "powershell -File scripts/project/install.ps1",
+      "risk_class": "install_or_uninstall",
+      "reason": "Windows installer mutates user install paths and launchers."
+    },
+    {
+      "command": "bash scripts/project/scripts/start.sh start",
+      "risk_class": "background_long_running",
+      "reason": "Spawns a watcher process; success means process spawn, not remote data health."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh prune --apply",
+      "risk_class": "local_cache_write",
+      "reason": "Deletes local historical snapshots according to retention arguments."
+    }
+  ],
+  "important_paths": {
+    "skill_readme": "README.md",
+    "skill_entry": "SKILL.md",
+    "agent_manifest": "agents/manifest.json",
+    "agent_contract": "references/agent-contract.md",
+    "project_readme": "scripts/project/README.md",
+    "project_agents": "scripts/project/AGENTS.md",
+    "formal_contract_schemas": "scripts/project/contracts",
+    "project_source": "scripts/project/src/tradecat_terminal",
+    "project_tests": "scripts/project/tests",
+    "dataset_registry": "scripts/project/src/tradecat_terminal/dataset_registry.json",
+    "zero_install_request": "scripts/project/scripts/request.py",
+    "agent_smoke": "scripts/agent-smoke.sh"
+  },
+  "references": [
+    "references/agent-contract.md",
+    "references/architecture.md",
+    "references/cache-contract.md",
+    "references/linear-flows.md",
+    "references/quality-gate.md",
+    "references/first-run-cache.md",
+    "references/agent-readiness-remediation-task-tree.md"
+  ],
+  "known_failure_modes": [
+    {
+      "code": "invalid_dataset_key",
+      "kind": "validation",
+      "meaning": "The requested dataset_key is not in the bundled registry.",
+      "retryable": false,
+      "repair": "Run bash scripts/run-tradecat.sh datasets --json and use one of the advertised keys."
+    },
+    {
+      "code": "remote_timeout",
+      "kind": "timeout",
+      "meaning": "The public Google Sheets or registry request timed out.",
+      "retryable": true,
+      "repair": "Retry with --timeout 10 or use cached local data when available."
+    },
+    {
+      "code": "remote_http_status",
+      "kind": "http",
+      "meaning": "The remote endpoint returned a non-success HTTP status.",
+      "retryable": true,
+      "repair": "Retry later for 429/5xx; check public sheet permissions for 4xx."
+    },
+    {
+      "code": "empty_cache",
+      "kind": "local_state",
+      "meaning": "Local cache has been initialized but no active dataset has a latest projection yet.",
+      "retryable": true,
+      "repair": "Run bash scripts/run-tradecat.sh doctor --sync --timeout 10 after checking network."
+    }
+  ],
+  "safe_order_of_operations": [
+    "read agents/manifest.json",
+    "run bash scripts/run-tradecat.sh status --json",
+    "run bash scripts/run-tradecat.sh datasets --json",
+    "run bash scripts/run-tradecat.sh path event_stream --json",
+    "if only inspecting public data, prefer python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+    "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
+    "before delivery run bash scripts/agent-smoke.sh and the validation_commands that match the change scope"
+  ]
+}

@@ -1,5 +1,13 @@
 # Lessons
 
+## 2026-05-08 Agent Consumption Needs A Machine Contract, Not More Prose
+
+- 现象：仓库已经是 Skill 结构，但 Hermes/Agent 仍需要先读长文档、猜命令副作用、猜 JSON 形状和失败退出码。
+- 本质：面向人的 README 不能替代面向机器的 contract；Agent 最依赖的是可机读 manifest、稳定 schema、退出码和风险分类。
+- 规则：新增 Agent 入口时，先更新 `agents/manifest.json`，再更新平台 profile；profile 只能指向 manifest，不能复制第二份真相。
+- 防复发：所有广告给 Agent 解析的 JSON 必须带 `schema/schema_version`；失败必须是 object error；非交互失败必须返回非 0。
+- 验证：每次改 CLI JSON、request.py、wrapper、manifest 或 references，都必须跑 `bash scripts/agent-smoke.sh` 和 `pytest tests/test_*contract*.py tests/test_exit_codes.py`。
+
 ## 2026-05-08 First-run Cache Must Be A Product Contract
 
 - 现象：`tradecat` 启动后显示 `cache=empty-cache`、`remote=-`、`fetched=-`，后台 probe 在弱网下超时。
@@ -15,3 +23,11 @@
 - 规则：发布通道的公网安装 smoke 必须走普通用户路径；如初次同步失败，可以显式执行 `doctor --sync` 做一次修复，但最终必须断言默认 `event_stream` 为 `ready`。
 - 防复发：稳定安装默认指向 tag；开发分支自动更新必须通过 `TRADECAT_INSTALL_BRANCH=develop` 显式选择；tag 内 release 文档使用稳定工作流查询链接，避免发布后再改 tag 文档。
 - 验证：每次改 installer、CI 或 release 口径，都要同时检查 raw install、cache warm、release notes、README 默认命令和本地裸环境 verify。
+
+## 2026-05-08 Local State Needs One Durable Write Boundary
+
+- 现象：网络失败、并发 sync/probe、settings 损坏和 schema 演进原本分散在多个模块里处理，成熟度审查时暴露出长期风险。
+- 本质：本地状态是产品数据面，不能靠各模块临时 `write_text` / `replace` / `str(exc)` 维持正确性；需要统一边界约束时间、并发、错误语义和迁移。
+- 规则：远端错误必须 typed；本地写入必须 filelock + atomic replace；用户配置必须 `.bak`；metadata schema 必须有 migrations；doctor 必须能产出 public-safe support bundle。
+- 防复发：新增运行态模块时先判断是否属于状态边界；属于则复用 `state.py`、`diagnostics.py`、`migrations.py`，禁止复制私有锁和私有错误格式。
+- 验证：每次改 cache/settings/sync/doctor，必须覆盖 typed error、corrupt file、migration status、support bundle 和 root verify。

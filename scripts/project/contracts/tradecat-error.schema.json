@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-error.schema.json",
+  "title": "TradeCat Error Object",
+  "type": "object",
+  "required": ["code", "kind", "message", "hint", "retryable"],
+  "properties": {
+    "code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message": {
+      "type": "string"
+    },
+    "hint": {
+      "type": "string"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "integer"
+    },
+    "attempts": {
+      "type": "integer"
+    },
+    "url_host": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

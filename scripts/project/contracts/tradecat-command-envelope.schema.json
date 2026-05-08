@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-command-envelope.schema.json",
+  "title": "TradeCat Command Envelope",
+  "type": "object",
+  "required": ["schema", "schema_version"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "pattern": "^tradecat\\.[a-z0-9_]+\\.v[0-9]+$"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "command": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "error": {
+      "$ref": "tradecat-error.schema.json"
+    }
+  },
+  "additionalProperties": true
+}

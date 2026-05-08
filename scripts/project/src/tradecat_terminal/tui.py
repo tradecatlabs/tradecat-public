@@ -614,6 +614,9 @@ def _remote_time_label(view: dict[str, Any]) -> str:
 
 
 def _recovery_hint(state: dict[str, Any]) -> str:
+    error_info = state.get("last_probe_error_info")
+    if isinstance(error_info, dict) and error_info.get("hint"):
+        return str(error_info["hint"])
     error = str(state.get("last_probe_error") or "").lower()
     if "timed out" in error or "timeout" in error or "超时" in error:
         return "建议：检查网络或调大 TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT"
@@ -731,6 +734,7 @@ def _switch_dataset(state: dict[str, Any], step: int) -> None:
     state["last_probe_at"] = 0.0
     state["last_probe_status"] = "cache"
     state["last_probe_error"] = None
+    state["last_probe_error_info"] = None
     state["last_probe_error_at"] = None
     state["consecutive_probe_failures"] = 0
     state["probe_generation"] = int(state.get("probe_generation", 0)) + 1
@@ -933,9 +937,11 @@ def _probe_error_label(result: dict[str, Any]) -> str | None:
 def _record_probe_result(state: dict[str, Any], result: dict[str, Any]) -> None:
     state["last_probe_status"] = _probe_status_label(result)
     state["last_probe_error"] = _short_probe_error(_probe_error_label(result))
+    state["last_probe_error_info"] = result.get("error_info") if isinstance(result.get("error_info"), dict) else None
     if result.get("ok"):
         state["last_probe_success_at"] = _clock_label()
         state["consecutive_probe_failures"] = 0
+        state["last_probe_error_info"] = None
     elif result.get("error"):
         state["last_probe_error_at"] = _clock_label()
         state["consecutive_probe_failures"] = int(state.get("consecutive_probe_failures") or 0) + 1

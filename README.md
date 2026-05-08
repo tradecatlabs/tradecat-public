@@ -1,7 +1,21 @@
 # tradecat-public
 
-这是一个标准 Skill 外壳仓库，真正的 TradeCat 用户侧源码统一放在
-`scripts/project/`。
+这是一个标准 multi-Agent Skill 外壳仓库，真正的 TradeCat 用户侧源码统一放在
+`scripts/project/`。Agent / Hermes 的机器第一入口是
+`agents/manifest.json`，长文档契约见 `references/agent-contract.md`。
+
+## Agent 快速入口
+
+```bash
+python3 -m json.tool agents/manifest.json >/dev/null
+bash scripts/run-tradecat.sh status --json
+bash scripts/run-tradecat.sh datasets --json
+bash scripts/run-tradecat.sh path event_stream --json
+python3 scripts/project/scripts/request.py event_stream --format json --limit 5
+```
+
+默认先走只读入口；只有需要写本地缓存时再执行 `sync`、`doctor --repair`、
+安装或卸载。
 
 ## 用户安装入口
 
@@ -40,9 +54,14 @@ tradecat-public/
 |-- .pre-commit-config.yaml
 |-- SKILL.md
 |-- agents/
+|   |-- manifest.json
+|   |-- hermes.yaml
 |   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- agent-contract.md
+|   |-- agent-readiness-remediation-task-tree.md
+|   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- first-run-cache.md
@@ -50,10 +69,13 @@ tradecat-public/
 |   |-- linear-flows.md
 |   |-- quality-gate.md
 |   |-- release.md
+|   |-- stability-hardening-task-tree.md
+|   |-- stability-hardening-task-tree.json
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
+    |-- agent-smoke.sh
     |-- security-scan.sh
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
@@ -72,6 +94,8 @@ scripts/project/
 |-- README.md
 |-- Makefile
 |-- pyproject.toml
+|-- constraints.txt
+|-- contracts/
 |-- install.sh
 |-- install.ps1
 |-- uninstall.sh
@@ -93,15 +117,16 @@ scripts/project/
 
 - `.git/`、`.gitignore`、`.github/`：仓库与 CI 元数据。
 - `SKILL.md`：Skill 激活入口。
-- `agents/`：Agent marketplace / profile 元数据。
+- `agents/`：canonical machine manifest 和平台 profile 元数据。
 - `references/`：Skill 长文档与契约。
 - `scripts/verify.sh`、`scripts/bootstrap-dev.sh`、`scripts/security-scan.sh`、
   `scripts/supply-chain-audit.sh`、`scripts/install-security-tools.sh`、
-  `scripts/clean-local-runtime.sh`、`scripts/run-tradecat.sh`：从 Skill 根进入项目或治理门禁的薄封装。
+  `scripts/clean-local-runtime.sh`、`scripts/run-tradecat.sh`、
+  `scripts/agent-smoke.sh`：从 Skill 根进入项目或治理门禁的薄封装。
 
 应放入 `scripts/project/`：
 
-- `README.md`、`Makefile`、`pyproject.toml`。
+- `README.md`、`Makefile`、`pyproject.toml`、`constraints.txt`。
 - `install.*`、`uninstall.*`。
 - Python 包源码 `src/`。
 - 测试 `tests/`。
@@ -118,6 +143,7 @@ scripts/project/
 
 ```bash
 bash scripts/bootstrap-dev.sh
+bash scripts/agent-smoke.sh
 bash scripts/verify.sh
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh

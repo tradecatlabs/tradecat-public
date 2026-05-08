@@ -9,6 +9,36 @@
 - 默认不压缩快照；如需压缩，使用 `TRADECAT_CACHE_COMPRESSION=gzip`，旧纯 JSON 快照仍可读取。
 - TUI 不冻结列、不做右侧列滚动；`←/→` 只用于切换 tap，超出屏幕内容按终端宽度裁剪，用户可缩小字体或扩大窗口查看全表。
 - TUI 链接支持两类：交易对跳 Binance Futures，URL 文本直接打开 URL。
+- Agent/Hermes 机器入口是根目录 `agents/manifest.json`；项目 JSON 输出必须带
+  `schema/schema_version`，失败 payload 的 `error` 必须是对象。
+
+## 2026-05-08 Agent/Hermes Readiness Contract
+
+### 现象
+
+- Skill 根结构已经清晰，但 Agent 仍需要阅读长文档才能判断项目根、只读入口、
+  会联网命令、会写缓存命令、JSON payload 类型和失败退出码。
+
+### 根因
+
+- `agents/openai.yaml` 太薄，缺少 canonical manifest。
+- CLI JSON 输出已有 `--json`，但没有统一 `schema/schema_version`。
+- `python -m tradecat_terminal` 入口没有把 `main()` 返回值交给 shell。
+- `request.py` 与主 CLI 远端路径的差异没有公开写成 contract。
+
+### 修复
+
+- 新增 `agents/manifest.json` 作为唯一机器主契约，`agents/openai.yaml` 与
+  `agents/hermes.yaml` 只作为平台适配层。
+- 新增 `contracts.py`，让 CLI 广告 JSON 输出带稳定 schema/version 和 object error。
+- 修正 `__main__.py` 为 `raise SystemExit(main())`，并补 `test_exit_codes.py`。
+- `request.py --format json` 输出 `tradecat.request_result.v1`，失败也返回 JSON error。
+- 新增 `references/agent-contract.md`、`scripts/agent-smoke.sh` 和 CI `agent-readiness` job。
+
+### 回归
+
+- `bash scripts/agent-smoke.sh`
+- `PYTHONPATH=src pytest -q tests/test_exit_codes.py tests/test_json_contract.py tests/test_agent_contract.py tests/test_transport.py`
 
 ## 禁止回退
 
@@ -24,6 +54,40 @@
 - `scripts/project/DEBUG.archive.md`
 
 该文件只作为历史复盘材料，不是当前运行契约。
+
+## 2026-05-08 稳定性硬化：网络、锁、配置和诊断
+
+### 现象
+
+- 成熟度审查发现远端 CSV 拉取、cache/settings 写入、doctor 诊断、依赖可复现和
+  CI canary 仍低于成熟 CLI/TUI 软件水位。
+
+### 根因
+
+- 远端拉取使用单次请求，错误只向上传递字符串，TUI/doctor 无法区分 timeout、
+  HTTP、DNS、decode 等类型。
+- cache 写入虽然使用同目录 replace，但缺少跨进程锁；settings 写入也没有 `.bak`
+  和 corrupt 诊断。
+- cache metadata 有 `schema_version`，但缺少显式迁移、备份和 doctor repair 入口。
+- 安装依赖依靠范围声明，installer 在无 Python 时可静默执行远程 uv bootstrap。
+
+### 修复
+
+- `sheets.py` 改用 `urllib3` retry/backoff/jitter，并输出 typed error payload。
+- `state.py` 集中提供 `filelock` 文件锁和原子写；cache、structured latest、settings
+  写入统一走该边界。
+- `settings.py` 写入前保留 `settings.json.bak`，损坏配置保留为
+  `settings.json.corrupt-*.bak` 并由 doctor 暴露。
+- `migrations.py` 增加 cache metadata migration runner，`doctor --repair` 可本地修复。
+- `diagnostics.py` 增加 recent error ledger、disk waterline 和 public-safe support bundle。
+- Installer 使用 `constraints.txt`，远程 uv bootstrap 改为
+  `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1` 显式授权。
+- CI 扩展 Python 3.12/3.13、scheduled/manual canary、public smoke artifact 和 dependency evidence。
+
+### 回归
+
+- `bash scripts/project/scripts/verify.sh` 已通过，覆盖 typed remote error、settings corrupt
+  recovery、migration repair、doctor bundle 和 disk waterline。
 
 ## 2026-05-08 TUI 首屏 empty-cache 与 event_stream 探针超时
 

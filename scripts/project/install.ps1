@@ -79,7 +79,10 @@ function Ensure-Uv {
     if (Test-Command "uv") {
         return
     }
-    Log "Python $PythonVersion not found; installing uv-managed Python"
+    if (-not (Test-Truthy $env:TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP)) {
+        Fail "Python $PythonVersion or uv is missing. For supply-chain safety the installer will not run the remote uv bootstrap script silently. Install Python $PythonVersion+ first, or set TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1 to opt in."
+    }
+    Log "TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1 is set; installing uv-managed Python"
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     $UserLocalBin = Join-Path (Join-Path $env:USERPROFILE ".local") "bin"
     $UserCargoBin = Join-Path (Join-Path $env:USERPROFILE ".cargo") "bin"
@@ -137,13 +140,23 @@ function Create-Venv {
         Invoke-Python $Python @("-m", "venv", ".venv")
         $script:VenvPy = Join-Path $script:ProjectDir ".venv\Scripts\python.exe"
         & $script:VenvPy -m pip install -U pip
-        & $script:VenvPy -m pip install -e .
+        $Constraints = Join-Path $script:ProjectDir "constraints.txt"
+        if (Test-Path $Constraints) {
+            & $script:VenvPy -m pip install -c $Constraints -e .
+        } else {
+            & $script:VenvPy -m pip install -e .
+        }
     } else {
         Ensure-Uv
         Log "creating Python $PythonVersion virtualenv with uv"
         uv venv --python $PythonVersion .venv
         $script:VenvPy = Join-Path $script:ProjectDir ".venv\Scripts\python.exe"
-        uv pip install --python $script:VenvPy -e .
+        $Constraints = Join-Path $script:ProjectDir "constraints.txt"
+        if (Test-Path $Constraints) {
+            uv pip install --python $script:VenvPy -c $Constraints -e .
+        } else {
+            uv pip install --python $script:VenvPy -e .
+        }
     }
     if (-not (Test-Path $script:VenvPy)) {
         Fail "virtualenv Python not found: $script:VenvPy"

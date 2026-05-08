@@ -25,6 +25,8 @@ tradecat-public/
 ├── agents/
 │   └── openai.yaml
 ├── references/
+│   ├── agent-readiness-remediation-task-tree.md
+│   ├── agent-readiness-remediation-task-tree.json
 │   ├── architecture.md
 │   ├── cache-contract.md
 │   ├── first-run-cache.md
@@ -32,11 +34,18 @@ tradecat-public/
 │   ├── install-uninstall.md
 │   ├── linear-flows.md
 │   ├── quality-gate.md
+│   ├── release.md
+│   ├── stability-hardening-task-tree.md
+│   ├── stability-hardening-task-tree.json
 │   └── tui-contract.md
 └── scripts/
     ├── validate-skill.sh
     ├── bootstrap-dev.sh
     ├── security-scan.sh
+    ├── supply-chain-audit.sh
+    ├── install-security-tools.sh
+    ├── clean-local-runtime.sh
+    ├── agent-smoke.sh
     ├── run-tradecat.sh
     ├── verify.sh
     └── project/
@@ -49,6 +58,8 @@ tradecat-public/
         ├── uninstall.sh
         ├── uninstall.ps1
         ├── Makefile
+        ├── constraints.txt
+        ├── contracts/
         ├── pyproject.toml
         ├── scripts/
         │   ├── guard_public_local_files.sh
@@ -63,15 +74,19 @@ tradecat-public/
         │       ├── __main__.py
         │       ├── cache.py
         │       ├── cli.py
+        │       ├── contracts.py
         │       ├── config.py
         │       ├── dataset_registry.json
+        │       ├── diagnostics.py
         │       ├── header_aliases.py
         │       ├── i18n.py
         │       ├── lifecycle.py
+        │       ├── migrations.py
         │       ├── registry.py
         │       ├── service_entry.py
         │       ├── settings.py
         │       ├── sheets.py
+        │       ├── state.py
         │       ├── structured_cache.py
         │       ├── sync.py
         │       ├── tui.py
@@ -79,7 +94,11 @@ tradecat-public/
         │       └── runtime/
         │           └── paths.py
         └── tests/
-            └── test_cache_tui.py
+            ├── test_agent_contract.py
+            ├── test_cache_tui.py
+            ├── test_exit_codes.py
+            ├── test_json_contract.py
+            └── test_transport.py
 ```
 
 ## Linear Flow
@@ -90,10 +109,11 @@ tradecat-public/
 Input(输入)：公开 Google Sheets CSV、dataset registry、本地 cache_dir
 -> 节点1：`cli.py` / `lifecycle.py` 接收 `sync/probe/watch` 命令并解析缓存目录
 -> 节点2：`registry.py` 从 `dataset_registry.json` 加载 workbook、tab、gid、dataset_key 与 data_mode
--> 节点3：`sheets.py` 只读拉取 CSV 并转换为 matrix
--> 节点4：`cache.py` 按 matrix hash 写入 snapshot 文件；hash 不变则跳过新增文件
--> 节点5：`cache.py` 对 `event_stream` 额外按 event_key 与 normalized_event_key 合并 `stream_events.json`
--> 节点6：`structured_cache.py` 生成固定结构化文件 `latest.json` / `latest.jsonl` / `latest.csv` 和根 `manifest.json`
+-> 节点3：`sheets.py` 通过成熟 HTTP retry/backoff/jitter 拉取 CSV，并把网络失败分类成 typed error
+-> 节点4：`migrations.py` 在写入前检查缓存 metadata schema，必要时先备份再迁移
+-> 节点5：`cache.py` 在 `state.py` 文件锁保护下按 matrix hash 写入 snapshot 文件；hash 不变则跳过新增文件
+-> 节点6：`cache.py` 对 `event_stream` 额外按 event_key 与 normalized_event_key 合并 `stream_events.json`
+-> 节点7：`structured_cache.py` 生成固定结构化文件 `latest.json` / `latest.jsonl` / `latest.csv` 和根 `manifest.json`
 -> Output(输出)：可由 TUI、用户脚本和 Agent 读取的本地结构化快照缓存
 ```
 
@@ -171,20 +191,25 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 
 以下路径除特别说明外，均以 `scripts/project/` 为项目根目录。
 
-- `cache.py`：本地 JSON 快照缓存引擎；负责 manifest、snapshot、event stream 去重、显式 prune 和可选 gzip。
+- `cache.py`：本地 JSON 快照缓存引擎；负责 manifest、snapshot、event stream 去重、显式 prune、可选 gzip 和 typed sync error 输出。
 - `cli.py`：命令行入口，只做参数解析与流程编排。
+- `contracts.py`：CLI JSON `schema/schema_version` 与稳定 error object 契约层。
+- `constraints.txt`：运行与开发依赖锁定口径；安装器、CI 和本地 bootstrap 都必须消费。
 - `config.py`：本地缓存目录与环境变量解析；默认缓存根为项目根 `scripts/project/.tradecat/cache`。
 - `dataset_registry.json`：workbook、dataset、gid、tab、显示名、探针间隔和数据模式的单一真相源。
+- `diagnostics.py`：本地诊断与 support bundle 层；只记录公开安全的错误摘要、环境摘要和缓存水位。
 - `header_aliases.py`：字段别名元数据层；只进入 ViewModel 的 `column_meta.display_name`，禁止替代 TUI 表格物理列 A/B/C...
 - `i18n.py`：TUI/CLI 外壳文案的轻量多语言表；只处理中文、英文、韩语 UI 文案。
 - `install.sh`：POSIX 一键安装入口，覆盖 Linux / macOS / WSL / Git Bash。
 - `install.ps1`：Windows PowerShell 一键安装入口。
-- `lifecycle.py`：用户侧 ensure / probe / watch 生命周期闭环；`doctor --fix` 只修复本地目录骨架，不触发远端同步。
+- `lifecycle.py`：用户侧 ensure / probe / watch 生命周期闭环；`doctor --fix` 只修复本地目录骨架，`doctor --repair` 只修本地 metadata，二者都不隐式触发远端同步。
+- `migrations.py`：缓存 metadata schema 迁移层；所有迁移必须幂等、备份、可回滚。
 - `registry.py`：从 `dataset_registry.json` 加载 workbook、tab、dataset、data_mode、TUI 探针间隔与多语言展示名。
-- `scripts/request.py`：零安装一次性公开数据请求脚本；公开 curl 路径为 `scripts/project/scripts/request.py`；读取共享 registry，只能用标准库，只输出 stdout。
+- `scripts/request.py`：零安装一次性公开数据请求脚本；公开 curl 路径为 `scripts/project/scripts/request.py`；读取共享 registry，只能用标准库，JSON 模式必须输出 `tradecat.request_result.v1`。
 - `scripts/validate_data_contract.py`：公开 dataset registry 与 Google Sheets CSV 契约校验入口；CI 可用 `--remote` 做公网 smoke。
-- `settings.py`：用户侧本地配置文件读写；管理默认语言、默认 tap、缓存目录和探针间隔。
-- `sheets.py`：Google Sheets CSV 只读拉取与 matrix 解析。
+- `settings.py`：用户侧本地配置文件读写；管理默认语言、默认 tap、缓存目录和探针间隔，写入必须原子化并保留 `.bak`。
+- `sheets.py`：Google Sheets CSV 只读拉取与 matrix 解析；网络层使用 `urllib3` retry/backoff/jitter 和 typed error。
+- `state.py`：本地文件锁与原子写基础设施；跨平台锁只能通过此模块集中使用。
 - `structured_cache.py`：结构化缓存投影层；负责 `latest.json` / `latest.jsonl` / `latest.csv` / 根 manifest。
 - `sync.py`：缓存同步入口薄封装。
 - `tui.py`：终端浏览入口；只读缓存文件，使用后台探针、内存 view/render cache 与显示宽度感知 psql 风格渲染器。
@@ -200,6 +225,10 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - 禁止重新引入 `db.py`、`query.py`、SQLite schema、SQL 示例或数据库 vacuum/compress 维护命令。
 - `sync/probe/watch` 只能写 `TRADECAT_CACHE_DIR` 下的缓存文件；未设置时固定写项目根 `scripts/project/.tradecat/cache`。
 - 每次写入 dataset 缓存必须同步生成 `latest.json`、`latest.jsonl`、`latest.csv`；禁止只写原始 snapshot 而不更新结构化投影。
+- 每次写缓存、manifest、stream state 或 settings 必须使用 `state.py` 文件锁和原子替换；禁止各模块自行发明锁语义。
+- 远端 CSV 拉取失败必须输出稳定 error code/kind/hint/retryable，禁止上层继续依赖 `str(exc)` 猜错误类型。
+- Agent 广告的 JSON 输出必须带 `schema` 和 `schema_version`；失败时 `error` 必须是对象，不能退化成自由文本。
+- cache schema 变更必须走 `migrations.py`，并补 fixture 回归；禁止临时 if/else 隐式升级历史缓存。
 - snapshot dataset 必须按完整 CSV matrix hash 决定是否新增快照文件。
 - `event_stream` 必须独立按事件键增量合并，重复事件只能更新 `seen_count / last_seen_at`。
 - TUI 默认 live 模式当前焦点 dataset 走前台后台线程 probe；非焦点 active dataset 也必须按独立间隔后台保鲜。

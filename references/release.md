@@ -53,6 +53,38 @@ tradecat-uninstall
 curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
 ```
 
+## Next Stability Hardening
+
+Target: next tag after `v0.1.2`.
+
+Scope already implemented on `develop` pending release:
+
+- Remote CSV fetch now uses `urllib3` retry/backoff/jitter and typed error
+  payloads.
+- Cache/settings writes use cross-platform locks and atomic replacement.
+- Settings corruption is preserved as `.corrupt-*.bak` and surfaced by doctor.
+- `doctor --verbose` and `doctor --bundle [PATH]` expose public-safe diagnostics,
+  recent errors, migration state, and disk-waterline hints.
+- Cache metadata migrations are explicit, backed up, and repairable through
+  `doctor --repair`.
+- Runtime dependency installation uses `constraints.txt`; uv remote bootstrap is
+  explicit opt-in via `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1`.
+- CI expands Python 3.12/3.13 coverage, uploads dependency/public-smoke
+  artifacts, and supports scheduled/manual public canary runs.
+- Agent/Hermes readiness adds `agents/manifest.json`, `agents/hermes.yaml`,
+  `references/agent-contract.md`, schema/versioned CLI JSON, stable object
+  errors, `scripts/agent-smoke.sh`, and a dedicated CI `agent-readiness` job.
+
+Release gate before tagging:
+
+```bash
+bash scripts/validate-skill.sh --strict
+bash scripts/agent-smoke.sh
+bash scripts/verify.sh
+bash scripts/security-scan.sh
+bash scripts/supply-chain-audit.sh
+```
+
 ## v0.1.1
 
 Release date: 2026-05-08.

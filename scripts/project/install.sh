@@ -60,8 +60,11 @@ ensure_uv() {
   if command -v uv >/dev/null 2>&1; then
     return 0
   fi
+  if ! truthy "${TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP:-}"; then
+    fail "未找到 Python $PYTHON_VERSION 或 uv。出于供应链安全，安装器不会静默执行远程 uv 安装脚本；请先安装 Python $PYTHON_VERSION+，或设置 TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1 明确允许安装器引导 uv。"
+  fi
   need_cmd curl
-  log "未找到 Python $PYTHON_VERSION，开始安装 uv，并由 uv 托管 Python"
+  log "按 TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1 明确授权安装 uv，并由 uv 托管 Python"
   curl -LsSf https://astral.sh/uv/install.sh | sh
   PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
   export PATH
@@ -115,7 +118,11 @@ create_venv() {
       VENV_PY="$PROJECT_DIR/.venv/Scripts/python.exe"
     fi
     "$VENV_PY" -m pip install -U pip
-    "$VENV_PY" -m pip install -e .
+    if [ -f "$PROJECT_DIR/constraints.txt" ]; then
+      "$VENV_PY" -m pip install -c "$PROJECT_DIR/constraints.txt" -e .
+    else
+      "$VENV_PY" -m pip install -e .
+    fi
   else
     ensure_uv
     log "使用 uv 创建 Python $PYTHON_VERSION 虚拟环境"
@@ -125,7 +132,11 @@ create_venv() {
     else
       VENV_PY="$PROJECT_DIR/.venv/Scripts/python.exe"
     fi
-    uv pip install --python "$VENV_PY" -e .
+    if [ -f "$PROJECT_DIR/constraints.txt" ]; then
+      uv pip install --python "$VENV_PY" -c "$PROJECT_DIR/constraints.txt" -e .
+    else
+      uv pip install --python "$VENV_PY" -e .
+    fi
   fi
   [ -x "$VENV_PY" ] || fail "虚拟环境 Python 不存在：$VENV_PY"
 }

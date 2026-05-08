@@ -18,9 +18,15 @@ tradecat-public/
 |-- .gitignore
 |-- .pre-commit-config.yaml
 |-- SKILL.md
-|-- agents/openai.yaml
+|-- agents/
+|   |-- manifest.json
+|   |-- hermes.yaml
+|   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- agent-contract.md
+|   |-- agent-readiness-remediation-task-tree.md
+|   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
 |   |-- first-run-cache.md
@@ -28,11 +34,14 @@ tradecat-public/
 |   |-- linear-flows.md
 |   |-- quality-gate.md
 |   |-- release.md
+|   |-- stability-hardening-task-tree.md
+|   |-- stability-hardening-task-tree.json
 |   `-- tui-contract.md
 `-- scripts/
     |-- validate-skill.sh
     |-- verify.sh
     |-- bootstrap-dev.sh
+    |-- agent-smoke.sh
     |-- security-scan.sh
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
@@ -44,6 +53,8 @@ tradecat-public/
         |-- DEBUG.md
         |-- DEBUG.archive.md
         |-- pyproject.toml
+        |-- constraints.txt
+        |-- contracts/
         |-- scripts/
         |-- src/
         `-- tests/
@@ -53,11 +64,14 @@ tradecat-public/
 
 - `.git/`、`.github/`、`.gitignore` 是 Git / CI 边界，禁止移动到
   `scripts/project/`。
-- `SKILL.md`、`agents/`、`references/` 是 Skill 边界，禁止混入项目源码。
+- `SKILL.md`、`agents/`、`references/` 是 Skill/Agent 契约边界，禁止混入项目源码。
+- `agents/manifest.json` 是唯一机器可读 Agent 主契约；`agents/openai.yaml`
+  与 `agents/hermes.yaml` 只能作为平台适配层。
 - `lessons.md` 是事故经验与防复发规则，必须保持脱敏、短句、可执行。
 - `scripts/validate-skill.sh`、`scripts/verify.sh`、`scripts/bootstrap-dev.sh`、
   `scripts/security-scan.sh`、`scripts/supply-chain-audit.sh`、
-  `scripts/install-security-tools.sh`、`scripts/clean-local-runtime.sh` 和
+  `scripts/install-security-tools.sh`、`scripts/clean-local-runtime.sh`、
+  `scripts/agent-smoke.sh` 和
   `scripts/run-tradecat.sh` 只是薄入口，业务逻辑在 `scripts/project/`，
   治理扫描只读取 Git 跟踪文件或指定提交范围。
 - 根目录禁止创建 `assets/`、`assets/examples/`、`src/`、`tests/`、
@@ -68,7 +82,8 @@ tradecat-public/
 `scripts/project/` 是唯一 Python 项目根，承载：
 
 - `README.md`：用户安装、运行、开发说明。
-- `pyproject.toml` / `Makefile`：Python 项目元数据与开发入口。
+- `pyproject.toml` / `constraints.txt` / `Makefile`：Python 项目元数据、依赖锁定口径与开发入口。
+- `contracts/`：公开 JSON Schema 草案文件，用于外部工具校验 Agent/CLI 契约。
 - `install.*` / `uninstall.*`：用户安装与卸载入口。
 - `scripts/`：项目级脚本。
 - `src/tradecat_terminal/`：TradeCat CLI / TUI 源码。
@@ -82,6 +97,7 @@ tradecat-public/
 
 ```bash
 bash scripts/bootstrap-dev.sh
+bash scripts/agent-smoke.sh
 bash scripts/verify.sh
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh

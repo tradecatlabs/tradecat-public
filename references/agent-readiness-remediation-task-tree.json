@@ -1,0 +1,1101 @@
+{
+  "schema_version": "1.0.0",
+  "overall_status": "Implemented Locally",
+  "document_blocks": {
+    "requirement_alignment": "Convert the Hermes planning document at .hermes/plans/2026-05-08_173607-agent-readiness-remediation-plan.md into a public, executable TP-XX task tree for making tradecat-public safe and low-ambiguity for Hermes and other shell-capable agents.",
+    "repo_evidence": "The repository root is a Skill wrapper, the Python project lives under scripts/project/, root assets/ is forbidden, agents/openai.yaml is currently thin, and existing machine-readable task trees are stored in references/ instead of assets/tasks/.",
+    "constraints_matrix": "Do not create root assets/. Keep source, tests, installers, and project scripts under scripts/project/. Keep machine and long-form agent contract material under agents/ and references/. Do not commit local .hermes runtime state, private .env values, cache payloads, or credentials.",
+    "change_boundary": "This task tree has been implemented locally in the working tree. The execution boundary covers process exit codes, agent manifests, JSON contracts, fetch transport reconciliation, agent smoke CI, documentation, optional maturity upgrades, and delivery closeout.",
+    "debug_evidence_contract": "Required for TP-01 and TP-04 because they touch observed runtime failures and process semantics. Optional for pure manifest/docs leaves unless implementation uncovers a failing command, CI-only failure, flaky test, or transport regression.",
+    "global_acceptance_standards": "A new agent can read agents/manifest.json, run the advertised fast path, trust exit codes, parse versioned JSON schemas, understand command risk classes, and pass a dedicated agent-readiness CI lane.",
+    "validation_plan": "During implementation, run bash scripts/agent-smoke.sh, bash scripts/verify.sh, bash scripts/validate-skill.sh --strict, bash scripts/security-scan.sh, bash scripts/supply-chain-audit.sh, targeted pytest files for exit/json/agent/transport, python3 -m json.tool agents/manifest.json, and git diff --check."
+  },
+  "nodes": [
+    {
+      "id": "TP-01",
+      "title": "进程与退出码契约",
+      "priority": "P0",
+      "type": "package",
+      "objective": "让所有非交互命令的 shell exit code 与机器可读失败状态一致，避免 Agent 继续执行错误路径。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "evidence": "__main__.py 当前直接调用 main()；规划证据显示 sync 可输出 ok=false 但 shell 仍返回 0。"
+    },
+    {
+      "id": "TP-01.01",
+      "title": "修正 Python module 退出码传播",
+      "priority": "P0",
+      "type": "action",
+      "objective": "将 scripts/project/src/tradecat_terminal/__main__.py 改成 raise SystemExit(main())，确保 python -m tradecat_terminal 传播 main() 返回值。",
+      "parent": "TP-01",
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "在 scripts/project 下运行 PYTHONPATH=src python3 -m tradecat_terminal sync invalid_dataset --json，退出码必须非 0。",
+      "gate": "任何 main() 返回非 0 的路径都不能被 Python 模块入口吞掉。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/__main__.py"
+      ],
+      "acceptance": [
+        "module 入口以 SystemExit 包裹 main 返回值",
+        "失败命令的 shell 状态与 CLI main 返回值一致"
+      ],
+      "evidence": "规划文件指出 __main__.py 当前调用 main() 而不是 raise SystemExit(main())。"
+    },
+    {
+      "id": "TP-01.02",
+      "title": "审计 CLI 命令返回码矩阵",
+      "priority": "P0",
+      "type": "action",
+      "objective": "逐分支定义 init、doctor、status、path、datasets、config、sync、sync-all、probe、prune、export、watch、tui --plain 的返回码语义。",
+      "parent": "TP-01",
+      "depends_on": [
+        "TP-01.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "对每个非交互命令构造成功、业务失败、参数错误、网络失败或本地状态异常用例，并断言返回码。",
+      "gate": "不存在 ok=false 但退出码为 0 的非交互失败路径，除非文档明确声明且测试锁定。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/cli.py"
+      ],
+      "acceptance": [
+        "CLI 返回码策略有代码和测试双重证据",
+        "Agent 可只看退出码判断是否继续下一步"
+      ],
+      "evidence": "cli.py 是所有 tradecat 子命令的返回码中心。"
+    },
+    {
+      "id": "TP-01.03",
+      "title": "审计 wrapper 与 launcher 退出码透传",
+      "priority": "P0",
+      "type": "action",
+      "objective": "确认 scripts/run-tradecat.sh、安装产物 launcher、start/watch 脚本不会吞掉 Python 子进程退出码。",
+      "parent": "TP-01",
+      "depends_on": [
+        "TP-01.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "通过 bash scripts/run-tradecat.sh sync invalid_dataset --json 和安装 launcher 的等价命令断言退出码一致。",
+      "gate": "wrapper 退出码必须等于被包装命令的退出码，后台启动命令必须单独声明 spawn/health 语义。",
+      "outputs": [
+        "scripts/run-tradecat.sh",
+        "scripts/project/install.sh",
+        "scripts/project/install.ps1",
+        "scripts/project/scripts/start.sh"
+      ],
+      "acceptance": [
+        "根 wrapper 不掩盖失败",
+        "POSIX 与 PowerShell launcher 均保留子进程状态"
+      ],
+      "evidence": "Agent 实际入口常通过 root wrapper 或 installer 生成的 launcher，而不是直接调用 Python 模块。"
+    },
+    {
+      "id": "TP-01.04",
+      "title": "明确 start/watch 长运行语义",
+      "priority": "P1",
+      "type": "action",
+      "objective": "定义 scripts/project/scripts/start.sh 与 watch 类命令是只确认进程已启动，还是确认服务健康可用。",
+      "parent": "TP-01",
+      "depends_on": [
+        "TP-01.03"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": true,
+      "verify": "start/watch 文档、脚本输出和返回码对 spawn success、health failure、already running 三种情况给出确定结果。",
+      "gate": "Agent 不会把后台进程已 fork 误判为数据通路已健康。",
+      "outputs": [
+        "scripts/project/scripts/start.sh",
+        "references/agent-contract.md"
+      ],
+      "acceptance": [
+        "长运行命令被标记为 background/long-running 风险类",
+        "健康检查是否执行有明确契约"
+      ],
+      "evidence": "规划文件要求 agent 能区分只读命令、联网命令、缓存写入命令和长运行命令。"
+    },
+    {
+      "id": "TP-01.05",
+      "title": "补齐退出码回归测试",
+      "priority": "P0",
+      "type": "action",
+      "objective": "新增 test_exit_codes.py 覆盖 sync 失败、非法 dataset、doctor 本地异常、wrapper 透传和设计允许的软失败。",
+      "parent": "TP-01",
+      "depends_on": [
+        "TP-01.02",
+        "TP-01.03",
+        "TP-01.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_exit_codes.py 通过。",
+      "gate": "任何退出码契约回归都能在本地和 CI 中失败。",
+      "outputs": [
+        "scripts/project/tests/test_exit_codes.py"
+      ],
+      "acceptance": [
+        "失败命令非 0",
+        "wrapper 与 module 入口返回码一致",
+        "测试不依赖真实公网即可稳定运行"
+      ],
+      "evidence": "当前测试集中在 cache/TUI，缺少进程契约测试。"
+    },
+    {
+      "id": "TP-02",
+      "title": "机器可读 Agent 契约",
+      "priority": "P0",
+      "type": "package",
+      "objective": "建立 vendor-neutral manifest 与 Hermes/OpenAI 适配层，让 Agent 不读长文也能知道安全入口、风险等级、JSON 输出和验证命令。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "evidence": "agents/openai.yaml 当前只有 display_name、short_description 和 default_prompt。"
+    },
+    {
+      "id": "TP-02.01",
+      "title": "定义 manifest 字段与风险分类",
+      "priority": "P0",
+      "type": "action",
+      "objective": "确定 agents/manifest.json 的 schema、字段、safe_order_of_operations、command risk classes 与 known_failure_modes。",
+      "parent": "TP-02",
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "references/agent-contract.md 草案列出 manifest 字段、命令风险类和 fast path，且与现有命令真实存在性一致。",
+      "gate": "manifest 字段不复制长文档，只表达机器决策必需信息。",
+      "outputs": [
+        "references/agent-contract.md"
+      ],
+      "acceptance": [
+        "字段覆盖 skill_root、project_root、entrypoints、json_outputs、validation_commands、high_risk_commands",
+        "风险类覆盖本地只读、网络只读、本地缓存写入、后台长运行、安装卸载高风险"
+      ],
+      "evidence": "规划文件要求 manifest 成为唯一 canonical machine contract。"
+    },
+    {
+      "id": "TP-02.02",
+      "title": "新增 agents/manifest.json",
+      "priority": "P0",
+      "type": "action",
+      "objective": "创建 vendor-neutral machine manifest，作为 Hermes、Codex、Claude、Cursor 等 Agent 的第一读取入口。",
+      "parent": "TP-02",
+      "depends_on": [
+        "TP-02.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "python3 -m json.tool agents/manifest.json >/dev/null，且 manifest 中列出的命令和路径全部存在或有明确生成时机。",
+      "gate": "新 Agent 只读 manifest 就能识别前五个安全命令和需要避免的高风险命令。",
+      "outputs": [
+        "agents/manifest.json"
+      ],
+      "acceptance": [
+        "manifest 是中立机器契约源",
+        "safe_order_of_operations 固定且可执行",
+        "known_failure_modes 包括 empty cache、network timeout、polling conflict、path/PATH missing"
+      ],
+      "evidence": "当前没有机器主契约文件。"
+    },
+    {
+      "id": "TP-02.03",
+      "title": "新增 Hermes 适配元数据并扩展 OpenAI 元数据",
+      "priority": "P1",
+      "type": "action",
+      "objective": "新增 agents/hermes.yaml，扩展 agents/openai.yaml，使二者都指向 manifest 而不是复制完整契约。",
+      "parent": "TP-02",
+      "depends_on": [
+        "TP-02.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "YAML 能被 Python yaml 或项目既有校验读取；字段包括 manifest_path、default_workdir、json_first、avoid_interactive_tui。",
+      "gate": "平台适配层只做平台提示和入口偏好，不成为第二份真相。",
+      "outputs": [
+        "agents/hermes.yaml",
+        "agents/openai.yaml"
+      ],
+      "acceptance": [
+        "Hermes profile 偏向 shell-safe JSON 命令",
+        "OpenAI profile 保持薄入口但指向 manifest"
+      ],
+      "evidence": "用户明确要求适配 Hermes 和 Agent 使用。"
+    },
+    {
+      "id": "TP-02.04",
+      "title": "撰写 Agent Contract 长文档",
+      "priority": "P0",
+      "type": "action",
+      "objective": "新增 references/agent-contract.md，解释 manifest、fast path、命令风险等级、失败解释、fallback 规则和交付门禁。",
+      "parent": "TP-02",
+      "depends_on": [
+        "TP-02.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "references/index.md 可导航该文档；SKILL.md Quick Reference 能指向该文档而不复制长解释。",
+      "gate": "Agent Fast Path 在 2 分钟内可读完，长解释留在 references。",
+      "outputs": [
+        "references/agent-contract.md",
+        "references/index.md",
+        "SKILL.md"
+      ],
+      "acceptance": [
+        "清晰区分 inspect、validate、consume、diagnose、mutate",
+        "默认不进入交互 TUI",
+        "fallback 规则不掩盖生产路径差异"
+      ],
+      "evidence": "规划文件要求文档第一跳重排为 agent-fast-path。"
+    },
+    {
+      "id": "TP-02.05",
+      "title": "补齐 Agent 契约测试",
+      "priority": "P1",
+      "type": "action",
+      "objective": "新增 test_agent_contract.py 验证 manifest 结构、路径存在、命令分类无冲突、YAML profile 指向 manifest。",
+      "parent": "TP-02",
+      "depends_on": [
+        "TP-02.02",
+        "TP-02.03",
+        "TP-02.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_agent_contract.py 通过。",
+      "gate": "manifest 漂移、路径失效或 profile 失配会直接失败。",
+      "outputs": [
+        "scripts/project/tests/test_agent_contract.py"
+      ],
+      "acceptance": [
+        "机器契约有测试保护",
+        "新增命令风险类必须同步 manifest"
+      ],
+      "evidence": "CI 当前没有独立 agent-readiness gate。"
+    },
+    {
+      "id": "TP-03",
+      "title": "稳定 JSON API 契约",
+      "priority": "P0",
+      "type": "package",
+      "objective": "把所有 Agent 会解析的 JSON 输出升级为带 schema/version 与稳定 error object 的公共机器接口。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "evidence": "当前已有多个 --json，但不是正式 contract，schema/version 不统一。"
+    },
+    {
+      "id": "TP-03.01",
+      "title": "确定 JSON envelope 策略",
+      "priority": "P0",
+      "type": "action",
+      "objective": "选择最小兼容策略：只加顶层 schema/version，或统一使用 schema、ok、command、generated_at、data、error envelope。",
+      "parent": "TP-03",
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "references/agent-contract.md 或 references/json-contract.md 记录兼容策略和 breaking change 规则。",
+      "gate": "避免为了形式统一破坏已有使用者；schema 字段必须足以让 Agent 分辨 payload 类型。",
+      "outputs": [
+        "references/agent-contract.md"
+      ],
+      "acceptance": [
+        "schema 命名规则采用 tradecat.<payload>.v1",
+        "兼容性策略明确"
+      ],
+      "evidence": "规划文件建议 tradecat.status.v1、tradecat.doctor.v1 等 schema 名称。"
+    },
+    {
+      "id": "TP-03.02",
+      "title": "为 CLI JSON 输出加 schema/version",
+      "priority": "P0",
+      "type": "action",
+      "objective": "为 status、doctor、path、datasets、sync、sync-all、probe、prune、config show 等 CLI JSON 输出添加稳定 schema/version。",
+      "parent": "TP-03",
+      "depends_on": [
+        "TP-03.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "代表性 CLI JSON 调用均包含 schema 字段，且旧核心字段仍保留或有迁移说明。",
+      "gate": "Agent 不需要依赖命令名猜 payload 类型。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/cli.py",
+        "scripts/project/src/tradecat_terminal/diagnostics.py"
+      ],
+      "acceptance": [
+        "所有 manifest 广告的 JSON 命令都有 schema",
+        "失败与成功 payload 都有稳定字段"
+      ],
+      "evidence": "cli.py 是 JSON 输出主入口。"
+    },
+    {
+      "id": "TP-03.03",
+      "title": "统一错误对象结构",
+      "priority": "P0",
+      "type": "action",
+      "objective": "确保失败 JSON 使用 code、kind、message、hint、retryable、details 的统一 error object。",
+      "parent": "TP-03",
+      "depends_on": [
+        "TP-03.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "构造参数错误、非法 dataset、网络失败、本地缓存异常时，error 对象字段完整且不泄露私密路径之外的敏感内容。",
+      "gate": "上层 Agent 不再解析 str(exc) 或人类文本判断失败类型。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/cli.py",
+        "scripts/project/src/tradecat_terminal/sheets.py",
+        "scripts/project/src/tradecat_terminal/diagnostics.py"
+      ],
+      "acceptance": [
+        "错误对象字段稳定",
+        "retryable 语义可用于自动重试决策"
+      ],
+      "evidence": "稳定性硬化已有 typed errors，但 JSON 公共契约仍需统一。"
+    },
+    {
+      "id": "TP-03.04",
+      "title": "补齐 request/export/bundle JSON schema",
+      "priority": "P1",
+      "type": "action",
+      "objective": "让 request.py --format json、tradecat export --format json 和 doctor --bundle - 暴露与 CLI 一致的 schema/version 策略。",
+      "parent": "TP-03",
+      "depends_on": [
+        "TP-03.02",
+        "TP-03.03"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "request、export、bundle 的成功/失败 payload 均有 schema 字段；support bundle 仍保持公开安全。",
+      "gate": "Agent 读取数据视图和诊断包时能使用同一套 schema 识别方式。",
+      "outputs": [
+        "scripts/project/scripts/request.py",
+        "scripts/project/src/tradecat_terminal/cli.py",
+        "scripts/project/src/tradecat_terminal/diagnostics.py"
+      ],
+      "acceptance": [
+        "request_result 与 dataset_view schema 明确",
+        "support_bundle schema 明确且脱敏"
+      ],
+      "evidence": "Agent 常用 request.py 做零安装读取路径。"
+    },
+    {
+      "id": "TP-03.05",
+      "title": "补齐 JSON 契约回归测试",
+      "priority": "P0",
+      "type": "action",
+      "objective": "新增 test_json_contract.py，覆盖每个广告 JSON 命令的必需键、schema 名称、错误对象和兼容字段。",
+      "parent": "TP-03",
+      "depends_on": [
+        "TP-03.02",
+        "TP-03.03",
+        "TP-03.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_json_contract.py 通过。",
+      "gate": "JSON contract 漂移必须被测试捕获。",
+      "outputs": [
+        "scripts/project/tests/test_json_contract.py"
+      ],
+      "acceptance": [
+        "成功和失败 JSON 都被测试",
+        "schema breaking change 需要显式改测试和文档"
+      ],
+      "evidence": "规划文件把 JSON schema/version 列为 P0。"
+    },
+    {
+      "id": "TP-04",
+      "title": "远端取数路径统一",
+      "priority": "P0",
+      "type": "package",
+      "objective": "消除 request.py 与主 CLI sync/data-contract 远端取数行为不一致，或把差异显式文档化、测试化。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "evidence": "规划证据显示 request.py 能成功获取 event_stream，而 main CLI sync / validate_data_contract --remote 会 timeout。"
+    },
+    {
+      "id": "TP-04.01",
+      "title": "决策共享 transport 或显式双路径",
+      "priority": "P0",
+      "type": "action",
+      "objective": "确认采用共享 transport 方案 A，或保留 request.py 标准库 fallback 的方案 B，并写清取舍。",
+      "parent": "TP-04",
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "references/agent-contract.md 记录 production path、fallback path、timeout/retry 语义和 Agent 使用规则。",
+      "gate": "不得继续存在两套偷偷不同的生产真相。",
+      "outputs": [
+        "references/agent-contract.md",
+        "references/cache-contract.md"
+      ],
+      "acceptance": [
+        "默认首选共享 transport，若偏离必须说明标准库零依赖原因",
+        "fallback 规则可测试"
+      ],
+      "evidence": "规划文件推荐方案 A，除非 request.py 标准库零依赖是硬约束。"
+    },
+    {
+      "id": "TP-04.02",
+      "title": "实现或收敛远端 transport 契约",
+      "priority": "P0",
+      "type": "action",
+      "objective": "在 sheets.py 或新增 transport.py 中定义 URL、timeout、attempts、headers、body/typed-error 的统一取数接口。",
+      "parent": "TP-04",
+      "depends_on": [
+        "TP-04.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "成功、connect timeout、SSL handshake timeout、HTTP 429/5xx、4xx、CSV decode 均可用 monkeypatch 或本地假服务测试。",
+      "gate": "主 CLI、数据契约校验和 request 路径能共享或明确映射同一错误语义。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/sheets.py",
+        "scripts/project/src/tradecat_terminal/transport.py"
+      ],
+      "acceptance": [
+        "timeout 语义显式",
+        "retry/backoff/jitter 规则有单一位置",
+        "错误分类与 JSON error object 对齐"
+      ],
+      "evidence": "成熟软件应使用一个可测试的 transport 边界，而不是多个 ad hoc fetch 实现。"
+    },
+    {
+      "id": "TP-04.03",
+      "title": "对齐 request.py 和 validate_data_contract",
+      "priority": "P0",
+      "type": "action",
+      "objective": "让 scripts/project/scripts/request.py 与 validate_data_contract.py 复用或显式兼容 production fetch 行为。",
+      "parent": "TP-04",
+      "depends_on": [
+        "TP-04.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "python3 scripts/project/scripts/request.py event_stream --format json --limit 1 与 PYTHONPATH=src python3 scripts/project/scripts/validate_data_contract.py --remote --timeout 10 在同一网络条件下表现一致或差异被标记。",
+      "gate": "request path 和 CLI path 的差异不能靠人工经验理解。",
+      "outputs": [
+        "scripts/project/scripts/request.py",
+        "scripts/project/scripts/validate_data_contract.py"
+      ],
+      "acceptance": [
+        "request.py 成功时可解释主 CLI 是否也应成功",
+        "validate_data_contract 测试生产路径或清楚标记 fallback 路径"
+      ],
+      "evidence": "规划文件把该差异列为最真实运行时问题。"
+    },
+    {
+      "id": "TP-04.04",
+      "title": "完善冷启动与弱网诊断",
+      "priority": "P1",
+      "type": "action",
+      "objective": "空缓存 + 远端失败时，输出 cold start、网络失败、repair 命令和 request fallback 是否可用的明确诊断。",
+      "parent": "TP-04",
+      "depends_on": [
+        "TP-03.03",
+        "TP-04.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": true,
+      "verify": "模拟 empty cache + timeout，doctor/TUI/CLI JSON 均给出明确 error.code、hint、retryable 与下一步命令。",
+      "gate": "Agent 不会把空缓存误判为数据真的为空。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/lifecycle.py",
+        "scripts/project/src/tradecat_terminal/tui.py",
+        "references/first-run-cache.md"
+      ],
+      "acceptance": [
+        "弱网诊断指向 doctor --sync 或 request fallback",
+        "缓存命中时远端失败不会清空旧数据"
+      ],
+      "evidence": "此前真实出现过 first-run empty-cache 与远端探针失败混淆。"
+    },
+    {
+      "id": "TP-04.05",
+      "title": "补齐 transport 回归测试",
+      "priority": "P0",
+      "type": "action",
+      "objective": "新增 test_transport.py 覆盖 request path、CLI path、timeout、retry、HTTP 错误、CSV decode、fallback parity。",
+      "parent": "TP-04",
+      "depends_on": [
+        "TP-04.02",
+        "TP-04.03",
+        "TP-04.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": true,
+      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_transport.py 通过。",
+      "gate": "网络行为差异必须被测试显式批准。",
+      "outputs": [
+        "scripts/project/tests/test_transport.py"
+      ],
+      "acceptance": [
+        "不依赖真实 Google Sheets 的 deterministic transport tests 存在",
+        "live remote checks 保留为 canary 或显式 remote gate"
+      ],
+      "evidence": "CI live-network gate 可能波动，核心 transport 规则必须可离线测试。"
+    },
+    {
+      "id": "TP-05",
+      "title": "Agent Smoke 与 CI 门禁",
+      "priority": "P1",
+      "type": "package",
+      "objective": "新增专门守护 agent-readiness 的本地 smoke 脚本和 GitHub Actions lane。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "evidence": "CI 已有项目 verify/security/supply-chain，但缺少 manifest/schema/exit-code 的独立 agent gate。"
+    },
+    {
+      "id": "TP-05.01",
+      "title": "新增 scripts/agent-smoke.sh",
+      "priority": "P1",
+      "type": "action",
+      "objective": "创建短而硬的 Agent smoke：Skill strict、manifest valid、status/datasets/path JSON、request datasets、故意失败命令非 0。",
+      "parent": "TP-05",
+      "depends_on": [
+        "TP-01.05",
+        "TP-02.05",
+        "TP-03.05"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "bash scripts/agent-smoke.sh 返回 0；故意破坏 manifest 或退出码测试时脚本返回非 0。",
+      "gate": "agent-smoke 不替代 verify，但能独立守住 agent 消费契约。",
+      "outputs": [
+        "scripts/agent-smoke.sh"
+      ],
+      "acceptance": [
+        "脚本短、非交互、失败即非 0",
+        "不会默认触发高风险 install/uninstall"
+      ],
+      "evidence": "规划文件要求 dedicated agent-readiness smoke gate。"
+    },
+    {
+      "id": "TP-05.02",
+      "title": "整合 Agent 契约测试到项目验证",
+      "priority": "P1",
+      "type": "action",
+      "objective": "将 test_exit_codes、test_json_contract、test_agent_contract、test_transport 纳入 project verify 或 CI 相关 job。",
+      "parent": "TP-05",
+      "depends_on": [
+        "TP-01.05",
+        "TP-02.05",
+        "TP-03.05",
+        "TP-04.05"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "bash scripts/project/scripts/verify.sh 或根 bash scripts/verify.sh 能运行新增测试并清理缓存产物。",
+      "gate": "本地 verify 与 CI 对新增 contract tests 使用同一口径。",
+      "outputs": [
+        "scripts/project/scripts/verify.sh",
+        "scripts/verify.sh"
+      ],
+      "acceptance": [
+        "contract tests 不成为只在 CI 运行的隐藏门禁",
+        "裸环境 verify 仍能通过 bootstrap 自愈"
+      ],
+      "evidence": "此前已要求 verify 在裸环境自动使用项目 .venv。"
+    },
+    {
+      "id": "TP-05.03",
+      "title": "新增 CI agent-readiness job",
+      "priority": "P1",
+      "type": "action",
+      "objective": "在 .github/workflows/ci.yml 增加 agent-readiness lane，专门验证 manifest、schema、exit code、agent-smoke。",
+      "parent": "TP-05",
+      "depends_on": [
+        "TP-05.01",
+        "TP-05.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "GitHub Actions PR/push 上 agent-readiness job 独立显示并失败于 agent contract regression。",
+      "gate": "人类功能测试通过但 Agent 契约坏掉时，CI 必须失败。",
+      "outputs": [
+        ".github/workflows/ci.yml"
+      ],
+      "acceptance": [
+        "agent-readiness job 名称清晰",
+        "运行 deterministic checks，live-network 部分不混入核心门禁"
+      ],
+      "evidence": "当前 CI 未将 Skill/Agent 消费契约作为独立 lane。"
+    },
+    {
+      "id": "TP-05.04",
+      "title": "失败 artifact 与 canary 分层",
+      "priority": "P2",
+      "type": "action",
+      "objective": "CI 失败时上传 agent-smoke 日志、代表性 JSON payload、必要 support bundle；把 live-network checks 与 deterministic gate 分层。",
+      "parent": "TP-05",
+      "depends_on": [
+        "TP-05.03"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "模拟 agent-smoke 失败时 CI artifact 包含日志和 payload；scheduled/manual canary 与 PR gate 责任分明。",
+      "gate": "CI 失败可诊断，不依赖人工重跑猜测。",
+      "outputs": [
+        ".github/workflows/ci.yml",
+        "references/quality-gate.md"
+      ],
+      "acceptance": [
+        "deterministic gate 与 live canary 文档一致",
+        "artifact 不包含 token、cache payload 全量或私密环境变量"
+      ],
+      "evidence": "成熟 agent 仓库需要失败证据而非只给红叉。"
+    },
+    {
+      "id": "TP-05.05",
+      "title": "可选 pre-commit Agent 契约钩子",
+      "priority": "P2",
+      "type": "action",
+      "objective": "按成本决定是否把 manifest JSON 校验和轻量 agent-smoke 子集纳入 .pre-commit-config.yaml。",
+      "parent": "TP-05",
+      "depends_on": [
+        "TP-05.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "pre-commit run --all-files 可以执行轻量校验且不会过慢。",
+      "gate": "本地钩子只做低成本 deterministic 检查，不运行 live-network 或耗时 install。",
+      "outputs": [
+        ".pre-commit-config.yaml"
+      ],
+      "acceptance": [
+        "不会显著拖慢提交",
+        "与 CI agent-readiness 口径不冲突"
+      ],
+      "evidence": "规划文件把 pre-commit 标为可选增强。"
+    },
+    {
+      "id": "TP-06",
+      "title": "多 Agent 文档与治理口径",
+      "priority": "P1",
+      "type": "package",
+      "objective": "把根文档、Skill、references 和项目治理从 Codex-only 口径改为 multi-agent 可消费契约。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "evidence": "architecture.md 当前称 tradecat-public 是 Codex skill wrapper，文档还缺 Agent Fast Path 与 Command Risk Classes。"
+    },
+    {
+      "id": "TP-06.01",
+      "title": "收敛 SKILL.md 第一跳",
+      "priority": "P1",
+      "type": "action",
+      "objective": "让 SKILL.md 顶部明确 manifest、Agent Fast Path、JSON-first 命令和默认避免交互 TUI。",
+      "parent": "TP-06",
+      "depends_on": [
+        "TP-02.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "bash scripts/validate-skill.sh --strict 通过，Quick Reference 仍短、直接、无冗余。",
+      "gate": "SKILL.md 不膨胀成长文档，长说明继续放 references。",
+      "outputs": [
+        "SKILL.md"
+      ],
+      "acceptance": [
+        "Agent 第一跳指向 agents/manifest.json",
+        "非交互 JSON 命令优先"
+      ],
+      "evidence": "规划文件要求 SKILL.md 前面只保留最短操作路径。"
+    },
+    {
+      "id": "TP-06.02",
+      "title": "更新 README 与 AGENTS 目录/边界",
+      "priority": "P1",
+      "type": "action",
+      "objective": "更新 README.md、AGENTS.md、scripts/project/README.md、scripts/project/AGENTS.md，体现 agents/manifest.json、agents/hermes.yaml 和新 references。",
+      "parent": "TP-06",
+      "depends_on": [
+        "TP-02.03",
+        "TP-02.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "rg -n 'Codex-only|Codex skill wrapper' README.md AGENTS.md scripts/project/README.md scripts/project/AGENTS.md 无不合适残留；目录树与真实文件一致。",
+      "gate": "文档描述为 agent skill wrapper 或 multi-agent skill wrapper，而不是单平台仓库。",
+      "outputs": [
+        "README.md",
+        "AGENTS.md",
+        "scripts/project/README.md",
+        "scripts/project/AGENTS.md"
+      ],
+      "acceptance": [
+        "根/项目治理说明与新文件同步",
+        "公开文档不包含本机 Hermes token 或本地 .env"
+      ],
+      "evidence": "项目治理规则要求文件结构变化同步更新 AGENTS.md。"
+    },
+    {
+      "id": "TP-06.03",
+      "title": "更新 references 导航与架构口径",
+      "priority": "P1",
+      "type": "action",
+      "objective": "更新 references/index.md、architecture.md、quality-gate.md，把 agent-contract、agent-smoke、JSON schema、exit-code 作为正式门禁。",
+      "parent": "TP-06",
+      "depends_on": [
+        "TP-02.04",
+        "TP-03.05",
+        "TP-05.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "references/index.md 能导航 agent-contract 与任务树；quality-gate 明确 manifest valid、JSON schema stable、exit code correct、agent-smoke pass。",
+      "gate": "文档门禁与实际 CI/local scripts 名称一致。",
+      "outputs": [
+        "references/index.md",
+        "references/architecture.md",
+        "references/quality-gate.md"
+      ],
+      "acceptance": [
+        "新增契约能从 index 找到",
+        "quality gate 能被复制执行"
+      ],
+      "evidence": "新增 references 文件必须纳入导航，避免孤儿文档。"
+    },
+    {
+      "id": "TP-06.04",
+      "title": "补充命令风险类与 Fast Path 示例",
+      "priority": "P1",
+      "type": "action",
+      "objective": "在 agent-contract 和相关 README 中写清本地只读、网络只读、缓存写入、长运行、高风险命令，以及 inspect -> validate -> consume -> diagnose 顺序。",
+      "parent": "TP-06",
+      "depends_on": [
+        "TP-06.03"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "Agent Fast Path 中所有命令可复制执行；高风险命令不会被推荐为默认第一步。",
+      "gate": "新 Agent 不需要读完整 README 就能安全启动。",
+      "outputs": [
+        "references/agent-contract.md",
+        "README.md",
+        "SKILL.md"
+      ],
+      "acceptance": [
+        "默认先 status/datasets/path/request",
+        "sync/install/uninstall 被标记为更高风险或有副作用"
+      ],
+      "evidence": "规划文件要求一个专门给 Agent 的 fast path。"
+    },
+    {
+      "id": "TP-06.05",
+      "title": "同步 DEBUG/lessons/release 治理记忆",
+      "priority": "P2",
+      "type": "action",
+      "objective": "把本次 Agent readiness 契约的根因、风险和防复发规则沉淀到 DEBUG、lessons、release/quality references。",
+      "parent": "TP-06",
+      "depends_on": [
+        "TP-06.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "公开治理文件保持脱敏；rg 不出现 token、私密 .env、缓存 payload。",
+      "gate": "治理记忆可公开提交，且不复制长篇计划噪声。",
+      "outputs": [
+        "scripts/project/DEBUG.md",
+        "lessons.md",
+        "references/release.md"
+      ],
+      "acceptance": [
+        "经验短句可执行",
+        "release/quality 口径与 agent-readiness gate 一致"
+      ],
+      "evidence": "仓库规则要求事故和纠偏经验沉淀到 tracked governance。"
+    },
+    {
+      "id": "TP-07",
+      "title": "可维护性成熟升级",
+      "priority": "P2",
+      "type": "package",
+      "objective": "在核心 Agent readiness 完成后，按成本引入测试拆分、formal schema、诊断日志和可选 helper，降低长期维护成本。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "evidence": "test_cache_tui.py 已承载大量测试，规划建议后续拆分；formal JSON schema 和 agent helper 属于长期增强。"
+    },
+    {
+      "id": "TP-07.01",
+      "title": "拆分大型测试文件",
+      "priority": "P2",
+      "type": "action",
+      "objective": "将 test_cache_tui.py 中适合拆分的 CLI/cache/diagnostics/transport/agent 合同测试迁移到聚焦文件。",
+      "parent": "TP-07",
+      "depends_on": [
+        "TP-05.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "pytest 全量通过；移动测试不改变覆盖语义；git diff 显示仅测试组织变化。",
+      "gate": "只拆分已有或新增测试，不借机重构生产代码。",
+      "outputs": [
+        "scripts/project/tests/test_cli.py",
+        "scripts/project/tests/test_cache.py",
+        "scripts/project/tests/test_diagnostics.py"
+      ],
+      "acceptance": [
+        "测试文件职责更清晰",
+        "后续 Agent 可定向运行小测试"
+      ],
+      "evidence": "规划文件记录 test_cache_tui.py 当前过大。"
+    },
+    {
+      "id": "TP-07.02",
+      "title": "引入 formal JSON Schema 文件",
+      "priority": "P2",
+      "type": "action",
+      "objective": "按需新增 scripts/project/contracts/*.schema.json，让外部工具也能校验 JSON 输出。",
+      "parent": "TP-07",
+      "depends_on": [
+        "TP-03.05"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "schema 文件能用 jsonschema 或项目选定工具校验代表性 payload；agent-smoke 可选验证。",
+      "gate": "只有在 schema/version 字段稳定后再引入 formal schema，避免早期高 churn。",
+      "outputs": [
+        "scripts/project/contracts/"
+      ],
+      "acceptance": [
+        "schema 文件与实际 payload 同步",
+        "不强迫轻量用户安装重依赖"
+      ],
+      "evidence": "规划文件把 formal JSON schema 定为 P2 长期维护建议。"
+    },
+    {
+      "id": "TP-07.03",
+      "title": "评估顶层 agent helper 脚本",
+      "priority": "P2",
+      "type": "action",
+      "objective": "评估是否新增 scripts/agent-readonly.sh 或 scripts/agent-bootstrap.sh，避免 helper 与 manifest/agent-smoke 重复。",
+      "parent": "TP-07",
+      "depends_on": [
+        "TP-05.01",
+        "TP-06.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "若新增 helper，agent-smoke 覆盖它；若不新增，references/agent-contract.md 记录主动舍弃原因。",
+      "gate": "helper 只有在减少真实复杂度时才添加。",
+      "outputs": [
+        "scripts/agent-readonly.sh",
+        "references/agent-contract.md"
+      ],
+      "acceptance": [
+        "避免出现第四个入口真相源",
+        "选择结果有记录"
+      ],
+      "evidence": "规划文件明确该 helper 可选，避免过度设计。"
+    },
+    {
+      "id": "TP-07.04",
+      "title": "评估安全事件日志增强",
+      "priority": "P2",
+      "type": "action",
+      "objective": "按需增加公开安全的 line-delimited diagnostic ledger，记录最近失败而不泄露凭证或缓存 payload。",
+      "parent": "TP-07",
+      "depends_on": [
+        "TP-04.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": true,
+      "debug_required": false,
+      "verify": "secret scan 通过；doctor --bundle 能引用摘要；日志大小有上限或轮转策略。",
+      "gate": "只有现有 diagnostics ledger 不足时才新增，不重复已有 recent errors。",
+      "outputs": [
+        "scripts/project/src/tradecat_terminal/diagnostics.py"
+      ],
+      "acceptance": [
+        "诊断事件可被 support bundle 消费",
+        "无凭证、无完整私密环境、无大缓存 payload"
+      ],
+      "evidence": "成熟 Agent 消费路径需要可复盘失败，但已有 diagnostics 可能已覆盖部分需求。"
+    },
+    {
+      "id": "TP-08",
+      "title": "集成验证与交付闭环",
+      "priority": "P1",
+      "type": "package",
+      "objective": "把 Agent readiness 改动收敛成可提交、可 CI 观察、可 release 说明、可 closeout 的交付包。",
+      "parent": null,
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "evidence": "auto-tasks 要求 SPEC -> PLAN -> BUILD -> TEST -> REVIEW -> SHIP 生命周期闭合。"
+    },
+    {
+      "id": "TP-08.01",
+      "title": "执行完整本地验证矩阵",
+      "priority": "P1",
+      "type": "action",
+      "objective": "运行 Skill strict、agent-smoke、verify、security scan、supply-chain audit、targeted pytest、json/tooling 和 git diff --check。",
+      "parent": "TP-08",
+      "depends_on": [
+        "TP-01.05",
+        "TP-02.05",
+        "TP-03.05",
+        "TP-04.05",
+        "TP-05.04",
+        "TP-06.05"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "所有本地 gate 返回 0；失败项有 DEBUG 记录和最小复现。",
+      "gate": "未通过本地验证不得进入 commit/push/release。",
+      "outputs": [
+        "scripts/project/DEBUG.md",
+        "references/quality-gate.md"
+      ],
+      "acceptance": [
+        "本地证据足够复现",
+        "运行态目录仍不入 Git"
+      ],
+      "evidence": "规划文件列出最小 local verification matrix。"
+    },
+    {
+      "id": "TP-08.02",
+      "title": "执行代码审查与风险复核",
+      "priority": "P1",
+      "type": "action",
+      "objective": "按 correctness、reliability、security、agent-contract、docs consistency 复核 diff。",
+      "parent": "TP-08",
+      "depends_on": [
+        "TP-08.01"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "审查记录列出无 BLOCK；WARN 项有修复或明确 deferred reason。",
+      "gate": "不得把 P0/P1 合同破损留给 release。",
+      "outputs": [
+        "references/agent-readiness-remediation-task-tree.md"
+      ],
+      "acceptance": [
+        "风险状态和剩余项写回任务树",
+        "未解决项有优先级和 owner"
+      ],
+      "evidence": "auto-review/auto-tasks 要求 REVIEW gate 不因单人开发而跳过。"
+    },
+    {
+      "id": "TP-08.03",
+      "title": "提交、推送与 CI 观察",
+      "priority": "P1",
+      "type": "action",
+      "objective": "按主题提交 Agent readiness 改动，推送 develop，并观察 agent-readiness、verify、安全扫描和 canary 相关 CI。",
+      "parent": "TP-08",
+      "depends_on": [
+        "TP-08.02"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "develop CI 全部相关 checks 通过；失败时记录 run URL、失败 step、修复 commit。",
+      "gate": "远端 CI 证据必须与本地 gate 对齐。",
+      "outputs": [
+        "references/release.md",
+        "references/quality-gate.md"
+      ],
+      "acceptance": [
+        "提交粒度与 PR/发布拆分一致",
+        "CI 结果可追溯"
+      ],
+      "evidence": "计划建议 PR-1/PR-2/PR-3 拆分，最终需要远端验证。"
+    },
+    {
+      "id": "TP-08.04",
+      "title": "更新发布说明与回滚口径",
+      "priority": "P2",
+      "type": "action",
+      "objective": "把 Agent readiness 的新入口、兼容性变化、退出码语义、schema/version 和回滚方式写入 release/README。",
+      "parent": "TP-08",
+      "depends_on": [
+        "TP-08.03"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "release 文档包含固定 ref 安装、agent-smoke evidence、known limits、rollback command。",
+      "gate": "用户和 Agent 都能理解升级后行为变化。",
+      "outputs": [
+        "references/release.md",
+        "README.md",
+        "scripts/project/README.md"
+      ],
+      "acceptance": [
+        "exit code hardening 被明确列为 breaking/contract change",
+        "schema/version 兼容策略可查"
+      ],
+      "evidence": "退出码和 JSON 契约变化会影响自动化调用方。"
+    },
+    {
+      "id": "TP-08.05",
+      "title": "Closeout 与经验归档",
+      "priority": "P2",
+      "type": "action",
+      "objective": "将任务树状态、验证证据、CI 链接、剩余风险和防复发经验写回 references 与 lessons。",
+      "parent": "TP-08",
+      "depends_on": [
+        "TP-08.04"
+      ],
+      "status": "Not Started",
+      "parallelizable": false,
+      "debug_required": false,
+      "verify": "任务树 JSON/Markdown 更新为 Done 或明确剩余 Not Started/P2；references/index.md 可定位归档；lessons 保持短句。",
+      "gate": "交付不能只停留在代码完成，必须有可审计 closeout。",
+      "outputs": [
+        "references/agent-readiness-remediation-task-tree.md",
+        "references/agent-readiness-remediation-task-tree.json",
+        "lessons.md"
+      ],
+      "acceptance": [
+        "状态和证据同步",
+        "后续 Agent 可从 closeout 接续"
+      ],
+      "evidence": "auto-tasks CLOSEOUT 要求结构化交付包和长期经验沉淀。"
+    }
+  ]
+}

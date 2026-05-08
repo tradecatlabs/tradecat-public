@@ -9,6 +9,8 @@ from pathlib import Path
 
 from tradecat_terminal.cache import init_cache, prune_cache, status_cache
 from tradecat_terminal.config import load_config
+from tradecat_terminal.contracts import attach_contract, attach_results_contract, error_contract
+from tradecat_terminal.diagnostics import bundle_to_json, write_support_bundle
 from tradecat_terminal.i18n import LANG_ENV, resolve_lang, tr
 from tradecat_terminal.lifecycle import doctor_local_store, probe_all_datasets, probe_dataset, watch_datasets
 from tradecat_terminal.registry import dataset_to_dict, get_dataset, list_datasets
@@ -31,6 +33,15 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = subparsers.add_parser("doctor", help="检查本地缓存状态")
     doctor_parser.add_argument("--json", action="store_true", help="输出 JSON")
     doctor_parser.add_argument("--fix", action="store_true", help="只修复本地目录骨架，不触发远端同步")
+    doctor_parser.add_argument("--repair", action="store_true", help="修复本地目录并执行安全 metadata 迁移，不触发远端同步")
+    doctor_parser.add_argument("--verbose", action="store_true", help="输出更完整的本地诊断摘要")
+    doctor_parser.add_argument(
+        "--bundle",
+        nargs="?",
+        const="-",
+        metavar="PATH",
+        help="生成公开安全诊断包 JSON；不传 PATH 时输出到 stdout",
+    )
     doctor_parser.add_argument("--sync", action="store_true", help="显式同步全部 active dataset，修复首次空缓存")
     doctor_parser.add_argument("--timeout", type=_positive_float_arg, help="doctor --sync 时的单次远端请求超时秒数")
 
@@ -114,16 +125,36 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "init":
         payload = init_cache(config.cache_dir)
-        _print_json_or_text(payload, args.json, f"initialized: cache={config.cache_dir}")
+        _print_json_or_text(attach_contract(payload, "init"), args.json, f"initialized: cache={config.cache_dir}")
         return 0
 
     if args.command == "doctor":
         if args.timeout is not None and not args.sync:
-            print("doctor error: --timeout 仅用于 --sync", file=sys.stderr)
-            return 2
-        payload = doctor_local_store(config.cache_dir, fix=args.fix, sync=args.sync, fetch_timeout=args.timeout)
-        if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            return _command_error(
+                "doctor",
+                "--timeout 仅用于 --sync",
+                as_json=args.json,
+                code="invalid_timeout_option",
+                hint="只有执行 doctor --sync 时才允许指定 --timeout。",
+            )
+        payload = doctor_local_store(
+            config.cache_dir,
+            fix=args.fix,
+            repair=args.repair,
+            sync=args.sync,
+            fetch_timeout=args.timeout,
+            verbose=args.verbose,
+            bundle=args.bundle is not None,
+        )
+        if args.bundle is not None:
+            support_bundle = dict(payload.get("support_bundle") or {})
+            if args.bundle == "-":
+                print(bundle_to_json(support_bundle), end="")
+            else:
+                target = write_support_bundle(Path(args.bundle), support_bundle)
+                print(f"bundle: {target}")
+        elif args.json:
+            _print_json(attach_contract(payload, "doctor"))
         else:
             print_status(payload)
         return 0 if payload["ok"] else 1
@@ -131,15 +162,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "status":
         payload = status_cache(config.cache_dir)
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            _print_json(attach_contract(payload, "status"))
         else:
             print_status(payload)
         return 0
 
     if args.command == "path":
-        payload = cache_paths(config.cache_dir, args.dataset_key)
+        try:
+            payload = cache_paths(config.cache_dir, args.dataset_key)
+        except ValueError as exc:
+            return _command_error(
+                "path",
+                exc,
+                as_json=args.json,
+                code="invalid_dataset_key",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
+            )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            _print_json(attach_contract(payload, "path"))
         else:
             print_paths(payload)
         return 0
@@ -147,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "datasets":
         datasets = [dataset_to_dict(dataset) for dataset in list_datasets(include_inactive=args.all)]
         if args.json:
-            print(json.dumps(datasets, ensure_ascii=False))
+            _print_json(attach_results_contract(datasets, "datasets", result_key="datasets"))
         else:
             print_datasets(datasets)
         return 0
@@ -156,18 +196,32 @@ def main(argv: list[str] | None = None) -> int:
         try:
             payload = handle_config_command(args.action, args.key, args.value)
         except ValueError as exc:
-            print(f"config error: {exc}", file=sys.stderr)
-            return 2
+            return _command_error(
+                "config",
+                exc,
+                as_json=args.json,
+                code="invalid_config_request",
+                hint="执行 tradecat config show 查看当前配置；set/unset 需要合法 key。",
+            )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            _print_json(attach_contract(payload, "config"))
         else:
             print_config(payload)
         return 0
 
     if args.command == "sync":
-        payload = sync_dataset(config.cache_dir, args.dataset_key, fetch_timeout=args.timeout)
+        try:
+            payload = sync_dataset(config.cache_dir, args.dataset_key, fetch_timeout=args.timeout)
+        except ValueError as exc:
+            return _command_error(
+                "sync",
+                exc,
+                as_json=args.json,
+                code="invalid_dataset_key",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
+            )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            _print_json(attach_contract(payload, "sync"))
         else:
             print_sync(payload)
         return 0 if payload.get("ok") else 1
@@ -175,49 +229,79 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sync-all":
         results = sync_all_datasets(config.cache_dir, fetch_timeout=args.timeout)
         if args.json:
-            print(json.dumps(results, ensure_ascii=False))
+            _print_json(attach_results_contract(results, "sync-all"))
         else:
             for result in results:
                 print_sync(result)
         return 0 if all(result.get("ok") for result in results) else 1
 
     if args.command == "probe":
-        if args.dataset_key:
-            payload: dict | list = probe_dataset(
-                config.cache_dir,
-                args.dataset_key,
-                write=not args.no_write,
-                fetch_timeout=args.timeout,
+        try:
+            if args.dataset_key:
+                payload: dict | list = probe_dataset(
+                    config.cache_dir,
+                    args.dataset_key,
+                    write=not args.no_write,
+                    fetch_timeout=args.timeout,
+                )
+            else:
+                payload = probe_all_datasets(config.cache_dir, write=not args.no_write, fetch_timeout=args.timeout)
+        except ValueError as exc:
+            return _command_error(
+                "probe",
+                exc,
+                as_json=args.json,
+                code="invalid_dataset_key",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
             )
-        else:
-            payload = probe_all_datasets(config.cache_dir, write=not args.no_write, fetch_timeout=args.timeout)
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            if isinstance(payload, list):
+                _print_json(attach_results_contract(payload, "probe-all"))
+            else:
+                _print_json(attach_contract(payload, "probe"))
         else:
             print_probe(payload)
         return _payload_exit_code(payload)
 
     if args.command == "prune":
-        payload = prune_cache(
-            config.cache_dir,
-            dataset_key=args.dataset_key,
-            max_snapshots_per_dataset=_resolve_max_snapshots(args.max_snapshots),
-            apply=args.apply,
-        )
+        try:
+            payload = prune_cache(
+                config.cache_dir,
+                dataset_key=args.dataset_key,
+                max_snapshots_per_dataset=_resolve_max_snapshots(args.max_snapshots),
+                apply=args.apply,
+            )
+        except ValueError as exc:
+            return _command_error(
+                "prune",
+                exc,
+                as_json=args.json,
+                code="invalid_prune_request",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key，并确认 --max-snapshots 为整数。",
+            )
         if args.json:
-            print(json.dumps(payload, ensure_ascii=False))
+            _print_json(attach_contract(payload, "prune"))
         else:
             print_prune(payload)
         return 0 if payload.get("ok") else 1
 
     if args.command == "export":
-        payload = export_view(
-            config.cache_dir,
-            args.dataset_key,
-            output_format=args.format,
-            limit=args.limit,
-            lang=args.lang,
-        )
+        try:
+            payload = export_view(
+                config.cache_dir,
+                args.dataset_key,
+                output_format=args.format,
+                limit=args.limit,
+                lang=args.lang,
+            )
+        except ValueError as exc:
+            return _command_error(
+                "export",
+                exc,
+                as_json=args.format == "json",
+                code="invalid_dataset_key",
+                hint="先执行 tradecat datasets --json 查看可用 dataset_key。",
+            )
         if args.output:
             output_path = Path(args.output).expanduser()
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -235,8 +319,10 @@ def main(argv: list[str] | None = None) -> int:
             write=not args.no_write,
         )
         if args.json:
-            for results in cycles:
-                print(json.dumps(results, ensure_ascii=False))
+            for index, results in enumerate(cycles, start=1):
+                payload = attach_results_contract(results, "watch")
+                payload["cycle"] = index
+                _print_json(payload)
         else:
             for index, results in enumerate(cycles, start=1):
                 print(f"cycle={index}")
@@ -285,6 +371,28 @@ def print_status(payload: dict) -> None:
         print(f"fixed: {fixed}")
     for result in payload.get("sync_results", []):
         print_sync(result)
+    if payload.get("settings_health"):
+        settings = payload["settings_health"]
+        print(f"settings: status={settings.get('status')} path={settings.get('path')}")
+    if payload.get("migration"):
+        migration = payload["migration"]
+        print(f"migration: needed={migration.get('needed')} pending={migration.get('pending_count')}")
+    if payload.get("disk_waterline"):
+        waterline = payload["disk_waterline"]
+        print(
+            "disk: "
+            f"level={waterline.get('level')} bytes={waterline.get('cache_bytes')} "
+            f"warn={waterline.get('warn_bytes')}"
+        )
+    for item in payload.get("recent_errors", []):
+        error = item.get("error") if isinstance(item, dict) else {}
+        if isinstance(error, dict):
+            print(
+                "recent-error: "
+                f"dataset={item.get('dataset_key')} code={error.get('code')} "
+                f"retryable={error.get('retryable')} at={item.get('at')}",
+                file=sys.stderr,
+            )
     for warning in payload.get("warnings", []):
         print(f"warning: {warning}", file=sys.stderr)
     for hint in payload.get("repair_hints", []):
@@ -303,7 +411,9 @@ def print_datasets(datasets: list[dict]) -> None:
 
 def print_sync(payload: dict) -> None:
     if not payload.get("ok"):
-        print(f"failed: dataset={payload.get('dataset_key')} error={payload.get('error')}", file=sys.stderr)
+        hint = f" hint={payload.get('error_hint')}" if payload.get("error_hint") else ""
+        code = f" code={payload.get('error_code')}" if payload.get("error_code") else ""
+        print(f"failed: dataset={payload.get('dataset_key')}{code} error={payload.get('error')}{hint}", file=sys.stderr)
         return
     print(
         "synced: "
@@ -322,7 +432,9 @@ def print_probe(payload: dict | list) -> None:
             f"changed={result['changed']} wrote={result['wrote']}"
         )
         if result.get("error"):
-            print(f"error: {result['error']}", file=sys.stderr)
+            hint = f" hint={result.get('error_hint')}" if result.get("error_hint") else ""
+            code = f" code={result.get('error_code')}" if result.get("error_code") else ""
+            print(f"error:{code} {result['error']}{hint}", file=sys.stderr)
 
 
 def print_prune(payload: dict) -> None:
@@ -388,6 +500,7 @@ def export_view(
         rows = rows[:limit]
     if output_format == "json":
         payload = {
+            "ok": True,
             "dataset_key": view.get("dataset_key"),
             "display_name": view.get("display_name"),
             "columns": view.get("columns"),
@@ -395,7 +508,7 @@ def export_view(
             "meta": view.get("meta"),
             "rows": rows,
         }
-        return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        return json.dumps(attach_contract(payload, "export"), ensure_ascii=False, indent=2) + "\n"
     if output_format == "jsonl":
         return "".join(json.dumps(row.get("raw_values") or row.get("values") or {}, ensure_ascii=False) + "\n" for row in rows)
     if output_format == "csv":
@@ -419,9 +532,39 @@ class _ListWriter:
 
 def _print_json_or_text(payload: dict, as_json: bool, text: str) -> None:
     if as_json:
-        print(json.dumps(payload, ensure_ascii=False))
+        _print_json(payload)
     else:
         print(text)
+
+
+def _print_json(payload: dict) -> None:
+    print(json.dumps(payload, ensure_ascii=False))
+
+
+def _command_error(
+    command: str,
+    error: Exception | str,
+    *,
+    as_json: bool,
+    code: str,
+    hint: str,
+    kind: str = "validation",
+    retryable: bool = False,
+) -> int:
+    if as_json:
+        _print_json(
+            error_contract(
+                command,
+                error,
+                code=code,
+                kind=kind,
+                hint=hint,
+                retryable=retryable,
+            )
+        )
+    else:
+        print(f"{command} error: {error}", file=sys.stderr)
+    return 2
 
 
 def _payload_exit_code(payload: dict | list) -> int:
