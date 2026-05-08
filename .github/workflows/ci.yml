@@ -7,6 +7,9 @@ on:
   schedule:
     - cron: "17 2 * * *"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -266,7 +269,11 @@ jobs:
           PY
           }
           TRADECAT_TERMINAL_NO_PAUSE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat" tui event_stream --plain --limit 3 >/dev/null
-          "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --bundle "$TRADECAT_PUBLIC_SMOKE_DIR/support-bundle.json" >/dev/null
+          if "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --help | grep -q -- "--bundle"; then
+            "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --bundle "$TRADECAT_PUBLIC_SMOKE_DIR/support-bundle.json" >/dev/null
+          else
+            echo "doctor --bundle unavailable in ${TRADECAT_PUBLIC_INSTALL_REF}; skipping support bundle" | tee -a "$TRADECAT_PUBLIC_SMOKE_DIR/smoke.log"
+          fi
           TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat-uninstall"
       - name: Upload public smoke artifact Unix
         uses: actions/upload-artifact@v4
@@ -314,7 +321,12 @@ jobs:
           }
           $env:TRADECAT_TERMINAL_NO_PAUSE = "1"
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") tui event_stream --plain --limit 3 | Out-Null
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --bundle (Join-Path $SmokeDir "support-bundle.json") | Out-Null
+          $DoctorHelp = & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --help
+          if ($DoctorHelp -match "--bundle") {
+            & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --bundle (Join-Path $SmokeDir "support-bundle.json") | Out-Null
+          } else {
+            "doctor --bundle unavailable in $($env:TRADECAT_PUBLIC_INSTALL_REF); skipping support bundle" | Tee-Object -Append -FilePath (Join-Path $SmokeDir "smoke.log")
+          }
           $env:TRADECAT_KEEP_CACHE = "1"
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat-uninstall.cmd")
       - name: Upload public smoke artifact Windows
