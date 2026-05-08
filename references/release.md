@@ -4,13 +4,14 @@
 
 Release date: 2026-05-08.
 
-Commit: `v0.1.1` tag target.
+Commit: `7626d3a8e6f1a5b525d523b2fc9395f1294f7deb`.
 
 GitHub Release: <https://github.com/tukuaiai/tradecat/releases/tag/v0.1.1>.
 
 CI evidence:
 
-- Develop CI: <https://github.com/tukuaiai/tradecat/actions/runs/25531028458>
+- Develop CI: <https://github.com/tukuaiai/tradecat/actions/runs/25531835777>
+- Tag CI: <https://github.com/tukuaiai/tradecat/actions/runs/25531835774>
 
 Install:
 
