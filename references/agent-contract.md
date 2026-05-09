@@ -71,6 +71,7 @@ Known JSON schemas:
 
 | Command | Schema |
 | --- | --- |
+| `init --json` | `tradecat.init.v1` |
 | `status --json` | `tradecat.status.v1` |
 | `doctor --json` | `tradecat.doctor.v1` |
 | `path <dataset> --json` | `tradecat.path_map.v1` |
@@ -84,6 +85,22 @@ Known JSON schemas:
 | `doctor --bundle -` | `tradecat.support_bundle.v1` |
 | `request.py <dataset> --format json` | `tradecat.request_result.v1` |
 | `request.py --datasets --format json` | `tradecat.request_dataset_list.v1` |
+
+Formal schema files live in `scripts/project/contracts/`. The command-level
+schemas intentionally pin the stable envelope and high-value fields for Agent
+parsing without making every output closed-world brittle:
+
+| Schema File | Pinned Payload |
+| --- | --- |
+| `tradecat-init.schema.json` | `tradecat.init.v1` |
+| `tradecat-status.schema.json` | `tradecat.status.v1` |
+| `tradecat-dataset-list.schema.json` | `tradecat.dataset_list.v1` |
+| `tradecat-sync-result.schema.json` | `tradecat.sync_result.v1` |
+| `tradecat-sync-results.schema.json` | `tradecat.sync_results.v1` |
+| `tradecat-request-result.schema.json` | `tradecat.request_result.v1` |
+| `tradecat-request-dataset-list.schema.json` | `tradecat.request_dataset_list.v1` |
+| `tradecat-dataset-view.schema.json` | `tradecat.dataset_view.v1` |
+| `tradecat-support-bundle.schema.json` | `tradecat.support_bundle.v1` |
 
 Breaking JSON changes require updating `agents/manifest.json`, this document,
 and `scripts/project/tests/test_json_contract.py` in the same change.

@@ -30,6 +30,24 @@ if payload.get("ok") is False and not isinstance(payload.get("error"), dict):
 PY
 }
 
+json_expect_error_code() {
+  local file="$1"
+  local code="$2"
+  python3 - "$file" "$code" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+expected = sys.argv[2]
+error = payload.get("error") or {}
+if payload.get("ok") is not False:
+    raise SystemExit(f"{sys.argv[1]}: expected ok=false")
+if error.get("code") != expected:
+    raise SystemExit(f"{sys.argv[1]}: error.code {error.get('code')!r} != {expected!r}")
+PY
+}
+
 cd "$ROOT_DIR"
 
 bash scripts/validate-skill.sh --strict >/dev/null
@@ -72,17 +90,50 @@ if [[ "$exit_code" -eq 0 ]]; then
   exit 1
 fi
 json_expect "$TMP_DIR/invalid.json" "tradecat.sync_result.v1"
-python3 - "$TMP_DIR/invalid.json" <<'PY'
-import json
-import sys
-from pathlib import Path
+json_expect_error_code "$TMP_DIR/invalid.json" "invalid_dataset_key"
 
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-error = payload.get("error") or {}
-if payload.get("ok") is not False:
-    raise SystemExit("invalid dataset payload must set ok=false")
-if error.get("code") != "invalid_dataset_key":
-    raise SystemExit(f"unexpected error code: {error.get('code')!r}")
+set +e
+TRADECAT_CACHE_COMPRESSION=bad \
+TRADECAT_AGENT_SMOKE_CACHE="$TMP_DIR/config-cache" \
+PYTHONPATH="$PROJECT_DIR/src" \
+python3 - <<'PY' >"$TMP_DIR/config-error.json"
+import os
+
+from tradecat_terminal import cli
+import tradecat_terminal.cache as cache_module
+
+
+def fake_fetch_csv_body(url, *, timeout=30.0):
+    return "\n".join(
+        [
+            "https://example.invalid/market",
+            "数据源,market",
+            "排名,交易对,价格",
+            "1,BTCUSDT,100",
+        ]
+    )
+
+
+cache_module.fetch_csv_body = fake_fetch_csv_body
+raise SystemExit(
+    cli.main(
+        [
+            "--cache-dir",
+            os.environ["TRADECAT_AGENT_SMOKE_CACHE"],
+            "sync",
+            "market_snapshot",
+            "--json",
+        ]
+    )
+)
 PY
+config_exit_code=$?
+set -e
+if [[ "$config_exit_code" -ne 2 ]]; then
+  echo "agent-smoke: invalid runtime configuration returned exit $config_exit_code" >&2
+  exit 1
+fi
+json_expect "$TMP_DIR/config-error.json" "tradecat.sync_result.v1"
+json_expect_error_code "$TMP_DIR/config-error.json" "invalid_runtime_configuration"
 
 echo "agent-smoke: ok"

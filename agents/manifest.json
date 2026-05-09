@@ -135,6 +135,11 @@
   ],
   "json_outputs": [
     {
+      "command": "bash scripts/run-tradecat.sh init --json",
+      "schema": "tradecat.init.v1",
+      "schema_version": "1.0.0"
+    },
+    {
       "command": "bash scripts/run-tradecat.sh status --json",
       "schema": "tradecat.status.v1",
       "schema_version": "1.0.0"
@@ -265,6 +270,7 @@
   },
   "references": [
     "references/agent-contract.md",
+    "references/agent-contract-maturity-task-tree.md",
     "references/architecture.md",
     "references/cache-contract.md",
     "references/linear-flows.md",

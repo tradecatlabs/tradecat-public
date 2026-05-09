@@ -136,6 +136,8 @@ tradecat-public/
 |-- references/
 |   |-- index.md
 |   |-- agent-contract.md
+|   |-- agent-contract-maturity-task-tree.md
+|   |-- agent-contract-maturity-task-tree.json
 |   |-- agent-readiness-remediation-task-tree.md
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
@@ -184,6 +186,8 @@ tradecat-public/
 - `references/stability-hardening-task-tree.json`: machine-readable TP-XX hardening task tree spec.
 - `references/agent-readiness-remediation-task-tree.md`: current Agent/Hermes readiness remediation backlog, execution waves, and validation gates.
 - `references/agent-readiness-remediation-task-tree.json`: machine-readable Agent readiness task tree spec.
+- `references/agent-contract-maturity-task-tree.md`: post-signoff Agent contract maturity hardening tree.
+- `references/agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
 
 ## Examples
 

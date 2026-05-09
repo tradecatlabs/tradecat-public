@@ -5,6 +5,36 @@ from pathlib import Path
 
 SKILL_ROOT = Path(__file__).resolve().parents[3]
 
+REQUIRED_AGENT_JSON_SCHEMAS = {
+    "tradecat.status.v1",
+    "tradecat.dataset_list.v1",
+    "tradecat.request_dataset_list.v1",
+    "tradecat.path_map.v1",
+    "tradecat.sync_result.v1",
+    "tradecat.request_result.v1",
+    "tradecat.dataset_view.v1",
+}
+
+REQUIRED_FAILURE_CODES = {
+    "invalid_dataset_key",
+    "remote_timeout",
+    "remote_http_status",
+    "invalid_runtime_configuration",
+    "local_runtime_error",
+}
+
+COMMAND_SCHEMA_FILES = {
+    "tradecat-init.schema.json": "tradecat.init.v1",
+    "tradecat-status.schema.json": "tradecat.status.v1",
+    "tradecat-dataset-list.schema.json": "tradecat.dataset_list.v1",
+    "tradecat-sync-result.schema.json": "tradecat.sync_result.v1",
+    "tradecat-sync-results.schema.json": "tradecat.sync_results.v1",
+    "tradecat-request-result.schema.json": "tradecat.request_result.v1",
+    "tradecat-request-dataset-list.schema.json": "tradecat.request_dataset_list.v1",
+    "tradecat-dataset-view.schema.json": "tradecat.dataset_view.v1",
+    "tradecat-support-bundle.schema.json": "tradecat.support_bundle.v1",
+}
+
 
 def test_agent_manifest_is_canonical_machine_contract():
     manifest_path = SKILL_ROOT / "agents" / "manifest.json"
@@ -22,15 +52,43 @@ def test_manifest_advertises_required_agent_json_schemas():
     payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
     schemas = {item["schema"] for item in payload["json_outputs"]}
 
-    assert {
-        "tradecat.status.v1",
-        "tradecat.dataset_list.v1",
-        "tradecat.request_dataset_list.v1",
-        "tradecat.path_map.v1",
-        "tradecat.sync_result.v1",
-        "tradecat.request_result.v1",
-        "tradecat.dataset_view.v1",
-    }.issubset(schemas)
+    assert REQUIRED_AGENT_JSON_SCHEMAS.issubset(schemas)
+
+
+def test_manifest_json_output_records_are_unique_and_versioned():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    outputs = payload["json_outputs"]
+
+    commands = [item["command"] for item in outputs]
+    schemas = [item["schema"] for item in outputs]
+
+    assert len(commands) == len(set(commands))
+    assert len(schemas) == len(set(schemas))
+    assert all(item["schema_version"] == "1.0.0" for item in outputs)
+
+
+def test_manifest_entrypoint_schema_references_are_declared():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    declared = {item["schema"] for item in payload["json_outputs"]}
+    referenced: set[str] = set()
+
+    for group in ("preferred_readonly_entrypoints", "preferred_mutating_entrypoints"):
+        for item in payload[group]:
+            schema = item.get("schema")
+            if isinstance(schema, str) and schema.startswith("tradecat."):
+                referenced.add(schema)
+            alternative = item.get("json_alternative")
+            if isinstance(alternative, dict):
+                referenced.add(str(alternative["schema"]))
+
+    assert referenced.issubset(declared)
+
+
+def test_manifest_known_failure_modes_cover_agent_error_contract():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    failure_codes = {item["code"] for item in payload["known_failure_modes"]}
+
+    assert REQUIRED_FAILURE_CODES.issubset(failure_codes)
 
 
 def test_agent_profiles_point_to_manifest_instead_of_second_truth():
@@ -60,7 +118,19 @@ def test_formal_contract_schemas_are_valid_json():
         "tradecat-agent-manifest.schema.json",
         "tradecat-command-envelope.schema.json",
         "tradecat-error.schema.json",
+        *COMMAND_SCHEMA_FILES,
     }
     for path in schemas:
         payload = json.loads(path.read_text(encoding="utf-8"))
         assert payload["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+
+
+def test_command_schema_files_pin_expected_payload_schema_names():
+    contracts_dir = SKILL_ROOT / "scripts" / "project" / "contracts"
+
+    for filename, expected_schema in COMMAND_SCHEMA_FILES.items():
+        payload = json.loads((contracts_dir / filename).read_text(encoding="utf-8"))
+        properties = payload.get("properties", {})
+
+        assert properties["schema"]["const"] == expected_schema
+        assert properties["schema_version"]["const"] == "1.0.0"

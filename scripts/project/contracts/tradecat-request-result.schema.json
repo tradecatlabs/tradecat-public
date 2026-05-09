@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-request-result.schema.json",
+  "title": "TradeCat Request Result",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.request_result.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "dataset_key": {
+      "type": "string"
+    },
+    "meta": {
+      "type": "array"
+    },
+    "headers": {
+      "type": "array"
+    },
+    "rows": {
+      "type": "array"
+    },
+    "error": {
+      "$ref": "tradecat-error.schema.json"
+    }
+  },
+  "additionalProperties": true
+}

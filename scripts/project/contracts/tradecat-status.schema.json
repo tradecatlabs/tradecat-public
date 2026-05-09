@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-status.schema.json",
+  "title": "TradeCat Status",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "cache_dir", "datasets"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.status.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "cache_dir": {
+      "type": "string"
+    },
+    "dataset_count": {
+      "type": "integer"
+    },
+    "ready_dataset_count": {
+      "type": "integer"
+    },
+    "missing_dataset_count": {
+      "type": "integer"
+    },
+    "cache_bytes": {
+      "type": "integer"
+    },
+    "datasets": {
+      "type": "array"
+    }
+  },
+  "additionalProperties": true
+}

@@ -57,14 +57,15 @@ Acceptance:
 - `scripts/project/scripts/validate_data_contract.py --remote` validates the
   public Google Sheets CSV shape for active datasets in CI.
 - `scripts/agent-smoke.sh` validates `agents/manifest.json`, advertised JSON
-  schemas, non-zero failure exit codes, and the zero-install request fallback.
+  schemas, non-zero failure exit codes, the zero-install request fallback, and
+  the split between `invalid_dataset_key` and `invalid_runtime_configuration`.
 - CI has an independent `agent-readiness` job so Agent contract drift fails even
   when ordinary human-facing docs still look valid.
 - Advertised JSON commands include `schema` and `schema_version`; failed JSON
   commands include an object `error` with `code`, `kind`, `message`, `hint`, and
   `retryable`.
 - Formal JSON Schema drafts under `scripts/project/contracts/*.schema.json` stay
-  valid JSON and match the advertised manifest/envelope/error contract.
+  valid JSON and match the advertised manifest/envelope/error/command contract.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.

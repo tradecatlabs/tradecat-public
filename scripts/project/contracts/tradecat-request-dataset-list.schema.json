@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-request-dataset-list.schema.json",
+  "title": "TradeCat Request Dataset List",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "datasets"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.request_dataset_list.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "datasets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "data_mode", "tab_name"],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "data_mode": {
+            "type": "string"
+          },
+          "tab_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

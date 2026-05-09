@@ -22,6 +22,8 @@ tradecat-public/
 |-- references/
 |   |-- index.md
 |   |-- agent-contract.md
+|   |-- agent-contract-maturity-task-tree.md
+|   |-- agent-contract-maturity-task-tree.json
 |   |-- agent-readiness-remediation-task-tree.md
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
@@ -116,6 +118,8 @@ Public Google Sheets CSV
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `agents/manifest.json`: canonical machine-readable Agent contract.
 - `references/agent-contract.md`: Agent fast path, risk classes, exit codes, JSON schemas, and remote fetch contract.
+- `references/agent-contract-maturity-task-tree.md`: post-signoff schema, manifest, and smoke hardening tree.
+- `references/agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
 - `references/*.md`: long-form skill references loaded on demand.
 - `references/first-run-cache.md`: first-run empty cache, cold-start diagnosis, and weak-network recovery.
 - `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, export/config, and doctor diagnostics.

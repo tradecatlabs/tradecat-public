@@ -14,6 +14,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 8. Release notes, install evidence, and rollback: `release.md`.
 9. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
 10. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
+11. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
 
 ## Reference Map
 
@@ -30,6 +31,8 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 - `stability-hardening-task-tree.json`: machine-readable current hardening task tree spec.
 - `agent-readiness-remediation-task-tree.md`: TP-XX task tree for turning TradeCat into a strict multi-Agent/Hermes-consumable Skill repository.
 - `agent-readiness-remediation-task-tree.json`: machine-readable Agent readiness task tree spec.
+- `agent-contract-maturity-task-tree.md`: non-blocking post-signoff task tree for schema coverage, manifest consistency, and smoke error semantics.
+- `agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
 - `archive/repair-task-tree.md`: completed historical TP-XX remediation tree, kept only for audit evidence.
 - `archive/repair-task-tree.json`: machine-readable archived task tree spec.
 

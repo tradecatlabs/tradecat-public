@@ -60,6 +60,8 @@ tradecat-public/
 |-- references/
 |   |-- index.md
 |   |-- agent-contract.md
+|   |-- agent-contract-maturity-task-tree.md
+|   |-- agent-contract-maturity-task-tree.json
 |   |-- agent-readiness-remediation-task-tree.md
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md

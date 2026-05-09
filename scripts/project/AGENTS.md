@@ -4,7 +4,7 @@
 
 ## 使命
 
-`tradecat-public` 是一个 Codex Skill 包装仓库；真实 TradeCat 用户侧消费端项目位于 `scripts/project/`。该项目只读公开在线表格，把数据保存为本地快照缓存文件，并提供轻量 CLI / TUI 浏览能力；也提供零安装的一次性请求脚本。
+`tradecat-public` 是一个 multi-Agent Skill 包装仓库；真实 TradeCat 用户侧消费端项目位于 `scripts/project/`。该项目只读公开在线表格，把数据保存为本地快照缓存文件，并提供轻量 CLI / TUI 浏览能力；也提供零安装的一次性请求脚本。
 
 ## 禁区
 
@@ -23,8 +23,13 @@ tradecat-public/
 ├── lessons.md
 ├── SKILL.md
 ├── agents/
+│   ├── manifest.json
+│   ├── hermes.yaml
 │   └── openai.yaml
 ├── references/
+│   ├── agent-contract.md
+│   ├── agent-contract-maturity-task-tree.md
+│   ├── agent-contract-maturity-task-tree.json
 │   ├── agent-readiness-remediation-task-tree.md
 │   ├── agent-readiness-remediation-task-tree.json
 │   ├── architecture.md
