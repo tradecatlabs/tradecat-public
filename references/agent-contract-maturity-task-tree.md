@@ -41,8 +41,9 @@ Owner: contract governance.
 Acceptance:
 
 - Schema files exist for `init`, `status`, `doctor`, `path`, `datasets`,
-  `sync`, `sync-all`, `probe --no-write`, `prune`, `config`, `request`,
-  `request --datasets`, `export`, and `doctor --bundle`.
+  `sync`, `sync-all`, single-dataset `probe --no-write`, all-dataset
+  `probe --no-write`, `prune`, `config`, `request`, `request --datasets`,
+  `export`, and `doctor --bundle`.
 - Each schema pins the advertised `schema` and `schema_version`.
 - Manifest-advertised JSON outputs and command-level schema files stay 1:1.
 - Generic envelope and error schemas remain the shared base.
@@ -57,8 +58,8 @@ Acceptance:
 - Entrypoint schema references are declared in `json_outputs`.
 - Required Agent failure codes remain advertised.
 - Command schema files are valid JSON and pin the expected schema names.
-- `tradecat.probe_result.v1` and `tradecat.watch_cycle.v1` remain explicitly
-  allowlisted as CLI-internal schemas until they are intentionally promoted.
+- `tradecat.watch_cycle.v1` remains explicitly allowlisted as a CLI-internal
+  schema until it is intentionally promoted.
 
 ### TP-03: Agent Smoke Error Semantics
 
@@ -73,6 +74,9 @@ Acceptance:
   `invalid_runtime_configuration`.
 - The runtime configuration test uses a local fake fetch and writes only to a
   temporary cache directory.
+- `doctor --json`, `config show --json`, dry-run `prune --json`, single-dataset
+  `probe --json --no-write`, and all-dataset `probe --json --no-write` stay in
+  the smoke gate.
 
 ### TP-04: Documentation Indexing
 

@@ -60,6 +60,7 @@ def test_advertised_cli_payloads_validate_against_formal_schemas(tmp_path, capsy
         _run_cli_json(capsys, ["config", "show", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "sync", "market_snapshot", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "sync-all", "--json"]),
+        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "event_stream", "--no-write", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "--no-write", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "prune", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "export", "event_stream", "--format", "json"]),

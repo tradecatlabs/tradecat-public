@@ -72,6 +72,24 @@ json_expect "$TMP_DIR/datasets.json" "tradecat.dataset_list.v1"
 bash scripts/run-tradecat.sh path event_stream --json >"$TMP_DIR/path.json"
 json_expect "$TMP_DIR/path.json" "tradecat.path_map.v1"
 
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" init --json >"$TMP_DIR/init.json"
+json_expect "$TMP_DIR/init.json" "tradecat.init.v1"
+
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" doctor --json >"$TMP_DIR/doctor.json"
+json_expect "$TMP_DIR/doctor.json" "tradecat.doctor.v1"
+
+bash scripts/run-tradecat.sh config show --json >"$TMP_DIR/config.json"
+json_expect "$TMP_DIR/config.json" "tradecat.config.v1"
+
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" prune --json >"$TMP_DIR/prune.json"
+json_expect "$TMP_DIR/prune.json" "tradecat.prune_result.v1"
+
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe event_stream --json --no-write >"$TMP_DIR/probe.json"
+json_expect "$TMP_DIR/probe.json" "tradecat.probe_result.v1"
+
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe --json --no-write >"$TMP_DIR/probe-all.json"
+json_expect "$TMP_DIR/probe-all.json" "tradecat.probe_results.v1"
+
 TRADECAT_REQUEST_REGISTRY_URL="$(python3 - "$PROJECT_DIR/src/tradecat_terminal/dataset_registry.json" <<'PY'
 import sys
 from pathlib import Path

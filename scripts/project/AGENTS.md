@@ -238,6 +238,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - 每次写缓存、manifest、stream state 或 settings 必须使用 `state.py` 文件锁和原子替换；禁止各模块自行发明锁语义。
 - 远端 CSV 拉取失败必须输出稳定 error code/kind/hint/retryable，禁止上层继续依赖 `str(exc)` 猜错误类型。
 - Agent 广告的 JSON 输出必须带 `schema` 和 `schema_version`；失败时 `error` 必须是对象，不能退化成自由文本。
+- 单次 dry-run probe 的 `tradecat.probe_result.v1` 是正式 Agent 契约；`tradecat.watch_cycle.v1` 仍是内部长运行契约，未进入 manifest 前不得写成 Agent 正式承诺面。
 - cache schema 变更必须走 `migrations.py`，并补 fixture 回归；禁止临时 if/else 隐式升级历史缓存。
 - snapshot dataset 必须按完整 CSV matrix hash 决定是否新增快照文件。
 - `event_stream` 必须独立按事件键增量合并，重复事件只能更新 `seen_count / last_seen_at`。

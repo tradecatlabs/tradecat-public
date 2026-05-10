@@ -56,6 +56,15 @@
       }
     },
     {
+      "command": "bash scripts/run-tradecat.sh probe event_stream --json --no-write",
+      "risk_class": "local_readonly",
+      "schema": "tradecat.probe_result.v1",
+      "exit_codes": {
+        "0": "single-dataset dry-run probe payload produced",
+        "2": "invalid dataset key"
+      }
+    },
+    {
       "command": "python3 scripts/project/scripts/request.py --datasets",
       "risk_class": "network_readonly",
       "schema": "text/tsv",
@@ -167,6 +176,11 @@
     {
       "command": "bash scripts/run-tradecat.sh sync-all --json",
       "schema": "tradecat.sync_results.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh probe event_stream --json --no-write",
+      "schema": "tradecat.probe_result.v1",
       "schema_version": "1.0.0"
     },
     {

@@ -14,6 +14,7 @@ REQUIRED_AGENT_JSON_SCHEMAS = {
     "tradecat.sync_result.v1",
     "tradecat.request_result.v1",
     "tradecat.dataset_view.v1",
+    "tradecat.probe_result.v1",
 }
 
 REQUIRED_FAILURE_CODES = {
@@ -33,6 +34,7 @@ COMMAND_SCHEMA_FILES = {
     "tradecat-dataset-list.schema.json": "tradecat.dataset_list.v1",
     "tradecat-sync-result.schema.json": "tradecat.sync_result.v1",
     "tradecat-sync-results.schema.json": "tradecat.sync_results.v1",
+    "tradecat-probe-result.schema.json": "tradecat.probe_result.v1",
     "tradecat-probe-results.schema.json": "tradecat.probe_results.v1",
     "tradecat-prune-result.schema.json": "tradecat.prune_result.v1",
     "tradecat-request-result.schema.json": "tradecat.request_result.v1",
@@ -42,7 +44,6 @@ COMMAND_SCHEMA_FILES = {
 }
 
 INTERNAL_CLI_SCHEMA_ALLOWLIST = {
-    "tradecat.probe_result.v1",
     "tradecat.watch_cycle.v1",
 }
 

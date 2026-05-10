@@ -18,7 +18,7 @@
       "priority": "P2",
       "status": "done",
       "acceptance": [
-        "Schema files exist for every JSON output advertised in agents/manifest.json.",
+        "Schema files exist for every JSON output advertised in agents/manifest.json, including single-dataset and all-dataset dry-run probe outputs.",
         "Each command schema pins schema and schema_version.",
         "Manifest-advertised JSON outputs and command-level schema files stay 1:1.",
         "Generic envelope and error schemas remain shared base contracts."
@@ -37,7 +37,7 @@
         "entrypoint schema references are declared in json_outputs.",
         "required failure codes remain advertised.",
         "command schema files pin expected schema names.",
-        "tradecat.probe_result.v1 and tradecat.watch_cycle.v1 remain explicitly allowlisted as CLI-internal schemas until they are promoted."
+        "tradecat.watch_cycle.v1 remains explicitly allowlisted as a CLI-internal schema until it is promoted."
       ],
       "paths": [
         "scripts/project/tests/test_agent_contract.py"
@@ -51,7 +51,8 @@
       "acceptance": [
         "invalid dataset returns invalid_dataset_key.",
         "invalid runtime configuration returns invalid_runtime_configuration.",
-        "runtime configuration smoke uses only a temporary cache and local fake fetch."
+        "runtime configuration smoke uses only a temporary cache and local fake fetch.",
+        "doctor, config, dry-run prune, single-dataset dry-run probe, and all-dataset dry-run probe stay in the smoke gate."
       ],
       "paths": [
         "scripts/agent-smoke.sh"

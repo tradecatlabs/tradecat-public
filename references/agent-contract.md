@@ -78,6 +78,7 @@ Known JSON schemas:
 | `datasets --json` | `tradecat.dataset_list.v1` |
 | `sync <dataset> --json` | `tradecat.sync_result.v1` |
 | `sync-all --json` | `tradecat.sync_results.v1` |
+| `probe <dataset> --json --no-write` | `tradecat.probe_result.v1` |
 | `probe --json --no-write` | `tradecat.probe_results.v1` |
 | `prune --json` | `tradecat.prune_result.v1` |
 | `config show --json` | `tradecat.config.v1` |
@@ -100,6 +101,7 @@ parsing without making every output closed-world brittle:
 | `tradecat-dataset-list.schema.json` | `tradecat.dataset_list.v1` |
 | `tradecat-sync-result.schema.json` | `tradecat.sync_result.v1` |
 | `tradecat-sync-results.schema.json` | `tradecat.sync_results.v1` |
+| `tradecat-probe-result.schema.json` | `tradecat.probe_result.v1` |
 | `tradecat-probe-results.schema.json` | `tradecat.probe_results.v1` |
 | `tradecat-prune-result.schema.json` | `tradecat.prune_result.v1` |
 | `tradecat-request-result.schema.json` | `tradecat.request_result.v1` |
@@ -108,8 +110,8 @@ parsing without making every output closed-world brittle:
 | `tradecat-support-bundle.schema.json` | `tradecat.support_bundle.v1` |
 
 Every schema advertised in `agents/manifest.json` must have one command-level
-schema file. `tradecat.probe_result.v1` and `tradecat.watch_cycle.v1` are
-currently CLI-internal schemas and are not part of the formal Agent surface.
+schema file. `tradecat.watch_cycle.v1` is currently a CLI-internal schema and
+is not part of the formal Agent surface.
 
 Real payload validation lives in
 `scripts/project/tests/test_payload_schema_validation.py`. It validates live

@@ -59,6 +59,9 @@ Acceptance:
 - `scripts/agent-smoke.sh` validates `agents/manifest.json`, advertised JSON
   schemas, non-zero failure exit codes, the zero-install request fallback, and
   the split between `invalid_dataset_key` and `invalid_runtime_configuration`.
+- `scripts/agent-smoke.sh` also covers `doctor --json`, `config show --json`,
+  dry-run `prune --json`, single-dataset `probe --json --no-write`, and
+  all-dataset `probe --json --no-write`.
 - CI has an independent `agent-readiness` job so Agent contract drift fails even
   when ordinary human-facing docs still look valid.
 - Advertised JSON commands include `schema` and `schema_version`; failed JSON
