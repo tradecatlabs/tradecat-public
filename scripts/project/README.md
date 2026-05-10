@@ -415,6 +415,8 @@ bash scripts/start.sh status
 bash scripts/start.sh status --json
 bash scripts/start.sh start --json
 bash scripts/start.sh stop --json
+bash scripts/start.sh restart --json
+bash scripts/watchdog.sh --json
 
 # TUI
 tradecat tui

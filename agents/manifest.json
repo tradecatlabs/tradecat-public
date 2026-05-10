@@ -124,6 +124,21 @@
       "command": "bash scripts/run-tradecat.sh prune --max-snapshots 20 --apply --json",
       "risk_class": "local_cache_write",
       "schema": "tradecat.prune_result.v1"
+    },
+    {
+      "command": "bash scripts/project/scripts/start.sh start --json",
+      "risk_class": "background_long_running",
+      "schema": "tradecat.watch_status.v1"
+    },
+    {
+      "command": "bash scripts/project/scripts/start.sh stop --json",
+      "risk_class": "background_long_running",
+      "schema": "tradecat.watch_status.v1"
+    },
+    {
+      "command": "bash scripts/project/scripts/watchdog.sh --json",
+      "risk_class": "background_long_running",
+      "schema": "tradecat.watch_status.v1"
     }
   ],
   "network_entrypoints": [
@@ -272,9 +287,14 @@
       "reason": "Windows installer mutates user install paths and launchers."
     },
     {
-      "command": "bash scripts/project/scripts/start.sh start",
+      "command": "bash scripts/project/scripts/start.sh start --json",
       "risk_class": "background_long_running",
       "reason": "Spawns a watcher process; success means process spawn, not remote data health."
+    },
+    {
+      "command": "bash scripts/project/scripts/watchdog.sh --json",
+      "risk_class": "background_long_running",
+      "reason": "Reports watcher status if running or starts a missing watcher; success means supervision action completed, not remote data health."
     },
     {
       "command": "bash scripts/run-tradecat.sh prune --apply",

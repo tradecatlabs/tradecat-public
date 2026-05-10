@@ -154,10 +154,11 @@ emit_text_or_json() {
 }
 
 start() {
+  local action="${1:-start}"
   if is_running; then
     local pid
     pid="$(read_pid)"
-    emit_text_or_json "start" "running" "1" "1" "already_running" "running pid=$pid cache=$CACHE_DIR log=$LOG_FILE" "$pid"
+    emit_text_or_json "$action" "running" "1" "1" "already_running" "running pid=$pid cache=$CACHE_DIR log=$LOG_FILE" "$pid"
     return 0
   fi
   rm -f "$PID_FILE"
@@ -178,7 +179,7 @@ start() {
   )
   local pid
   pid="$(read_pid)"
-  emit_text_or_json "start" "running" "1" "1" "started" "started pid=$pid cache=$CACHE_DIR interval=$INTERVAL log=$LOG_FILE" "$pid"
+  emit_text_or_json "$action" "running" "1" "1" "started" "started pid=$pid cache=$CACHE_DIR interval=$INTERVAL log=$LOG_FILE" "$pid"
 }
 
 stop() {
@@ -217,7 +218,7 @@ status() {
 restart() {
   if [[ "$JSON" -eq 1 ]]; then
     stop >/dev/null || true
-    start
+    start "restart"
     return $?
   fi
   stop

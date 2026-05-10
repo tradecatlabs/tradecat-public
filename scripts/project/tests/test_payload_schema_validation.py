@@ -22,6 +22,7 @@ CONTRACTS_DIR = PROJECT_ROOT / "contracts"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "json_contract"
 REQUEST_SCRIPT = PROJECT_ROOT / "scripts" / "request.py"
 START_SCRIPT = PROJECT_ROOT / "scripts" / "start.sh"
+WATCHDOG_SCRIPT = PROJECT_ROOT / "scripts" / "watchdog.sh"
 REQUEST_REGISTRY_URL = "https://example.local/tradecat-registry.json"
 SHEET_CSV = "https://dexscreener.com/example\nrank,pair,price\n1,BTCUSDT,100\n"
 EVENT_CSV = "time,content\n2026-05-10 10:00:00,hello\n"
@@ -117,9 +118,35 @@ def test_watch_status_payloads_validate_against_formal_schema(tmp_path):
         running = _run_script_json(["status", "--json"], env=env)
         validate_payload(running)
         assert running["running"] is True
+
+        restarted = _run_script_json(["restart", "--json"], env=env)
+        validate_payload(restarted)
+        assert restarted["action"] == "restart"
+        assert restarted["state"] == "running"
     finally:
         stopped_after_start = _run_script_json(["stop", "--json"], env=env)
         validate_payload(stopped_after_start)
+
+
+def test_watchdog_json_payload_validates_against_formal_schema(tmp_path):
+    env = {
+        **os.environ,
+        "PYTHON_BIN": sys.executable,
+        "PYTHONPATH": str(PROJECT_ROOT / "src"),
+        "TRADECAT_CACHE_DIR": str(tmp_path / "cache"),
+        "TRADECAT_TERMINAL_RUNTIME_DIR": str(tmp_path / "run"),
+        "TRADECAT_TERMINAL_WATCH_NO_WRITE": "1",
+        "TRADECAT_TERMINAL_WATCH_INTERVAL": "60",
+    }
+
+    try:
+        payload = _run_script_json(["--json"], env=env, script=WATCHDOG_SCRIPT)
+        validate_payload(payload)
+        assert payload["schema"] == "tradecat.watch_status.v1"
+        assert payload["state"] == "running"
+    finally:
+        stopped = _run_script_json(["stop", "--json"], env=env)
+        validate_payload(stopped)
 
 
 def test_real_error_payloads_validate_against_formal_schemas(tmp_path, capsys, monkeypatch):
@@ -197,9 +224,15 @@ def _run_request_json(request_module: ModuleType, capsys, args: list[str], *, ex
     return _json_from_stdout(capsys.readouterr().out)
 
 
-def _run_script_json(args: list[str], *, env: dict[str, str], expected_code: int = 0) -> dict[str, Any]:
+def _run_script_json(
+    args: list[str],
+    *,
+    env: dict[str, str],
+    expected_code: int = 0,
+    script: Path = START_SCRIPT,
+) -> dict[str, Any]:
     result = subprocess.run(
-        ["bash", str(START_SCRIPT), *args],
+        ["bash", str(script), *args],
         check=False,
         env=env,
         text=True,

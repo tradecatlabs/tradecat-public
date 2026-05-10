@@ -82,7 +82,7 @@ Known JSON schemas:
 | `probe --json --no-write` | `tradecat.probe_results.v1` |
 | `prune --json` | `tradecat.prune_result.v1` |
 | `config show --json` | `tradecat.config.v1` |
-| `start.sh status --json` | `tradecat.watch_status.v1` |
+| `start.sh status/start/stop --json`; `watchdog.sh --json` | `tradecat.watch_status.v1` |
 | `export <dataset> --format json` | `tradecat.dataset_view.v1` |
 | `doctor --bundle -` | `tradecat.support_bundle.v1` |
 | `request.py <dataset> --format json` | `tradecat.request_result.v1` |
@@ -161,7 +161,12 @@ derived from the same registry.
 ## Long-Running Semantics
 
 `scripts/project/scripts/start.sh --json` is the machine-readable watcher
-lifecycle control plane. `start` returning `0` means watcher spawn or
-already-running state, not proof that remote data is healthy. Follow it with
-`status --json`, `doctor --json`, or `probe --json --no-write` when remote data
-health is the actual question.
+lifecycle control plane. The manifest advertises `status --json` as read-only
+inspection, and `start --json` / `stop --json` / `watchdog.sh --json` as
+mutating supervision commands. `restart --json` is supported for operators and
+uses the same `tradecat.watch_status.v1` envelope.
+
+`start` or `watchdog` returning `0` means watcher spawn or already-running
+state, not proof that remote data is healthy. Follow it with `status --json`,
+`doctor --json`, or `probe --json --no-write` when remote data health is the
+actual question.
