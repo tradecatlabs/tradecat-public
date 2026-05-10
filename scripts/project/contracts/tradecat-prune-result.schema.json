@@ -7,7 +7,25 @@
       "$ref": "tradecat-command-envelope.schema.json"
     }
   ],
-  "required": ["schema", "schema_version", "ok", "cache_dir", "max_snapshots_per_dataset", "applied", "datasets"],
+  "required": ["schema", "schema_version", "ok"],
+  "anyOf": [
+    {
+      "required": ["cache_dir", "max_snapshots_per_dataset", "applied", "datasets"],
+      "properties": {
+        "ok": {
+          "const": true
+        }
+      }
+    },
+    {
+      "required": ["error"],
+      "properties": {
+        "ok": {
+          "const": false
+        }
+      }
+    }
+  ],
   "properties": {
     "schema": {
       "const": "tradecat.prune_result.v1"
@@ -48,6 +66,9 @@
         },
         "additionalProperties": true
       }
+    },
+    "error": {
+      "$ref": "tradecat-error.schema.json"
     }
   },
   "additionalProperties": true

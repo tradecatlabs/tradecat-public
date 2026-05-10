@@ -7,7 +7,25 @@
       "$ref": "tradecat-command-envelope.schema.json"
     }
   ],
-  "required": ["schema", "schema_version", "ok", "dataset_key"],
+  "required": ["schema", "schema_version", "ok"],
+  "anyOf": [
+    {
+      "required": ["dataset_key"],
+      "properties": {
+        "ok": {
+          "const": true
+        }
+      }
+    },
+    {
+      "required": ["error"],
+      "properties": {
+        "ok": {
+          "const": false
+        }
+      }
+    }
+  ],
   "properties": {
     "schema": {
       "const": "tradecat.sync_result.v1"

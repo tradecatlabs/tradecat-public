@@ -69,6 +69,9 @@ Acceptance:
 - Every schema advertised in `agents/manifest.json` has exactly one
   command-level schema file, and CLI-only internal schemas remain explicitly
   allowlisted in `scripts/project/tests/test_agent_contract.py`.
+- `scripts/project/tests/test_payload_schema_validation.py` validates real
+  CLI/request JSON payloads and golden fixtures against those formal schemas;
+  `jsonschema` remains a dev/test dependency, not a runtime dependency.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.

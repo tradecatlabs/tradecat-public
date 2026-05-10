@@ -91,6 +91,37 @@
         "scripts/security-scan.sh",
         "scripts/supply-chain-audit.sh"
       ]
+    },
+    {
+      "id": "TP-06",
+      "title": "Real payload schema validation",
+      "priority": "P2",
+      "status": "done",
+      "acceptance": [
+        "live CLI payloads for manifest-advertised JSON surfaces validate against formal schema files.",
+        "request.py success payloads validate without network by using a local fake registry/fetch path.",
+        "invalid_dataset_key, invalid_runtime_configuration, and local_runtime_error payloads validate as ok=false schema payloads.",
+        "jsonschema remains a dev/test dependency only."
+      ],
+      "paths": [
+        "scripts/project/tests/test_payload_schema_validation.py",
+        "scripts/project/pyproject.toml",
+        "scripts/project/constraints.txt"
+      ]
+    },
+    {
+      "id": "TP-07",
+      "title": "Golden JSON fixtures",
+      "priority": "P3",
+      "status": "done",
+      "acceptance": [
+        "golden samples live under scripts/project/tests/fixtures/json_contract/.",
+        "fixtures cover status success, request dataset list success, support bundle success, invalid dataset, invalid runtime configuration, and local runtime error.",
+        "fixtures validate against the same formal schema helper used for live payloads."
+      ],
+      "paths": [
+        "scripts/project/tests/fixtures/json_contract/"
+      ]
     }
   ]
 }

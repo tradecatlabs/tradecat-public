@@ -19,6 +19,8 @@ Included:
   `agents/manifest.json`.
 - Add manifest consistency tests for schema references, version pins, known
   failure codes, and manifest/schema-file 1:1 coverage.
+- Validate real CLI/request JSON payloads against the formal schema files.
+- Add golden JSON fixtures for common Agent success/failure interpretations.
 - Extend `scripts/agent-smoke.sh` to assert runtime configuration error
   classification, not only invalid dataset classification.
 - Document the maturity layer in public references.
@@ -96,8 +98,38 @@ Acceptance:
 - `bash scripts/supply-chain-audit.sh` passes.
 - `git diff --check` passes.
 
+### TP-06: Real Payload Schema Validation
+
+Owner: test suite.
+
+Acceptance:
+
+- Live CLI payloads for manifest-advertised JSON surfaces validate against
+  their formal schema files.
+- `scripts/project/scripts/request.py` success payloads validate without
+  network by using a local fake registry/fetch path.
+- Invalid dataset, invalid runtime configuration, and local runtime failure
+  payloads validate as `ok=false` schema payloads with stable error objects.
+- `jsonschema` is present only in the project dev dependencies and
+  `constraints.txt`; runtime dependencies stay unchanged.
+
+### TP-07: Golden JSON Fixtures
+
+Owner: contract governance.
+
+Acceptance:
+
+- Golden samples live under
+  `scripts/project/tests/fixtures/json_contract/`.
+- Fixtures cover status success, request dataset list success, support bundle
+  success, invalid dataset, invalid runtime configuration, and local runtime
+  error.
+- Fixture files validate against the same formal schema helper used for live
+  payloads.
+
 ## Completion Rule
 
 This wave is complete when the schema coverage, tests, smoke gate, and public
-reference updates are committed together. Any future behavior-changing CLI work
-must use a separate task tree.
+reference updates are committed together. Payload validation and fixture updates
+may extend this hardening wave as long as they do not change user-facing CLI
+semantics. Any future behavior-changing CLI work must use a separate task tree.

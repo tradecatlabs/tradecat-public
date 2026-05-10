@@ -1,0 +1,12 @@
+{
+  "schema": "tradecat.request_dataset_list.v1",
+  "schema_version": "1.0.0",
+  "ok": true,
+  "datasets": [
+    {
+      "key": "event_stream",
+      "data_mode": "stream",
+      "tab_name": "event_stream"
+    }
+  ]
+}

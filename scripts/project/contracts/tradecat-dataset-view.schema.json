@@ -7,7 +7,25 @@
       "$ref": "tradecat-command-envelope.schema.json"
     }
   ],
-  "required": ["schema", "schema_version", "ok", "dataset_key", "rows"],
+  "required": ["schema", "schema_version", "ok"],
+  "anyOf": [
+    {
+      "required": ["dataset_key", "rows"],
+      "properties": {
+        "ok": {
+          "const": true
+        }
+      }
+    },
+    {
+      "required": ["error"],
+      "properties": {
+        "ok": {
+          "const": false
+        }
+      }
+    }
+  ],
   "properties": {
     "schema": {
       "const": "tradecat.dataset_view.v1"
@@ -32,6 +50,9 @@
     },
     "rows": {
       "type": "array"
+    },
+    "error": {
+      "$ref": "tradecat-error.schema.json"
     }
   },
   "additionalProperties": true

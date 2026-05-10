@@ -111,9 +111,17 @@ Every schema advertised in `agents/manifest.json` must have one command-level
 schema file. `tradecat.probe_result.v1` and `tradecat.watch_cycle.v1` are
 currently CLI-internal schemas and are not part of the formal Agent surface.
 
+Real payload validation lives in
+`scripts/project/tests/test_payload_schema_validation.py`. It validates live
+CLI/request JSON output and golden samples from
+`scripts/project/tests/fixtures/json_contract/` against the formal schemas.
+`jsonschema` is a dev/test dependency only; TradeCat runtime commands do not
+depend on it.
+
 Breaking JSON changes require updating `agents/manifest.json`, this document,
-`scripts/project/tests/test_json_contract.py`, and
-`scripts/project/tests/test_agent_contract.py` in the same change.
+`scripts/project/tests/test_json_contract.py`,
+`scripts/project/tests/test_agent_contract.py`, and
+`scripts/project/tests/test_payload_schema_validation.py` in the same change.
 
 ## Exit Code Contract
 

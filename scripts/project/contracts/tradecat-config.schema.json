@@ -7,7 +7,25 @@
       "$ref": "tradecat-command-envelope.schema.json"
     }
   ],
-  "required": ["schema", "schema_version", "ok", "path", "settings"],
+  "required": ["schema", "schema_version", "ok"],
+  "anyOf": [
+    {
+      "required": ["path", "settings"],
+      "properties": {
+        "ok": {
+          "const": true
+        }
+      }
+    },
+    {
+      "required": ["error"],
+      "properties": {
+        "ok": {
+          "const": false
+        }
+      }
+    }
+  ],
   "properties": {
     "schema": {
       "const": "tradecat.config.v1"

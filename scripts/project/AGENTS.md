@@ -99,10 +99,13 @@ tradecat-public/
         │       └── runtime/
         │           └── paths.py
         └── tests/
+            ├── fixtures/
+            │   └── json_contract/
             ├── test_agent_contract.py
             ├── test_cache_tui.py
             ├── test_exit_codes.py
             ├── test_json_contract.py
+            ├── test_payload_schema_validation.py
             └── test_transport.py
 ```
 
@@ -212,6 +215,8 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `registry.py`：从 `dataset_registry.json` 加载 workbook、tab、dataset、data_mode、TUI 探针间隔与多语言展示名。
 - `scripts/request.py`：零安装一次性公开数据请求脚本；公开 curl 路径为 `scripts/project/scripts/request.py`；读取共享 registry，只能用标准库，JSON 模式必须输出 `tradecat.request_result.v1`。
 - `scripts/validate_data_contract.py`：公开 dataset registry 与 Google Sheets CSV 契约校验入口；CI 可用 `--remote` 做公网 smoke。
+- `tests/fixtures/json_contract/`：Agent JSON 契约 golden 样本；只保存脱敏、稳定、可 schema 校验的最小 payload。
+- `tests/test_payload_schema_validation.py`：真实 CLI/request payload 与 golden fixtures 的 JSON Schema 校验门禁；只能依赖 dev/test 依赖，不能把 `jsonschema` 带入运行时依赖。
 - `settings.py`：用户侧本地配置文件读写；管理默认语言、默认 tap、缓存目录和探针间隔，写入必须原子化并保留 `.bak`。
 - `sheets.py`：Google Sheets CSV 只读拉取与 matrix 解析；网络层使用 `urllib3` retry/backoff/jitter 和 typed error。
 - `state.py`：本地文件锁与原子写基础设施；跨平台锁只能通过此模块集中使用。
