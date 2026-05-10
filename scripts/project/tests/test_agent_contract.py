@@ -22,6 +22,7 @@ REQUIRED_FAILURE_CODES = {
     "invalid_dataset_key",
     "remote_timeout",
     "remote_http_status",
+    "watch_not_running",
     "invalid_runtime_configuration",
     "local_runtime_error",
 }

@@ -415,6 +415,8 @@ bash scripts/start.sh status
 bash scripts/start.sh status --json
 bash scripts/start.sh start --json
 bash scripts/start.sh stop --json
+
+# operator-only 重启入口；不作为 Agent 首选入口
 bash scripts/start.sh restart --json
 bash scripts/watchdog.sh --json
 

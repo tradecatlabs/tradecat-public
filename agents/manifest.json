@@ -356,6 +356,13 @@
       "repair": "Run bash scripts/run-tradecat.sh doctor --sync --timeout 10 after checking network."
     },
     {
+      "code": "watch_not_running",
+      "kind": "runtime",
+      "meaning": "The watcher lifecycle status command could not find a running watcher process.",
+      "retryable": false,
+      "repair": "Run bash scripts/project/scripts/start.sh start --json, then verify remote data health with probe --json --no-write."
+    },
+    {
       "code": "invalid_runtime_configuration",
       "kind": "configuration",
       "meaning": "A local setting or environment variable is invalid.",

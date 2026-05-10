@@ -58,9 +58,11 @@ Acceptance:
 - Manifest JSON output commands and schemas are unique.
 - Entrypoint schema references are declared in `json_outputs`.
 - Required Agent failure codes remain advertised.
+- `watch_not_running` remains a manifest-known failure mode and required test
+  code for watcher lifecycle status.
 - Command schema files are valid JSON and pin the expected schema names.
 - `tradecat.watch_cycle.v1` remains explicitly allowlisted as a CLI-internal
-  schema until it is intentionally promoted.
+  schema and is not a public Agent surface unless intentionally promoted.
 
 ### TP-03: Agent Smoke Error Semantics
 
@@ -80,7 +82,7 @@ Acceptance:
   the smoke gate.
 - Watcher lifecycle `start.sh status --json` stays in the smoke gate with
   `tradecat.watch_status.v1`; payload validation covers `start`, `stop`,
-  `restart`, and `watchdog` JSON behavior.
+  operator-only `restart`, and `watchdog` JSON behavior.
 
 ### TP-04: Documentation Indexing
 

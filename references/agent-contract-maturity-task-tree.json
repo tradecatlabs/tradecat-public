@@ -36,8 +36,9 @@
         "json_outputs commands and schemas are unique.",
         "entrypoint schema references are declared in json_outputs.",
         "required failure codes remain advertised.",
+        "watch_not_running remains a manifest-known failure mode and required test code for watcher lifecycle status.",
         "command schema files pin expected schema names.",
-        "tradecat.watch_cycle.v1 remains explicitly allowlisted as a CLI-internal schema until it is promoted."
+        "tradecat.watch_cycle.v1 remains explicitly allowlisted as a CLI-internal schema and is not a public Agent surface unless intentionally promoted."
       ],
       "paths": [
         "scripts/project/tests/test_agent_contract.py"
@@ -52,7 +53,7 @@
         "invalid dataset returns invalid_dataset_key.",
         "invalid runtime configuration returns invalid_runtime_configuration.",
         "runtime configuration smoke uses only a temporary cache and local fake fetch.",
-        "doctor, config, dry-run prune, single-dataset dry-run probe, all-dataset dry-run probe, and watcher lifecycle status stay in the smoke gate; payload validation covers watcher start/stop/restart/watchdog JSON behavior."
+        "doctor, config, dry-run prune, single-dataset dry-run probe, all-dataset dry-run probe, and watcher lifecycle status stay in the smoke gate; payload validation covers watcher start/stop/operator-only restart/watchdog JSON behavior."
       ],
       "paths": [
         "scripts/agent-smoke.sh"

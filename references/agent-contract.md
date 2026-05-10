@@ -112,8 +112,10 @@ parsing without making every output closed-world brittle:
 | `tradecat-watch-status.schema.json` | `tradecat.watch_status.v1` |
 
 Every schema advertised in `agents/manifest.json` must have one command-level
-schema file. `tradecat.watch_cycle.v1` is currently a CLI-internal schema and
-is not part of the formal Agent surface.
+schema file. `tradecat.watch_cycle.v1` is intentionally CLI-internal and is not
+part of the formal Agent surface. Promoting it requires a future manifest entry,
+schema table update, live payload validation, and bounded smoke coverage in the
+same change.
 
 Real payload validation lives in
 `scripts/project/tests/test_payload_schema_validation.py`. It validates live
@@ -140,7 +142,9 @@ Non-interactive commands must not return `0` with `ok=false`.
 Dataset lookup failures use `error.code=invalid_dataset_key`. Local
 configuration failures, such as an unsupported `TRADECAT_CACHE_COMPRESSION`, use
 `error.code=invalid_runtime_configuration`; unexpected local failures use
-`error.code=local_runtime_error`. Do not collapse these into dataset errors.
+`error.code=local_runtime_error`. Watcher status failures use
+`error.code=watch_not_running` when no watcher process is running. Do not
+collapse these into dataset errors.
 
 ## Remote Fetch Contract
 
@@ -163,8 +167,9 @@ derived from the same registry.
 `scripts/project/scripts/start.sh --json` is the machine-readable watcher
 lifecycle control plane. The manifest advertises `status --json` as read-only
 inspection, and `start --json` / `stop --json` / `watchdog.sh --json` as
-mutating supervision commands. `restart --json` is supported for operators and
-uses the same `tradecat.watch_status.v1` envelope.
+mutating supervision commands. `restart --json` is operator-only: it is tested
+and uses the same `tradecat.watch_status.v1` envelope, but it is intentionally
+not a preferred Agent entrypoint.
 
 `start` or `watchdog` returning `0` means watcher spawn or already-running
 state, not proof that remote data is healthy. Follow it with `status --json`,
