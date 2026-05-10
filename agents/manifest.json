@@ -65,6 +65,15 @@
       }
     },
     {
+      "command": "bash scripts/project/scripts/start.sh status --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat.watch_status.v1",
+      "exit_codes": {
+        "0": "watch process is running",
+        "1": "watch process is not running; payload includes state and error object"
+      }
+    },
+    {
       "command": "python3 scripts/project/scripts/request.py --datasets",
       "risk_class": "network_readonly",
       "schema": "text/tsv",
@@ -191,6 +200,11 @@
     {
       "command": "bash scripts/run-tradecat.sh prune --json",
       "schema": "tradecat.prune_result.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/project/scripts/start.sh status --json",
+      "schema": "tradecat.watch_status.v1",
       "schema_version": "1.0.0"
     },
     {

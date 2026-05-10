@@ -43,7 +43,7 @@ Acceptance:
 - Schema files exist for `init`, `status`, `doctor`, `path`, `datasets`,
   `sync`, `sync-all`, single-dataset `probe --no-write`, all-dataset
   `probe --no-write`, `prune`, `config`, `request`, `request --datasets`,
-  `export`, and `doctor --bundle`.
+  `export`, `doctor --bundle`, and watcher lifecycle `start.sh status --json`.
 - Each schema pins the advertised `schema` and `schema_version`.
 - Manifest-advertised JSON outputs and command-level schema files stay 1:1.
 - Generic envelope and error schemas remain the shared base.
@@ -77,6 +77,8 @@ Acceptance:
 - `doctor --json`, `config show --json`, dry-run `prune --json`, single-dataset
   `probe --json --no-write`, and all-dataset `probe --json --no-write` stay in
   the smoke gate.
+- Watcher lifecycle `start.sh status --json` stays in the smoke gate with
+  `tradecat.watch_status.v1`.
 
 ### TP-04: Documentation Indexing
 
@@ -127,7 +129,7 @@ Acceptance:
   `scripts/project/tests/fixtures/json_contract/`.
 - Fixtures cover status success, request dataset list success, support bundle
   success, invalid dataset, invalid runtime configuration, and local runtime
-  error.
+  error, plus watcher not-running status.
 - Fixture files validate against the same formal schema helper used for live
   payloads.
 

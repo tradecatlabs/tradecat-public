@@ -1,5 +1,57 @@
 # Release Notes
 
+## v0.1.3
+
+Release date: 2026-05-10.
+
+Commit: `v0.1.3` tag target.
+
+GitHub Release: <https://github.com/tukuaiai/tradecat/releases/tag/v0.1.3>.
+
+CI evidence:
+
+- Develop workflow query: <https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml?query=branch%3Adevelop+event%3Apush>
+- Tag workflow query: <https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml?query=branch%3Av0.1.3>
+
+Install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.sh | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
+```
+
+Highlights:
+
+- Makes stable `v0.1.3` the default install ref for ordinary users.
+- Promotes Agent contract hardening from `develop` into the stable channel:
+  manifest/schema 1:1 coverage, real payload schema validation, golden JSON
+  fixtures, and expanded `agent-smoke`.
+- Adds the formal `tradecat.watch_status.v1` watcher lifecycle contract for
+  `scripts/project/scripts/start.sh --json` status/start/stop output.
+- Keeps `tradecat.watch_cycle.v1` internal until the long-running watch stream
+  is intentionally promoted.
+- Updates GitHub artifact upload actions to the Node 24-compatible major.
+- Clarifies Agent dry-run probe usage and local dev bootstrap requirements.
+
+Known limits:
+
+- Public data still depends on public Google Sheets CSV availability.
+- Stable tag installs intentionally do not auto-update.
+- `tradecat.watch_cycle.v1` remains an internal long-running stream payload,
+  not a formal Agent surface.
+
+Rollback:
+
+```bash
+tradecat-uninstall
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.2 sh
+```
+
 ## v0.1.2
 
 Release date: 2026-05-08.
@@ -53,27 +105,18 @@ tradecat-uninstall
 curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
 ```
 
-## Next Stability Hardening
+## Next Long-Running Contract Work
 
-Target: next tag after `v0.1.2`.
+Target: next tag after `v0.1.3`.
 
-Scope already implemented on `develop` pending release:
+Candidates:
 
-- Remote CSV fetch now uses `urllib3` retry/backoff/jitter and typed error
-  payloads.
-- Cache/settings writes use cross-platform locks and atomic replacement.
-- Settings corruption is preserved as `.corrupt-*.bak` and surfaced by doctor.
-- `doctor --verbose` and `doctor --bundle [PATH]` expose public-safe diagnostics,
-  recent errors, migration state, and disk-waterline hints.
-- Cache metadata migrations are explicit, backed up, and repairable through
-  `doctor --repair`.
-- Runtime dependency installation uses `constraints.txt`; uv remote bootstrap is
-  explicit opt-in via `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1`.
-- CI expands Python 3.12/3.13 coverage, uploads dependency/public-smoke
-  artifacts, and supports scheduled/manual public canary runs.
-- Agent/Hermes readiness adds `agents/manifest.json`, `agents/hermes.yaml`,
-  `references/agent-contract.md`, schema/versioned CLI JSON, stable object
-  errors, `scripts/agent-smoke.sh`, and a dedicated CI `agent-readiness` job.
+- Decide whether `tradecat.watch_cycle.v1` should remain an internal stream
+  payload or become a formal Agent surface.
+- If promoted, add manifest/schema/live payload tests and a bounded
+  `watch --json --max-cycles 1 --no-write` smoke.
+- Keep `start.sh --json` as the watcher lifecycle control plane and avoid
+  treating process spawn as proof of remote data health.
 
 Release gate before tagging:
 

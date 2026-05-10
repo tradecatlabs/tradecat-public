@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $RepoUrl = if ($env:TRADECAT_INSTALL_REPO) { $env:TRADECAT_INSTALL_REPO } else { "https://github.com/tukuaiai/tradecat.git" }
-$DefaultRef = if ($env:TRADECAT_INSTALL_DEFAULT_REF) { $env:TRADECAT_INSTALL_DEFAULT_REF } else { "v0.1.2" }
+$DefaultRef = if ($env:TRADECAT_INSTALL_DEFAULT_REF) { $env:TRADECAT_INSTALL_DEFAULT_REF } else { "v0.1.3" }
 $Branch = if ($env:TRADECAT_INSTALL_BRANCH) { $env:TRADECAT_INSTALL_BRANCH } else { "develop" }
 if ($env:TRADECAT_INSTALL_REF) {
     $Ref = $env:TRADECAT_INSTALL_REF

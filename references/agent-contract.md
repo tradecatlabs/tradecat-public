@@ -82,6 +82,7 @@ Known JSON schemas:
 | `probe --json --no-write` | `tradecat.probe_results.v1` |
 | `prune --json` | `tradecat.prune_result.v1` |
 | `config show --json` | `tradecat.config.v1` |
+| `start.sh status --json` | `tradecat.watch_status.v1` |
 | `export <dataset> --format json` | `tradecat.dataset_view.v1` |
 | `doctor --bundle -` | `tradecat.support_bundle.v1` |
 | `request.py <dataset> --format json` | `tradecat.request_result.v1` |
@@ -108,6 +109,7 @@ parsing without making every output closed-world brittle:
 | `tradecat-request-dataset-list.schema.json` | `tradecat.request_dataset_list.v1` |
 | `tradecat-dataset-view.schema.json` | `tradecat.dataset_view.v1` |
 | `tradecat-support-bundle.schema.json` | `tradecat.support_bundle.v1` |
+| `tradecat-watch-status.schema.json` | `tradecat.watch_status.v1` |
 
 Every schema advertised in `agents/manifest.json` must have one command-level
 schema file. `tradecat.watch_cycle.v1` is currently a CLI-internal schema and
@@ -158,7 +160,8 @@ derived from the same registry.
 
 ## Long-Running Semantics
 
-`scripts/project/scripts/start.sh start` returning `0` means watcher spawn or
+`scripts/project/scripts/start.sh --json` is the machine-readable watcher
+lifecycle control plane. `start` returning `0` means watcher spawn or
 already-running state, not proof that remote data is healthy. Follow it with
-`status --json`, `doctor --json`, or `probe --json --no-write` when health is the
-actual question.
+`status --json`, `doctor --json`, or `probe --json --no-write` when remote data
+health is the actual question.

@@ -26,13 +26,13 @@ TradeCat 用户侧安装、运行和卸载说明见
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.sh | sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
 ```
 
 根目录只承担三件事：

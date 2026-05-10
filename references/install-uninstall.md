@@ -5,7 +5,7 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 ## Install
 
 - By default, install the stable `TRADECAT_INSTALL_DEFAULT_REF` tag, currently
-  `v0.1.2`.
+  `v0.1.3`.
 - Clone or update a configured branch only when `TRADECAT_INSTALL_BRANCH` is
   explicitly set, or checkout a fixed `TRADECAT_INSTALL_REF` tag/ref.
 - Locate the project inside the repository by `TRADECAT_PROJECT_SUBDIR`, defaulting to `scripts/project`.
@@ -25,7 +25,7 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
   so the default no-argument TUI has a useful first cache whenever the default
   dataset can be fetched.
 - CI validates both local checkout installers and published
-  `raw.githubusercontent.com/.../v0.1.2/...` installers. Published installer
+  `raw.githubusercontent.com/.../v0.1.3/...` installers. Published installer
   smoke must not set `TRADECAT_INSTALL_SKIP_SYNC`; it must assert that
   `event_stream` is ready after install or explicit `doctor --sync` repair.
 - Published installer smoke keeps retry logs, status JSON, and support bundle

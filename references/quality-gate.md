@@ -62,6 +62,9 @@ Acceptance:
 - `scripts/agent-smoke.sh` also covers `doctor --json`, `config show --json`,
   dry-run `prune --json`, single-dataset `probe --json --no-write`, and
   all-dataset `probe --json --no-write`.
+- Watcher lifecycle status has a machine-readable JSON contract through
+  `scripts/project/scripts/start.sh status --json` and
+  `tradecat.watch_status.v1`.
 - CI has an independent `agent-readiness` job so Agent contract drift fails even
   when ordinary human-facing docs still look valid.
 - Advertised JSON commands include `schema` and `schema_version`; failed JSON

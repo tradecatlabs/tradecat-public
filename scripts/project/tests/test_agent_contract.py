@@ -15,6 +15,7 @@ REQUIRED_AGENT_JSON_SCHEMAS = {
     "tradecat.request_result.v1",
     "tradecat.dataset_view.v1",
     "tradecat.probe_result.v1",
+    "tradecat.watch_status.v1",
 }
 
 REQUIRED_FAILURE_CODES = {
@@ -41,6 +42,7 @@ COMMAND_SCHEMA_FILES = {
     "tradecat-request-dataset-list.schema.json": "tradecat.request_dataset_list.v1",
     "tradecat-dataset-view.schema.json": "tradecat.dataset_view.v1",
     "tradecat-support-bundle.schema.json": "tradecat.support_bundle.v1",
+    "tradecat-watch-status.schema.json": "tradecat.watch_status.v1",
 }
 
 INTERNAL_CLI_SCHEMA_ALLOWLIST = {

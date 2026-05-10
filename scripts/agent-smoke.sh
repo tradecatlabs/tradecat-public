@@ -90,6 +90,19 @@ json_expect "$TMP_DIR/probe.json" "tradecat.probe_result.v1"
 bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe --json --no-write >"$TMP_DIR/probe-all.json"
 json_expect "$TMP_DIR/probe-all.json" "tradecat.probe_results.v1"
 
+set +e
+TRADECAT_TERMINAL_RUNTIME_DIR="$TMP_DIR/run" \
+TRADECAT_CACHE_DIR="$TMP_DIR/cache" \
+bash scripts/project/scripts/start.sh status --json >"$TMP_DIR/watch-status.json"
+watch_status_exit_code=$?
+set -e
+if [[ "$watch_status_exit_code" -ne 1 ]]; then
+  echo "agent-smoke: stopped watch status returned exit $watch_status_exit_code" >&2
+  exit 1
+fi
+json_expect "$TMP_DIR/watch-status.json" "tradecat.watch_status.v1"
+json_expect_error_code "$TMP_DIR/watch-status.json" "watch_not_running"
+
 TRADECAT_REQUEST_REGISTRY_URL="$(python3 - "$PROJECT_DIR/src/tradecat_terminal/dataset_registry.json" <<'PY'
 import sys
 from pathlib import Path

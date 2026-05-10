@@ -431,7 +431,7 @@ def test_install_launchers_separate_stable_and_branch_channels():
     uninstall_ps1 = (REPO_ROOT / "uninstall.ps1").read_text(encoding="utf-8")
 
     assert "auto_update" in install_sh
-    assert 'DEFAULT_REF="${TRADECAT_INSTALL_DEFAULT_REF:-v0.1.2}"' in install_sh
+    assert 'DEFAULT_REF="${TRADECAT_INSTALL_DEFAULT_REF:-v0.1.3}"' in install_sh
     assert "TRADECAT_INSTALL_REF" in install_sh
     assert 'elif [ -n "${TRADECAT_INSTALL_BRANCH:-}" ]; then' in install_sh
     assert "write_executable" in install_sh
@@ -454,7 +454,7 @@ def test_install_launchers_separate_stable_and_branch_channels():
     assert "TRADECAT_NO_AUTO_UPDATE" in install_sh
     assert "Invoke-TradeCatAutoUpdate" in install_ps1
     assert "tradecat-update.ps1" in install_ps1
-    assert '$DefaultRef = if ($env:TRADECAT_INSTALL_DEFAULT_REF) { $env:TRADECAT_INSTALL_DEFAULT_REF } else { "v0.1.2" }' in install_ps1
+    assert '$DefaultRef = if ($env:TRADECAT_INSTALL_DEFAULT_REF) { $env:TRADECAT_INSTALL_DEFAULT_REF } else { "v0.1.3" }' in install_ps1
     assert "TRADECAT_INSTALL_REF" in install_ps1
     assert "} elseif ($env:TRADECAT_INSTALL_BRANCH) {" in install_ps1
     assert '$PinnedRef -eq "1"' in install_ps1
@@ -489,12 +489,12 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "fetch-depth: 0" in ci_yml
     assert "bash scripts/security-scan.sh --history" in ci_yml
     assert "published-install-smoke" in ci_yml
-    assert "TRADECAT_PUBLIC_INSTALL_REF: v0.1.2" in ci_yml
+    assert "TRADECAT_PUBLIC_INSTALL_REF: v0.1.3" in ci_yml
     assert "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/scripts/project/install.sh" in ci_yml
     published_smoke = ci_yml.split("published-install-smoke:", 1)[1]
     assert "TRADECAT_INSTALL_SKIP_SYNC" not in published_smoke
     assert "doctor --sync --timeout 15" in published_smoke
-    assert "actions/upload-artifact@v4" in published_smoke
+    assert "actions/upload-artifact@v7" in published_smoke
     assert "tradecat-public-smoke" in published_smoke
     assert "doctor --bundle" in published_smoke
     assert "public installer did not warm event_stream cache" in published_smoke
@@ -515,9 +515,9 @@ def test_release_version_metadata_matches_stable_ref():
     pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     release_notes = (SKILL_ROOT / "references" / "release.md").read_text(encoding="utf-8")
 
-    assert 'version = "0.1.2"' in pyproject
-    assert __version__ == "0.1.2"
-    assert "## v0.1.2" in release_notes
+    assert 'version = "0.1.3"' in pyproject
+    assert __version__ == "0.1.3"
+    assert "## v0.1.3" in release_notes
 
 
 def test_powershell_installers_are_ascii_for_windows_powershell_51():

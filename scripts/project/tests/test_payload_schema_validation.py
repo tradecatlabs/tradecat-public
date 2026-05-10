@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -18,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_DIR = PROJECT_ROOT / "contracts"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "json_contract"
 REQUEST_SCRIPT = PROJECT_ROOT / "scripts" / "request.py"
+START_SCRIPT = PROJECT_ROOT / "scripts" / "start.sh"
 REQUEST_REGISTRY_URL = "https://example.local/tradecat-registry.json"
 SHEET_CSV = "https://dexscreener.com/example\nrank,pair,price\n1,BTCUSDT,100\n"
 EVENT_CSV = "time,content\n2026-05-10 10:00:00,hello\n"
@@ -90,6 +94,34 @@ def test_request_script_payloads_validate_against_formal_schemas(capsys, monkeyp
     validate_payload(result)
 
 
+def test_watch_status_payloads_validate_against_formal_schema(tmp_path):
+    env = {
+        **os.environ,
+        "PYTHON_BIN": sys.executable,
+        "PYTHONPATH": str(PROJECT_ROOT / "src"),
+        "TRADECAT_CACHE_DIR": str(tmp_path / "cache"),
+        "TRADECAT_TERMINAL_RUNTIME_DIR": str(tmp_path / "run"),
+        "TRADECAT_TERMINAL_WATCH_NO_WRITE": "1",
+        "TRADECAT_TERMINAL_WATCH_INTERVAL": "60",
+    }
+
+    stopped = _run_script_json(["status", "--json"], env=env, expected_code=1)
+    validate_payload(stopped)
+    assert stopped["error"]["code"] == "watch_not_running"
+
+    try:
+        started = _run_script_json(["start", "--json"], env=env)
+        validate_payload(started)
+        assert started["state"] == "running"
+
+        running = _run_script_json(["status", "--json"], env=env)
+        validate_payload(running)
+        assert running["running"] is True
+    finally:
+        stopped_after_start = _run_script_json(["stop", "--json"], env=env)
+        validate_payload(stopped_after_start)
+
+
 def test_real_error_payloads_validate_against_formal_schemas(tmp_path, capsys, monkeypatch):
     cache_dir = tmp_path / "cache"
 
@@ -135,6 +167,7 @@ def test_golden_json_fixtures_validate_against_formal_schemas():
         "request-dataset-list-success.json",
         "status-success.json",
         "support-bundle-success.json",
+        "watch-status-not-running.json",
     }
     fixture_paths = sorted(FIXTURES_DIR.glob("*.json"))
 
@@ -162,6 +195,18 @@ def _run_cli_json(capsys, args: list[str], *, expected_code: int = 0) -> dict[st
 def _run_request_json(request_module: ModuleType, capsys, args: list[str], *, expected_code: int = 0) -> dict[str, Any]:
     assert request_module.main(args) == expected_code
     return _json_from_stdout(capsys.readouterr().out)
+
+
+def _run_script_json(args: list[str], *, env: dict[str, str], expected_code: int = 0) -> dict[str, Any]:
+    result = subprocess.run(
+        ["bash", str(START_SCRIPT), *args],
+        check=False,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == expected_code, result.stderr
+    return _json_from_stdout(result.stdout)
 
 
 def _json_from_stdout(stdout: str) -> dict[str, Any]:

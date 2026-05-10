@@ -62,7 +62,7 @@ jobs:
           python -m pip freeze --all >"${RUNNER_TEMP}/tradecat-dependency-freeze.txt"
           cp constraints.txt "${RUNNER_TEMP}/tradecat-constraints.txt"
       - name: Upload dependency evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-evidence-${{ matrix.python-version }}
           path: |
@@ -150,7 +150,7 @@ jobs:
       - name: Agent readiness smoke
         run: bash scripts/agent-smoke.sh
       - name: Upload agent smoke evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: agent-readiness-${{ github.run_id }}
@@ -212,7 +212,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
     runs-on: ${{ matrix.os }}
     env:
-      TRADECAT_PUBLIC_INSTALL_REF: v0.1.2
+      TRADECAT_PUBLIC_INSTALL_REF: v0.1.3
     steps:
       - uses: actions/setup-python@v6
         with:
@@ -276,7 +276,7 @@ jobs:
           fi
           TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat-uninstall"
       - name: Upload public smoke artifact Unix
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && runner.os != 'Windows'
         with:
           name: public-smoke-${{ matrix.os }}-unix
@@ -330,7 +330,7 @@ jobs:
           $env:TRADECAT_KEEP_CACHE = "1"
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat-uninstall.cmd")
       - name: Upload public smoke artifact Windows
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && runner.os == 'Windows'
         with:
           name: public-smoke-${{ matrix.os }}-windows

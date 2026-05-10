@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-watch-status.schema.json",
+  "title": "TradeCat Watch Status",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "action", "state", "running", "runtime_dir", "cache_dir", "log_file"],
+  "anyOf": [
+    {
+      "required": ["pid"],
+      "properties": {
+        "ok": {
+          "const": true
+        }
+      }
+    },
+    {
+      "required": ["error"],
+      "properties": {
+        "ok": {
+          "const": false
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat.watch_status.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["start", "stop", "status", "restart"]
+    },
+    "state": {
+      "type": "string",
+      "enum": ["running", "stopped", "not_running"]
+    },
+    "event": {
+      "type": "string"
+    },
+    "running": {
+      "type": "boolean"
+    },
+    "pid": {
+      "type": ["integer", "null"]
+    },
+    "runtime_dir": {
+      "type": "string"
+    },
+    "cache_dir": {
+      "type": "string"
+    },
+    "log_file": {
+      "type": "string"
+    },
+    "dataset": {
+      "type": ["string", "null"]
+    },
+    "interval_seconds": {
+      "type": ["number", "string"]
+    },
+    "write": {
+      "type": "boolean"
+    },
+    "python": {
+      "type": "string"
+    },
+    "health": {
+      "type": "string"
+    },
+    "error": {
+      "$ref": "tradecat-error.schema.json"
+    }
+  },
+  "additionalProperties": true
+}

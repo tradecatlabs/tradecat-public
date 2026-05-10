@@ -18,7 +18,7 @@
       "priority": "P2",
       "status": "done",
       "acceptance": [
-        "Schema files exist for every JSON output advertised in agents/manifest.json, including single-dataset and all-dataset dry-run probe outputs.",
+        "Schema files exist for every JSON output advertised in agents/manifest.json, including single-dataset/all-dataset dry-run probe outputs and watcher lifecycle status.",
         "Each command schema pins schema and schema_version.",
         "Manifest-advertised JSON outputs and command-level schema files stay 1:1.",
         "Generic envelope and error schemas remain shared base contracts."
@@ -52,7 +52,7 @@
         "invalid dataset returns invalid_dataset_key.",
         "invalid runtime configuration returns invalid_runtime_configuration.",
         "runtime configuration smoke uses only a temporary cache and local fake fetch.",
-        "doctor, config, dry-run prune, single-dataset dry-run probe, and all-dataset dry-run probe stay in the smoke gate."
+        "doctor, config, dry-run prune, single-dataset dry-run probe, all-dataset dry-run probe, and watcher lifecycle status stay in the smoke gate."
       ],
       "paths": [
         "scripts/agent-smoke.sh"
@@ -117,7 +117,7 @@
       "status": "done",
       "acceptance": [
         "golden samples live under scripts/project/tests/fixtures/json_contract/.",
-        "fixtures cover status success, request dataset list success, support bundle success, invalid dataset, invalid runtime configuration, and local runtime error.",
+        "fixtures cover status success, request dataset list success, support bundle success, invalid dataset, invalid runtime configuration, local runtime error, and watcher not-running status.",
         "fixtures validate against the same formal schema helper used for live payloads."
       ],
       "paths": [

@@ -101,20 +101,20 @@ flowchart TD
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.sh | sh
 tradecat
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
 tradecat
 ```
 
 安装脚本会自动完成：
 
-1. 默认安装当前稳定 tag `v0.1.2`；设置 `TRADECAT_INSTALL_BRANCH=develop` 时改为开发分支通道。
+1. 默认安装当前稳定 tag `v0.1.3`；设置 `TRADECAT_INSTALL_BRANCH=develop` 时改为开发分支通道。
 2. 进入仓库内 `scripts/project/` 项目目录并创建项目内 `.venv`。
 3. 安装 `tradecat` 命令入口；已有旧文件或失效 symlink 会被替换。
 4. 初始化 `.tradecat/cache`。
@@ -126,13 +126,13 @@ tradecat
 弱网、离线或 CI 环境可跳过安装阶段首次远端同步，只初始化缓存目录；CI 还可以跳过写入用户 PATH / shell profile：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.sh | TRADECAT_INSTALL_SKIP_SYNC=1 TRADECAT_INSTALL_SKIP_PATH_WRITE=1 sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
+$env:TRADECAT_INSTALL_SKIP_SYNC = "1"; $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
 ```
 
 `TRADECAT_INSTALL_SKIP_SYNC=1` 只建议 CI、离线或弱网排障时使用；普通用户不要设置。跳过后首次启动前建议执行 `tradecat sync-all`。
@@ -227,7 +227,7 @@ $env:TRADECAT_KEEP_CACHE="1"; tradecat-uninstall
 | 变量 | 说明 |
 |:---|:---|
 | `TRADECAT_INSTALL_REPO` | 覆盖 Git 仓库地址 |
-| `TRADECAT_INSTALL_DEFAULT_REF` | 一键安装未显式设置分支或 ref 时使用的稳定 tag，默认 `v0.1.2` |
+| `TRADECAT_INSTALL_DEFAULT_REF` | 一键安装未显式设置分支或 ref 时使用的稳定 tag，默认 `v0.1.3` |
 | `TRADECAT_INSTALL_REF` | 固定安装 tag/ref；设置后 launcher 不自动更新 |
 | `TRADECAT_INSTALL_BRANCH` | 覆盖为分支通道安装，常用 `develop`；设置后 launcher 按该分支自动更新 |
 | `TRADECAT_INSTALL_DIR` | 覆盖源码安装目录 |
@@ -388,10 +388,13 @@ tradecat sync market_snapshot
 tradecat sync-all
 tradecat sync-all --timeout 10
 
-# 单次探测；发现变化后写缓存
+# 单次探测；默认发现变化后写缓存
 tradecat probe event_stream
 tradecat probe event_stream --timeout 10
-tradecat probe --json
+
+# Agent / 自动化只读探测；不写缓存
+tradecat probe event_stream --json --no-write
+tradecat probe --json --no-write
 
 # 裁剪历史快照；默认只预览，不删除
 tradecat prune --max-snapshots 100
@@ -406,6 +409,12 @@ tradecat export anomaly_panel --format table --lang en
 # 后台持续探测
 tradecat watch event_stream --interval 5
 tradecat watch --interval 60
+
+# 后台 watcher 生命周期状态；--json 给 Agent / 自动化使用
+bash scripts/start.sh status
+bash scripts/start.sh status --json
+bash scripts/start.sh start --json
+bash scripts/start.sh stop --json
 
 # TUI
 tradecat tui
@@ -605,7 +614,7 @@ tradecat config unset default_lang
 | `TRADECAT_UPDATE_INTERVAL_SECONDS` | `3600` | launcher 启动前后台自动更新的节流间隔秒数；`0` 表示每次启动都触发后台更新 |
 | `TRADECAT_NO_AUTO_UPDATE` | 空 | 设为 `1` 时跳过 launcher 自动更新 |
 | `TRADECAT_FORCE_UPDATE` | 空 | 设为 `1` 时启动前阻塞更新，失败则退出 |
-| `TRADECAT_INSTALL_DEFAULT_REF` | `v0.1.2` | 一键安装未显式设置分支或 ref 时使用的稳定 tag |
+| `TRADECAT_INSTALL_DEFAULT_REF` | `v0.1.3` | 一键安装未显式设置分支或 ref 时使用的稳定 tag |
 | `TRADECAT_INSTALL_REF` | 空 | 固定安装 tag/ref；设置后 launcher 不自动更新 |
 | `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP` | 空 | 设为 `1` 时允许安装器在无 Python/uv 环境下执行远程 uv bootstrap |
 | `TRADECAT_INSTALL_BRANCH` | 空 | 覆盖为分支通道安装，常用 `develop`；设置后 launcher 按该分支自动更新 |
@@ -615,14 +624,16 @@ tradecat config unset default_lang
 | `TRADECAT_TERMINAL_RUNTIME_DIR` | `~/.tradecat-terminal/run` | 后台 watch pid/log 目录 |
 | `TRADECAT_TERMINAL_WATCH_INTERVAL` | `60` | 后台 watch 间隔秒数 |
 | `TRADECAT_TERMINAL_WATCH_DATASET` | 空 | 为空 watch 全部 active dataset |
+| `TRADECAT_TERMINAL_WATCH_NO_WRITE` | 空 | 设为 `1` 时后台 watch 只 dry-run 探测，不写缓存；主要用于测试 |
 
 ## 开发与验证
 
 ```bash
 bash scripts/bootstrap-dev.sh
 cd scripts/project
+./.venv/bin/pytest -q -p no:cacheprovider tests/test_payload_schema_validation.py
 bash scripts/verify.sh
-PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
+PYTHONPATH=src ./.venv/bin/python scripts/validate_data_contract.py --remote --timeout 10
 bash ../../scripts/security-scan.sh
 bash ../../scripts/supply-chain-audit.sh
 ```
@@ -638,7 +649,7 @@ CI 会执行：
 - Supply-chain audit：CI 使用 pinned `pip-audit` 检查 Python 依赖漏洞。
 - Data contract：CI 校验内置 dataset registry，并拉取公开 Google Sheets CSV
   做表头和数据行 smoke。
-- Published installer smoke：push 后 CI 会直接执行 `v0.1.2` 的
+- Published installer smoke：push 后 CI 会直接执行 `v0.1.3` 的
   `raw.githubusercontent.com` 安装入口，并断言默认 `event_stream` 缓存已预热。
 - Ruff lint。
 - Pytest。
