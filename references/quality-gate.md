@@ -66,6 +66,9 @@ Acceptance:
   `retryable`.
 - Formal JSON Schema drafts under `scripts/project/contracts/*.schema.json` stay
   valid JSON and match the advertised manifest/envelope/error/command contract.
+- Every schema advertised in `agents/manifest.json` has exactly one
+  command-level schema file, and CLI-only internal schemas remain explicitly
+  allowlisted in `scripts/project/tests/test_agent_contract.py`.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.

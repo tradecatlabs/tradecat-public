@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-probe-results.schema.json",
+  "title": "TradeCat Probe Results",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "results"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.probe_results.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ok", "dataset_key", "status", "changed", "wrote"],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "dataset_key": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "wrote": {
+            "type": "boolean"
+          },
+          "error": {
+            "$ref": "tradecat-error.schema.json"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

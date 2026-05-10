@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-prune-result.schema.json",
+  "title": "TradeCat Prune Result",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "cache_dir", "max_snapshots_per_dataset", "applied", "datasets"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.prune_result.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "cache_dir": {
+      "type": "string"
+    },
+    "max_snapshots_per_dataset": {
+      "type": "integer"
+    },
+    "applied": {
+      "type": "boolean"
+    },
+    "datasets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dataset_key", "snapshot_count", "candidate_count", "deleted_count"],
+        "properties": {
+          "dataset_key": {
+            "type": "string"
+          },
+          "snapshot_count": {
+            "type": "integer"
+          },
+          "candidate_count": {
+            "type": "integer"
+          },
+          "deleted_count": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

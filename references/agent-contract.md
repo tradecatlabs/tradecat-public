@@ -92,18 +92,28 @@ parsing without making every output closed-world brittle:
 
 | Schema File | Pinned Payload |
 | --- | --- |
+| `tradecat-config.schema.json` | `tradecat.config.v1` |
+| `tradecat-doctor.schema.json` | `tradecat.doctor.v1` |
 | `tradecat-init.schema.json` | `tradecat.init.v1` |
 | `tradecat-status.schema.json` | `tradecat.status.v1` |
+| `tradecat-path-map.schema.json` | `tradecat.path_map.v1` |
 | `tradecat-dataset-list.schema.json` | `tradecat.dataset_list.v1` |
 | `tradecat-sync-result.schema.json` | `tradecat.sync_result.v1` |
 | `tradecat-sync-results.schema.json` | `tradecat.sync_results.v1` |
+| `tradecat-probe-results.schema.json` | `tradecat.probe_results.v1` |
+| `tradecat-prune-result.schema.json` | `tradecat.prune_result.v1` |
 | `tradecat-request-result.schema.json` | `tradecat.request_result.v1` |
 | `tradecat-request-dataset-list.schema.json` | `tradecat.request_dataset_list.v1` |
 | `tradecat-dataset-view.schema.json` | `tradecat.dataset_view.v1` |
 | `tradecat-support-bundle.schema.json` | `tradecat.support_bundle.v1` |
 
+Every schema advertised in `agents/manifest.json` must have one command-level
+schema file. `tradecat.probe_result.v1` and `tradecat.watch_cycle.v1` are
+currently CLI-internal schemas and are not part of the formal Agent surface.
+
 Breaking JSON changes require updating `agents/manifest.json`, this document,
-and `scripts/project/tests/test_json_contract.py` in the same change.
+`scripts/project/tests/test_json_contract.py`, and
+`scripts/project/tests/test_agent_contract.py` in the same change.
 
 ## Exit Code Contract
 

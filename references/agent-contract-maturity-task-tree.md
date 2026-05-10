@@ -15,9 +15,10 @@ runtime dependencies or changing the TradeCat user workflow.
 
 Included:
 
-- Expand formal schema coverage for high-value JSON outputs.
-- Add manifest consistency tests for schema references, version pins, and known
-  failure codes.
+- Expand formal schema coverage for every JSON output advertised in
+  `agents/manifest.json`.
+- Add manifest consistency tests for schema references, version pins, known
+  failure codes, and manifest/schema-file 1:1 coverage.
 - Extend `scripts/agent-smoke.sh` to assert runtime configuration error
   classification, not only invalid dataset classification.
 - Document the maturity layer in public references.
@@ -37,9 +38,11 @@ Owner: contract governance.
 
 Acceptance:
 
-- Schema files exist for `init`, `status`, `datasets`, `sync`, `sync-all`,
-  `request`, `request --datasets`, `export`, and `doctor --bundle`.
+- Schema files exist for `init`, `status`, `doctor`, `path`, `datasets`,
+  `sync`, `sync-all`, `probe --no-write`, `prune`, `config`, `request`,
+  `request --datasets`, `export`, and `doctor --bundle`.
 - Each schema pins the advertised `schema` and `schema_version`.
+- Manifest-advertised JSON outputs and command-level schema files stay 1:1.
 - Generic envelope and error schemas remain the shared base.
 
 ### TP-02: Manifest Consistency Tests
@@ -52,6 +55,8 @@ Acceptance:
 - Entrypoint schema references are declared in `json_outputs`.
 - Required Agent failure codes remain advertised.
 - Command schema files are valid JSON and pin the expected schema names.
+- `tradecat.probe_result.v1` and `tradecat.watch_cycle.v1` remain explicitly
+  allowlisted as CLI-internal schemas until they are intentionally promoted.
 
 ### TP-03: Agent Smoke Error Semantics
 

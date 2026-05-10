@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-path-map.schema.json",
+  "title": "TradeCat Path Map",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "cache_dir"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.path_map.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "cache_dir": {
+      "type": "string"
+    },
+    "dataset_key": {
+      "type": "string"
+    },
+    "dataset_dir": {
+      "type": "string"
+    },
+    "manifest": {
+      "type": "string"
+    },
+    "latest_json": {
+      "type": "string"
+    },
+    "latest_jsonl": {
+      "type": "string"
+    },
+    "latest_csv": {
+      "type": "string"
+    },
+    "snapshots_dir": {
+      "type": "string"
+    },
+    "stream_events": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

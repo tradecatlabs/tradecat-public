@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
@@ -24,15 +25,25 @@ REQUIRED_FAILURE_CODES = {
 }
 
 COMMAND_SCHEMA_FILES = {
+    "tradecat-config.schema.json": "tradecat.config.v1",
+    "tradecat-doctor.schema.json": "tradecat.doctor.v1",
     "tradecat-init.schema.json": "tradecat.init.v1",
     "tradecat-status.schema.json": "tradecat.status.v1",
+    "tradecat-path-map.schema.json": "tradecat.path_map.v1",
     "tradecat-dataset-list.schema.json": "tradecat.dataset_list.v1",
     "tradecat-sync-result.schema.json": "tradecat.sync_result.v1",
     "tradecat-sync-results.schema.json": "tradecat.sync_results.v1",
+    "tradecat-probe-results.schema.json": "tradecat.probe_results.v1",
+    "tradecat-prune-result.schema.json": "tradecat.prune_result.v1",
     "tradecat-request-result.schema.json": "tradecat.request_result.v1",
     "tradecat-request-dataset-list.schema.json": "tradecat.request_dataset_list.v1",
     "tradecat-dataset-view.schema.json": "tradecat.dataset_view.v1",
     "tradecat-support-bundle.schema.json": "tradecat.support_bundle.v1",
+}
+
+INTERNAL_CLI_SCHEMA_ALLOWLIST = {
+    "tradecat.probe_result.v1",
+    "tradecat.watch_cycle.v1",
 }
 
 
@@ -134,3 +145,29 @@ def test_command_schema_files_pin_expected_payload_schema_names():
 
         assert properties["schema"]["const"] == expected_schema
         assert properties["schema_version"]["const"] == "1.0.0"
+
+
+def test_manifest_json_outputs_match_command_schema_files_one_to_one():
+    manifest = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    manifest_schemas = {item["schema"] for item in manifest["json_outputs"]}
+
+    assert manifest_schemas == set(COMMAND_SCHEMA_FILES.values())
+
+
+def test_cli_schemas_are_advertised_or_explicitly_internal():
+    cli_schemas = set(_load_cli_schemas().values())
+    manifest = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    manifest_schemas = {item["schema"] for item in manifest["json_outputs"]}
+
+    assert INTERNAL_CLI_SCHEMA_ALLOWLIST.isdisjoint(manifest_schemas)
+    assert cli_schemas - INTERNAL_CLI_SCHEMA_ALLOWLIST <= manifest_schemas
+
+
+def _load_cli_schemas() -> dict[str, str]:
+    module_path = SKILL_ROOT / "scripts" / "project" / "src" / "tradecat_terminal" / "contracts.py"
+    spec = importlib.util.spec_from_file_location("tradecat_contracts_for_test", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return dict(module.CLI_SCHEMAS)

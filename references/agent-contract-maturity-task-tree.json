@@ -18,8 +18,9 @@
       "priority": "P2",
       "status": "done",
       "acceptance": [
-        "Schema files exist for init and high-value Agent JSON outputs.",
+        "Schema files exist for every JSON output advertised in agents/manifest.json.",
         "Each command schema pins schema and schema_version.",
+        "Manifest-advertised JSON outputs and command-level schema files stay 1:1.",
         "Generic envelope and error schemas remain shared base contracts."
       ],
       "paths": [
@@ -35,7 +36,8 @@
         "json_outputs commands and schemas are unique.",
         "entrypoint schema references are declared in json_outputs.",
         "required failure codes remain advertised.",
-        "command schema files pin expected schema names."
+        "command schema files pin expected schema names.",
+        "tradecat.probe_result.v1 and tradecat.watch_cycle.v1 remain explicitly allowlisted as CLI-internal schemas until they are promoted."
       ],
       "paths": [
         "scripts/project/tests/test_agent_contract.py"

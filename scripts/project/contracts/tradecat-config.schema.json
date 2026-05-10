@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-config.schema.json",
+  "title": "TradeCat Config",
+  "allOf": [
+    {
+      "$ref": "tradecat-command-envelope.schema.json"
+    }
+  ],
+  "required": ["schema", "schema_version", "ok", "path", "settings"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.config.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "path": {
+      "type": "string"
+    },
+    "settings": {
+      "type": "object"
+    },
+    "error": {
+      "$ref": "tradecat-error.schema.json"
+    }
+  },
+  "additionalProperties": true
+}
