@@ -84,6 +84,10 @@ Acceptance:
   `jsonschema` remains a dev/test dependency, not a runtime dependency.
 - `tradecat datasets --json` exposes `consumption_contract` for every dataset,
   so Agents can consume dataset semantics without reading long-form docs first.
+- `tradecat analyze --json` exposes `tradecat.analysis_report.v1` as a local
+  readonly observation report, validates against its formal schema, and returns
+  `empty_analysis_cache` instead of free-form text when the cache has no
+  analyzable rows.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.
@@ -124,6 +128,7 @@ quality rule changes, update the matching documentation in the same change:
   `references/index.md`, `references/architecture.md`.
 - Agent machine contract behavior: `agents/manifest.json`, `agents/*.yaml`,
   `references/agent-contract.md`, `references/quality-gate.md`.
+- Analysis report behavior: `references/analysis-contract.md`.
 - Public flow behavior: `references/linear-flows.md`.
 - Cache behavior: `references/cache-contract.md`.
 - TUI behavior: `references/tui-contract.md`.

@@ -9,6 +9,7 @@ fast_path:
   - bash scripts/run-tradecat.sh status --json
   - bash scripts/run-tradecat.sh datasets --json
   - bash scripts/run-tradecat.sh path event_stream --json
+  - bash scripts/run-tradecat.sh analyze --json
   - python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 notes:
   - Treat manifest.json as the only canonical machine contract.

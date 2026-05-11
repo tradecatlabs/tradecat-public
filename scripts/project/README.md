@@ -501,6 +501,24 @@ TUI 探针规则：
 `src/tradecat_terminal/dataset_consumption_contract.json`，说明文档见
 `references/dataset-consumption-contract.md`。
 
+## Agent 分析报告
+
+```bash
+tradecat analyze --json
+```
+
+`analyze --json` 只读取本地最新缓存，不联网、不写缓存，输出
+`tradecat.analysis_report.v1`。第一版消费 `event_stream`、`anomaly_panel`
+和 `market_stats`，生成观察、候选标的、证据、风险标记和限制说明。
+
+它不是交易策略接口：不输出买卖建议、仓位、价格目标、回测或自动执行
+语义。空缓存时会返回非 0，并给出 `error.code=empty_analysis_cache`；
+需要先执行：
+
+```bash
+tradecat doctor --sync --timeout 10
+```
+
 ### Snapshot tap
 
 `market_snapshot`、`anomaly_panel`、`market_stats` 是快照型 tap：

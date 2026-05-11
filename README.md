@@ -11,12 +11,16 @@ python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh analyze --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
 `datasets --json` 同时携带 dataset consumption contract；字段语义、缺失值、
 时间粒度和质量等级的长文档见
 [references/dataset-consumption-contract.md](references/dataset-consumption-contract.md)。
+`analyze --json` 只读本地缓存，输出
+`tradecat.analysis_report.v1` 观察报告；边界见
+[references/analysis-contract.md](references/analysis-contract.md)。
 
 默认先走只读入口；只有需要写本地缓存时再执行 `sync`、`doctor --repair`、
 安装或卸载。
@@ -69,7 +73,9 @@ tradecat-public/
 |   |-- agent-readiness-remediation-task-tree.md
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
+|   |-- analysis-contract.md
 |   |-- cache-contract.md
+|   |-- dataset-consumption-contract.md
 |   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md

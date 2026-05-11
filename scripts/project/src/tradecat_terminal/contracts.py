@@ -17,6 +17,7 @@ CLI_SCHEMAS = {
     "probe-all": "tradecat.probe_results.v1",
     "prune": "tradecat.prune_result.v1",
     "export": "tradecat.dataset_view.v1",
+    "analyze": "tradecat.analysis_report.v1",
     "watch": "tradecat.watch_cycle.v1",
 }
 

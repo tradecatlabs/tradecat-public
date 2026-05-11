@@ -18,7 +18,7 @@
       "priority": "P2",
       "status": "done",
       "acceptance": [
-        "Schema files exist for every JSON output advertised in agents/manifest.json, including single-dataset/all-dataset dry-run probe outputs; the shared watcher lifecycle schema covers status/start/stop/restart/watchdog payloads.",
+        "Schema files exist for every JSON output advertised in agents/manifest.json, including analyze and single-dataset/all-dataset dry-run probe outputs; the shared watcher lifecycle schema covers status/start/stop/restart/watchdog payloads.",
         "Each command schema pins schema and schema_version.",
         "Manifest-advertised JSON outputs and command-level schema files stay 1:1.",
         "Generic envelope and error schemas remain shared base contracts."
@@ -53,7 +53,7 @@
         "invalid dataset returns invalid_dataset_key.",
         "invalid runtime configuration returns invalid_runtime_configuration.",
         "runtime configuration smoke uses only a temporary cache and local fake fetch.",
-        "doctor, config, dry-run prune, single-dataset dry-run probe, all-dataset dry-run probe, and watcher lifecycle status stay in the smoke gate; payload validation covers watcher start/stop/operator-only restart/watchdog JSON behavior."
+        "doctor, config, analyze empty-cache behavior, dry-run prune, single-dataset dry-run probe, all-dataset dry-run probe, and watcher lifecycle status stay in the smoke gate; payload validation covers watcher start/stop/operator-only restart/watchdog JSON behavior."
       ],
       "paths": [
         "scripts/agent-smoke.sh"
@@ -100,9 +100,9 @@
       "priority": "P2",
       "status": "done",
       "acceptance": [
-        "live CLI payloads for manifest-advertised JSON surfaces validate against formal schema files.",
+        "live CLI payloads for manifest-advertised JSON surfaces validate against formal schema files, including analyze --json.",
         "request.py success payloads validate without network by using a local fake registry/fetch path.",
-        "invalid_dataset_key, invalid_runtime_configuration, and local_runtime_error payloads validate as ok=false schema payloads.",
+        "invalid_dataset_key, invalid_runtime_configuration, empty_analysis_cache, and local_runtime_error payloads validate as ok=false schema payloads.",
         "jsonschema remains a dev/test dependency only."
       ],
       "paths": [
@@ -118,7 +118,7 @@
       "status": "done",
       "acceptance": [
         "golden samples live under scripts/project/tests/fixtures/json_contract/.",
-        "fixtures cover status success, request dataset list success, support bundle success, invalid dataset, invalid runtime configuration, local runtime error, and watcher not-running status.",
+        "fixtures cover status success, request dataset list success, support bundle success, analysis report success, empty analysis cache, invalid dataset, invalid runtime configuration, local runtime error, and watcher not-running status.",
         "fixtures validate against the same formal schema helper used for live payloads."
       ],
       "paths": [

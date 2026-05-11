@@ -42,8 +42,8 @@ Acceptance:
 
 - Schema files exist for `init`, `status`, `doctor`, `path`, `datasets`,
   `sync`, `sync-all`, single-dataset `probe --no-write`, all-dataset
-  `probe --no-write`, `prune`, `config`, `request`, `request --datasets`,
-  `export`, and `doctor --bundle`; the shared watcher lifecycle schema covers
+  `probe --no-write`, `prune`, `config`, `analyze`, `request`,
+  `request --datasets`, `export`, and `doctor --bundle`; the shared watcher lifecycle schema covers
   `start.sh status/start/stop/restart --json` plus `watchdog.sh --json`.
 - Each schema pins the advertised `schema` and `schema_version`.
 - Manifest-advertised JSON outputs and command-level schema files stay 1:1.
@@ -80,6 +80,8 @@ Acceptance:
 - `doctor --json`, `config show --json`, dry-run `prune --json`, single-dataset
   `probe --json --no-write`, and all-dataset `probe --json --no-write` stay in
   the smoke gate.
+- Empty local analysis cache returns non-zero with `tradecat.analysis_report.v1`
+  and `empty_analysis_cache`.
 - Watcher lifecycle `start.sh status --json` stays in the smoke gate with
   `tradecat.watch_status.v1`; payload validation covers `start`, `stop`,
   operator-only `restart`, and `watchdog` JSON behavior.
@@ -118,6 +120,8 @@ Acceptance:
   their formal schema files.
 - `scripts/project/scripts/request.py` success payloads validate without
   network by using a local fake registry/fetch path.
+- `analyze --json` success and empty-cache payloads validate against
+  `tradecat-analysis-report.schema.json`.
 - Invalid dataset, invalid runtime configuration, and local runtime failure
   payloads validate as `ok=false` schema payloads with stable error objects.
 - `jsonschema` is present only in the project dev dependencies and
@@ -132,8 +136,9 @@ Acceptance:
 - Golden samples live under
   `scripts/project/tests/fixtures/json_contract/`.
 - Fixtures cover status success, request dataset list success, support bundle
-  success, invalid dataset, invalid runtime configuration, and local runtime
-  error, plus watcher not-running status.
+  success, analysis report success, empty analysis cache, invalid dataset,
+  invalid runtime configuration, local runtime error, and watcher not-running
+  status.
 - Fixture files validate against the same formal schema helper used for live
   payloads.
 

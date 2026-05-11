@@ -137,3 +137,13 @@ def test_doctor_parameter_error_returns_nonzero_json(tmp_path, capsys):
     assert exit_code == 2
     assert payload["schema"] == "tradecat.doctor.v1"
     assert payload["error"]["code"] == "invalid_timeout_option"
+
+
+def test_analyze_empty_cache_returns_nonzero_json(tmp_path, capsys):
+    exit_code = cli.main(["--cache-dir", str(tmp_path / "cache"), "analyze", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["schema"] == "tradecat.analysis_report.v1"
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "empty_analysis_cache"

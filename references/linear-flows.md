@@ -99,7 +99,19 @@ Input: `tradecat doctor`, `tradecat doctor --repair`, `tradecat doctor --verbose
 -> Output: actionable local health report, repair hints, optional metadata migration, and optional support bundle
 ```
 
-## Flow 8: Agent Fast Path
+## Flow 8: Local Analysis Report
+
+```text
+Input: `tradecat analyze --json`, local cache, dataset consumption contract
+-> Node 1: `cli.py` parses window and candidate limit without triggering network fetch
+-> Node 2: `analysis.py` reads the latest local views for `event_stream`, `anomaly_panel`, and `market_stats`
+-> Node 3: `dataset_contract.py` supplies field roles, time grain, missing-value policy, and quality tier
+-> Node 4: `analysis.py` emits observations, candidate symbols from explicit entity fields, row evidence, risk flags, and limitations
+-> Node 5: `contracts.py` wraps the payload as `tradecat.analysis_report.v1` or returns `empty_analysis_cache`
+-> Output: Agent-readable observation report with no strategy, advice, backtest, network, or cache-write side effect
+```
+
+## Flow 9: Agent Fast Path
 
 ```text
 Input: shell-capable Agent or Hermes session at repository root
@@ -107,7 +119,8 @@ Input: shell-capable Agent or Hermes session at repository root
 -> Node 2: Agent runs `bash scripts/run-tradecat.sh status --json` and trusts `schema=tradecat.status.v1`
 -> Node 3: Agent runs `bash scripts/run-tradecat.sh datasets --json` and reads each dataset `consumption_contract`
 -> Node 4: Agent runs `bash scripts/run-tradecat.sh path <dataset_key> --json` to locate local cache artifacts
--> Node 5: Agent uses `scripts/project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
--> Node 6: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, exit-code, and dataset consumption contracts
+-> Node 5: Agent runs `bash scripts/run-tradecat.sh analyze --json` when local cache is already populated and an observation report is needed
+-> Node 6: Agent uses `scripts/project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
+-> Node 7: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, exit-code, dataset consumption, and analysis contracts
 -> Output: inspect -> validate -> consume -> diagnose flow with no guessing and no accidental install/uninstall side effects
 ```

@@ -1,0 +1,105 @@
+{
+  "schema": "tradecat.analysis_report.v1",
+  "schema_version": "1.0.0",
+  "command": "analyze",
+  "ok": true,
+  "generated_at": "2026-05-11T00:00:00Z",
+  "analysis_window": {
+    "requested": "24h",
+    "mode": "latest_cached",
+    "dataset_keys": ["event_stream", "anomaly_panel", "market_stats"],
+    "note": "analysis_report.v1 reads only the latest local cache projections; it does not fetch network data."
+  },
+  "dataset_freshness": [
+    {
+      "dataset_key": "event_stream",
+      "ok": true,
+      "cache_state": "ready",
+      "row_count": 1,
+      "fetched_at": "2026-05-11T00:00:00Z",
+      "content_hash": "abc",
+      "data_mode": "stream",
+      "quality_tier": "public_sheet_best_effort",
+      "time_grain": "event_time"
+    },
+    {
+      "dataset_key": "anomaly_panel",
+      "ok": true,
+      "cache_state": "ready",
+      "row_count": 1,
+      "fetched_at": "2026-05-11T00:00:00Z",
+      "content_hash": "def",
+      "data_mode": "snapshot",
+      "quality_tier": "public_sheet_best_effort",
+      "time_grain": "latest_snapshot"
+    },
+    {
+      "dataset_key": "market_stats",
+      "ok": true,
+      "cache_state": "ready",
+      "row_count": 1,
+      "fetched_at": "2026-05-11T00:00:00Z",
+      "content_hash": "ghi",
+      "data_mode": "snapshot",
+      "quality_tier": "public_sheet_best_effort",
+      "time_grain": "aggregated_window"
+    }
+  ],
+  "observations": [
+    {
+      "id": "anomaly_panel.candidates",
+      "dataset_key": "anomaly_panel",
+      "kind": "anomaly_presence",
+      "severity": "info",
+      "summary": "anomaly_panel 本地缓存暴露 1 个去重候选标的。",
+      "metrics": {
+        "row_count": 1,
+        "candidate_symbol_count": 1
+      },
+      "evidence_ids": ["anomaly_panel:row:3"]
+    }
+  ],
+  "candidate_symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "rank": 1,
+      "source_dataset_keys": ["anomaly_panel"],
+      "reasons": ["present_in_anomaly_panel"],
+      "confidence": "observed",
+      "evidence_ids": ["anomaly_panel:row:3"],
+      "notes": ["候选仅表示在异动面板中被观察到，不代表交易方向或建议。"]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "anomaly_panel:row:3",
+      "dataset_key": "anomaly_panel",
+      "row_index": 3,
+      "kind": "anomaly",
+      "summary": "anomaly_panel row for BTCUSDT",
+      "values": {
+        "board": "异动榜",
+        "rank": "1",
+        "symbol": "BTCUSDT"
+      },
+      "source_columns": ["榜单", "榜单名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+      "fetched_at": "2026-05-11T00:00:00Z"
+    }
+  ],
+  "risk_flags": [
+    {
+      "code": "public_sheet_best_effort",
+      "severity": "info",
+      "message": "输入数据来自公开 Google Sheets best-effort 缓存，适合研究和摘要，不适合执行级交易自动化。"
+    },
+    {
+      "code": "analysis_not_trading_advice",
+      "severity": "warning",
+      "message": "analysis_report.v1 只输出观察和证据，不输出买卖建议、仓位建议或自动交易指令。"
+    }
+  ],
+  "limitations": [
+    "只读取本地最新缓存，不联网同步；如需新数据，先显式执行 sync 或 doctor --sync。",
+    "报告不包含策略评分、回测、收益预测、买卖建议或自动交易执行语义。"
+  ]
+}

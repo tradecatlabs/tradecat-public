@@ -7,6 +7,7 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[3]
 
 REQUIRED_AGENT_JSON_SCHEMAS = {
+    "tradecat.analysis_report.v1",
     "tradecat.status.v1",
     "tradecat.dataset_list.v1",
     "tradecat.request_dataset_list.v1",
@@ -23,11 +24,14 @@ REQUIRED_FAILURE_CODES = {
     "remote_timeout",
     "remote_http_status",
     "watch_not_running",
+    "empty_analysis_cache",
+    "invalid_analysis_request",
     "invalid_runtime_configuration",
     "local_runtime_error",
 }
 
 COMMAND_SCHEMA_FILES = {
+    "tradecat-analysis-report.schema.json": "tradecat.analysis_report.v1",
     "tradecat-config.schema.json": "tradecat.config.v1",
     "tradecat-doctor.schema.json": "tradecat.doctor.v1",
     "tradecat-init.schema.json": "tradecat.init.v1",

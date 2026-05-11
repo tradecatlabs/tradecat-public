@@ -15,6 +15,7 @@ python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh analyze --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
@@ -22,6 +23,11 @@ python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 field semantics, missing-value rules, time grain, and quality tier, read
 `scripts/project/src/tradecat_terminal/dataset_consumption_contract.json` or
 `references/dataset-consumption-contract.md`.
+
+`analyze --json` reads only local cache and returns
+`tradecat.analysis_report.v1`. It is an observation report for Agents, not
+investment advice, scoring, backtest, or automated trade execution. If it
+returns `empty_analysis_cache`, explicitly warm the cache before retrying.
 
 Only write local cache after the readonly path proves what is needed:
 
@@ -81,6 +87,7 @@ Known JSON schemas:
 | `doctor --json` | `tradecat.doctor.v1` |
 | `path <dataset> --json` | `tradecat.path_map.v1` |
 | `datasets --json` | `tradecat.dataset_list.v1` |
+| `analyze --json` | `tradecat.analysis_report.v1` |
 | `sync <dataset> --json` | `tradecat.sync_result.v1` |
 | `sync-all --json` | `tradecat.sync_results.v1` |
 | `probe <dataset> --json --no-write` | `tradecat.probe_result.v1` |
@@ -100,6 +107,7 @@ parsing without making every output closed-world brittle:
 | Schema File | Pinned Payload |
 | --- | --- |
 | `tradecat-config.schema.json` | `tradecat.config.v1` |
+| `tradecat-analysis-report.schema.json` | `tradecat.analysis_report.v1` |
 | `tradecat-doctor.schema.json` | `tradecat.doctor.v1` |
 | `tradecat-init.schema.json` | `tradecat.init.v1` |
 | `tradecat-status.schema.json` | `tradecat.status.v1` |
@@ -152,7 +160,10 @@ configuration failures, such as an unsupported `TRADECAT_CACHE_COMPRESSION`, use
 `error.code=invalid_runtime_configuration`; unexpected local failures use
 `error.code=local_runtime_error`. Watcher status failures use
 `error.code=watch_not_running` when no watcher process is running. Do not
-collapse these into dataset errors.
+collapse these into dataset errors. Analysis report failures use
+`error.code=empty_analysis_cache` when local analysis inputs are missing and
+`error.code=invalid_analysis_request` for invalid `--window` or `--limit`
+arguments.
 
 ## Remote Fetch Contract
 

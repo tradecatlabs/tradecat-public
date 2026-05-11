@@ -38,6 +38,7 @@ python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh analyze --json
 ```
 
 ### Validate Skill And Project
@@ -141,6 +142,7 @@ tradecat-public/
 |   |-- agent-readiness-remediation-task-tree.md
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
+|   |-- analysis-contract.md
 |   |-- cache-contract.md
 |   |-- dataset-consumption-contract.md
 |   |-- first-run-cache.md
@@ -178,8 +180,9 @@ tradecat-public/
 - `references/architecture.md`: project purpose, forbidden paths, and data flows.
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
 - `references/dataset-consumption-contract.md`: dataset field semantics, missing values, time grain, and quality tier.
+- `references/analysis-contract.md`: local readonly analysis report contract and no-trading-advice boundary.
 - `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
-- `references/linear-flows.md`: public seven-flow map for cache, TUI, one-shot request, install, uninstall, export/config, and doctor diagnostics.
+- `references/linear-flows.md`: public flow map for cache, TUI, one-shot request, install, uninstall, export/config, doctor diagnostics, analysis report, and Agent fast path.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
 - `references/quality-gate.md`: pre-delivery checklist for Skill wrapper and bundled project changes.

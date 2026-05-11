@@ -27,6 +27,7 @@ tradecat-public/
 |   |-- agent-readiness-remediation-task-tree.md
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
+|   |-- analysis-contract.md
 |   |-- cache-contract.md
 |   |-- dataset-consumption-contract.md
 |   |-- first-run-cache.md
@@ -95,6 +96,14 @@ Public Google Sheets CSV
 -> cli.py, tui.py, view_model.py
 ```
 
+```text
+Local structured cache
+-> dataset_consumption_contract.json
+-> analysis.py deterministic observation builder
+-> cli.py analyze --json
+-> tradecat.analysis_report.v1 for Agent consumption
+```
+
 ## Source Boundaries
 
 - `registry.py`: dataset/workbook/gid/data mode single source of truth.
@@ -102,6 +111,9 @@ Public Google Sheets CSV
   semantics contract.
 - `dataset_consumption_contract.json`: row semantics, field aliases, missing
   values, time grain, and quality tiers for Agent consumption.
+- `analysis.py`: local-cache-only observation report builder; emits
+  `tradecat.analysis_report.v1` without strategy, advice, backtest, execution,
+  network fetch, or cache write semantics.
 - `cache.py`: local snapshot cache, manifest, stream event merge, prune.
 - `structured_cache.py`: structured latest projections.
 - `view_model.py`: display/raw/physical column model.
@@ -123,6 +135,7 @@ Public Google Sheets CSV
 - `SKILL.md`: skill activation, root-level operating commands, and high-level boundaries.
 - `agents/manifest.json`: canonical machine-readable Agent contract.
 - `references/agent-contract.md`: Agent fast path, risk classes, exit codes, JSON schemas, and remote fetch contract.
+- `references/analysis-contract.md`: readonly analysis report contract and boundary against strategy, backtest, advice, or execution semantics.
 - `references/agent-contract-maturity-task-tree.md`: post-signoff schema, manifest, and smoke hardening tree.
 - `references/agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
 - `references/dataset-consumption-contract.md`: dataset field semantics,

@@ -27,6 +27,8 @@ WATCHDOG_SCRIPT = PROJECT_ROOT / "scripts" / "watchdog.sh"
 REQUEST_REGISTRY_URL = "https://example.local/tradecat-registry.json"
 SHEET_CSV = "https://dexscreener.com/example\nrank,pair,price\n1,BTCUSDT,100\n"
 EVENT_CSV = "time,content\n2026-05-10 10:00:00,hello\n"
+ANOMALY_CSV = "榜单,序号,交易对\n异动榜,1,BTCUSDT\n异动榜,2,ETHUSDT\n"
+STATS_CSV = "窗口,覆盖合约数,交易对口径\n24h,200,USDT perpetual\n"
 REQUEST_REGISTRY = {
     "workbooks": {
         "main": {
@@ -56,6 +58,8 @@ def test_advertised_cli_payloads_validate_against_formal_schemas(tmp_path, capsy
 
     monkeypatch.setattr(cache_module, "fetch_csv_body", _fake_sheet_fetch)
     write_dataset_body(cache_dir, get_dataset("event_stream"), EVENT_CSV)
+    write_dataset_body(cache_dir, get_dataset("anomaly_panel"), ANOMALY_CSV)
+    write_dataset_body(cache_dir, get_dataset("market_stats"), STATS_CSV)
 
     payloads = [
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "init", "--json"]),
@@ -70,6 +74,7 @@ def test_advertised_cli_payloads_validate_against_formal_schemas(tmp_path, capsy
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "--no-write", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "prune", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "export", "event_stream", "--format", "json"]),
+        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "analyze", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "doctor", "--bundle", "-"]),
     ]
 
@@ -193,6 +198,8 @@ def test_golden_json_fixtures_validate_against_formal_schemas():
         "invalid-runtime-configuration-error.json",
         "local-runtime-error.json",
         "request-dataset-list-success.json",
+        "analysis-report-empty-cache-error.json",
+        "analysis-report-success.json",
         "status-success.json",
         "support-bundle-success.json",
         "watch-status-not-running.json",

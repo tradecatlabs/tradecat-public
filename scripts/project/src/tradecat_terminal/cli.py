@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 
+from tradecat_terminal.analysis import build_analysis_report
 from tradecat_terminal.cache import init_cache, prune_cache, status_cache
 from tradecat_terminal.config import load_config
 from tradecat_terminal.contracts import attach_contract, attach_results_contract, error_contract
@@ -93,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--limit", type=int, default=0, help="最多导出行数；0 表示不限制")
     export_parser.add_argument("--output", help="输出文件；不传则输出 stdout")
     export_parser.add_argument("--lang", choices=["zh", "en", "ko"], help=f"导出表头显示语言；默认读取 {LANG_ENV} 或配置")
+
+    analyze_parser = subparsers.add_parser("analyze", help="从本地缓存生成 Agent 可消费分析报告")
+    analyze_parser.add_argument("--json", action="store_true", help="输出 JSON")
+    analyze_parser.add_argument("--window", default="24h", help="分析窗口元数据：latest 或 24h/7d/4w")
+    analyze_parser.add_argument("--limit", type=int, default=20, help="最多输出候选标的数量")
 
     watch_parser = subparsers.add_parser("watch", help="持续探测远端变化并写入本地快照缓存")
     watch_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则持续探测全部 active dataset")
@@ -354,6 +360,29 @@ def main(argv: list[str] | None = None) -> int:
             print(payload, end="" if payload.endswith("\n") else "\n")
         return 0
 
+    if args.command == "analyze":
+        try:
+            payload = build_analysis_report(
+                config.cache_dir,
+                analysis_window=args.window,
+                candidate_limit=args.limit,
+            )
+        except ValueError as exc:
+            return _command_error(
+                "analyze",
+                exc,
+                as_json=args.json,
+                code="invalid_analysis_request",
+                hint="检查 --window 是否为 latest/24h/7d/4w，且 --limit 大于 0。",
+            )
+        except Exception as exc:
+            return _runtime_command_error("analyze", exc, as_json=args.json)
+        if args.json:
+            _print_json(attach_contract(payload, "analyze"))
+        else:
+            print_analysis(payload)
+        return 0 if payload.get("ok") else 1
+
     if args.command == "watch":
         try:
             cycles = watch_datasets(
@@ -513,6 +542,26 @@ def print_prune(payload: dict) -> None:
             f"keep={item.get('keep_count', item['snapshot_count'])}\t"
             f"candidates={item['candidate_count']}\tdeleted={item['deleted_count']}"
         )
+
+
+def print_analysis(payload: dict) -> None:
+    print(f"ok: {payload.get('ok')}")
+    print(f"generated_at: {payload.get('generated_at')}")
+    window = payload.get("analysis_window") if isinstance(payload.get("analysis_window"), dict) else {}
+    print(f"window: {window.get('requested')} mode={window.get('mode')}")
+    for item in payload.get("dataset_freshness", []):
+        print(
+            "dataset: "
+            f"{item.get('dataset_key')} state={item.get('cache_state')} rows={item.get('row_count')} "
+            f"fetched_at={item.get('fetched_at')}"
+        )
+    for observation in payload.get("observations", []):
+        print(f"observation: {observation.get('id')} {observation.get('summary')}")
+    for candidate in payload.get("candidate_symbols", []):
+        print(f"candidate: {candidate.get('rank')}\t{candidate.get('symbol')}")
+    if payload.get("error"):
+        error = payload["error"]
+        print(f"error: code={error.get('code')} message={error.get('message')}", file=sys.stderr)
 
 
 def handle_config_command(action: str, key: str | None, value: str | None) -> dict:
@@ -708,6 +757,7 @@ def _should_route_to_tui(argv: list[str]) -> bool:
         "watch",
         "prune",
         "export",
+        "analyze",
         "tui",
     }:
         return False

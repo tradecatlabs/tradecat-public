@@ -76,6 +76,9 @@ def test_export_and_bundle_json_contracts(tmp_path, capsys):
     assert cli.main(["--cache-dir", str(cache_dir), "export", "event_stream", "--format", "json", "--limit", "1"]) == 0
     assert_contract(_last_json(capsys.readouterr().out), "tradecat.dataset_view.v1")
 
+    assert cli.main(["--cache-dir", str(cache_dir), "analyze", "--json"]) == 0
+    assert_contract(_last_json(capsys.readouterr().out), "tradecat.analysis_report.v1")
+
     assert cli.main(["--cache-dir", str(cache_dir), "doctor", "--bundle", "-"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema"] == "tradecat.support_bundle.v1"
