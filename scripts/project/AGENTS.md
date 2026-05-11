@@ -34,6 +34,7 @@ tradecat-public/
 │   ├── agent-readiness-remediation-task-tree.json
 │   ├── architecture.md
 │   ├── cache-contract.md
+│   ├── dataset-consumption-contract.md
 │   ├── first-run-cache.md
 │   ├── index.md
 │   ├── install-uninstall.md
@@ -71,6 +72,7 @@ tradecat-public/
         │   ├── request.py
         │   ├── start.sh
         │   ├── validate_data_contract.py
+        │   ├── validate_dataset_consumption_contract.py
         │   ├── verify.sh
         │   └── watchdog.sh
         ├── src/
@@ -81,6 +83,8 @@ tradecat-public/
         │       ├── cli.py
         │       ├── contracts.py
         │       ├── config.py
+        │       ├── dataset_consumption_contract.json
+        │       ├── dataset_contract.py
         │       ├── dataset_registry.json
         │       ├── diagnostics.py
         │       ├── header_aliases.py
@@ -103,6 +107,7 @@ tradecat-public/
             │   └── json_contract/
             ├── test_agent_contract.py
             ├── test_cache_tui.py
+            ├── test_dataset_consumption_contract.py
             ├── test_exit_codes.py
             ├── test_json_contract.py
             ├── test_payload_schema_validation.py
@@ -117,11 +122,12 @@ tradecat-public/
 Input(输入)：公开 Google Sheets CSV、dataset registry、本地 cache_dir
 -> 节点1：`cli.py` / `lifecycle.py` 接收 `sync/probe/watch` 命令并解析缓存目录
 -> 节点2：`registry.py` 从 `dataset_registry.json` 加载 workbook、tab、gid、dataset_key 与 data_mode
--> 节点3：`sheets.py` 通过成熟 HTTP retry/backoff/jitter 拉取 CSV，并把网络失败分类成 typed error
--> 节点4：`migrations.py` 在写入前检查缓存 metadata schema，必要时先备份再迁移
--> 节点5：`cache.py` 在 `state.py` 文件锁保护下按 matrix hash 写入 snapshot 文件；hash 不变则跳过新增文件
--> 节点6：`cache.py` 对 `event_stream` 额外按 event_key 与 normalized_event_key 合并 `stream_events.json`
--> 节点7：`structured_cache.py` 生成固定结构化文件 `latest.json` / `latest.jsonl` / `latest.csv` 和根 `manifest.json`
+-> 节点3：`dataset_contract.py` 从 `dataset_consumption_contract.json` 提供字段语义、缺失值、时间粒度和质量等级给 Agent 消费
+-> 节点4：`sheets.py` 通过成熟 HTTP retry/backoff/jitter 拉取 CSV，并把网络失败分类成 typed error
+-> 节点5：`migrations.py` 在写入前检查缓存 metadata schema，必要时先备份再迁移
+-> 节点6：`cache.py` 在 `state.py` 文件锁保护下按 matrix hash 写入 snapshot 文件；hash 不变则跳过新增文件
+-> 节点7：`cache.py` 对 `event_stream` 额外按 event_key 与 normalized_event_key 合并 `stream_events.json`
+-> 节点8：`structured_cache.py` 生成固定结构化文件 `latest.json` / `latest.jsonl` / `latest.csv` 和根 `manifest.json`
 -> Output(输出)：可由 TUI、用户脚本和 Agent 读取的本地结构化快照缓存
 ```
 
@@ -205,6 +211,8 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `constraints.txt`：运行与开发依赖锁定口径；安装器、CI 和本地 bootstrap 都必须消费。
 - `config.py`：本地缓存目录与环境变量解析；默认缓存根为项目根 `scripts/project/.tradecat/cache`。
 - `dataset_registry.json`：workbook、dataset、gid、tab、显示名、探针间隔和数据模式的单一真相源。
+- `dataset_consumption_contract.json`：Agent 数据消费语义契约；定义字段语义、缺失值策略、时间粒度和质量等级。
+- `dataset_contract.py`：数据消费语义契约加载层；`datasets --json` 通过它输出每个 dataset 的 consumption contract。
 - `diagnostics.py`：本地诊断与 support bundle 层；只记录公开安全的错误摘要、环境摘要和缓存水位。
 - `header_aliases.py`：字段别名元数据层；只进入 ViewModel 的 `column_meta.display_name`，禁止替代 TUI 表格物理列 A/B/C...
 - `i18n.py`：TUI/CLI 外壳文案的轻量多语言表；只处理中文、英文、韩语 UI 文案。
@@ -215,6 +223,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `registry.py`：从 `dataset_registry.json` 加载 workbook、tab、dataset、data_mode、TUI 探针间隔与多语言展示名。
 - `scripts/request.py`：零安装一次性公开数据请求脚本；公开 curl 路径为 `scripts/project/scripts/request.py`；读取共享 registry，只能用标准库，JSON 模式必须输出 `tradecat.request_result.v1`。
 - `scripts/validate_data_contract.py`：公开 dataset registry 与 Google Sheets CSV 契约校验入口；CI 可用 `--remote` 做公网 smoke。
+- `scripts/validate_dataset_consumption_contract.py`：dataset 消费语义契约校验入口；保证 registry、字段语义、缺失值策略和质量等级不漂移。
 - `tests/fixtures/json_contract/`：Agent JSON 契约 golden 样本；只保存脱敏、稳定、可 schema 校验的最小 payload。
 - `tests/test_payload_schema_validation.py`：真实 CLI/request payload 与 golden fixtures 的 JSON Schema 校验门禁；只能依赖 dev/test 依赖，不能把 `jsonschema` 带入运行时依赖。
 - `settings.py`：用户侧本地配置文件读写；管理默认语言、默认 tap、缓存目录和探针间隔，写入必须原子化并保留 `.bak`。

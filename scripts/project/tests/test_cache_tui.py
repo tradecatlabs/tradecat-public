@@ -479,6 +479,9 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     bootstrap = (SKILL_ROOT / "scripts" / "bootstrap-dev.sh").read_text(encoding="utf-8")
     supply_chain = (SKILL_ROOT / "scripts" / "supply-chain-audit.sh").read_text(encoding="utf-8")
     data_contract = (REPO_ROOT / "scripts" / "validate_data_contract.py").read_text(encoding="utf-8")
+    consumption_contract = (REPO_ROOT / "scripts" / "validate_dataset_consumption_contract.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "actions/checkout@v5" in ci_yml
     assert "actions/setup-python@v6" in ci_yml
@@ -499,6 +502,9 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "doctor --bundle" in published_smoke
     assert "public installer did not warm event_stream cache" in published_smoke
     assert "python scripts/validate_data_contract.py --remote" in ci_yml
+    assert "validate_dataset_consumption_contract.py" in (REPO_ROOT / "scripts" / "verify.sh").read_text(
+        encoding="utf-8"
+    )
     assert "bash scripts/supply-chain-audit.sh" in ci_yml
     assert "ghcr.io/gitleaks/gitleaks@sha256:" in security_scan
     assert "scripts/install-security-tools.sh" in security_scan
@@ -509,6 +515,7 @@ def test_root_ci_uses_pinned_secret_scan_and_bootstrap_script():
     assert "pip-audit==$PIP_AUDIT_VERSION" in supply_chain
     assert "run_audit pipx run --spec" in supply_chain
     assert "tradecat.dataset_registry.v1" in data_contract
+    assert "tradecat.dataset_consumption_contract.v1" in consumption_contract
 
 
 def test_release_version_metadata_matches_stable_ref():

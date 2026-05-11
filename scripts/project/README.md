@@ -496,6 +496,11 @@ TUI 探针规则：
 | `market_stats` | `market_data` | `全市场统计` | `snapshot` |
 | `event_stream` | `alternative_data` | `事件流` | `stream` |
 
+`tradecat datasets --json` 会为每个 dataset 输出 `consumption_contract`，
+包含字段语义、缺失值策略、时间粒度和质量等级。完整机器契约位于
+`src/tradecat_terminal/dataset_consumption_contract.json`，说明文档见
+`references/dataset-consumption-contract.md`。
+
 ### Snapshot tap
 
 `market_snapshot`、`anomaly_panel`、`market_stats` 是快照型 tap：
@@ -638,6 +643,7 @@ cd scripts/project
 ./.venv/bin/pytest -q -p no:cacheprovider tests/test_payload_schema_validation.py
 bash scripts/verify.sh
 PYTHONPATH=src ./.venv/bin/python scripts/validate_data_contract.py --remote --timeout 10
+PYTHONPATH=src ./.venv/bin/python scripts/validate_dataset_consumption_contract.py
 bash ../../scripts/security-scan.sh
 bash ../../scripts/supply-chain-audit.sh
 ```

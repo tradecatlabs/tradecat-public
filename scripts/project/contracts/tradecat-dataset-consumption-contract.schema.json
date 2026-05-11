@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-dataset-consumption-contract.schema.json",
+  "title": "TradeCat Dataset Consumption Contract",
+  "type": "object",
+  "required": ["schema", "schema_version", "semantic_version", "datasets"],
+  "properties": {
+    "schema": {
+      "const": "tradecat.dataset_consumption_contract.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "semantic_version": {
+      "type": "string"
+    },
+    "default_timezone": {
+      "type": "string"
+    },
+    "missing_value_policies": {
+      "type": "object"
+    },
+    "quality_tiers": {
+      "type": "object"
+    },
+    "datasets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "dataset_key",
+          "data_mode",
+          "primary_entity",
+          "time_grain",
+          "quality_tier",
+          "missing_value_policy",
+          "required_column_groups",
+          "fields"
+        ],
+        "properties": {
+          "dataset_key": {
+            "type": "string"
+          },
+          "data_mode": {
+            "enum": ["snapshot", "stream"]
+          },
+          "primary_entity": {
+            "type": "string"
+          },
+          "time_grain": {
+            "type": "string"
+          },
+          "quality_tier": {
+            "type": "string"
+          },
+          "missing_value_policy": {
+            "type": "string"
+          },
+          "history_semantics": {
+            "type": "string"
+          },
+          "time_semantics": {
+            "type": "object"
+          },
+          "required_column_groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "any_of", "purpose"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "any_of": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                "purpose": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            "minItems": 1
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["canonical_name", "source_columns", "role", "value_type", "nullable", "description"],
+              "properties": {
+                "canonical_name": {
+                  "type": "string"
+                },
+                "source_columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                "role": {
+                  "type": "string"
+                },
+                "value_type": {
+                  "type": "string"
+                },
+                "nullable": {
+                  "type": "boolean"
+                },
+                "unit": {
+                  "type": ["string", "null"]
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            "minItems": 1
+          },
+          "consumer_notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

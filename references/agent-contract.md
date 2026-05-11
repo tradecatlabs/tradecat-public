@@ -18,6 +18,11 @@ bash scripts/run-tradecat.sh path event_stream --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
+`datasets --json` includes each dataset's `consumption_contract`. For full
+field semantics, missing-value rules, time grain, and quality tier, read
+`scripts/project/src/tradecat_terminal/dataset_consumption_contract.json` or
+`references/dataset-consumption-contract.md`.
+
 Only write local cache after the readonly path proves what is needed:
 
 ```bash
@@ -110,10 +115,13 @@ parsing without making every output closed-world brittle:
 | `tradecat-dataset-view.schema.json` | `tradecat.dataset_view.v1` |
 | `tradecat-support-bundle.schema.json` | `tradecat.support_bundle.v1` |
 | `tradecat-watch-status.schema.json` | `tradecat.watch_status.v1` |
+| `tradecat-dataset-consumption-contract.schema.json` | `tradecat.dataset_consumption_contract.v1` |
 
 Every schema advertised in `agents/manifest.json` must have one command-level
-schema file. `tradecat.watch_cycle.v1` is intentionally CLI-internal and is not
-part of the formal Agent surface. Promoting it requires a future manifest entry,
+schema file. Non-command resource schemas, such as the dataset consumption
+contract schema, are allowed only when a tracked resource is itself a machine
+contract. `tradecat.watch_cycle.v1` is intentionally CLI-internal and is not part
+of the formal Agent surface. Promoting it requires a future manifest entry,
 schema table update, live payload validation, and bounded smoke coverage in the
 same change.
 

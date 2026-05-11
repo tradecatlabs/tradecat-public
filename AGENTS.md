@@ -31,6 +31,7 @@ tradecat-public/
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- dataset-consumption-contract.md
 |   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
@@ -87,8 +88,8 @@ tradecat-public/
 - `pyproject.toml` / `constraints.txt` / `Makefile`：Python 项目元数据、依赖锁定口径与开发入口。
 - `contracts/`：公开 JSON Schema 草案文件，用于外部工具校验 Agent/CLI 契约。
 - `install.*` / `uninstall.*`：用户安装与卸载入口。
-- `scripts/`：项目级脚本。
-- `src/tradecat_terminal/`：TradeCat CLI / TUI 源码。
+- `scripts/`：项目级脚本，包含 registry/CSV 与 dataset consumption contract 校验入口。
+- `src/tradecat_terminal/`：TradeCat CLI / TUI 源码，以及 dataset registry 与 dataset consumption contract 机器资源。
 - `tests/`：项目测试。
 - `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`：项目治理与调试记录，随仓库提交；
   必须保持公开安全，不得写入凭证、缓存内容或私密环境变量。

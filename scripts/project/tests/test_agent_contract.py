@@ -46,6 +46,10 @@ COMMAND_SCHEMA_FILES = {
     "tradecat-watch-status.schema.json": "tradecat.watch_status.v1",
 }
 
+RESOURCE_SCHEMA_FILES = {
+    "tradecat-dataset-consumption-contract.schema.json": "tradecat.dataset_consumption_contract.v1",
+}
+
 INTERNAL_CLI_SCHEMA_ALLOWLIST = {
     "tradecat.watch_cycle.v1",
 }
@@ -134,6 +138,7 @@ def test_formal_contract_schemas_are_valid_json():
         "tradecat-command-envelope.schema.json",
         "tradecat-error.schema.json",
         *COMMAND_SCHEMA_FILES,
+        *RESOURCE_SCHEMA_FILES,
     }
     for path in schemas:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -143,7 +148,7 @@ def test_formal_contract_schemas_are_valid_json():
 def test_command_schema_files_pin_expected_payload_schema_names():
     contracts_dir = SKILL_ROOT / "scripts" / "project" / "contracts"
 
-    for filename, expected_schema in COMMAND_SCHEMA_FILES.items():
+    for filename, expected_schema in {**COMMAND_SCHEMA_FILES, **RESOURCE_SCHEMA_FILES}.items():
         payload = json.loads((contracts_dir / filename).read_text(encoding="utf-8"))
         properties = payload.get("properties", {})
 

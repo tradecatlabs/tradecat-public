@@ -156,6 +156,8 @@ def list_datasets(include_inactive: bool = False) -> list[DatasetSpec]:
 
 
 def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
+    from tradecat_terminal.dataset_contract import dataset_consumption_contract_summary
+
     return {
         "key": dataset.key,
         "active": dataset.active,
@@ -171,4 +173,5 @@ def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
         "tui_probe_interval_seconds": dataset.tui_probe_interval_seconds,
         "tui_fetch_timeout_seconds": dataset.tui_fetch_timeout_seconds,
         "table_region_policy": dict(dataset.table_region_policy),
+        "consumption_contract": dataset_consumption_contract_summary(dataset.key),
     }

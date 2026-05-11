@@ -15,6 +15,7 @@ from referencing.jsonschema import DRAFT202012
 
 from tradecat_terminal import cli
 from tradecat_terminal.cache import write_dataset_body
+from tradecat_terminal.dataset_contract import load_dataset_consumption_contract
 from tradecat_terminal.registry import get_dataset
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -202,6 +203,10 @@ def test_golden_json_fixtures_validate_against_formal_schemas():
     for path in fixture_paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
         validate_payload(payload)
+
+
+def test_dataset_consumption_contract_validates_against_formal_schema():
+    validate_payload(load_dataset_consumption_contract())
 
 
 def validate_payload(payload: dict[str, Any]) -> None:

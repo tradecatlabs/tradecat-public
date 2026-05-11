@@ -28,6 +28,7 @@ tradecat-public/
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- dataset-consumption-contract.md
 |   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
@@ -97,6 +98,10 @@ Public Google Sheets CSV
 ## Source Boundaries
 
 - `registry.py`: dataset/workbook/gid/data mode single source of truth.
+- `dataset_contract.py`: loads the machine-readable dataset consumption
+  semantics contract.
+- `dataset_consumption_contract.json`: row semantics, field aliases, missing
+  values, time grain, and quality tiers for Agent consumption.
 - `cache.py`: local snapshot cache, manifest, stream event merge, prune.
 - `structured_cache.py`: structured latest projections.
 - `view_model.py`: display/raw/physical column model.
@@ -120,6 +125,8 @@ Public Google Sheets CSV
 - `references/agent-contract.md`: Agent fast path, risk classes, exit codes, JSON schemas, and remote fetch contract.
 - `references/agent-contract-maturity-task-tree.md`: post-signoff schema, manifest, and smoke hardening tree.
 - `references/agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
+- `references/dataset-consumption-contract.md`: dataset field semantics,
+  missing-value policy, time grain, and quality-tier contract.
 - `references/*.md`: long-form skill references loaded on demand.
 - `references/first-run-cache.md`: first-run empty cache, cold-start diagnosis, and weak-network recovery.
 - `references/linear-flows.md`: public linear flow map for cache, TUI, request, install, uninstall, export/config, and doctor diagnostics.

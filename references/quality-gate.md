@@ -56,6 +56,9 @@ Acceptance:
 - CI uploads dependency freeze/constraints evidence for release audit.
 - `scripts/project/scripts/validate_data_contract.py --remote` validates the
   public Google Sheets CSV shape for active datasets in CI.
+- `scripts/project/scripts/validate_dataset_consumption_contract.py` validates
+  the machine-readable dataset field semantics, missing-value policy, time
+  grain, and quality tier against `dataset_registry.json`.
 - `scripts/agent-smoke.sh` validates `agents/manifest.json`, advertised JSON
   schemas, non-zero failure exit codes, the zero-install request fallback, and
   the split between `invalid_dataset_key` and `invalid_runtime_configuration`.
@@ -79,6 +82,8 @@ Acceptance:
 - `scripts/project/tests/test_payload_schema_validation.py` validates real
   CLI/request JSON payloads and golden fixtures against those formal schemas;
   `jsonschema` remains a dev/test dependency, not a runtime dependency.
+- `tradecat datasets --json` exposes `consumption_contract` for every dataset,
+  so Agents can consume dataset semantics without reading long-form docs first.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.

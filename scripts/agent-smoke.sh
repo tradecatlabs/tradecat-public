@@ -52,6 +52,7 @@ cd "$ROOT_DIR"
 
 bash scripts/validate-skill.sh --strict >/dev/null
 python3 -m json.tool agents/manifest.json >/dev/null
+python3 -m json.tool scripts/project/src/tradecat_terminal/dataset_consumption_contract.json >/dev/null
 for schema_file in scripts/project/contracts/*.schema.json; do
   python3 -m json.tool "$schema_file" >/dev/null
 done
@@ -68,6 +69,21 @@ json_expect "$TMP_DIR/status.json" "tradecat.status.v1"
 
 bash scripts/run-tradecat.sh datasets --json >"$TMP_DIR/datasets.json"
 json_expect "$TMP_DIR/datasets.json" "tradecat.dataset_list.v1"
+python3 - "$TMP_DIR/datasets.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for dataset in payload.get("datasets") or []:
+    contract = dataset.get("consumption_contract")
+    if not isinstance(contract, dict):
+        raise SystemExit(f"{dataset.get('key')}: missing consumption_contract")
+    if contract.get("schema") != "tradecat.dataset_consumption_contract.v1":
+        raise SystemExit(f"{dataset.get('key')}: invalid consumption contract schema")
+PY
+
+PYTHONPATH="$PROJECT_DIR/src" python3 scripts/project/scripts/validate_dataset_consumption_contract.py >/dev/null
 
 bash scripts/run-tradecat.sh path event_stream --json >"$TMP_DIR/path.json"
 json_expect "$TMP_DIR/path.json" "tradecat.path_map.v1"

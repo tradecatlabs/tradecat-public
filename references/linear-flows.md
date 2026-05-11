@@ -16,11 +16,12 @@ node must trace back to code, scripts, configuration, data, or documentation.
 Input: public Google Sheets CSV, dataset registry, local cache_dir
 -> Node 1: `cli.py` / `lifecycle.py` receives sync, probe, or watch commands and resolves cache_dir
 -> Node 2: `registry.py` loads workbook, tab, gid, dataset_key, and data_mode from `dataset_registry.json`
--> Node 3: `sheets.py` fetches read-only CSV with bounded retry/backoff/jitter and typed remote errors
--> Node 4: `migrations.py` checks cache metadata schema and backs up before local migration when needed
--> Node 5: `cache.py` writes a snapshot file under `state.py` locks only when the full matrix hash changes
--> Node 6: `cache.py` merges `event_stream` by event_key and normalized_event_key into `stream_events.json`
--> Node 7: `structured_cache.py` writes `latest.json`, `latest.jsonl`, `latest.csv`, and root manifest atomically
+-> Node 3: `dataset_contract.py` exposes dataset consumption semantics from `dataset_consumption_contract.json`
+-> Node 4: `sheets.py` fetches read-only CSV with bounded retry/backoff/jitter and typed remote errors
+-> Node 5: `migrations.py` checks cache metadata schema and backs up before local migration when needed
+-> Node 6: `cache.py` writes a snapshot file under `state.py` locks only when the full matrix hash changes
+-> Node 7: `cache.py` merges `event_stream` by event_key and normalized_event_key into `stream_events.json`
+-> Node 8: `structured_cache.py` writes `latest.json`, `latest.jsonl`, `latest.csv`, and root manifest atomically
 -> Output: local structured snapshot cache for TUI, CLI export, request consumers, and agents
 ```
 
@@ -104,9 +105,9 @@ Input: `tradecat doctor`, `tradecat doctor --repair`, `tradecat doctor --verbose
 Input: shell-capable Agent or Hermes session at repository root
 -> Node 1: Agent reads `agents/manifest.json` as the canonical machine contract
 -> Node 2: Agent runs `bash scripts/run-tradecat.sh status --json` and trusts `schema=tradecat.status.v1`
--> Node 3: Agent runs `bash scripts/run-tradecat.sh datasets --json` and picks a valid dataset key
+-> Node 3: Agent runs `bash scripts/run-tradecat.sh datasets --json` and reads each dataset `consumption_contract`
 -> Node 4: Agent runs `bash scripts/run-tradecat.sh path <dataset_key> --json` to locate local cache artifacts
 -> Node 5: Agent uses `scripts/project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
--> Node 6: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, and exit-code contracts
+-> Node 6: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, exit-code, and dataset consumption contracts
 -> Output: inspect -> validate -> consume -> diagnose flow with no guessing and no accidental install/uninstall side effects
 ```

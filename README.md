@@ -14,6 +14,10 @@ bash scripts/run-tradecat.sh path event_stream --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
+`datasets --json` 同时携带 dataset consumption contract；字段语义、缺失值、
+时间粒度和质量等级的长文档见
+[references/dataset-consumption-contract.md](references/dataset-consumption-contract.md)。
+
 默认先走只读入口；只有需要写本地缓存时再执行 `sync`、`doctor --repair`、
 安装或卸载。
 

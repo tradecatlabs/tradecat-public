@@ -265,6 +265,11 @@
       "purpose": "Run project tests, lint, contract checks, and shell syntax."
     },
     {
+      "command": "cd scripts/project && PYTHONPATH=src python3 scripts/validate_dataset_consumption_contract.py",
+      "risk_class": "local_readonly",
+      "purpose": "Validate dataset consumption semantics against the bundled registry."
+    },
+    {
       "command": "bash scripts/security-scan.sh",
       "risk_class": "security_or_supply_chain",
       "purpose": "Scan tracked files or selected history for leaked secrets."
@@ -313,6 +318,8 @@
     "project_source": "scripts/project/src/tradecat_terminal",
     "project_tests": "scripts/project/tests",
     "dataset_registry": "scripts/project/src/tradecat_terminal/dataset_registry.json",
+    "dataset_consumption_contract": "scripts/project/src/tradecat_terminal/dataset_consumption_contract.json",
+    "dataset_consumption_contract_reference": "references/dataset-consumption-contract.md",
     "zero_install_request": "scripts/project/scripts/request.py",
     "agent_smoke": "scripts/agent-smoke.sh"
   },
@@ -321,6 +328,7 @@
     "references/agent-contract-maturity-task-tree.md",
     "references/architecture.md",
     "references/cache-contract.md",
+    "references/dataset-consumption-contract.md",
     "references/linear-flows.md",
     "references/quality-gate.md",
     "references/first-run-cache.md",

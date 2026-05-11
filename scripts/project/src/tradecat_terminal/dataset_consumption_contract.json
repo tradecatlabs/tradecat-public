@@ -1,0 +1,242 @@
+{
+  "schema": "tradecat.dataset_consumption_contract.v1",
+  "schema_version": "1.0.0",
+  "semantic_version": "2026-05-11",
+  "default_timezone": "UTC+8",
+  "missing_value_policies": {
+    "empty_string_is_missing": {
+      "empty_string": "missing",
+      "blank_cell": "missing",
+      "missing_column": "contract_error",
+      "zero": "observed_value"
+    }
+  },
+  "quality_tiers": {
+    "public_sheet_best_effort": {
+      "source": "public_google_sheets_csv",
+      "guarantee": "best_effort",
+      "suitable_for": ["inspection", "research", "agent_summary"],
+      "not_suitable_for": ["investment_advice", "automated_trading_execution"]
+    }
+  },
+  "datasets": {
+    "market_snapshot": {
+      "dataset_key": "market_snapshot",
+      "data_mode": "snapshot",
+      "primary_entity": "contract_symbol",
+      "time_grain": "latest_snapshot",
+      "quality_tier": "public_sheet_best_effort",
+      "missing_value_policy": "empty_string_is_missing",
+      "history_semantics": "Local cache keeps permanent snapshot files when the full CSV matrix changes.",
+      "time_semantics": {
+        "timezone": "UTC+8",
+        "event_time_column": null,
+        "timestamp_columns": []
+      },
+      "required_column_groups": [
+        {
+          "name": "rank_or_order",
+          "any_of": ["排名", "序号"],
+          "purpose": "Stable row ordering when present."
+        },
+        {
+          "name": "contract_symbol",
+          "any_of": ["交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+          "purpose": "Primary market instrument identity."
+        }
+      ],
+      "fields": [
+        {
+          "canonical_name": "rank",
+          "source_columns": ["排名", "序号"],
+          "role": "rank",
+          "value_type": "integer",
+          "nullable": true,
+          "unit": null,
+          "description": "Market-wide display rank or sequence number."
+        },
+        {
+          "canonical_name": "symbol",
+          "source_columns": ["交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+          "role": "entity_key",
+          "value_type": "string",
+          "nullable": false,
+          "unit": null,
+          "description": "Contract or token symbol used as the primary row entity."
+        }
+      ],
+      "consumer_notes": [
+        "Treat unlisted sheet columns as pass-through observed fields.",
+        "Do not treat rank movement as a trading signal without a downstream scoring contract."
+      ]
+    },
+    "anomaly_panel": {
+      "dataset_key": "anomaly_panel",
+      "data_mode": "snapshot",
+      "primary_entity": "contract_symbol",
+      "time_grain": "latest_snapshot",
+      "quality_tier": "public_sheet_best_effort",
+      "missing_value_policy": "empty_string_is_missing",
+      "history_semantics": "Local cache keeps permanent snapshot files when the full CSV matrix changes.",
+      "time_semantics": {
+        "timezone": "UTC+8",
+        "event_time_column": null,
+        "timestamp_columns": []
+      },
+      "required_column_groups": [
+        {
+          "name": "board",
+          "any_of": ["榜单", "榜单名"],
+          "purpose": "Anomaly board or ranking category."
+        },
+        {
+          "name": "contract_symbol",
+          "any_of": ["交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+          "purpose": "Primary market instrument identity."
+        }
+      ],
+      "fields": [
+        {
+          "canonical_name": "board",
+          "source_columns": ["榜单", "榜单名"],
+          "role": "category",
+          "value_type": "string",
+          "nullable": true,
+          "unit": null,
+          "description": "Anomaly board name or category."
+        },
+        {
+          "canonical_name": "rank",
+          "source_columns": ["序号"],
+          "role": "rank",
+          "value_type": "integer",
+          "nullable": true,
+          "unit": null,
+          "description": "Display sequence inside the anomaly board."
+        },
+        {
+          "canonical_name": "symbol",
+          "source_columns": ["交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+          "role": "entity_key",
+          "value_type": "string",
+          "nullable": false,
+          "unit": null,
+          "description": "Contract or token symbol used as the primary row entity."
+        }
+      ],
+      "consumer_notes": [
+        "Treat anomaly rows as observation candidates, not final strategy decisions.",
+        "Board membership should be interpreted together with snapshot freshness and downstream scoring."
+      ]
+    },
+    "market_stats": {
+      "dataset_key": "market_stats",
+      "data_mode": "snapshot",
+      "primary_entity": "market_window",
+      "time_grain": "aggregated_window",
+      "quality_tier": "public_sheet_best_effort",
+      "missing_value_policy": "empty_string_is_missing",
+      "history_semantics": "Local cache keeps permanent snapshot files when the full CSV matrix changes.",
+      "time_semantics": {
+        "timezone": "UTC+8",
+        "event_time_column": null,
+        "timestamp_columns": []
+      },
+      "required_column_groups": [
+        {
+          "name": "window",
+          "any_of": ["窗口"],
+          "purpose": "Aggregation window identity."
+        },
+        {
+          "name": "contract_count",
+          "any_of": ["覆盖合约数", "合约数"],
+          "purpose": "Number of contracts covered by the aggregate."
+        }
+      ],
+      "fields": [
+        {
+          "canonical_name": "window",
+          "source_columns": ["窗口"],
+          "role": "time_window",
+          "value_type": "string",
+          "nullable": false,
+          "unit": null,
+          "description": "Aggregation window label."
+        },
+        {
+          "canonical_name": "contract_count",
+          "source_columns": ["覆盖合约数", "合约数"],
+          "role": "coverage_count",
+          "value_type": "integer",
+          "nullable": true,
+          "unit": "contracts",
+          "description": "Number of contracts included in the aggregate."
+        },
+        {
+          "canonical_name": "symbol_scope",
+          "source_columns": ["交易对口径"],
+          "role": "scope",
+          "value_type": "string",
+          "nullable": true,
+          "unit": null,
+          "description": "Market symbol scope used by the aggregate."
+        }
+      ],
+      "consumer_notes": [
+        "Use this dataset for market-wide context, not per-symbol execution decisions.",
+        "Window labels are strings until a downstream analytics contract defines numeric duration parsing."
+      ]
+    },
+    "event_stream": {
+      "dataset_key": "event_stream",
+      "data_mode": "stream",
+      "primary_entity": "event",
+      "time_grain": "event_time",
+      "quality_tier": "public_sheet_best_effort",
+      "missing_value_policy": "empty_string_is_missing",
+      "history_semantics": "Local cache merges events by configured event key and preserves seen_count/last_seen_at.",
+      "time_semantics": {
+        "timezone": "UTC+8",
+        "event_time_column": "时间(北京)",
+        "timestamp_columns": ["时间(北京)"]
+      },
+      "required_column_groups": [
+        {
+          "name": "event_time",
+          "any_of": ["时间(北京)"],
+          "purpose": "Event timestamp in Beijing time."
+        },
+        {
+          "name": "event_content",
+          "any_of": ["内容"],
+          "purpose": "Human-readable event body."
+        }
+      ],
+      "fields": [
+        {
+          "canonical_name": "event_time",
+          "source_columns": ["时间(北京)"],
+          "role": "event_time",
+          "value_type": "datetime",
+          "nullable": false,
+          "unit": "UTC+8",
+          "description": "Event timestamp in Beijing time."
+        },
+        {
+          "canonical_name": "content",
+          "source_columns": ["内容"],
+          "role": "event_text",
+          "value_type": "text",
+          "nullable": false,
+          "unit": null,
+          "description": "Event body used together with time as the stream identity."
+        }
+      ],
+      "consumer_notes": [
+        "Use event_time plus content as the stable event identity.",
+        "Repeated events update cache observation metadata and should not be counted as new unique events."
+      ]
+    }
+  }
+}

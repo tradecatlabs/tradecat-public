@@ -92,6 +92,7 @@ jobs:
           with zipfile.ZipFile(wheel) as zf:
               names = set(zf.namelist())
           required = {
+              "tradecat_terminal/dataset_consumption_contract.json",
               "tradecat_terminal/dataset_registry.json",
               "tradecat_terminal/header_aliases.py",
               "tradecat_terminal/settings.py",

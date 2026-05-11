@@ -142,6 +142,7 @@ tradecat-public/
 |   |-- agent-readiness-remediation-task-tree.json
 |   |-- architecture.md
 |   |-- cache-contract.md
+|   |-- dataset-consumption-contract.md
 |   |-- first-run-cache.md
 |   |-- linear-flows.md
 |   |-- tui-contract.md
@@ -176,6 +177,7 @@ tradecat-public/
 - `references/index.md`: navigation.
 - `references/architecture.md`: project purpose, forbidden paths, and data flows.
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
+- `references/dataset-consumption-contract.md`: dataset field semantics, missing values, time grain, and quality tier.
 - `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
 - `references/linear-flows.md`: public seven-flow map for cache, TUI, one-shot request, install, uninstall, export/config, and doctor diagnostics.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.

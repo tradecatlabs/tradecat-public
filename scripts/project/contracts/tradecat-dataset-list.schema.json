@@ -41,6 +41,47 @@
           },
           "gid": {
             "type": ["string", "integer"]
+          },
+          "consumption_contract": {
+            "type": "object",
+            "required": [
+              "schema",
+              "schema_version",
+              "dataset_key",
+              "primary_entity",
+              "time_grain",
+              "quality_tier",
+              "missing_value_policy",
+              "fields"
+            ],
+            "properties": {
+              "schema": {
+                "const": "tradecat.dataset_consumption_contract.v1"
+              },
+              "schema_version": {
+                "const": "1.0.0"
+              },
+              "dataset_key": {
+                "type": "string"
+              },
+              "primary_entity": {
+                "type": "string"
+              },
+              "time_grain": {
+                "type": "string"
+              },
+              "quality_tier": {
+                "type": "string"
+              },
+              "missing_value_policy": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "array",
+                "minItems": 1
+              }
+            },
+            "additionalProperties": true
           }
         },
         "additionalProperties": true

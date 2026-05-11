@@ -11,10 +11,11 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 5. First-run empty cache, cold-start, or weak-network diagnosis: `first-run-cache.md`.
 6. End-to-end public data and install flows: `linear-flows.md`.
 7. Agent/Hermes machine contract, fast path, command risk classes, and JSON schemas: `agent-contract.md`.
-8. Release notes, install evidence, and rollback: `release.md`.
-9. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
-10. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
-11. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
+8. Dataset field semantics, missing values, time grain, and quality tier: `dataset-consumption-contract.md`.
+9. Release notes, install evidence, and rollback: `release.md`.
+10. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
+11. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
+12. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
 
 ## Reference Map
 
@@ -25,6 +26,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 - `first-run-cache.md`: cold-start cache diagnosis, prevention rules, operator commands, and verification.
 - `linear-flows.md`: seven public linear flows covering cache sync, TUI, one-shot request, install, uninstall, config/export, and doctor diagnostics.
 - `agent-contract.md`: canonical multi-Agent consumption contract, fast path, risk classes, exit codes, JSON schema names, and transport split.
+- `dataset-consumption-contract.md`: machine-readable dataset field semantics, missing values, time grain, and quality tier.
 - `quality-gate.md`: pre-delivery checklist, validation commands, root/project boundary audit, and release evidence.
 - `release.md`: public release notes, CI evidence, fixed-ref install commands, known limits, and rollback.
 - `stability-hardening-task-tree.md`: current TP-XX stability and robustness hardening backlog, execution waves, ready leaves, gates, and validation plan.
