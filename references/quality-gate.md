@@ -64,7 +64,8 @@ Acceptance:
   the split between `invalid_dataset_key` and `invalid_runtime_configuration`.
 - `scripts/agent-smoke.sh` also covers `doctor --json`, `config show --json`,
   dry-run `prune --json`, single-dataset `probe --json --no-write`, and
-  all-dataset `probe --json --no-write`.
+  all-dataset `probe --json --no-write`, plus `features --json` empty-cache
+  error semantics.
 - Watcher lifecycle control has a machine-readable JSON contract through
   `scripts/project/scripts/start.sh status/start/stop --json`,
   `scripts/project/scripts/watchdog.sh --json`, and
@@ -88,6 +89,10 @@ Acceptance:
   readonly observation report, validates against its formal schema, and returns
   `empty_analysis_cache` instead of free-form text when the cache has no
   analyzable rows.
+- `tradecat features --json` exposes `tradecat.feature_bundle.v1` as a local
+  readonly per-symbol fact bundle, validates against its formal schema, and
+  returns `empty_feature_cache` instead of free-form text when the cache has no
+  symbol candidates.
 - Published raw installer smoke does not set `TRADECAT_INSTALL_SKIP_SYNC` and
   fails if the default `event_stream` cache is still not ready after install and
   explicit `doctor --sync` repair.
@@ -129,6 +134,7 @@ quality rule changes, update the matching documentation in the same change:
 - Agent machine contract behavior: `agents/manifest.json`, `agents/*.yaml`,
   `references/agent-contract.md`, `references/quality-gate.md`.
 - Analysis report behavior: `references/analysis-contract.md`.
+- Feature bundle behavior: `references/feature-contract.md`.
 - Public flow behavior: `references/linear-flows.md`.
 - Cache behavior: `references/cache-contract.md`.
 - TUI behavior: `references/tui-contract.md`.

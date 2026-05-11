@@ -25,7 +25,7 @@ REQUEST_SCRIPT = PROJECT_ROOT / "scripts" / "request.py"
 START_SCRIPT = PROJECT_ROOT / "scripts" / "start.sh"
 WATCHDOG_SCRIPT = PROJECT_ROOT / "scripts" / "watchdog.sh"
 REQUEST_REGISTRY_URL = "https://example.local/tradecat-registry.json"
-SHEET_CSV = "https://dexscreener.com/example\nrank,pair,price\n1,BTCUSDT,100\n"
+SHEET_CSV = "https://dexscreener.com/example\n排名,交易对,价格\n1,BTCUSDT,100\n"
 EVENT_CSV = "time,content\n2026-05-10 10:00:00,hello\n"
 ANOMALY_CSV = "榜单,序号,交易对\n异动榜,1,BTCUSDT\n异动榜,2,ETHUSDT\n"
 STATS_CSV = "窗口,覆盖合约数,交易对口径\n24h,200,USDT perpetual\n"
@@ -75,6 +75,7 @@ def test_advertised_cli_payloads_validate_against_formal_schemas(tmp_path, capsy
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "prune", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "export", "event_stream", "--format", "json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "analyze", "--json"]),
+        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "features", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "doctor", "--bundle", "-"]),
     ]
 
@@ -191,6 +192,14 @@ def test_real_error_payloads_validate_against_formal_schemas(tmp_path, capsys, m
     validate_payload(local_runtime)
     assert local_runtime["error"]["code"] == "local_runtime_error"
 
+    invalid_feature_request = _run_cli_json(
+        capsys,
+        ["--cache-dir", str(cache_dir), "features", "--json", "--limit", "0"],
+        expected_code=2,
+    )
+    validate_payload(invalid_feature_request)
+    assert invalid_feature_request["error"]["code"] == "invalid_feature_request"
+
 
 def test_golden_json_fixtures_validate_against_formal_schemas():
     expected = {
@@ -200,6 +209,8 @@ def test_golden_json_fixtures_validate_against_formal_schemas():
         "request-dataset-list-success.json",
         "analysis-report-empty-cache-error.json",
         "analysis-report-success.json",
+        "feature-bundle-empty-cache-error.json",
+        "feature-bundle-success.json",
         "status-success.json",
         "support-bundle-success.json",
         "watch-status-not-running.json",

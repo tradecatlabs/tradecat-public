@@ -39,6 +39,7 @@ bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
+bash scripts/run-tradecat.sh features --json
 ```
 
 ### Validate Skill And Project
@@ -145,6 +146,7 @@ tradecat-public/
 |   |-- analysis-contract.md
 |   |-- cache-contract.md
 |   |-- dataset-consumption-contract.md
+|   |-- feature-contract.md
 |   |-- first-run-cache.md
 |   |-- linear-flows.md
 |   |-- tui-contract.md
@@ -181,8 +183,9 @@ tradecat-public/
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
 - `references/dataset-consumption-contract.md`: dataset field semantics, missing values, time grain, and quality tier.
 - `references/analysis-contract.md`: local readonly analysis report contract and no-trading-advice boundary.
+- `references/feature-contract.md`: local readonly per-symbol feature fact bundle contract and no-scoring/no-strategy boundary.
 - `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
-- `references/linear-flows.md`: public flow map for cache, TUI, one-shot request, install, uninstall, export/config, doctor diagnostics, analysis report, and Agent fast path.
+- `references/linear-flows.md`: public flow map for cache, TUI, one-shot request, install, uninstall, export/config, doctor diagnostics, analysis report, feature bundle, and Agent fast path.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
 - `references/quality-gate.md`: pre-delivery checklist for Skill wrapper and bundled project changes.

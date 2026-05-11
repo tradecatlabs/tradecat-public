@@ -16,6 +16,7 @@ bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
+bash scripts/run-tradecat.sh features --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
@@ -28,6 +29,12 @@ field semantics, missing-value rules, time grain, and quality tier, read
 `tradecat.analysis_report.v1`. It is an observation report for Agents, not
 investment advice, scoring, backtest, or automated trade execution. If it
 returns `empty_analysis_cache`, explicitly warm the cache before retrying.
+
+`features --json` reads only local cache through `analysis_report.v1` and
+returns `tradecat.feature_bundle.v1`. It is a per-symbol fact bundle, not a
+signal score, strategy, return forecast, or execution instruction. If it returns
+`empty_feature_cache`, warm the cache and confirm `anomaly_panel` has entity-key
+rows.
 
 Only write local cache after the readonly path proves what is needed:
 
@@ -88,6 +95,7 @@ Known JSON schemas:
 | `path <dataset> --json` | `tradecat.path_map.v1` |
 | `datasets --json` | `tradecat.dataset_list.v1` |
 | `analyze --json` | `tradecat.analysis_report.v1` |
+| `features --json` | `tradecat.feature_bundle.v1` |
 | `sync <dataset> --json` | `tradecat.sync_result.v1` |
 | `sync-all --json` | `tradecat.sync_results.v1` |
 | `probe <dataset> --json --no-write` | `tradecat.probe_result.v1` |
@@ -108,6 +116,7 @@ parsing without making every output closed-world brittle:
 | --- | --- |
 | `tradecat-config.schema.json` | `tradecat.config.v1` |
 | `tradecat-analysis-report.schema.json` | `tradecat.analysis_report.v1` |
+| `tradecat-feature-bundle.schema.json` | `tradecat.feature_bundle.v1` |
 | `tradecat-doctor.schema.json` | `tradecat.doctor.v1` |
 | `tradecat-init.schema.json` | `tradecat.init.v1` |
 | `tradecat-status.schema.json` | `tradecat.status.v1` |
@@ -164,6 +173,9 @@ collapse these into dataset errors. Analysis report failures use
 `error.code=empty_analysis_cache` when local analysis inputs are missing and
 `error.code=invalid_analysis_request` for invalid `--window` or `--limit`
 arguments.
+Feature bundle failures use `error.code=empty_feature_cache` when no symbol can
+be normalized into feature facts and `error.code=invalid_feature_request` for
+invalid `--window` or `--limit` arguments.
 
 ## Remote Fetch Contract
 

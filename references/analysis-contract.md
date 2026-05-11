@@ -5,6 +5,7 @@ TradeCat separates data semantics from analysis output:
 - `dataset_consumption_contract.json` tells an Agent how to understand rows.
 - `analysis_report.v1` turns the latest local cache into a bounded observation
   report.
+- `feature_bundle.v1` normalizes the report into per-symbol fact bundles.
 
 The analysis contract is intentionally not a trading strategy. It does not
 produce buy/sell advice, position sizing, price targets, automated execution
@@ -80,8 +81,9 @@ from free text.
 - No network fetch.
 - No cache writes.
 
-Future strategy, signal, feature, or evaluation layers must introduce their own
-schemas instead of overloading `tradecat.analysis_report.v1`.
+Feature facts use `tradecat.feature_bundle.v1`. Future strategy, signal,
+scoring, or evaluation layers must introduce their own schemas instead of
+overloading `tradecat.analysis_report.v1`.
 
 ## Change Rule
 

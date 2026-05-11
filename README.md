@@ -12,6 +12,7 @@ bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
+bash scripts/run-tradecat.sh features --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
@@ -21,6 +22,10 @@ python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 `analyze --json` 只读本地缓存，输出
 `tradecat.analysis_report.v1` 观察报告；边界见
 [references/analysis-contract.md](references/analysis-contract.md)。
+`features --json` 复用本地观察报告逻辑，输出
+`tradecat.feature_bundle.v1` 按 symbol 归一化的事实包；它不是评分、
+策略、收益预测、回测或交易执行接口，边界见
+[references/feature-contract.md](references/feature-contract.md)。
 
 默认先走只读入口；只有需要写本地缓存时再执行 `sync`、`doctor --repair`、
 安装或卸载。
@@ -76,6 +81,7 @@ tradecat-public/
 |   |-- analysis-contract.md
 |   |-- cache-contract.md
 |   |-- dataset-consumption-contract.md
+|   |-- feature-contract.md
 |   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md

@@ -12,6 +12,7 @@ from tradecat_terminal.cache import init_cache, prune_cache, status_cache
 from tradecat_terminal.config import load_config
 from tradecat_terminal.contracts import attach_contract, attach_results_contract, error_contract
 from tradecat_terminal.diagnostics import bundle_to_json, write_support_bundle
+from tradecat_terminal.features import build_feature_bundle
 from tradecat_terminal.i18n import LANG_ENV, resolve_lang, tr
 from tradecat_terminal.lifecycle import doctor_local_store, probe_all_datasets, probe_dataset, watch_datasets
 from tradecat_terminal.registry import UnknownDatasetError, dataset_to_dict, get_dataset, list_datasets
@@ -99,6 +100,11 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("--json", action="store_true", help="输出 JSON")
     analyze_parser.add_argument("--window", default="24h", help="分析窗口元数据：latest 或 24h/7d/4w")
     analyze_parser.add_argument("--limit", type=int, default=20, help="最多输出候选标的数量")
+
+    features_parser = subparsers.add_parser("features", help="从本地分析报告生成按 symbol 归一化的事实包")
+    features_parser.add_argument("--json", action="store_true", help="输出 JSON")
+    features_parser.add_argument("--window", default="24h", help="窗口元数据：latest 或 24h/7d/4w")
+    features_parser.add_argument("--limit", type=int, default=20, help="最多输出 symbol 数量")
 
     watch_parser = subparsers.add_parser("watch", help="持续探测远端变化并写入本地快照缓存")
     watch_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则持续探测全部 active dataset")
@@ -383,6 +389,29 @@ def main(argv: list[str] | None = None) -> int:
             print_analysis(payload)
         return 0 if payload.get("ok") else 1
 
+    if args.command == "features":
+        try:
+            payload = build_feature_bundle(
+                config.cache_dir,
+                analysis_window=args.window,
+                symbol_limit=args.limit,
+            )
+        except ValueError as exc:
+            return _command_error(
+                "features",
+                exc,
+                as_json=args.json,
+                code="invalid_feature_request",
+                hint="检查 --window 是否为 latest/24h/7d/4w，且 --limit 大于 0。",
+            )
+        except Exception as exc:
+            return _runtime_command_error("features", exc, as_json=args.json)
+        if args.json:
+            _print_json(attach_contract(payload, "features"))
+        else:
+            print_features(payload)
+        return 0 if payload.get("ok") else 1
+
     if args.command == "watch":
         try:
             cycles = watch_datasets(
@@ -559,6 +588,22 @@ def print_analysis(payload: dict) -> None:
         print(f"observation: {observation.get('id')} {observation.get('summary')}")
     for candidate in payload.get("candidate_symbols", []):
         print(f"candidate: {candidate.get('rank')}\t{candidate.get('symbol')}")
+    if payload.get("error"):
+        error = payload["error"]
+        print(f"error: code={error.get('code')} message={error.get('message')}", file=sys.stderr)
+
+
+def print_features(payload: dict) -> None:
+    print(f"ok: {payload.get('ok')}")
+    print(f"generated_at: {payload.get('generated_at')}")
+    window = payload.get("feature_window") if isinstance(payload.get("feature_window"), dict) else {}
+    print(f"window: {window.get('requested')} mode={window.get('mode')}")
+    for item in payload.get("symbols", []):
+        print(
+            "symbol: "
+            f"{item.get('symbol')} features={len(item.get('features') or [])} "
+            f"confidence={item.get('confidence')}"
+        )
     if payload.get("error"):
         error = payload["error"]
         print(f"error: code={error.get('code')} message={error.get('message')}", file=sys.stderr)
@@ -758,6 +803,7 @@ def _should_route_to_tui(argv: list[str]) -> bool:
         "prune",
         "export",
         "analyze",
+        "features",
         "tui",
     }:
         return False

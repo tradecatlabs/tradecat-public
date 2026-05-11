@@ -11,3 +11,4 @@ fast_path:
   - bash scripts/run-tradecat.sh datasets --json
   - bash scripts/run-tradecat.sh path event_stream --json
   - bash scripts/run-tradecat.sh analyze --json
+  - bash scripts/run-tradecat.sh features --json

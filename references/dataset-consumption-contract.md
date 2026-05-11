@@ -8,7 +8,9 @@ TradeCat now separates two registry layers:
 The consumption contract is intentionally about semantics, not strategy. It
 describes field identity, missing values, time grain, quality tier, and minimum
 column groups. The first readonly observation layer is
-`tradecat.analysis_report.v1`; signal scoring, backtests, and trading decisions
+`tradecat.analysis_report.v1`; the next readonly fact layer is
+`tradecat.feature_bundle.v1`, which normalizes observations by symbol without
+creating scores or strategies. Signal scoring, backtests, and trading decisions
 still belong to separate future contracts.
 
 ## Machine Entry

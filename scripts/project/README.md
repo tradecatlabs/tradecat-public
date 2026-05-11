@@ -505,15 +505,23 @@ TUI 探针规则：
 
 ```bash
 tradecat analyze --json
+tradecat features --json
 ```
 
 `analyze --json` 只读取本地最新缓存，不联网、不写缓存，输出
 `tradecat.analysis_report.v1`。第一版消费 `event_stream`、`anomaly_panel`
 和 `market_stats`，生成观察、候选标的、证据、风险标记和限制说明。
 
+`features --json` 继续只读本地缓存，复用 `analysis_report.v1` 的候选和
+证据逻辑，输出 `tradecat.feature_bundle.v1`。它把观察结果按 `symbol`
+归一化成可验证事实包，包含 `features[]`、`source_dataset_keys`、
+`freshness`、`evidence_ids`、`confidence`、`risk_flags` 和
+`limitations`。
+
 它不是交易策略接口：不输出买卖建议、仓位、价格目标、回测或自动执行
-语义。空缓存时会返回非 0，并给出 `error.code=empty_analysis_cache`；
-需要先执行：
+语义；`features --json` 也不输出分数、收益预测或排序建议。空缓存时
+`analyze --json` 会返回 `error.code=empty_analysis_cache`，`features --json`
+会返回 `error.code=empty_feature_cache`；需要先执行：
 
 ```bash
 tradecat doctor --sync --timeout 10

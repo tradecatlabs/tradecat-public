@@ -30,6 +30,7 @@ tradecat-public/
 |   |-- analysis-contract.md
 |   |-- cache-contract.md
 |   |-- dataset-consumption-contract.md
+|   |-- feature-contract.md
 |   |-- first-run-cache.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
@@ -104,6 +105,13 @@ Local structured cache
 -> tradecat.analysis_report.v1 for Agent consumption
 ```
 
+```text
+tradecat.analysis_report.v1
+-> features.py per-symbol fact normalizer
+-> cli.py features --json
+-> tradecat.feature_bundle.v1 for Agent consumption
+```
+
 ## Source Boundaries
 
 - `registry.py`: dataset/workbook/gid/data mode single source of truth.
@@ -114,6 +122,9 @@ Local structured cache
 - `analysis.py`: local-cache-only observation report builder; emits
   `tradecat.analysis_report.v1` without strategy, advice, backtest, execution,
   network fetch, or cache write semantics.
+- `features.py`: local-cache-only symbol fact bundle builder; emits
+  `tradecat.feature_bundle.v1` without signal score, strategy, backtest,
+  execution, network fetch, or cache write semantics.
 - `cache.py`: local snapshot cache, manifest, stream event merge, prune.
 - `structured_cache.py`: structured latest projections.
 - `view_model.py`: display/raw/physical column model.
@@ -136,6 +147,7 @@ Local structured cache
 - `agents/manifest.json`: canonical machine-readable Agent contract.
 - `references/agent-contract.md`: Agent fast path, risk classes, exit codes, JSON schemas, and remote fetch contract.
 - `references/analysis-contract.md`: readonly analysis report contract and boundary against strategy, backtest, advice, or execution semantics.
+- `references/feature-contract.md`: readonly per-symbol fact bundle contract and boundary against signal, score, strategy, or execution semantics.
 - `references/agent-contract-maturity-task-tree.md`: post-signoff schema, manifest, and smoke hardening tree.
 - `references/agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
 - `references/dataset-consumption-contract.md`: dataset field semantics,

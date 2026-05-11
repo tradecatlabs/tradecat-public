@@ -18,6 +18,7 @@ CLI_SCHEMAS = {
     "prune": "tradecat.prune_result.v1",
     "export": "tradecat.dataset_view.v1",
     "analyze": "tradecat.analysis_report.v1",
+    "features": "tradecat.feature_bundle.v1",
     "watch": "tradecat.watch_cycle.v1",
 }
 

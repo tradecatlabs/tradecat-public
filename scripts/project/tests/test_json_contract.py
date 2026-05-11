@@ -72,12 +72,25 @@ def test_export_and_bundle_json_contracts(tmp_path, capsys):
         get_dataset("event_stream"),
         "时间(北京),内容\n2026-05-08 10:00:00,hello\n",
     )
+    write_dataset_body(
+        cache_dir,
+        get_dataset("anomaly_panel"),
+        "榜单,序号,交易对\n异动榜,1,BTCUSDT\n",
+    )
+    write_dataset_body(
+        cache_dir,
+        get_dataset("market_stats"),
+        "窗口,覆盖合约数,交易对口径\n24h,200,USDT perpetual\n",
+    )
 
     assert cli.main(["--cache-dir", str(cache_dir), "export", "event_stream", "--format", "json", "--limit", "1"]) == 0
     assert_contract(_last_json(capsys.readouterr().out), "tradecat.dataset_view.v1")
 
     assert cli.main(["--cache-dir", str(cache_dir), "analyze", "--json"]) == 0
     assert_contract(_last_json(capsys.readouterr().out), "tradecat.analysis_report.v1")
+
+    assert cli.main(["--cache-dir", str(cache_dir), "features", "--json"]) == 0
+    assert_contract(_last_json(capsys.readouterr().out), "tradecat.feature_bundle.v1")
 
     assert cli.main(["--cache-dir", str(cache_dir), "doctor", "--bundle", "-"]) == 0
     payload = json.loads(capsys.readouterr().out)

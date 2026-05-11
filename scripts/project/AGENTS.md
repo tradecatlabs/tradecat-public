@@ -36,6 +36,7 @@ tradecat-public/
 │   ├── analysis-contract.md
 │   ├── cache-contract.md
 │   ├── dataset-consumption-contract.md
+│   ├── feature-contract.md
 │   ├── first-run-cache.md
 │   ├── index.md
 │   ├── install-uninstall.md
@@ -89,6 +90,7 @@ tradecat-public/
         │       ├── dataset_contract.py
         │       ├── dataset_registry.json
         │       ├── diagnostics.py
+        │       ├── features.py
         │       ├── header_aliases.py
         │       ├── i18n.py
         │       ├── lifecycle.py
@@ -112,6 +114,7 @@ tradecat-public/
             ├── test_cache_tui.py
             ├── test_dataset_consumption_contract.py
             ├── test_exit_codes.py
+            ├── test_feature_bundle.py
             ├── test_json_contract.py
             ├── test_payload_schema_validation.py
             └── test_transport.py
@@ -143,6 +146,17 @@ Input(输入)：本地结构化缓存、dataset consumption contract、Agent ana
 -> 节点3：`dataset_contract.py` 提供字段角色、时间粒度和质量等级；`analysis.py` 只从显式 entity_key 字段提取候选标的
 -> 节点4：`contracts.py` 包装 `tradecat.analysis_report.v1`、稳定 `schema_version` 与 error object
 -> Output(输出)：Agent 可消费的观察报告；不包含交易建议、回测、评分或执行语义
+```
+
+### Flow 1.6: 本地观察报告到 symbol 事实包
+
+```text
+Input(输入)：本地结构化缓存、`tradecat.analysis_report.v1` 候选与证据逻辑、Agent features 请求
+-> 节点1：`cli.py` 接收 `features --json`，解析窗口和 symbol 数量限制
+-> 节点2：`features.py` 调用 `analysis.py` 的本地只读观察报告构建逻辑，不联网、不写缓存
+-> 节点3：`features.py` 只从显式 entity_key 候选和 observation 上下文生成 per-symbol facts
+-> 节点4：`contracts.py` 包装 `tradecat.feature_bundle.v1`、稳定 `schema_version` 与 error object
+-> Output(输出)：Agent 可消费的 symbol 事实包；不包含评分、策略、收益预测、回测或执行语义
 ```
 
 ### Flow 2: 本地缓存到 TUI 展示
@@ -229,6 +243,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `dataset_consumption_contract.json`：Agent 数据消费语义契约；定义字段语义、缺失值策略、时间粒度和质量等级。
 - `dataset_contract.py`：数据消费语义契约加载层；`datasets --json` 通过它输出每个 dataset 的 consumption contract。
 - `diagnostics.py`：本地诊断与 support bundle 层；只记录公开安全的错误摘要、环境摘要和缓存水位。
+- `features.py`：本地缓存只读 symbol 事实包层；复用 `analysis.py` 候选与证据逻辑生成 `tradecat.feature_bundle.v1`，禁止输出评分、策略、收益预测、回测、联网拉取或缓存写入。
 - `header_aliases.py`：字段别名元数据层；只进入 ViewModel 的 `column_meta.display_name`，禁止替代 TUI 表格物理列 A/B/C...
 - `i18n.py`：TUI/CLI 外壳文案的轻量多语言表；只处理中文、英文、韩语 UI 文案。
 - `install.sh`：POSIX 一键安装入口，覆盖 Linux / macOS / WSL / Git Bash。
@@ -241,6 +256,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `scripts/validate_dataset_consumption_contract.py`：dataset 消费语义契约校验入口；保证 registry、字段语义、缺失值策略和质量等级不漂移。
 - `tests/fixtures/json_contract/`：Agent JSON 契约 golden 样本；只保存脱敏、稳定、可 schema 校验的最小 payload。
 - `tests/test_analysis_report.py`：`analyze --json` 与 `tradecat.analysis_report.v1` 的本地缓存、空缓存和非法参数回归。
+- `tests/test_feature_bundle.py`：`features --json` 与 `tradecat.feature_bundle.v1` 的 symbol 事实、空缓存和非法参数回归。
 - `tests/test_payload_schema_validation.py`：真实 CLI/request payload 与 golden fixtures 的 JSON Schema 校验门禁；只能依赖 dev/test 依赖，不能把 `jsonschema` 带入运行时依赖。
 - `settings.py`：用户侧本地配置文件读写；管理默认语言、默认 tap、缓存目录和探针间隔，写入必须原子化并保留 `.bak`。
 - `sheets.py`：Google Sheets CSV 只读拉取与 matrix 解析；网络层使用 `urllib3` retry/backoff/jitter 和 typed error。
@@ -272,6 +288,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - 用户偏好必须通过 `settings.py` 写入本地 JSON；环境变量只作为更高优先级的临时覆盖。
 - `tradecat export` 必须只读本地缓存，不得触发远端网络请求。
 - `tradecat analyze --json` 必须只读本地缓存，不得触发远端网络请求或写缓存；输出只能是观察报告，禁止表达买卖建议、仓位、回测、价格目标或自动执行语义。
+- `tradecat features --json` 必须只读本地缓存，不得触发远端网络请求或写缓存；输出只能是 per-symbol 可验证事实，禁止表达买卖建议、分数、排序建议、收益预测、回测、价格目标或自动执行语义。
 - export 的 `csv/jsonl` 必须保留原始字段；`table` 必须保持物理列 A/B/C... 与原始表头行，方便对照在线表格。
 - TUI 探针间隔必须支持 dataset 独立配置；`event_stream` 默认 3.0s，其它 tap 默认 10s。
 - 单 tap 环境变量 `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` 优先于全局 `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL`，命令行 `--probe-interval` 优先级最高。

@@ -147,3 +147,13 @@ def test_analyze_empty_cache_returns_nonzero_json(tmp_path, capsys):
     assert payload["schema"] == "tradecat.analysis_report.v1"
     assert payload["ok"] is False
     assert payload["error"]["code"] == "empty_analysis_cache"
+
+
+def test_features_empty_cache_returns_nonzero_json(tmp_path, capsys):
+    exit_code = cli.main(["--cache-dir", str(tmp_path / "cache"), "features", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["schema"] == "tradecat.feature_bundle.v1"
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "empty_feature_cache"

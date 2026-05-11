@@ -111,6 +111,17 @@ fi
 json_expect "$TMP_DIR/analyze-empty.json" "tradecat.analysis_report.v1"
 json_expect_error_code "$TMP_DIR/analyze-empty.json" "empty_analysis_cache"
 
+set +e
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" features --json >"$TMP_DIR/features-empty.json"
+features_exit_code=$?
+set -e
+if [[ "$features_exit_code" -ne 1 ]]; then
+  echo "agent-smoke: empty feature cache returned exit $features_exit_code" >&2
+  exit 1
+fi
+json_expect "$TMP_DIR/features-empty.json" "tradecat.feature_bundle.v1"
+json_expect_error_code "$TMP_DIR/features-empty.json" "empty_feature_cache"
+
 bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe event_stream --json --no-write >"$TMP_DIR/probe.json"
 json_expect "$TMP_DIR/probe.json" "tradecat.probe_result.v1"
 
