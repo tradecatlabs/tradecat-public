@@ -38,6 +38,7 @@ tradecat-public/
 |   |-- release.md
 |   |-- stability-hardening-task-tree.md
 |   |-- stability-hardening-task-tree.json
+|   |-- test-strategy.md
 |   `-- tui-contract.md
 `-- scripts/
     |-- verify.sh
@@ -148,6 +149,7 @@ tradecat.analysis_report.v1
 - `references/agent-contract.md`: Agent fast path, risk classes, exit codes, JSON schemas, and remote fetch contract.
 - `references/analysis-contract.md`: readonly analysis report contract and boundary against strategy, backtest, advice, or execution semantics.
 - `references/feature-contract.md`: readonly per-symbol fact bundle contract and boundary against signal, score, strategy, or execution semantics.
+- `references/test-strategy.md`: QA strategy, module risk matrix, automation layers, release test gate, and defect template.
 - `references/agent-contract-maturity-task-tree.md`: post-signoff schema, manifest, and smoke hardening tree.
 - `references/agent-contract-maturity-task-tree.json`: machine-readable Agent contract maturity task tree spec.
 - `references/dataset-consumption-contract.md`: dataset field semantics,

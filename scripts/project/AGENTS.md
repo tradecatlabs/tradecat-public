@@ -45,6 +45,7 @@ tradecat-public/
 │   ├── release.md
 │   ├── stability-hardening-task-tree.md
 │   ├── stability-hardening-task-tree.json
+│   ├── test-strategy.md
 │   └── tui-contract.md
 └── scripts/
     ├── validate-skill.sh
@@ -112,11 +113,13 @@ tradecat-public/
             ├── test_agent_contract.py
             ├── test_analysis_report.py
             ├── test_cache_tui.py
+            ├── test_cli_boundaries.py
             ├── test_dataset_consumption_contract.py
             ├── test_exit_codes.py
             ├── test_feature_bundle.py
             ├── test_json_contract.py
             ├── test_payload_schema_validation.py
+            ├── test_state_migrations.py
             └── test_transport.py
 ```
 

@@ -39,6 +39,28 @@ def test_transport_classifies_timeout(monkeypatch):
     assert error.value.retryable is True
 
 
+def test_transport_classifies_connect_failure(monkeypatch):
+    import tradecat_terminal.sheets as sheets
+
+    def fake_request(*args, **kwargs):
+        raise sheets.NewConnectionError(None, "connection refused")
+
+    class FakePool:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        request = staticmethod(fake_request)
+
+    monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+
+    with pytest.raises(RemoteCsvError) as error:
+        fetch_csv_body("https://example.invalid/export.csv", timeout=1)
+
+    assert error.value.code == "remote_dns_or_connect_error"
+    assert error.value.kind == "network"
+    assert error.value.retryable is True
+
+
 def test_transport_classifies_http_status(monkeypatch):
     import tradecat_terminal.sheets as sheets
 
@@ -64,6 +86,31 @@ def test_transport_classifies_http_status(monkeypatch):
     assert error.value.retryable is True
 
 
+def test_transport_classifies_non_retryable_http_status(monkeypatch):
+    import tradecat_terminal.sheets as sheets
+
+    class Response:
+        status = 403
+        data = b"forbidden"
+
+    class FakePool:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def request(self, *args, **kwargs):
+            return Response()
+
+    monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+
+    with pytest.raises(RemoteCsvError) as error:
+        fetch_csv_body("https://example.invalid/export.csv", timeout=1)
+
+    assert error.value.code == "remote_http_status"
+    assert error.value.kind == "http"
+    assert error.value.status == 403
+    assert error.value.retryable is False
+
+
 def test_transport_classifies_decode_error(monkeypatch):
     import tradecat_terminal.sheets as sheets
 
@@ -82,6 +129,20 @@ def test_transport_classifies_decode_error(monkeypatch):
     assert error.value.code == "remote_decode_error"
     assert error.value.kind == "decode"
     assert error.value.retryable is False
+
+
+def test_parse_csv_rows_normalizes_blank_and_duplicate_headers():
+    from tradecat_terminal.sheets import parse_csv_rows
+
+    rows = parse_csv_rows("名称,名称,\nBTC,duplicate,blank-header-value\n")
+
+    assert rows == [
+        {
+            "名称": "BTC",
+            "名称_2": "duplicate",
+            "column_3": "blank-header-value",
+        }
+    ]
 
 
 def test_request_py_json_contract_uses_local_registry_file():

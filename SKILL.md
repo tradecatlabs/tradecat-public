@@ -154,7 +154,8 @@ tradecat-public/
 |   |-- install-uninstall.md
 |   |-- release.md
 |   |-- stability-hardening-task-tree.md
-|   `-- stability-hardening-task-tree.json
+|   |-- stability-hardening-task-tree.json
+|   `-- test-strategy.md
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
@@ -184,6 +185,7 @@ tradecat-public/
 - `references/dataset-consumption-contract.md`: dataset field semantics, missing values, time grain, and quality tier.
 - `references/analysis-contract.md`: local readonly analysis report contract and no-trading-advice boundary.
 - `references/feature-contract.md`: local readonly per-symbol feature fact bundle contract and no-scoring/no-strategy boundary.
+- `references/test-strategy.md`: QA strategy, risk matrix, automation layers, and release test gate.
 - `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
 - `references/linear-flows.md`: public flow map for cache, TUI, one-shot request, install, uninstall, export/config, doctor diagnostics, analysis report, feature bundle, and Agent fast path.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.

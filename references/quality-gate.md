@@ -101,6 +101,9 @@ Acceptance:
   deterministic except for the explicitly live public data checks.
 - Python 3.12 and 3.13 must pass the main verify job; cross-platform smoke covers
   Unix shell, PowerShell, status JSON, and plain TUI.
+- QA strategy and regression scope are maintained in
+  `references/test-strategy.md`; new high-risk behavior should either map to an
+  existing listed gate or extend that reference and the matching tests.
 
 ## Root Boundary Gate
 
@@ -135,6 +138,7 @@ quality rule changes, update the matching documentation in the same change:
   `references/agent-contract.md`, `references/quality-gate.md`.
 - Analysis report behavior: `references/analysis-contract.md`.
 - Feature bundle behavior: `references/feature-contract.md`.
+- Test strategy or release QA scope: `references/test-strategy.md`.
 - Public flow behavior: `references/linear-flows.md`.
 - Cache behavior: `references/cache-contract.md`.
 - TUI behavior: `references/tui-contract.md`.

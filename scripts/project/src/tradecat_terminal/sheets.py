@@ -159,22 +159,22 @@ def normalize_headers(headers: Sequence[str]) -> list[str]:
 
 def _classify_transport_error(exc: Exception, *, url: str, attempts: int) -> RemoteCsvError:
     reason = exc.reason if isinstance(exc, MaxRetryError) else exc
-    if isinstance(reason, (ConnectTimeoutError, ReadTimeoutError)):
-        return RemoteCsvError(
-            code="remote_timeout",
-            kind="timeout",
-            message=f"remote request timed out after {attempts} attempt(s)",
-            hint="网络超时；可执行 tradecat sync-all --timeout 10 或稍后重试。",
-            retryable=True,
-            attempts=attempts,
-            url=url,
-        )
     if isinstance(reason, (NameResolutionError, NewConnectionError)):
         return RemoteCsvError(
             code="remote_dns_or_connect_error",
             kind="network",
             message=f"remote connection failed: {reason}",
             hint="无法连接公开数据源；检查 DNS、代理或网络后重试。",
+            retryable=True,
+            attempts=attempts,
+            url=url,
+        )
+    if isinstance(reason, (ConnectTimeoutError, ReadTimeoutError)):
+        return RemoteCsvError(
+            code="remote_timeout",
+            kind="timeout",
+            message=f"remote request timed out after {attempts} attempt(s)",
+            hint="网络超时；可执行 tradecat sync-all --timeout 10 或稍后重试。",
             retryable=True,
             attempts=attempts,
             url=url,

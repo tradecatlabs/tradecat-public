@@ -41,6 +41,7 @@ tradecat-public/
 |   |-- release.md
 |   |-- stability-hardening-task-tree.md
 |   |-- stability-hardening-task-tree.json
+|   |-- test-strategy.md
 |   `-- tui-contract.md
 `-- scripts/
     |-- validate-skill.sh

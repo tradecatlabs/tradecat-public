@@ -14,10 +14,11 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 8. Dataset field semantics, missing values, time grain, and quality tier: `dataset-consumption-contract.md`.
 9. Analysis report contract, boundaries, and no-trading-advice scope: `analysis-contract.md`.
 10. Symbol feature facts contract and no-signal boundary: `feature-contract.md`.
-11. Release notes, install evidence, and rollback: `release.md`.
-12. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
-13. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
-14. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
+11. QA strategy, risk model, test layers, and release test gate: `test-strategy.md`.
+12. Release notes, install evidence, and rollback: `release.md`.
+13. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
+14. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
+15. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
 
 ## Reference Map
 
@@ -31,6 +32,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 - `dataset-consumption-contract.md`: machine-readable dataset field semantics, missing values, time grain, and quality tier.
 - `analysis-contract.md`: readonly local analysis report contract and explicit boundary against strategy, backtest, advice, or execution semantics.
 - `feature-contract.md`: per-symbol feature facts contract and explicit boundary against signal, score, strategy, or execution semantics.
+- `test-strategy.md`: QA entrypoint covering product understanding, module risk matrix, automation layers, release gate, regression checklist, and defect template.
 - `quality-gate.md`: pre-delivery checklist, validation commands, root/project boundary audit, and release evidence.
 - `release.md`: public release notes, CI evidence, fixed-ref install commands, known limits, and rollback.
 - `stability-hardening-task-tree.md`: current TP-XX stability and robustness hardening backlog, execution waves, ready leaves, gates, and validation plan.

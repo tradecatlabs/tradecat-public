@@ -413,6 +413,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload.get("ok") else 1
 
     if args.command == "watch":
+        if args.interval <= 0:
+            return _command_error(
+                "watch",
+                "--interval 必须大于 0",
+                as_json=args.json,
+                code="invalid_runtime_configuration",
+                hint="检查 watch 参数后重试；持续探测间隔必须是正数。",
+                kind="configuration",
+            )
+        if args.max_cycles is not None and args.max_cycles < 1:
+            return _command_error(
+                "watch",
+                "--max-cycles 必须大于 0",
+                as_json=args.json,
+                code="invalid_runtime_configuration",
+                hint="检查 watch 参数后重试；--max-cycles 必须至少为 1。",
+                kind="configuration",
+            )
         try:
             cycles = watch_datasets(
                 config.cache_dir,
@@ -652,6 +670,8 @@ def export_view(
     limit: int,
     lang: str | None,
 ) -> str:
+    if limit < 0:
+        raise ValueError("--limit 必须大于等于 0")
     view = build_dataset_view(cache_dir, dataset_key, lang=lang)
     rows = list(view.get("rows") or [])
     if limit > 0:
@@ -753,14 +773,19 @@ def _payload_ok(payload: dict) -> bool:
 
 def _resolve_max_snapshots(value: int | None) -> int | None:
     if value is not None:
+        if value < 0:
+            raise ValueError("--max-snapshots 必须大于等于 0")
         return value
     raw = os.environ.get("TRADECAT_CACHE_MAX_SNAPSHOTS")
     if raw is None or not raw.strip():
         return None
     try:
-        return int(raw)
+        parsed = int(raw)
     except ValueError as exc:
-        raise SystemExit("TRADECAT_CACHE_MAX_SNAPSHOTS 必须是整数") from exc
+        raise ValueError("TRADECAT_CACHE_MAX_SNAPSHOTS 必须是整数") from exc
+    if parsed < 0:
+        raise ValueError("TRADECAT_CACHE_MAX_SNAPSHOTS 必须大于等于 0")
+    return parsed
 
 
 def _should_default_to_tui(argv: list[str]) -> bool:
