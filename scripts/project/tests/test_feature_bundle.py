@@ -36,6 +36,63 @@ def test_feature_bundle_empty_cache_returns_stable_error(tmp_path):
     assert payload["symbols"] == []
 
 
+def test_feature_bundle_respects_symbol_limit(tmp_path):
+    cache_dir = tmp_path / "cache"
+    _seed_feature_cache(cache_dir)
+
+    payload = build_feature_bundle(cache_dir, symbol_limit=1)
+
+    assert payload["ok"] is True
+    assert [item["symbol"] for item in payload["symbols"]] == ["BTCUSDT"]
+
+
+def test_feature_bundle_does_not_invent_context_features_when_context_cache_missing(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("anomaly_panel"),
+        "榜单,序号,交易对\n异动榜,1,BTCUSDT\n",
+    )
+
+    payload = build_feature_bundle(cache_dir)
+
+    assert payload["ok"] is True
+    assert {feature["name"] for feature in payload["symbols"][0]["features"]} == {"anomaly_panel.presence"}
+    assert payload["symbols"][0]["source_dataset_keys"] == ["anomaly_panel"]
+    assert "partial_analysis_cache" in {item["code"] for item in payload["risk_flags"]}
+
+
+def test_feature_bundle_does_not_infer_symbol_from_event_text(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        "时间(北京),内容\n2026-05-11 09:00:00,BTCUSDT 出现公开事件\n",
+    )
+
+    payload = build_feature_bundle(cache_dir)
+
+    assert payload["ok"] is False
+    assert payload["symbols"] == []
+    assert payload["error"]["code"] == "empty_feature_cache"
+
+
+def test_feature_bundle_does_not_fetch_network(tmp_path, monkeypatch):
+    import tradecat_terminal.cache as cache_module
+
+    def fail_fetch(*args, **kwargs):
+        raise AssertionError("features must not fetch network data")
+
+    cache_dir = tmp_path / "cache"
+    _seed_feature_cache(cache_dir)
+    monkeypatch.setattr(cache_module, "fetch_csv_body", fail_fetch)
+
+    payload = build_feature_bundle(cache_dir)
+
+    assert payload["ok"] is True
+    assert payload["symbols"][0]["symbol"] == "BTCUSDT"
+
+
 def test_features_cli_json_contract(tmp_path, capsys):
     cache_dir = tmp_path / "cache"
     _seed_feature_cache(cache_dir)
@@ -56,6 +113,21 @@ def test_features_cli_invalid_request_has_stable_error(tmp_path, capsys):
     assert payload["schema"] == "tradecat.feature_bundle.v1"
     assert payload["ok"] is False
     assert payload["error"]["code"] == "invalid_feature_request"
+
+
+def test_features_cli_unexpected_exception_has_stable_error(tmp_path, capsys, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "build_feature_bundle", boom)
+
+    assert cli.main(["--cache-dir", str(tmp_path / "cache"), "features", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["schema"] == "tradecat.feature_bundle.v1"
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "local_runtime_error"
+    assert payload["error"]["message"] == "boom"
 
 
 def _seed_feature_cache(cache_dir):

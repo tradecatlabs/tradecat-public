@@ -41,6 +41,36 @@ def test_analysis_report_empty_cache_returns_stable_error(tmp_path):
     assert payload["dataset_freshness"][0]["cache_state"] == "empty"
 
 
+def test_analysis_report_limits_and_deduplicates_candidate_symbols(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("anomaly_panel"),
+        "榜单,序号,交易对\n异动榜,1,BTCUSDT\n异动榜,2,btcusdt\n异动榜,3,ETHUSDT\n异动榜,4,SOLUSDT\n",
+    )
+
+    payload = build_analysis_report(cache_dir, candidate_limit=2)
+
+    assert payload["ok"] is True
+    assert [item["symbol"] for item in payload["candidate_symbols"]] == ["BTCUSDT", "ETHUSDT"]
+    assert payload["candidate_symbols"][0]["evidence_ids"] == ["anomaly_panel:row:2", "anomaly_panel:row:3"]
+
+
+def test_analysis_report_does_not_infer_symbols_from_event_text(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("event_stream"),
+        "时间(北京),内容\n2026-05-11 09:00:00,BTCUSDT 出现公开事件\n",
+    )
+
+    payload = build_analysis_report(cache_dir)
+
+    assert payload["ok"] is True
+    assert payload["candidate_symbols"] == []
+    assert "no_candidate_symbols" in {item["code"] for item in payload["risk_flags"]}
+
+
 def test_analyze_cli_json_contract(tmp_path, capsys):
     cache_dir = tmp_path / "cache"
     _seed_analysis_cache(cache_dir)
