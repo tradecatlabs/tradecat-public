@@ -7,6 +7,17 @@
   "skill_root": ".",
   "project_root": "scripts/project",
   "default_workdir": ".",
+  "human_docs": [
+    "README.md",
+    "references/hermes-agent-guide.md",
+    "scripts/project/README.md"
+  ],
+  "agent_docs": [
+    "SKILL.md",
+    "agents/manifest.json",
+    "references/agent-contract.md",
+    "references/hermes-agent-guide.md"
+  ],
   "agent_profiles": [
     {
       "id": "openai",
@@ -348,6 +359,7 @@
     "skill_entry": "SKILL.md",
     "agent_manifest": "agents/manifest.json",
     "agent_contract": "references/agent-contract.md",
+    "hermes_agent_guide": "references/hermes-agent-guide.md",
     "project_readme": "scripts/project/README.md",
     "project_agents": "scripts/project/AGENTS.md",
     "formal_contract_schemas": "scripts/project/contracts",
@@ -375,6 +387,7 @@
   },
   "references": [
     "references/agent-contract.md",
+    "references/hermes-agent-guide.md",
     "references/agent-contract-maturity-task-tree.md",
     "references/architecture.md",
     "references/cache-contract.md",
@@ -480,6 +493,34 @@
       "repair": "Wait for a fresh event_stream row or raise --max-event-age-seconds for diagnostic paper tests only."
     },
     {
+      "code": "agent_market_context_load_failed",
+      "kind": "validation",
+      "meaning": "The supplied Agent market-context file could not be read or parsed as JSON.",
+      "retryable": false,
+      "repair": "Check the --input path, ensure it is a local JSON object, and retry context-audit before run-context."
+    },
+    {
+      "code": "credential_material_forbidden",
+      "kind": "safety_gate",
+      "meaning": "The supplied Agent market context contains credential-like keys or values.",
+      "retryable": false,
+      "repair": "Remove API keys, secrets, signatures, listen keys, private keys, and account material; use only public/read-only market data."
+    },
+    {
+      "code": "signed_request_forbidden",
+      "kind": "safety_gate",
+      "meaning": "A market_data item is marked signed or requires a signature.",
+      "retryable": false,
+      "repair": "Replace it with a public GET endpoint where requires_signature=false and signed=false."
+    },
+    {
+      "code": "endpoint_not_allowlisted",
+      "kind": "safety_gate",
+      "meaning": "A market_data endpoint is outside the public/read-only family allowlist.",
+      "retryable": false,
+      "repair": "Use only the families and endpoints advertised by tradecat-auto-agent-market-context.schema.json and context-audit."
+    },
+    {
       "code": "mainnet_execution_not_implemented",
       "kind": "safety_gate",
       "meaning": "Mainnet execution is deliberately rejected by the deterministic risk gate.",
@@ -489,6 +530,7 @@
   ],
   "safe_order_of_operations": [
     "read agents/manifest.json",
+    "read references/hermes-agent-guide.md when the task involves local Hermes skill installation, development/production boundary, or Agent-supplied market context",
     "when installed under ~/.hermes/skills/tradecat-public, load this repo as the Hermes skill and use agents/manifest.json as the machine entrypoint",
     "run bash scripts/run-tradecat.sh status --json",
     "run bash scripts/run-tradecat.sh datasets --json",

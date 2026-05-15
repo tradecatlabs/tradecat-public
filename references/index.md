@@ -12,14 +12,15 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 6. End-to-end public data, automation, and install flows: `linear-flows.md`.
 7. Local user/runtime data handling for the public repo: `local-user-data.md`.
 8. Agent/Hermes machine contract, fast path, command risk classes, and JSON schemas: `agent-contract.md`.
-9. Dataset field semantics, missing values, time grain, and quality tier: `dataset-consumption-contract.md`.
-10. Analysis report contract, boundaries, and no-trading-advice scope: `analysis-contract.md`.
-11. Symbol feature facts contract and no-signal boundary: `feature-contract.md`.
-12. QA strategy, risk model, test layers, and release test gate: `test-strategy.md`.
-13. Release notes, install evidence, and rollback: `release.md`.
-14. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
-15. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
-16. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
+9. Human + Hermes operating guide for development/production boundary, skill install, and Agent-supplied market context: `hermes-agent-guide.md`.
+10. Dataset field semantics, missing values, time grain, and quality tier: `dataset-consumption-contract.md`.
+11. Analysis report contract, boundaries, and no-trading-advice scope: `analysis-contract.md`.
+12. Symbol feature facts contract and no-signal boundary: `feature-contract.md`.
+13. QA strategy, risk model, test layers, and release test gate: `test-strategy.md`.
+14. Release notes, install evidence, and rollback: `release.md`.
+15. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
+16. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
+17. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
 
 ## Reference Map
 
@@ -31,6 +32,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 - `linear-flows.md`: public linear flows covering cache sync, TUI, one-shot request, install, uninstall, config/export, doctor diagnostics, analysis report, feature bundle, paper/watch automation, and Agent fast path.
 - `local-user-data.md`: public-safe policy for managing local user/runtime data, ignored files, sanitized fixtures, and non-commit boundaries.
 - `agent-contract.md`: canonical multi-Agent consumption contract, fast path, risk classes, exit codes, JSON schema names, and transport split.
+- `hermes-agent-guide.md`: human/Hermes operating guide for development-vs-production boundaries, local skill installation, Agent-supplied market context, safety boundaries, and validation checklist.
 - `dataset-consumption-contract.md`: machine-readable dataset field semantics, missing values, time grain, and quality tier.
 - `analysis-contract.md`: readonly local analysis report contract and explicit boundary against strategy, backtest, advice, or execution semantics.
 - `feature-contract.md`: per-symbol feature facts contract and explicit boundary against signal, score, strategy, or execution semantics.

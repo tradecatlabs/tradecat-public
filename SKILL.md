@@ -7,6 +7,8 @@ description: "TradeCat public Hermes skill: when installed as ~/.hermes/skills/t
 
 Use this skill when the user wants their local Hermes/Agent to understand and operate TradeCat through this installed `tradecat-public` skill. The repo root is the Hermes skill boundary; `scripts/project/` is only the bundled local tool/contract implementation used by the skill.
 
+Current development happens in `/home/lenovo/.projects/cat/tradecat-public`. Production use should install a verified copy, clone, or symlink under `~/.hermes/skills/tradecat-public` later; do not treat the development checkout and production skill copy as the same deployment boundary.
+
 ## When to Use This Skill
 
 Trigger when any of these applies:
@@ -29,7 +31,15 @@ Trigger when any of these applies:
 ### Project Location
 
 ```bash
-cd scripts/project
+cd /home/lenovo/.projects/cat/tradecat-public
+```
+
+### Hermes Development Mount
+
+```bash
+mkdir -p ~/.hermes/skills
+ln -sfn /home/lenovo/.projects/cat/tradecat-public ~/.hermes/skills/tradecat-public
+hermes -s tradecat-public
 ```
 
 ### Agent Fast Path
@@ -42,6 +52,16 @@ bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
 ```
+
+### Agent-supplied Market Context
+
+```bash
+bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
+bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
+bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
+```
+
+Rules: audit before run-context; allow only public/read-only GET market endpoints; reject credentials, signatures, account/order endpoints, and real execution.
 
 ### Validate Skill And Project
 
@@ -151,6 +171,7 @@ tradecat-public/
 |   |-- dataset-consumption-contract.md
 |   |-- feature-contract.md
 |   |-- first-run-cache.md
+|   |-- hermes-agent-guide.md
 |   |-- linear-flows.md
 |   |-- tui-contract.md
 |   |-- quality-gate.md
@@ -192,6 +213,7 @@ tradecat-public/
 - `references/feature-contract.md`: local readonly per-symbol feature fact bundle contract and no-scoring/no-strategy boundary.
 - `references/test-strategy.md`: QA strategy, risk matrix, automation layers, and release test gate.
 - `references/first-run-cache.md`: cold-start cache diagnosis, prevention rules, and recovery commands.
+- `references/hermes-agent-guide.md`: human/Hermes operating guide for development-vs-production boundaries, skill installation, Agent-supplied market context, and safety checks.
 - `references/linear-flows.md`: public flow map for cache, TUI, one-shot request, install, uninstall, export/config, doctor diagnostics, analysis report, feature bundle, and Agent fast path.
 - `references/tui-contract.md`: TUI rendering, probing, and terminal compatibility rules.
 - `references/install-uninstall.md`: installer, launcher, update, and uninstall constraints.
@@ -232,7 +254,17 @@ tradecat-public/
   4. Run `bash scripts/verify.sh`.
 - Expected output / acceptance: cache-first startup, background probe, failure backoff, and plain fallback contracts remain intact.
 
-### Example 4: Optimize The Skill Wrapper
+### Example 4: Use Agent-supplied Market Context
+
+- Input: "Use the Binance context file from an Agent and run a paper report."
+- Steps:
+  1. Read `references/hermes-agent-guide.md` and `references/agent-contract.md`.
+  2. Run `bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json`.
+  3. Only if audit `ok=true`, run `bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json`.
+  4. For replay, run `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
+- Expected output / acceptance: input stays public/read-only, credentials/signatures/account/order endpoints are rejected, and output remains paper/watch with no real orders.
+
+### Example 5: Optimize The Skill Wrapper
 
 - Input: "Use auto-skill to optimize this skill and fill missing files."
 - Steps:

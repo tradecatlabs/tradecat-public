@@ -1,14 +1,21 @@
 # tradecat-public
 
-这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`scripts/project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，长文档契约见 `references/agent-contract.md`。
+这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`scripts/project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，长文档契约见 `references/agent-contract.md`，人类与 Hermes 共用的操作指南见 `references/hermes-agent-guide.md`。
 
+## 当前开发/生产边界
+
+当前只在开发目录 `/home/lenovo/.projects/cat/tradecat-public` 内开发、验证和提交；后续生产使用时再把验证后的仓库 clone/copy/symlink 到目标环境的 `~/.hermes/skills/tradecat-public`。不要在旧的 `tradecat-auto` 私有目录或生产 skill 目录里直接改实现。根目录是 Hermes Skill 外壳，`scripts/project/` 是唯一 Python 项目根。
+
+给人看的入口：先读本 README 和 `references/hermes-agent-guide.md`，确认安装、开发/生产边界、运行态隔离和安全限制。
+
+给 Hermes/Agent 看的入口：先读 `SKILL.md`，再把 `agents/manifest.json` 当作唯一机器主契约；`agents/hermes.yaml` 与 `agents/openai.yaml` 只是平台适配层，不能变成第二份真实契约。
 
 ## 安装给本机 Hermes 使用
 
 最简单方式是把本仓库作为 Hermes skill 放到本机 skills 目录：
 
 ```bash
-git clone https://github.com/tukuaiai/tradecat-public ~/.hermes/skills/tradecat-public
+git clone https://github.com/tukuaiai/tradecat.git ~/.hermes/skills/tradecat-public
 hermes -s tradecat-public
 ```
 
@@ -103,6 +110,7 @@ tradecat-public/
 |   |-- dataset-consumption-contract.md
 |   |-- feature-contract.md
 |   |-- first-run-cache.md
+|   |-- hermes-agent-guide.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md

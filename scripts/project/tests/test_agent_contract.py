@@ -179,10 +179,19 @@ def test_agent_profiles_point_to_manifest_instead_of_second_truth():
 def test_agent_contract_reference_is_indexed():
     index = (SKILL_ROOT / "references" / "index.md").read_text(encoding="utf-8")
     contract = (SKILL_ROOT / "references" / "agent-contract.md").read_text(encoding="utf-8")
+    guide = (SKILL_ROOT / "references" / "hermes-agent-guide.md").read_text(encoding="utf-8")
+    manifest = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
 
     assert "agent-contract.md" in index
+    assert "hermes-agent-guide.md" in index
+    assert "references/hermes-agent-guide.md" in manifest["human_docs"]
+    assert "references/hermes-agent-guide.md" in manifest["agent_docs"]
+    assert manifest["important_paths"]["hermes_agent_guide"] == "references/hermes-agent-guide.md"
     assert "Agent Fast Path" in contract
     assert "Command Risk Classes" in contract
+    assert "Agent-supplied Market Context Contract" in contract
+    assert "给 Hermes/Agent 的最小流程" in guide
+    assert "Agent-supplied market context 输入契约" in guide
 
 
 def test_formal_contract_schemas_are_valid_json():

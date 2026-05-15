@@ -35,6 +35,7 @@ tradecat-public/
 |   |-- dataset-consumption-contract.md
 |   |-- feature-contract.md
 |   |-- first-run-cache.md
+|   |-- hermes-agent-guide.md
 |   |-- install-uninstall.md
 |   |-- linear-flows.md
 |   |-- quality-gate.md

@@ -6,6 +6,14 @@ is `agents/manifest.json`; platform files such as `agents/openai.yaml` and
 `agents/hermes.yaml` are thin adapters and must not become second sources of
 truth.
 
+Human + Hermes operating guide: `references/hermes-agent-guide.md`. Use it when the task is about local Hermes skill installation, development-vs-production boundaries, or Agent-supplied Binance market context.
+
+## Hermes Skill Consumption
+
+When this repo is installed under `~/.hermes/skills/tradecat-public`, Hermes should load `SKILL.md` first and then treat this file plus `agents/manifest.json` as the operating contract. The default working directory is always the skill root (`.`), not `scripts/project/`; use the root wrapper `bash scripts/run-tradecat.sh ...` unless a command explicitly says to enter `scripts/project/`.
+
+Development is currently performed in `/home/lenovo/.projects/cat/tradecat-public`. Production use should consume a verified copy/clone/symlink under `~/.hermes/skills/tradecat-public`; do not mix local runtime files from development with production runtime state.
+
 ## Agent Fast Path
 
 Use this order for inspection and diagnosis:
@@ -57,11 +65,12 @@ bash scripts/agent-smoke.sh
 | `network_readonly` | Reads public network data without writing cache. | `scripts/project/scripts/request.py event_stream --format json` |
 | `local_cache_write` | Writes only local TradeCat cache, settings, or diagnostics. | `init`, `sync`, `doctor --repair`, `prune --apply` |
 | `background_long_running` | Starts or supervises a local watcher. | `scripts/project/scripts/start.sh start`, `watch` |
+| `paper_runtime_write` | Writes only local paper/watch runtime state, ledger, archive, PID, or logs; never real orders. | `auto run-loop --once`, `start-auto-paper.sh start` |
 | `install_or_uninstall` | Changes user install paths, launchers, venv, or PATH guidance. | `install.sh`, `install.ps1`, `uninstall.*` |
 | `security_or_supply_chain` | Runs scanner/audit tooling that may download metadata. | `security-scan.sh`, `supply-chain-audit.sh` |
 
 Default Agent behavior must start with `local_readonly`. Do not run install,
-uninstall, `prune --apply`, or background watchers unless the task explicitly
+uninstall, `prune --apply`, `sync`, paper runtime writes, or background watchers unless the task explicitly
 requires that side effect.
 
 ## JSON Contract
@@ -154,6 +163,44 @@ Breaking JSON changes require updating `agents/manifest.json`, this document,
 `scripts/project/tests/test_agent_contract.py`, and
 `scripts/project/tests/test_payload_schema_validation.py` in the same change.
 
+## Agent-supplied Market Context Contract
+
+Hermes/Agent may gather Binance public market context outside TradeCat, then hand a local JSON file to TradeCat for schema validation, signal alignment, paper/watch analysis, ledger/replay, and audit. TradeCat must not read Binance credentials, sign requests, read account state, or place real orders.
+
+Canonical input schema:
+
+- Payload schema: `tradecat_auto.agent_market_context.v1`.
+- Schema file: `scripts/project/contracts/tradecat-auto-agent-market-context.schema.json`.
+- Source/provenance manifest: `scripts/project/resources/agent_market_context/binance/provenance.manifest.json`.
+- Audit command: `bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json`.
+- Paper/watch command: `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --notional-usdt 12 --json`.
+- Replay command: `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
+
+Required command order:
+
+1. Validate JSON syntax and schema/version.
+2. Run `context-audit`.
+3. Continue to `run-context` only when audit `ok=true`.
+4. Inspect `run_once_report.v1` / paper ledger / replay report; never convert paper output into real orders.
+
+Allowed context families are intentionally narrow and public/read-only: `klines`, `order_book_depth`, `book_ticker`, `24h_ticker`, `funding_rate`, `premium_index`, `open_interest`, `open_interest_history`, `long_short_ratios`, and `taker_buy_sell_volume`. Each item must be `method=GET`, `requires_signature=false`, and `signed=false`.
+
+Forbidden material includes API keys, secrets, signatures, listen keys, private keys, account/balance/position endpoints, order endpoints, leverage or margin mutation endpoints, and any instruction to execute real orders. `context-audit` must reject such input before `run-context`.
+
+Automation payload schemas currently advertised through `agents/manifest.json` include:
+
+| Command | Schema |
+| --- | --- |
+| `auto paper-report --json` | `tradecat_auto.paper_report.v1` |
+| `auto market-universe --json` | `tradecat_auto.market_universe.v1` |
+| `auto probe-public --json` | `tradecat_auto.public_probe.v1` |
+| `auto run-once --mode paper --json` | `tradecat_auto.run_once_report.v1` |
+| `auto run-loop --mode paper --once --json` | `tradecat_auto.service_cycle.v1` |
+| `start-auto-paper.sh status/start/stop --json` | `tradecat_auto.paper_service_status.v1` |
+| `auto context-audit --input <context.json> --json` | `tradecat_auto.agent_market_context_audit.v1` |
+| `auto run-context --input <context.json> --mode paper --json` | `tradecat_auto.run_once_report.v1` |
+| `auto replay-report --archive-path ... --ledger-path ... --json` | `tradecat_auto.replay_report.v1` |
+
 ## Exit Code Contract
 
 - `0`: command succeeded or returned a valid readonly status payload.
@@ -175,7 +222,13 @@ collapse these into dataset errors. Analysis report failures use
 arguments.
 Feature bundle failures use `error.code=empty_feature_cache` when no symbol can
 be normalized into feature facts and `error.code=invalid_feature_request` for
-invalid `--window` or `--limit` arguments.
+invalid `--window` or `--limit` arguments. Agent market-context failures use
+`agent_market_context_load_failed` when the context file cannot be read/parsed,
+`invalid_schema` or `invalid_schema_version` for envelope mismatch,
+`credential_material_forbidden` for credential-like fields,
+`signed_request_forbidden` for signed or signature-required items,
+`forbidden_endpoint` / `endpoint_not_allowlisted` for account/order or unsupported endpoints,
+and `unsupported_family` for market-data families outside the public/read-only allowlist.
 
 ## Remote Fetch Contract
 

@@ -3,6 +3,7 @@ short_description: Operate and maintain the bundled TradeCat public terminal pro
 default_prompt: "Use the TradeCat public skill to inspect, validate, or modify the bundled cache-first CLI/TUI project under scripts/project."
 manifest: agents/manifest.json
 agent_contract: references/agent-contract.md
+hermes_agent_guide: references/hermes-agent-guide.md
 default_workdir: .
 project_root: scripts/project
 fast_path:
@@ -12,3 +13,7 @@ fast_path:
   - bash scripts/run-tradecat.sh path event_stream --json
   - bash scripts/run-tradecat.sh analyze --json
   - bash scripts/run-tradecat.sh features --json
+notes:
+  - Treat manifest.json as the only canonical machine contract.
+  - Read references/hermes-agent-guide.md for development-vs-production boundaries and Agent-supplied market context.
+  - Prefer readonly commands before sync/install/uninstall.

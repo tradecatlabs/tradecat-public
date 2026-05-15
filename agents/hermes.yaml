@@ -2,6 +2,7 @@ display_name: TradeCat Public Hermes
 short_description: Hermes adapter for the TradeCat public multi-agent Skill wrapper.
 manifest: agents/manifest.json
 agent_contract: references/agent-contract.md
+hermes_agent_guide: references/hermes-agent-guide.md
 default_workdir: .
 project_root: scripts/project
 fast_path:
@@ -14,4 +15,5 @@ fast_path:
   - python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 notes:
   - Treat manifest.json as the only canonical machine contract.
+  - Read references/hermes-agent-guide.md for development-vs-production boundaries and Agent-supplied market context.
   - Prefer readonly commands before sync/install/uninstall.

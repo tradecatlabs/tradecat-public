@@ -556,6 +556,7 @@ tradecat doctor --sync --timeout 10
 ```
 
 `tradecat auto ...` 是给 Hermes/Agent 调用的本地契约适配层，位于 `src/tradecat_auto/`。
+给人和 Hermes 共用的安装/运行/安全指南见仓库根目录 `references/hermes-agent-guide.md`；机器主契约仍是仓库根目录 `agents/manifest.json`。
 Agent/Hermes 可参考 `resources/agent_market_context/binance/provenance.manifest.json`
 中的本地自包含 Binance skill/API 快照，但运行期仍只接收 public/read-only
 market context。它从 `event_stream` / `anomaly_panel` 和 Binance USDⓈ-M public REST 构造
