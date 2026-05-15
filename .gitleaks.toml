@@ -1,0 +1,14 @@
+title = "TradeCat public secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Vendored Binance reference docs contain literal placeholder API-key header examples, not real credentials. Keep this scoped to the self-contained Agent market-context snapshot."
+paths = [
+  '''scripts/project/resources/agent_market_context/binance/api-docs/.*''',
+  '''scripts/project/resources/agent_market_context/binance/upstream/binance-skills-hub-main/skills/binance/.*/references/authentication\.md''',
+]
+regexes = [
+  '''X-MBX-APIKEY:\s*your_api_key''',
+]

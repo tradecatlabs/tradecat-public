@@ -5,8 +5,8 @@
 
 ## 目录定位
 
-根目录是 Skill 外壳，不是 Python 项目根。TradeCat 用户侧源码统一归入
-`scripts/project/`。
+根目录是 Skill 外壳，不是 Python 项目根。TradeCat 用户侧源码与自动化生命周期源码统一归入
+`scripts/project/`；`tradecat-auto` 已并入此处，不再作为独立实现中心。
 
 ```text
 tradecat-public/
@@ -61,8 +61,11 @@ tradecat-public/
         |-- pyproject.toml
         |-- constraints.txt
         |-- contracts/
+        |-- resources/
         |-- scripts/
         |-- src/
+        |   |-- tradecat_terminal/
+        |   `-- tradecat_auto/
         `-- tests/
 ```
 
@@ -90,9 +93,11 @@ tradecat-public/
 - `README.md`：用户安装、运行、开发说明。
 - `pyproject.toml` / `constraints.txt` / `Makefile`：Python 项目元数据、依赖锁定口径与开发入口。
 - `contracts/`：公开 JSON Schema 草案文件，用于外部工具校验 Agent/CLI 契约。
+- `resources/`：项目内自包含参考资源；当前包含 Binance Agent market context 的只读 skill/API 快照与 provenance manifest。
 - `install.*` / `uninstall.*`：用户安装与卸载入口。
 - `scripts/`：项目级脚本，包含 registry/CSV 与 dataset consumption contract 校验入口。
 - `src/tradecat_terminal/`：TradeCat CLI / TUI / analysis / feature facts 源码，以及 dataset registry 与 dataset consumption contract 机器资源。
+- `src/tradecat_auto/`：TradeCat → Binance USDⓈ-M public-readonly + paper/watch 自动化生命周期源码；当前禁止真实账户读写和真实下单。
 - `tests/`：项目测试。
 - `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`：项目治理与调试记录，随仓库提交；
   必须保持公开安全，不得写入凭证、缓存内容或私密环境变量。

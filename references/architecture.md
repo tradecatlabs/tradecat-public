@@ -1,6 +1,6 @@
 # Architecture
 
-`tradecat-public` is a multi-Agent skill wrapper around a bundled user-side TradeCat project.
+`tradecat-public` is a multi-Agent skill wrapper around a bundled user-side TradeCat project and the merged TradeCat automation lifecycle layer. `tradecat-auto` has been merged into `scripts/project/src/tradecat_auto/`; new implementation work must happen here.
 
 The Skill root is not the Python project root. It exists to hold Skill metadata,
 Git metadata, references, and thin entry scripts.
@@ -63,20 +63,23 @@ scripts/project/
 |-- constraints.txt
 |-- contracts/
 |-- scripts/
-|-- src/tradecat_terminal/
+|-- src/
+|   |-- tradecat_terminal/
+|   `-- tradecat_auto/
 `-- tests/
 ```
 
 ## Mission
 
-TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snapshot cache files, and exposes CLI/TUI/export flows for users and agents. `agents/manifest.json` is the canonical machine contract for Agent/Hermes consumption.
+TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snapshot cache files, exposes CLI/TUI/export flows for users and agents, and now houses the full local paper/watch automation lifecycle: Binance USDⓈ-M public market enrichment, deterministic signal/strategy/risk contracts, paper execution, paper ledger, and safe run-loop. `agents/manifest.json` is the canonical machine contract for Agent/Hermes consumption.
 
 ## Forbidden Paths
 
 - No TradeCat server PostgreSQL access.
 - No SQLite or SQL query layer.
 - No server production-chain dependency.
-- No private credentials or generated cache files in Git.
+- No private credentials, generated cache files, paper ledgers, JSONL archives, or local runtime files in Git.
+- No Binance signed account/trade endpoints or real order execution in the current `tradecat_auto` layer; only public-readonly + paper/watch is allowed until deterministic testnet/mainnet gates are implemented.
 - No root `assets/` or `assets/examples/`.
 
 ## Movement Rules
@@ -113,6 +116,17 @@ tradecat.analysis_report.v1
 -> tradecat.feature_bundle.v1 for Agent consumption
 ```
 
+```text
+tradecat-public request.py event_stream/anomaly_panel
++ Binance USDⓈ-M public REST
+-> tradecat_auto.market_enrichment.py
+-> tradecat_auto.signals.py / strategies.py
+-> tradecat_auto.risk.py deterministic risk gate
+-> tradecat_auto.paper_broker.py / paper_ledger.py
+-> tradecat_auto.service.py safe run-loop
+-> tradecat_auto.cli run-once/run-loop/paper-report
+```
+
 ## Source Boundaries
 
 - `registry.py`: dataset/workbook/gid/data mode single source of truth.
@@ -126,6 +140,7 @@ tradecat.analysis_report.v1
 - `features.py`: local-cache-only symbol fact bundle builder; emits
   `tradecat.feature_bundle.v1` without signal score, strategy, backtest,
   execution, network fetch, or cache write semantics.
+- `src/tradecat_auto/`: merged TradeCat → Binance public-readonly paper/watch lifecycle layer; emits enrichment, signal, strategy intent, risk decision, paper execution, paper ledger, and service cycle contracts without real orders or signed account calls.
 - `cache.py`: local snapshot cache, manifest, stream event merge, prune.
 - `structured_cache.py`: structured latest projections.
 - `view_model.py`: display/raw/physical column model.

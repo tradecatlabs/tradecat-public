@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-agent-market-context-sources.schema.json",
+  "title": "TradeCat Agent Market Context Sources",
+  "description": "Provenance and safety boundary manifest for local self-contained Agent/Hermes market-context reference resources.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "copied_at",
+    "destination_root",
+    "copy_policy",
+    "tradecat_boundary",
+    "sources",
+    "copied_files",
+    "safety_scan"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat.agent_market_context_sources.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "copied_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp for the local copy operation."
+    },
+    "destination_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "copy_policy": {
+      "type": "object",
+      "required": ["mode", "source_files_modified", "symlinked", "runtime_dependency", "activation"],
+      "properties": {
+        "mode": {"type": "string"},
+        "source_files_modified": {"type": "boolean"},
+        "symlinked": {"type": "boolean"},
+        "runtime_dependency": {"type": "boolean"},
+        "activation": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "tradecat_boundary": {
+      "type": "object",
+      "required": ["allowed_modes", "forbidden", "allowed_market_context_families"],
+      "properties": {
+        "allowed_modes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "contains": {"const": "public_readonly"}
+        },
+        "forbidden": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "allowed_market_context_families": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "source_path", "destination_path"],
+        "properties": {
+          "kind": {"type": "string"},
+          "source_path": {"type": "string"},
+          "destination_path": {"type": "string"},
+          "file_count": {"type": "integer", "minimum": 0},
+          "bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "source_sha256_manifest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "copied_files": {
+      "type": "object",
+      "required": ["file_count", "bytes", "sha256_manifest"],
+      "properties": {
+        "file_count": {"type": "integer", "minimum": 0},
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256_manifest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "additionalProperties": false
+    },
+    "safety_scan": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["file_count", "examples"],
+        "properties": {
+          "file_count": {"type": "integer", "minimum": 0},
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path", "lines"],
+              "properties": {
+                "path": {"type": "string"},
+                "lines": {
+                  "type": "array",
+                  "items": {"type": "integer", "minimum": 1}
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

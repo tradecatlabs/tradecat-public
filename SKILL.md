@@ -1,17 +1,17 @@
 ---
 name: tradecat-public
-description: "TradeCat public terminal skill: operate the bundled user-side TradeCat project, inspect public Google Sheets CSV snapshot caches, run CLI/TUI/export flows, validate installers, govern the Skill root vs scripts/project layout, and maintain the cache-first no-database contract."
+description: "TradeCat public Hermes skill: when installed as ~/.hermes/skills/tradecat-public, lets the user's local Hermes consume TradeCat public cache/CLI contracts, Agent market context schemas, and safe public-readonly paper/watch entrypoints without credentials or real orders."
 ---
 
 # tradecat-public Skill
 
-Use this skill when working on the bundled TradeCat public consumer project stored under `scripts/project/`, or when an Agent needs to consume TradeCat data through the machine contract in `agents/manifest.json`.
+Use this skill when the user wants their local Hermes/Agent to understand and operate TradeCat through this installed `tradecat-public` skill. The repo root is the Hermes skill boundary; `scripts/project/` is only the bundled local tool/contract implementation used by the skill.
 
 ## When to Use This Skill
 
 Trigger when any of these applies:
 - The user asks to run, install, debug, validate, or modify TradeCat public terminal behavior.
-- The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, or one-shot request script.
+- The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, one-shot request script, Binance public market context, replay report, or `tradecat auto context-audit/run-context`.
 - The task needs the project contracts for cache-first TUI, local JSON snapshots, structured `latest.*` files, or zero-install public requests.
 - The task asks to reorganize, audit, or optimize the Skill wrapper, root files, references, `AGENTS.md`, or the `scripts/project/` project boundary.
 
@@ -19,7 +19,8 @@ Trigger when any of these applies:
 
 - Do not connect to or write TradeCat server PostgreSQL.
 - Do not add SQLite, SQL query layers, database repair, vacuum, or server production-chain coupling.
-- Do not commit credentials, Google keys, private `.env` files, generated cache files, or local runtime files.
+- Do not commit credentials, Google keys, Binance keys/secrets, private `.env` files, generated cache files, `.runtime/` paper ledgers/archives, or local runtime files.
+- Keep `tradecat auto` public-readonly + paper/watch unless a later explicit implementation adds deterministic testnet/mainnet gates; never let an Agent call raw order endpoints freely.
 - Keep the skill root clean: project source and project docs live in `scripts/project/`; long-form skill references live in `references/`.
 - Do not add root `assets/` or `assets/examples/`; project examples, if ever needed, belong under `scripts/project/` and must be documented.
 
@@ -73,6 +74,8 @@ bash scripts/verify.sh
 cd scripts/project
 PYTHONPATH=src python3 -m tradecat_terminal --help
 PYTHONPATH=src python3 -m tradecat_terminal status --json
+PYTHONPATH=src python3 -m tradecat_terminal auto --help
+PYTHONPATH=src python3 -m tradecat_auto.cli paper-report --json
 ```
 
 ### One-shot Public Request
@@ -174,6 +177,8 @@ tradecat-public/
         |-- contracts/
         |-- scripts/
         |-- src/
+        |   |-- tradecat_terminal/
+        |   `-- tradecat_auto/
         `-- tests/
 ```
 

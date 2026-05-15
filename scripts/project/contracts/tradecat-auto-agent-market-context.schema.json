@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-agent-market-context.schema.json",
+  "title": "TradeCat Auto Agent Market Context",
+  "description": "Agent/Hermes-supplied public/read-only market context envelope accepted by TradeCat for deterministic paper/watch analysis.",
+  "type": "object",
+  "required": ["schema", "schema_version", "symbol", "mode", "provenance", "market_data"],
+  "properties": {
+    "schema": {"const": "tradecat_auto.agent_market_context.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "symbol": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string"},
+    "mode": {"enum": ["public_readonly", "paper", "watch"]},
+    "provenance": {
+      "type": "object",
+      "required": ["source_manifest"],
+      "properties": {
+        "agent": {"type": "string"},
+        "source_manifest": {"type": "string", "minLength": 1},
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "source_event": {"type": "object", "additionalProperties": true},
+    "anomaly_symbol": {"type": "object", "additionalProperties": true},
+    "market_data": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["family", "endpoint", "method", "ok", "provenance"],
+        "properties": {
+          "family": {
+            "enum": [
+              "klines",
+              "order_book_depth",
+              "book_ticker",
+              "24h_ticker",
+              "funding_rate",
+              "premium_index",
+              "open_interest",
+              "open_interest_history",
+              "long_short_ratios",
+              "taker_buy_sell_volume"
+            ]
+          },
+          "endpoint": {"type": "string", "minLength": 1},
+          "method": {"const": "GET"},
+          "ok": {"type": "boolean"},
+          "fetched_at": {"type": "string"},
+          "source_time": {"type": "string"},
+          "freshness_seconds": {"type": "number", "minimum": 0},
+          "requires_signature": {"const": false},
+          "signed": {"const": false},
+          "provenance": {"type": "object", "additionalProperties": true},
+          "data": true,
+          "error": {"type": "object", "additionalProperties": true}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

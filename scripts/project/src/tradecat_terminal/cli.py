@@ -106,6 +106,9 @@ def build_parser() -> argparse.ArgumentParser:
     features_parser.add_argument("--window", default="24h", help="窗口元数据：latest 或 24h/7d/4w")
     features_parser.add_argument("--limit", type=int, default=20, help="最多输出 symbol 数量")
 
+    auto_parser = subparsers.add_parser("auto", help="运行 TradeCat 全生命周期自动化子命令")
+    auto_parser.add_argument("auto_args", nargs=argparse.REMAINDER, help="传给 tradecat_auto.cli 的参数")
+
     watch_parser = subparsers.add_parser("watch", help="持续探测远端变化并写入本地快照缓存")
     watch_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key；不传则持续探测全部 active dataset")
     watch_parser.add_argument("--interval", type=float, default=60.0, help="探测间隔秒数")
@@ -134,6 +137,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = build_parser().parse_args(raw_argv)
     config = load_config(args.cache_dir)
+
+    if args.command == "auto":
+        from tradecat_auto.cli import main as auto_main
+
+        return auto_main(list(args.auto_args or []))
 
     if args.command == "init":
         payload = init_cache(config.cache_dir)

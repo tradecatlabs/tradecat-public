@@ -56,6 +56,14 @@ COMMAND_SCHEMA_FILES = {
 
 RESOURCE_SCHEMA_FILES = {
     "tradecat-dataset-consumption-contract.schema.json": "tradecat.dataset_consumption_contract.v1",
+    "tradecat-agent-market-context-sources.schema.json": "tradecat.agent_market_context_sources.v1",
+}
+
+AUTO_SCHEMA_FILES = {
+    "tradecat-auto-agent-market-context.schema.json": "tradecat_auto.agent_market_context.v1",
+    "tradecat-auto-agent-market-context-audit.schema.json": "tradecat_auto.agent_market_context_audit.v1",
+    "tradecat-auto-paper-backtest-report.schema.json": "tradecat_auto.paper_backtest_report.v1",
+    "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
 }
 
 INTERNAL_CLI_SCHEMA_ALLOWLIST = {
@@ -111,6 +119,46 @@ def test_manifest_entrypoint_schema_references_are_declared():
     assert referenced.issubset(declared)
 
 
+def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    commands = {item["command"] for item in payload.get("automation_entrypoints", [])}
+
+    assert "bash scripts/run-tradecat.sh auto paper-report --json" in commands
+    assert "bash scripts/run-tradecat.sh auto run-once --mode paper --notional-usdt 12 --json" in commands
+    assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json" in commands
+    assert "bash scripts/project/scripts/start-auto-paper.sh status --json" in commands
+    assert payload["important_paths"]["automation_source"] == "scripts/project/src/tradecat_auto"
+
+
+def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    automation_contracts = {item["schema"]: item for item in payload.get("automation_output_contracts", [])}
+
+    assert {
+        "tradecat_auto.paper_report.v1",
+        "tradecat_auto.market_universe.v1",
+        "tradecat_auto.public_probe.v1",
+        "tradecat_auto.run_once_report.v1",
+        "tradecat_auto.service_cycle.v1",
+        "tradecat_auto.paper_service_status.v1",
+        "tradecat_auto.agent_market_context_audit.v1",
+        "tradecat_auto.paper_backtest_report.v1",
+        "tradecat_auto.replay_report.v1",
+    }.issubset(automation_contracts)
+    for contract in automation_contracts.values():
+        assert contract["schema_version"] == "1.0.0"
+        assert contract["real_orders"] is False
+        assert contract["signed_requests"] is False
+        assert contract["reads_api_keys"] is False
+        assert contract["safety_boundary"]
+
+    for entrypoint in payload.get("automation_entrypoints", []):
+        assert entrypoint["schema"] in automation_contracts
+        assert entrypoint["real_orders"] is False
+        assert entrypoint["signed_requests"] is False
+        assert entrypoint["reads_api_keys"] is False
+
+
 def test_manifest_known_failure_modes_cover_agent_error_contract():
     payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
     failure_codes = {item["code"] for item in payload["known_failure_modes"]}
@@ -147,6 +195,7 @@ def test_formal_contract_schemas_are_valid_json():
         "tradecat-error.schema.json",
         *COMMAND_SCHEMA_FILES,
         *RESOURCE_SCHEMA_FILES,
+        *AUTO_SCHEMA_FILES,
     }
     for path in schemas:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -156,7 +205,7 @@ def test_formal_contract_schemas_are_valid_json():
 def test_command_schema_files_pin_expected_payload_schema_names():
     contracts_dir = SKILL_ROOT / "scripts" / "project" / "contracts"
 
-    for filename, expected_schema in {**COMMAND_SCHEMA_FILES, **RESOURCE_SCHEMA_FILES}.items():
+    for filename, expected_schema in {**COMMAND_SCHEMA_FILES, **RESOURCE_SCHEMA_FILES, **AUTO_SCHEMA_FILES}.items():
         payload = json.loads((contracts_dir / filename).read_text(encoding="utf-8"))
         properties = payload.get("properties", {})
 

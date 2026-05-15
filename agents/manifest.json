@@ -3,7 +3,7 @@
   "schema_version": "1.0.0",
   "name": "tradecat-public",
   "display_name": "TradeCat Public",
-  "repo_role": "multi-agent skill wrapper around the bundled TradeCat cache-first CLI/TUI project",
+  "repo_role": "Hermes/Agent-facing TradeCat skill package and local contract layer; users install this repo as tradecat-public so their local Hermes can load SKILL.md and agents/manifest.json.",
   "skill_root": ".",
   "project_root": "scripts/project",
   "default_workdir": ".",
@@ -25,7 +25,8 @@
     "local_cache_write": "Writes only local TradeCat cache, settings, or diagnostics.",
     "background_long_running": "Starts or supervises a long-running local watcher.",
     "install_or_uninstall": "Changes user installation paths, launchers, virtual environments, or shell PATH guidance.",
-    "security_or_supply_chain": "Runs scanners or dependency audit tools; may download tool metadata."
+    "security_or_supply_chain": "Runs scanners or dependency audit tools; may download tool metadata.",
+    "paper_runtime_write": "Writes local paper-trading runtime state, ledger, JSONL archives, or paper service PID/log files; never places real orders."
   },
   "preferred_readonly_entrypoints": [
     {
@@ -300,6 +301,11 @@
       "purpose": "Validate dataset consumption semantics against the bundled registry."
     },
     {
+      "command": "cd scripts/project && PYTHONPATH=src python3 scripts/validate_agent_market_context_resources.py",
+      "risk_class": "local_readonly",
+      "purpose": "Validate self-contained Binance Agent market-context resource provenance, hashes, and safety boundaries."
+    },
+    {
       "command": "bash scripts/security-scan.sh",
       "risk_class": "security_or_supply_chain",
       "purpose": "Scan tracked files or selected history for leaked secrets."
@@ -345,7 +351,7 @@
     "project_readme": "scripts/project/README.md",
     "project_agents": "scripts/project/AGENTS.md",
     "formal_contract_schemas": "scripts/project/contracts",
-    "project_source": "scripts/project/src/tradecat_terminal",
+    "project_source": "scripts/project/src",
     "project_tests": "scripts/project/tests",
     "dataset_registry": "scripts/project/src/tradecat_terminal/dataset_registry.json",
     "dataset_consumption_contract": "scripts/project/src/tradecat_terminal/dataset_consumption_contract.json",
@@ -354,7 +360,18 @@
     "feature_contract_reference": "references/feature-contract.md",
     "test_strategy_reference": "references/test-strategy.md",
     "zero_install_request": "scripts/project/scripts/request.py",
-    "agent_smoke": "scripts/agent-smoke.sh"
+    "agent_smoke": "scripts/agent-smoke.sh",
+    "project_source_terminal": "scripts/project/src/tradecat_terminal",
+    "automation_source": "scripts/project/src/tradecat_auto",
+    "automation_service_script": "scripts/project/scripts/start-auto-paper.sh",
+    "automation_runtime": "scripts/project/.runtime/auto-paper",
+    "agent_market_context_resources": "scripts/project/resources/agent_market_context/binance",
+    "agent_market_context_provenance": "scripts/project/resources/agent_market_context/binance/provenance.manifest.json",
+    "agent_market_context_sources_schema": "scripts/project/contracts/tradecat-agent-market-context-sources.schema.json",
+    "agent_market_context_input_schema": "scripts/project/contracts/tradecat-auto-agent-market-context.schema.json",
+    "agent_market_context_audit_schema": "scripts/project/contracts/tradecat-auto-agent-market-context-audit.schema.json",
+    "paper_backtest_report_schema": "scripts/project/contracts/tradecat-auto-paper-backtest-report.schema.json",
+    "replay_report_schema": "scripts/project/contracts/tradecat-auto-replay-report.schema.json"
   },
   "references": [
     "references/agent-contract.md",
@@ -447,10 +464,32 @@
       "meaning": "A local command failed unexpectedly after argument validation.",
       "retryable": false,
       "repair": "Run tradecat doctor --verbose or doctor --bundle - and inspect the stable error object."
+    },
+    {
+      "code": "paper_service_not_running",
+      "kind": "runtime",
+      "meaning": "The autonomous paper run-loop service PID is missing or not alive.",
+      "retryable": false,
+      "repair": "Run bash scripts/project/scripts/start-auto-paper.sh start --json and then inspect paper-report/log paths."
+    },
+    {
+      "code": "stale_event",
+      "kind": "data_freshness",
+      "meaning": "The latest public Sheet event is older than the configured max_event_age_seconds or cannot be parsed.",
+      "retryable": true,
+      "repair": "Wait for a fresh event_stream row or raise --max-event-age-seconds for diagnostic paper tests only."
+    },
+    {
+      "code": "mainnet_execution_not_implemented",
+      "kind": "safety_gate",
+      "meaning": "Mainnet execution is deliberately rejected by the deterministic risk gate.",
+      "retryable": false,
+      "repair": "Use paper/watch until explicit testnet/mainnet execution gates are implemented and authorized."
     }
   ],
   "safe_order_of_operations": [
     "read agents/manifest.json",
+    "when installed under ~/.hermes/skills/tradecat-public, load this repo as the Hermes skill and use agents/manifest.json as the machine entrypoint",
     "run bash scripts/run-tradecat.sh status --json",
     "run bash scripts/run-tradecat.sh datasets --json",
     "run bash scripts/run-tradecat.sh path event_stream --json",
@@ -458,6 +497,305 @@
     "run bash scripts/run-tradecat.sh features --json when per-symbol fact bundles are needed",
     "if only inspecting public data, prefer python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
     "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
+    "for autonomous paper testing, run bash scripts/project/scripts/start-auto-paper.sh status --json before starting a new service",
+    "run bash scripts/run-tradecat.sh auto paper-report --json to inspect paper ledger state",
+    "run bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json for one verified paper/watch cycle",
+    "start continuous paper testing only with bash scripts/project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
+    "for Agent-supplied context, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json before run-context",
     "before delivery run bash scripts/agent-smoke.sh and the validation_commands that match the change scope"
+  ],
+  "automation_output_contracts": [
+    {
+      "schema": "tradecat_auto.paper_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Summarize persistent paper ledger state, open/closed positions, fills, and equity curve tail.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Local paper ledger reporting only; no Binance credentials, signed requests, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.market_universe.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Fetch and summarize the Binance USDⓈ-M USDT perpetual public symbol universe.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public Binance market metadata only; no account endpoints and no credentials."
+    },
+    {
+      "schema": "tradecat_auto.public_probe.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Probe TradeCat public Sheet rows plus Binance public market bundle for one selected symbol.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public/read-only probe; never places orders or reads account state."
+    },
+    {
+      "schema": "tradecat_auto.run_once_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Build one deterministic public-readonly paper/watch analysis report from Sheet signals and Binance public data.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Single-cycle paper/watch report only; mainnet execution is rejected by deterministic risk gates."
+    },
+    {
+      "schema": "tradecat_auto.service_cycle.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Run one safe service cycle with event freshness/dedupe, paper ledger update, and optional JSONL archive.",
+      "writes": true,
+      "write_paths": [
+        "scripts/project/.runtime/**",
+        ".runtime/** when invoked from repository root"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Writes only local paper runtime state/ledger/archive; execution remains paper/watch and order-free."
+    },
+    {
+      "schema": "tradecat_auto.paper_service_status.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Report, start, or stop the local autonomous paper run-loop process managed by start-auto-paper.sh.",
+      "writes": true,
+      "write_paths": [
+        "scripts/project/.runtime/auto-paper/**"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
+    },
+    {
+      "schema": "tradecat_auto.agent_market_context_audit.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Audit an Agent/Hermes-supplied market context JSON file against public/read-only allowlists, provenance, and credential/order prohibitions.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Validation-only audit; rejects signed, account, credential-like, and order endpoints before paper/watch use."
+    },
+    {
+      "schema": "tradecat_auto.paper_backtest_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Compute deterministic paper backtest metrics from a local paper ledger.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Local paper ledger metrics only; no network, credentials, or real exchange execution."
+    },
+    {
+      "schema": "tradecat_auto.replay_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Build a reproducible replay/backtest report from local service-cycle JSONL archives and paper ledger state.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper/watch archive and ledger files; no credentials, signed requests, or real orders."
+    }
+  ],
+  "automation_entrypoints": [
+    {
+      "command": "bash scripts/run-tradecat.sh auto paper-report --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.paper_report.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "paper ledger summary produced"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Local paper ledger reporting only; no Binance credentials, signed requests, or real orders."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto market-universe --json",
+      "risk_class": "network_readonly",
+      "schema": "tradecat_auto.market_universe.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "Binance USDⓈ-M public universe fetched",
+        "1": "public network/runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public Binance market metadata only; no account endpoints and no credentials."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto probe-public --json",
+      "risk_class": "network_readonly",
+      "schema": "tradecat_auto.public_probe.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "TradeCat public rows and Binance public market bundle fetched",
+        "1": "public network/runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public/read-only probe; never places orders or reads account state."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto run-once --mode paper --notional-usdt 12 --json",
+      "risk_class": "network_readonly",
+      "schema": "tradecat_auto.run_once_report.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "single public-readonly paper report produced",
+        "1": "public network/runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Single-cycle paper/watch report only; mainnet execution is rejected by deterministic risk gates."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json",
+      "risk_class": "paper_runtime_write",
+      "schema": "tradecat_auto.service_cycle.v1",
+      "writes": true,
+      "write_paths": [
+        "scripts/project/.runtime/**",
+        ".runtime/** when invoked from repository root"
+      ],
+      "real_orders": false,
+      "exit_codes": {
+        "0": "one safe paper/watch service cycle produced",
+        "1": "public network/runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Writes only local paper runtime state/ledger/archive; execution remains paper/watch and order-free."
+    },
+    {
+      "command": "bash scripts/project/scripts/start-auto-paper.sh status --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.paper_service_status.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "auto paper service is running",
+        "1": "auto paper service is not running"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
+    },
+    {
+      "command": "bash scripts/project/scripts/start-auto-paper.sh start --json",
+      "risk_class": "background_long_running",
+      "schema": "tradecat_auto.paper_service_status.v1",
+      "writes": true,
+      "write_paths": [
+        "scripts/project/.runtime/auto-paper/**"
+      ],
+      "real_orders": false,
+      "exit_codes": {
+        "0": "auto paper service process spawned or already running"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
+    },
+    {
+      "command": "bash scripts/project/scripts/start-auto-paper.sh stop --json",
+      "risk_class": "background_long_running",
+      "schema": "tradecat_auto.paper_service_status.v1",
+      "writes": true,
+      "write_paths": [
+        "scripts/project/.runtime/auto-paper/paper-run-loop.pid"
+      ],
+      "real_orders": false,
+      "exit_codes": {
+        "0": "auto paper service stopped or already stopped"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.agent_market_context_audit.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "Agent market context accepted",
+        "1": "context load or audit failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Validation-only audit; rejects signed, account, credential-like, and order endpoints before use."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.run_once_report.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "single paper/watch report produced from Agent-supplied context",
+        "1": "context load, audit, or runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Consumes only an explicit Agent-supplied public/read-only context file and deterministic paper/watch gates."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.replay_report.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "replay/backtest report produced",
+        "1": "archive or ledger load failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads local paper/watch runtime files only; no Binance credentials, signed requests, or real orders."
+    }
+  ],
+  "reference_resources": [
+    {
+      "schema": "tradecat.agent_market_context_sources.v1",
+      "schema_version": "1.0.0",
+      "path": "scripts/project/resources/agent_market_context/binance/provenance.manifest.json",
+      "contract_schema": "scripts/project/contracts/tradecat-agent-market-context-sources.schema.json",
+      "purpose": "Local self-contained Binance skill/API reference snapshot for Agent/Hermes-supplied market context provenance and endpoint classification.",
+      "runtime_dependency": false,
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reference only: public/read-only Binance market context may be used later through explicit contracts; signed/account/order examples in upstream snapshots are not runtime tools."
+    }
+  ],
+  "automation_input_contracts": [
+    {
+      "schema": "tradecat_auto.agent_market_context.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "scripts/project/contracts/tradecat-auto-agent-market-context.schema.json",
+      "purpose": "Explicit file/stdin-style contract for Agent/Hermes-supplied public/read-only Binance market context.",
+      "allowed_modes": [
+        "public_readonly",
+        "paper",
+        "watch"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Input contract only; TradeCat audits allowlisted public market families before paper/watch processing."
+    }
   ]
 }

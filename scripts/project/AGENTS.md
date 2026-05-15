@@ -4,7 +4,7 @@
 
 ## 使命
 
-`tradecat-public` 是一个 multi-Agent Skill 包装仓库；真实 TradeCat 用户侧消费端项目位于 `scripts/project/`。该项目只读公开在线表格，把数据保存为本地快照缓存文件，并提供轻量 CLI / TUI 浏览能力；也提供零安装的一次性请求脚本。
+`tradecat-public` 首先是给用户本机 Hermes 安装/加载的 Skill 包；真实 TradeCat 用户侧消费端项目位于 `scripts/project/`。该项目提供只读公开在线表格、本地快照缓存、CLI/TUI、Agent 观察/事实包，以及 Agent-supplied market context 的安全审计/纸面运行契约。
 
 ## 禁区
 
@@ -13,6 +13,8 @@
 - 禁止重新引入 SQLite、本地 SQL 查询层或数据库型后端存储。
 - 禁止依赖 `apps/sheets` 内部实现细节；只能依赖公开在线表格 CSV 契约。
 - 禁止把缓存文件、凭证、Google key、私密 `.env` 写入仓库。
+- 禁止提交 Binance API key、secret、`.env`、私钥、真实账户输出、真实订单日志或任何可复用凭证。
+- 当前 `tradecat_auto` 只能执行 public-readonly + watch/paper；不得调用真实下单、撤单、改杠杆或签名账户接口。
 
 ## 目录结构
 
@@ -69,17 +71,21 @@ tradecat-public/
         ├── Makefile
         ├── constraints.txt
         ├── contracts/
+        ├── resources/
+        │   ├── agent_market_context/
+        │   │   └── binance/
         ├── pyproject.toml
         ├── scripts/
         │   ├── guard_public_local_files.sh
         │   ├── request.py
         │   ├── start.sh
+        │   ├── start-auto-paper.sh
         │   ├── validate_data_contract.py
         │   ├── validate_dataset_consumption_contract.py
         │   ├── verify.sh
         │   └── watchdog.sh
         ├── src/
-        │   └── tradecat_terminal/
+        │   ├── tradecat_terminal/
         │       ├── __init__.py
         │       ├── __main__.py
         │       ├── analysis.py
@@ -107,6 +113,18 @@ tradecat-public/
         │       ├── view_model.py
         │       └── runtime/
         │           └── paths.py
+        │   └── tradecat_auto/
+        │       ├── binance_market.py
+        │       ├── tradecat_source.py
+        │       ├── market_enrichment.py
+        │       ├── signals.py
+        │       ├── strategies.py
+        │       ├── risk.py
+        │       ├── paper_broker.py
+        │       ├── paper_ledger.py
+        │       ├── pipeline.py
+        │       ├── service.py
+        │       └── cli.py
         └── tests/
             ├── fixtures/
             │   └── json_contract/
@@ -160,6 +178,34 @@ Input(输入)：本地结构化缓存、`tradecat.analysis_report.v1` 候选与�
 -> 节点3：`features.py` 只从显式 entity_key 候选和 observation 上下文生成 per-symbol facts
 -> 节点4：`contracts.py` 包装 `tradecat.feature_bundle.v1`、稳定 `schema_version` 与 error object
 -> Output(输出)：Agent 可消费的 symbol 事实包；不包含评分、策略、收益预测、回测或执行语义
+```
+
+### Flow 1.7: 事实/公开行情到 paper/watch 自动化生命周期
+
+```text
+Input(输入)：`event_stream`、`anomaly_panel`、Binance USDⓈ-M public REST、可选 paper ledger
+-> 节点1：`tradecat_terminal.cli` 的 `auto` 子命令把参数转交给 `tradecat_auto.cli`
+-> 节点2：`tradecat_source.py` 调用本仓 `scripts/project/scripts/request.py` 读取公开 sheet 行，按 `source_time_bj + content` 生成稳定 event_id
+-> 节点3：`binance_market.py` 读取 /fapi public endpoints，带 TTL cache、请求权重统计和 418/429/5xx retry/backoff
+-> 节点4：`market_enrichment.py` 合并 Sheet 异动行与 Binance public bundle，输出 `market_enrichment.v1`
+-> 节点5：`signals.py` / `strategies.py` 生成确定性 `signal_score.v1` 与 `strategy_intent.v1`
+-> 节点6：`risk.py` 执行保守 deterministic risk gate；mainnet 默认拒绝，paper/watch 才允许继续
+-> 节点7：`paper_broker.py` / `paper_ledger.py` 生成 paper execution、持久化 open/closed positions、fills、equity curve 和 PnL
+-> 节点8：`service.py` 作为 run-loop 壳，先检查事件新鲜度与去重，再处理新事件或 mark-to-market 既有纸面仓位，并可写 JSONL archive
+-> Output(输出)：`run_once_report.v1` / `service_cycle.v1` / `paper_report.v1`；不包含真实账户状态或真实订单执行
+```
+
+### Flow 1.8: Binance Agent market context 参考资源
+
+```text
+Input(输入)：Agent/Hermes 需要 Binance skill/API 参考、endpoint 分类或 market context 来源 provenance
+-> 节点1：读取 `resources/agent_market_context/binance/provenance.manifest.json`，确认 schema/version、来源路径、校验和和安全扫描摘要
+-> 节点2：只把 `resources/agent_market_context/binance/upstream/` 与 `api-docs/` 当只读参考快照，不执行其中签名、账户或交易示例
+-> 节点3：若某个 Binance market context 要进入运行期，必须符合 `contracts/tradecat-auto-agent-market-context.schema.json`，包含 schema/version、family、endpoint、fetched_at、provenance 和错误码字段
+-> 节点4：先运行 `tradecat auto context-audit --input <context.json> --json`，由 allowlist 拒绝 signed/account/order/credential-like 输入
+-> 节点5：通过 `tradecat auto run-context --input <context.json> --mode paper --json` 接入同一套 market_enrichment/signal/strategy/risk/paper_execution 闭环；通过 `replay-report` 从本地 JSONL archive + paper ledger 重放审计
+-> 节点6：通过 tests/verify 证明 no credentials、no signed requests、no real orders，并保持 paper/watch deterministic risk gate
+-> Output(输出)：可审计的 Agent-supplied market context 契约或只读参考结论
 ```
 
 ### Flow 2: 本地缓存到 TUI 展示
@@ -247,6 +293,14 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `dataset_contract.py`：数据消费语义契约加载层；`datasets --json` 通过它输出每个 dataset 的 consumption contract。
 - `diagnostics.py`：本地诊断与 support bundle 层；只记录公开安全的错误摘要、环境摘要和缓存水位。
 - `features.py`：本地缓存只读 symbol 事实包层；复用 `analysis.py` 候选与证据逻辑生成 `tradecat.feature_bundle.v1`，禁止输出评分、策略、收益预测、回测、联网拉取或缓存写入。
+- `src/tradecat_auto/binance_market.py`：Binance USDⓈ-M public REST 客户端；只能访问公开 `/fapi` 与 `/futures/data` endpoint，记录请求权重、TTL cache 和 transient retry/backoff。
+- `src/tradecat_auto/tradecat_source.py`：本仓 `request.py` 适配层；读取 `event_stream` / `anomaly_panel`，按 `source_time_bj + content` 生成稳定事件 ID。
+- `src/tradecat_auto/market_enrichment.py` / `signals.py` / `strategies.py`：公开 sheet + Binance bundle 到 deterministic enrichment、signal score 和 strategy intent。
+- `src/tradecat_auto/risk.py`：保守 deterministic risk gate；paper/watch 才可继续，mainnet 默认拒绝。
+- `src/tradecat_auto/paper_broker.py` / `paper_ledger.py`：纸面执行与持久化 ledger；记录 open/closed positions、fills、fees、slippage、PnL 和 equity curve。
+- `src/tradecat_auto/pipeline.py` / `service.py` / `cli.py`：run-once、run-loop、paper-report 编排层；运行态只能写 `.runtime/` 等 gitignored 本地路径。
+- `scripts/start-auto-paper.sh`：自主持续纸面测试服务管理入口；循环调用 `tradecat_auto.cli run-loop --once --mode paper`，只写 `.runtime/auto-paper`，必须支持 `start|stop|restart|status --json`。
+- `resources/agent_market_context/binance/`：Binance skill/API 本地自包含参考快照；以 `provenance.manifest.json` 暴露来源、checksum、允许的数据族和禁止的 signed/account/order 边界。
 - `header_aliases.py`：字段别名元数据层；只进入 ViewModel 的 `column_meta.display_name`，禁止替代 TUI 表格物理列 A/B/C...
 - `i18n.py`：TUI/CLI 外壳文案的轻量多语言表；只处理中文、英文、韩语 UI 文案。
 - `install.sh`：POSIX 一键安装入口，覆盖 Linux / macOS / WSL / Git Bash。
@@ -292,6 +346,12 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `tradecat export` 必须只读本地缓存，不得触发远端网络请求。
 - `tradecat analyze --json` 必须只读本地缓存，不得触发远端网络请求或写缓存；输出只能是观察报告，禁止表达买卖建议、仓位、回测、价格目标或自动执行语义。
 - `tradecat features --json` 必须只读本地缓存，不得触发远端网络请求或写缓存；输出只能是 per-symbol 可验证事实，禁止表达买卖建议、分数、排序建议、收益预测、回测、价格目标或自动执行语义。
+- `tradecat auto ...` 是唯一自动化生命周期入口；代码必须位于 `src/tradecat_auto/`，测试必须位于 `tests/test_*`，不得继续在 `/home/lenovo/.projects/cat/tradecat-auto` 开发新实现。
+- `resources/agent_market_context/binance/upstream/` 与 `api-docs/` 是只读来源快照；禁止直接改写上游内容，禁止把其中的签名/下单/账户读取示例接入运行期。
+- `tradecat auto` 当前只允许 public-readonly + paper/watch；禁止读取 Binance key、签名账户请求、真实下单、真实撤单、真实改杠杆或提交真实账户/订单输出。
+- Agent-supplied market context 进入运行期前必须通过 `context-audit` 的 family/endpoint/provenance allowlist；`run-context` 只能复用同一 paper/watch pipeline，不能新增绕过 risk gate 的执行路径。
+- `tradecat auto replay-report` 只能读取本地 JSONL cycle archive 与 paper ledger 生成可复现报告，不得联网、不读密钥、不写运行态。
+- `tradecat auto run-loop` 的 state、ledger、archive 默认/推荐写入 `.runtime/`；`.runtime/` 必须保持 gitignored，不能提交运行态、paper fills 或 JSONL archive。
 - export 的 `csv/jsonl` 必须保留原始字段；`table` 必须保持物理列 A/B/C... 与原始表头行，方便对照在线表格。
 - TUI 探针间隔必须支持 dataset 独立配置；`event_stream` 默认 3.0s，其它 tap 默认 10s。
 - 单 tap 环境变量 `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` 优先于全局 `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL`，命令行 `--probe-interval` 优先级最高。
@@ -335,6 +395,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 python3 -m compileall src tests
 pytest -q
 PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
+PYTHONPATH=src python3 scripts/validate_agent_market_context_resources.py
 bash scripts/verify.sh
 bash ../../scripts/security-scan.sh
 bash ../../scripts/supply-chain-audit.sh

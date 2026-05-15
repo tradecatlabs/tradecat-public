@@ -9,25 +9,27 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 3. TUI startup, live probe, rendering, language, or links: `tui-contract.md`.
 4. Installer, launcher update, or uninstall behavior: `install-uninstall.md`.
 5. First-run empty cache, cold-start, or weak-network diagnosis: `first-run-cache.md`.
-6. End-to-end public data and install flows: `linear-flows.md`.
-7. Agent/Hermes machine contract, fast path, command risk classes, and JSON schemas: `agent-contract.md`.
-8. Dataset field semantics, missing values, time grain, and quality tier: `dataset-consumption-contract.md`.
-9. Analysis report contract, boundaries, and no-trading-advice scope: `analysis-contract.md`.
-10. Symbol feature facts contract and no-signal boundary: `feature-contract.md`.
-11. QA strategy, risk model, test layers, and release test gate: `test-strategy.md`.
-12. Release notes, install evidence, and rollback: `release.md`.
-13. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
-14. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
-15. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
+6. End-to-end public data, automation, and install flows: `linear-flows.md`.
+7. Local user/runtime data handling for the public repo: `local-user-data.md`.
+8. Agent/Hermes machine contract, fast path, command risk classes, and JSON schemas: `agent-contract.md`.
+9. Dataset field semantics, missing values, time grain, and quality tier: `dataset-consumption-contract.md`.
+10. Analysis report contract, boundaries, and no-trading-advice scope: `analysis-contract.md`.
+11. Symbol feature facts contract and no-signal boundary: `feature-contract.md`.
+12. QA strategy, risk model, test layers, and release test gate: `test-strategy.md`.
+13. Release notes, install evidence, and rollback: `release.md`.
+14. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
+15. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
+16. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
 
 ## Reference Map
 
-- `architecture.md`: Skill root scope, forbidden paths, source boundaries, documentation map, and linear data flow.
+- `architecture.md`: Skill root scope, forbidden paths, source boundaries, merged `tradecat_auto` lifecycle layer, documentation map, and linear data flow.
 - `cache-contract.md`: snapshot cache, stream merge, structured latest files, export behavior, and manifest rules.
 - `tui-contract.md`: TUI startup, background probe, rendering, language, terminal fallback, and link behavior.
 - `install-uninstall.md`: installer, launcher auto-update, uninstall behavior, and cache preservation.
 - `first-run-cache.md`: cold-start cache diagnosis, prevention rules, operator commands, and verification.
-- `linear-flows.md`: public linear flows covering cache sync, TUI, one-shot request, install, uninstall, config/export, doctor diagnostics, analysis report, feature bundle, and Agent fast path.
+- `linear-flows.md`: public linear flows covering cache sync, TUI, one-shot request, install, uninstall, config/export, doctor diagnostics, analysis report, feature bundle, paper/watch automation, and Agent fast path.
+- `local-user-data.md`: public-safe policy for managing local user/runtime data, ignored files, sanitized fixtures, and non-commit boundaries.
 - `agent-contract.md`: canonical multi-Agent consumption contract, fast path, risk classes, exit codes, JSON schema names, and transport split.
 - `dataset-consumption-contract.md`: machine-readable dataset field semantics, missing values, time grain, and quality tier.
 - `analysis-contract.md`: readonly local analysis report contract and explicit boundary against strategy, backtest, advice, or execution semantics.

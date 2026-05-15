@@ -122,7 +122,22 @@ Input: `tradecat features --json`, local cache, `tradecat.analysis_report.v1` ca
 -> Output: Agent-readable per-symbol fact bundle with no score, strategy, ranking advice, return forecast, backtest, network, or cache-write side effect
 ```
 
-## Flow 10: Agent Fast Path
+## Flow 10: Public Market To Paper/Watch Automation
+
+```text
+Input: `tradecat auto run-once/run-loop`, public TradeCat sheet rows, Binance USDⓈ-M public REST, optional paper ledger path
+-> Node 1: `tradecat_terminal.cli` routes `auto` subcommands to `tradecat_auto.cli` without leaving `scripts/project/`
+-> Node 2: `tradecat_source.py` calls this repository's `scripts/project/scripts/request.py` for `event_stream` and `anomaly_panel`
+-> Node 3: `binance_market.py` fetches public `/fapi` and `/futures/data` market endpoints with request accounting, TTL cache, and transient retry/backoff
+-> Node 4: `market_enrichment.py` merges sheet anomaly rows and Binance market bundle into `tradecat_auto.market_enrichment.v1`
+-> Node 5: `signals.py` and `strategies.py` build deterministic `signal_score.v1` and `strategy_intent.v1`
+-> Node 6: `risk.py` applies deterministic risk gates; mainnet is rejected and paper/watch remain the only active modes
+-> Node 7: `paper_broker.py` emits paper execution reports and `paper_ledger.py` updates paper positions, fills, fees, slippage, PnL, and equity curve
+-> Node 8: `service.py` persists event dedupe state and optionally appends JSONL service-cycle archives under gitignored `.runtime/`
+-> Output: `tradecat_auto.run_once_report.v1`, `service_cycle.v1`, or `paper_report.v1` with no API keys, signed requests, real account reads, or real orders
+```
+
+## Flow 11: Agent Fast Path
 
 ```text
 Input: shell-capable Agent or Hermes session at repository root
@@ -132,7 +147,8 @@ Input: shell-capable Agent or Hermes session at repository root
 -> Node 4: Agent runs `bash scripts/run-tradecat.sh path <dataset_key> --json` to locate local cache artifacts
 -> Node 5: Agent runs `bash scripts/run-tradecat.sh analyze --json` when local cache is already populated and an observation report is needed
 -> Node 6: Agent runs `bash scripts/run-tradecat.sh features --json` when per-symbol fact bundles are needed
--> Node 7: Agent uses `scripts/project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
--> Node 8: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, exit-code, dataset consumption, analysis, and feature contracts
+-> Node 7: Agent runs `bash scripts/run-tradecat.sh auto paper-report --json` for local paper ledger summary, or `bash scripts/run-tradecat.sh auto run-loop --mode paper --once --json` for one safe paper/watch cycle
+-> Node 8: Agent uses `scripts/project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
+-> Node 9: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, exit-code, dataset consumption, analysis, feature, and automation merge contracts
 -> Output: inspect -> validate -> consume -> diagnose flow with no guessing and no accidental install/uninstall side effects
 ```

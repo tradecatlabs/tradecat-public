@@ -2,7 +2,7 @@
 
 # TradeCat
 
-用户侧终端面板：只读 TradeCat 公开数据入口，写入本地 JSON 快照缓存，并在终端中浏览市场快照与事件流。
+用户侧终端面板 + 完整全生命周期本地工作中心：只读 TradeCat 公开数据入口，写入本地 JSON 快照缓存，在终端中浏览市场快照与事件流，并在同一项目内运行 Binance USDⓈ-M 公开行情、确定性信号评分、保守风控、持久化纸面交易 ledger、安全 run-loop 和结构化交易经验沉淀。
 
 [![CI](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -31,6 +31,7 @@ CA：[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad26
 - [常用命令](#常用命令)
 - [TUI 操作](#tui-操作)
 - [数据集](#数据集)
+- [Agent 分析与自动化生命周期](#agent-分析与自动化生命周期)
 - [缓存结构](#缓存结构)
 - [配置](#配置)
 - [开发与验证](#开发与验证)
@@ -39,20 +40,24 @@ CA：[DexScreener](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad26
 
 ## 定位
 
-TradeCat 是一个轻量、可本地运行、可独立分发的用户侧工具。
+TradeCat 是一个轻量、可本地运行、可独立分发的用户侧工具，也是本机 Agent 的完整全生命周期工作中心。
 
-它只做三件事：
+它统一做这些事：
 
 1. 从公开在线数据端点读取数据。
 2. 把最新内容保存为用户本地 JSON 快照缓存。
 3. 用 CLI / TUI 在终端里查看市场快照和事件流。
+4. 从 `event_stream` / `anomaly_panel` 读取公开信号，接入 Binance USDⓈ-M 公开行情。
+5. 生成确定性 `market_enrichment`、`signal_score`、`strategy_intent`、`risk_decision` 和 paper execution / ledger 报告。
+6. 运行 `tradecat auto run-loop` 做安全 watch/paper 轮询、JSONL 审计和纸面仓位生命周期监控。
 
-它明确不做这些事：
+它当前明确不做这些事：
 
 - 不连接或写入 TradeCat 服务端 PostgreSQL。
 - 不使用 SQLite、WAL、本地 SQL 查询层或数据库型后端存储。
 - 不需要云端服务账号、私钥、token 或服务端权限。
 - 不承担服务端数据生产、采集、修复或发布职责。
+- 不读取 Binance API key，不签名请求，不读真实账户，不真实下单；主网/测试网执行必须后续另行实现确定性风控、kill switch 和显式启用。
 
 ## 系统架构图
 
@@ -63,12 +68,20 @@ flowchart TD
     C --> D[本地 JSON 快照缓存]
     D --> E[CLI 状态与同步命令]
     D --> F[TUI 终端面板]
+    D --> G[analysis_report / feature_bundle]
+    G --> H[tradecat auto]
+    I[Binance USDⓈ-M public REST] --> H
+    H --> J[market_enrichment / signal_score / strategy_intent]
+    J --> K[deterministic risk_decision]
+    K --> L[paper_execution]
+    L --> M[.runtime paper_ledger + cycles.jsonl]
 
     subgraph Remote[远端公开数据]
         A1[市场数据入口]
         A2[另类数据入口]
         A1 --> A
         A2 --> A
+        I
     end
 
     subgraph Cache[用户本地缓存]
@@ -76,13 +89,16 @@ flowchart TD
         D2[stream_events.json]
         D --> D1
         D --> D2
+        M
     end
 
     subgraph Interface[用户入口]
         E1[tradecat init/status/sync/probe]
         F1[tradecat / tradecat tui]
+        H1[tradecat auto run-once/run-loop/paper-report]
         E --> E1
         F --> F1
+        H --> H1
     end
 ```
 
@@ -410,6 +426,18 @@ tradecat export anomaly_panel --format table --lang en
 tradecat watch event_stream --interval 5
 tradecat watch --interval 60
 
+# 全生命周期自动化入口：公开行情 + watch/paper，不读 key、不真实下单
+tradecat auto market-universe --json
+tradecat auto probe-public --json
+tradecat auto run-once --mode paper --notional-usdt 12 --json
+tradecat auto run-loop --mode paper --notional-usdt 12 --state-path .runtime/service_state.json --ledger-path .runtime/paper_ledger.json --archive-path .runtime/cycles.jsonl --once --json
+tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
+
+# 自主持续纸面测试服务：循环用实盘公开数据跑 run-loop --once，写入 ledger/archive/log
+scripts/start-auto-paper.sh status --json
+scripts/start-auto-paper.sh start --json
+scripts/start-auto-paper.sh stop --json
+
 # 后台 watcher 生命周期状态；--json 给 Agent / 自动化使用
 bash scripts/start.sh status
 bash scripts/start.sh status --json
@@ -501,7 +529,7 @@ TUI 探针规则：
 `src/tradecat_terminal/dataset_consumption_contract.json`，说明文档见
 `references/dataset-consumption-contract.md`。
 
-## Agent 分析报告
+## Agent 分析与自动化生命周期
 
 ```bash
 tradecat analyze --json
@@ -526,6 +554,38 @@ tradecat features --json
 ```bash
 tradecat doctor --sync --timeout 10
 ```
+
+`tradecat auto ...` 是给 Hermes/Agent 调用的本地契约适配层，位于 `src/tradecat_auto/`。
+Agent/Hermes 可参考 `resources/agent_market_context/binance/provenance.manifest.json`
+中的本地自包含 Binance skill/API 快照，但运行期仍只接收 public/read-only
+market context。它从 `event_stream` / `anomaly_panel` 和 Binance USDⓈ-M public REST 构造
+`tradecat_auto.market_enrichment.v1`、`signal_score.v1`、`strategy_intent.v1`、
+`risk_decision.v1`、`paper_execution_report.v1`、`paper_ledger.v1` 和
+`service_cycle.v1`。当前可运行命令：
+
+```bash
+tradecat auto market-universe --json
+tradecat auto probe-public --json
+tradecat auto run-once --mode paper --notional-usdt 12 --json
+tradecat auto run-loop --mode paper --notional-usdt 12 \
+  --state-path .runtime/service_state.json \
+  --ledger-path .runtime/paper_ledger.json \
+  --archive-path .runtime/cycles.jsonl \
+  --once --json
+tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
+tradecat auto context-audit --input /path/to/agent-market-context.json --json
+tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
+tradecat auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
+scripts/start-auto-paper.sh start --json
+scripts/start-auto-paper.sh status --json
+scripts/start-auto-paper.sh stop --json
+```
+
+自动化层仍然不是投资建议接口：它只做公开只读行情、确定性评分、保守风控和
+paper/watch；不会读取 Binance API key，不会签名请求，不会读取真实账户，也不会真实下单。
+Agent-supplied market context 必须先通过 `context-audit` 的 family/endpoint/provenance
+allowlist，再用 `run-context` 进入同一套 paper/watch 风控闭环；`replay-report` 只读取本地
+JSONL cycle archive 和 paper ledger，生成可复现纸面回放/回测摘要。`.runtime/` 是本地运行态和纸面账本目录，已加入 `.gitignore`，不得提交。
 
 ### Snapshot tap
 
@@ -635,6 +695,7 @@ tradecat config unset default_lang
 |:---|:---|:---|
 | `TRADECAT_SETTINGS_PATH` | TradeCat 项目根 `scripts/project/.tradecat/settings.json` | 用户侧配置文件路径 |
 | `TRADECAT_CACHE_DIR` | TradeCat 项目根 `scripts/project/.tradecat/cache` | 本地快照缓存目录 |
+| `TRADECAT_PUBLIC_ROOT` | 自动识别当前仓库根 | `tradecat auto` 读取本仓 `scripts/project/scripts/request.py` 时的仓库根覆盖 |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` | 无 | 覆盖单个 dataset 的 TUI live 探针间隔秒数，例如 `TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL=3` |
 | `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL` | 空 | 全局覆盖 TUI live 探针间隔秒数；未设置时读取 dataset 契约，`event_stream` 默认 `3.0`，其它 tap 默认 `10` |
 | `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_FETCH_TIMEOUT` | 无 | 覆盖单个 dataset 的 TUI live 拉取超时秒数，例如 `event_stream` 默认 `3.0` |

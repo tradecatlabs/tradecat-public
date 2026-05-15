@@ -1,8 +1,24 @@
 # tradecat-public
 
-这是一个标准 multi-Agent Skill 外壳仓库，真正的 TradeCat 用户侧源码统一放在
-`scripts/project/`。Agent / Hermes 的机器第一入口是
-`agents/manifest.json`，长文档契约见 `references/agent-contract.md`。
+这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`scripts/project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，长文档契约见 `references/agent-contract.md`。
+
+
+## 安装给本机 Hermes 使用
+
+最简单方式是把本仓库作为 Hermes skill 放到本机 skills 目录：
+
+```bash
+git clone https://github.com/tukuaiai/tradecat-public ~/.hermes/skills/tradecat-public
+hermes -s tradecat-public
+```
+
+开发中的本地仓库也可以用软链接方式挂进去：
+
+```bash
+mkdir -p ~/.hermes/skills
+ln -sfn /path/to/tradecat-public ~/.hermes/skills/tradecat-public
+hermes -s tradecat-public
+```
 
 ## Agent 快速入口
 
@@ -13,6 +29,11 @@ bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
+bash scripts/run-tradecat.sh auto paper-report --json
+bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json
+bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
+bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
+bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ```
 
@@ -23,9 +44,8 @@ python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 `tradecat.analysis_report.v1` 观察报告；边界见
 [references/analysis-contract.md](references/analysis-contract.md)。
 `features --json` 复用本地观察报告逻辑，输出
-`tradecat.feature_bundle.v1` 按 symbol 归一化的事实包；它不是评分、
-策略、收益预测、回测或交易执行接口，边界见
-[references/feature-contract.md](references/feature-contract.md)。
+`tradecat.feature_bundle.v1` 按 symbol 归一化的事实包；它仍然只是事实层，边界见
+[references/feature-contract.md](references/feature-contract.md)。Hermes/Agent 自动化入口统一走 `tradecat auto ...` / `bash scripts/run-tradecat.sh auto ...`，当前只允许公开行情、Agent-supplied market context 审计、paper/watch 和 JSONL replay，不读取 Binance API key，不签名，不真实下单；它是给 Hermes 使用的本地契约层，不是让 TradeCat 自己越权变成真实交易机器人。
 
 默认先走只读入口；只有需要写本地缓存时再执行 `sync`、`doctor --repair`、
 安装或卸载。
@@ -48,11 +68,11 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
 ```
 
-根目录只承担三件事：
+根目录承担三件事：
 
 1. 作为 Git 仓库边界。
 2. 作为 Skill 入口与长期参考资料边界。
-3. 提供进入项目源码的薄脚本。
+3. 提供进入统一项目源码与自动化生命周期入口的薄脚本。
 
 ## 根目录应有文件
 
@@ -124,11 +144,11 @@ scripts/project/
 |-- DEBUG.archive.md
 |-- scripts/
 |-- src/tradecat_terminal/
+|-- src/tradecat_auto/
 `-- tests/
 ```
 
-`scripts/project/` 是 Python 项目根；运行、打包、安装、测试和源码修改都以
-这里为准。
+`scripts/project/` 是 Python 项目根；`tradecat-auto` 已并入这里，不再作为独立实现中心。运行、打包、安装、测试和源码修改都以这里为准。
 
 ## 移动边界
 
@@ -147,7 +167,7 @@ scripts/project/
 
 - `README.md`、`Makefile`、`pyproject.toml`、`constraints.txt`。
 - `install.*`、`uninstall.*`。
-- Python 包源码 `src/`。
+- Python 包源码 `src/`，包括 `tradecat_terminal` 用户侧数据层和 `tradecat_auto` 自动化生命周期层。
 - 测试 `tests/`。
 - 项目脚本 `scripts/request.py`、`scripts/start.sh`、`scripts/watchdog.sh`、
   `scripts/verify.sh`、`scripts/guard_public_local_files.sh`；根级
@@ -170,6 +190,8 @@ bash scripts/validate-skill.sh --strict
 bash scripts/run-tradecat.sh --help
 cd scripts/project
 PYTHONPATH=src python3 -m tradecat_terminal --help
+PYTHONPATH=src python3 -m tradecat_auto.cli --help
+PYTHONPATH=src python3 -m tradecat_terminal auto --help
 ```
 
 本地收尾清理忽略运行态目录：

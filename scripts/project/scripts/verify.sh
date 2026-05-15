@@ -47,6 +47,7 @@ PYTHONPATH=src "$PYTHON_BIN" -m compileall src tests
 PYTHONPATH=src "$PYTEST_BIN" -q -p no:cacheprovider tests
 PYTHONPATH=src "$PYTHON_BIN" scripts/validate_data_contract.py
 PYTHONPATH=src "$PYTHON_BIN" scripts/validate_dataset_consumption_contract.py
+PYTHONPATH=src "$PYTHON_BIN" scripts/validate_agent_market_context_resources.py
 if command -v "$RUFF_BIN" >/dev/null 2>&1 || [[ -x "$RUFF_BIN" ]]; then
   "$RUFF_BIN" check src tests
 else
@@ -54,5 +55,5 @@ else
   echo "Fix: bash ../../scripts/bootstrap-dev.sh" >&2
   exit 1
 fi
-bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/guard_public_local_files.sh
-"$PYTHON_BIN" -m py_compile scripts/request.py scripts/validate_data_contract.py scripts/validate_dataset_consumption_contract.py
+bash -n install.sh uninstall.sh scripts/start.sh scripts/start-auto-paper.sh scripts/watchdog.sh scripts/guard_public_local_files.sh
+"$PYTHON_BIN" -m py_compile scripts/request.py scripts/validate_data_contract.py scripts/validate_dataset_consumption_contract.py scripts/validate_agent_market_context_resources.py

@@ -1,0 +1,337 @@
+from __future__ import annotations
+
+import copy
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from tradecat_auto.binance_market import summarize_depth
+from tradecat_auto.pipeline import build_paper_pipeline_report
+
+CONTEXT_SCHEMA = "tradecat_auto.agent_market_context.v1"
+AUDIT_SCHEMA = "tradecat_auto.agent_market_context_audit.v1"
+SCHEMA_VERSION = "1.0.0"
+DEFAULT_SOURCE_MANIFEST = "scripts/project/resources/agent_market_context/binance/provenance.manifest.json"
+
+ALLOWED_MODES = {"public_readonly", "paper", "watch"}
+ALLOWED_ENDPOINTS_BY_FAMILY: dict[str, set[str]] = {
+    "klines": {"/fapi/v1/klines"},
+    "order_book_depth": {"/fapi/v1/depth"},
+    "book_ticker": {"/fapi/v1/ticker/bookTicker"},
+    "24h_ticker": {"/fapi/v1/ticker/24hr"},
+    "funding_rate": {"/fapi/v1/fundingRate"},
+    "premium_index": {"/fapi/v1/premiumIndex"},
+    "open_interest": {"/fapi/v1/openInterest"},
+    "open_interest_history": {"/futures/data/openInterestHist"},
+    "long_short_ratios": {
+        "/futures/data/topLongShortAccountRatio",
+        "/futures/data/topLongShortPositionRatio",
+        "/futures/data/globalLongShortAccountRatio",
+    },
+    "taker_buy_sell_volume": {"/futures/data/takerlongshortRatio"},
+}
+FORBIDDEN_ENDPOINTS = {
+    "/fapi/v1/order",
+    "/fapi/v1/order/test",
+    "/fapi/v1/openOrders",
+    "/fapi/v1/allOrders",
+    "/fapi/v1/userTrades",
+    "/fapi/v1/leverage",
+    "/fapi/v1/marginType",
+    "/fapi/v1/countdownCancelAll",
+    "/fapi/v1/listenKey",
+    "/fapi/v2/account",
+    "/fapi/v2/balance",
+    "/fapi/v2/positionRisk",
+    "/fapi/v3/account",
+    "/fapi/v3/balance",
+    "/fapi/v3/positionRisk",
+}
+CREDENTIAL_KEY_FRAGMENTS = ("api_key", "secret", "signature", "signed", "listen_key", "private_key")
+
+
+def load_agent_market_context(path: Path | str) -> dict[str, Any]:
+    p = Path(path)
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "schema": CONTEXT_SCHEMA,
+            "schema_version": SCHEMA_VERSION,
+            "ok": False,
+            "error": {
+                "code": "agent_market_context_load_failed",
+                "kind": "validation",
+                "message": f"failed to load agent market context: {exc}",
+                "retryable": False,
+            },
+        }
+    return payload if isinstance(payload, dict) else {"schema": CONTEXT_SCHEMA, "schema_version": SCHEMA_VERSION, "ok": False}
+
+
+def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
+    errors: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    if not isinstance(context, dict):
+        context = {}
+        errors.append(_error("invalid_context", "context root must be an object"))
+
+    schema = context.get("schema")
+    if schema != CONTEXT_SCHEMA:
+        errors.append(_error("invalid_schema", f"schema must be {CONTEXT_SCHEMA}"))
+    if context.get("schema_version") != SCHEMA_VERSION:
+        errors.append(_error("invalid_schema_version", f"schema_version must be {SCHEMA_VERSION}"))
+
+    mode = str(context.get("mode") or "public_readonly").strip()
+    if mode not in ALLOWED_MODES:
+        errors.append(_error("forbidden_mode", f"mode {mode!r} is outside public_readonly/paper/watch boundary"))
+
+    symbol = str(context.get("symbol") or "").upper().strip()
+    if not symbol:
+        errors.append(_error("missing_symbol", "symbol is required"))
+
+    raw_top_provenance = context.get("provenance")
+    top_provenance: dict[str, Any] = raw_top_provenance if isinstance(raw_top_provenance, dict) else {}
+    if not top_provenance:
+        errors.append(_error("missing_provenance", "top-level provenance is required"))
+    elif not top_provenance.get("source_manifest"):
+        warnings.append(_warning("missing_source_manifest", "provenance.source_manifest is recommended for reproducible audits"))
+
+    credential_hits = _credential_key_hits(context)
+    for hit in credential_hits:
+        errors.append(_error("credential_material_forbidden", f"credential-like key is not allowed: {hit}"))
+
+    accepted_families: list[str] = []
+    rejected_families: list[str] = []
+    accepted_endpoints: list[str] = []
+    market_data = context.get("market_data")
+    if not isinstance(market_data, list) or not market_data:
+        errors.append(_error("missing_market_data", "market_data must be a non-empty array"))
+        market_data = []
+
+    for index, item in enumerate(market_data):
+        if not isinstance(item, dict):
+            errors.append(_error("invalid_market_data_item", "market_data item must be an object", index=index))
+            continue
+        family = str(item.get("family") or "").strip()
+        endpoint = _normalize_endpoint(str(item.get("endpoint") or ""))
+        method = str(item.get("method") or "GET").upper().strip()
+        item_provenance = item.get("provenance") if isinstance(item.get("provenance"), dict) else {}
+
+        if family not in ALLOWED_ENDPOINTS_BY_FAMILY:
+            rejected_families.append(family)
+            errors.append(_error("unsupported_family", f"market_data[{index}].family is not allowlisted: {family!r}", index=index))
+            continue
+        if method != "GET":
+            errors.append(_error("forbidden_method", f"market_data[{index}].method must be GET", index=index))
+        if endpoint in FORBIDDEN_ENDPOINTS or "/order" in endpoint:
+            errors.append(_error("forbidden_endpoint", f"market_data[{index}].endpoint is forbidden: {endpoint}", index=index))
+        elif endpoint not in ALLOWED_ENDPOINTS_BY_FAMILY[family]:
+            errors.append(_error("endpoint_not_allowlisted", f"endpoint {endpoint!r} is not allowed for family {family!r}", index=index))
+        if item.get("requires_signature") is True or item.get("signed") is True:
+            errors.append(_error("signed_request_forbidden", f"market_data[{index}] is marked as signed/requires_signature", index=index))
+        if not item_provenance:
+            errors.append(_error("missing_item_provenance", f"market_data[{index}].provenance is required", index=index))
+        if item.get("ok") is False:
+            warnings.append(_warning("market_data_item_not_ok", f"market_data[{index}] was supplied as ok=false", index=index))
+
+        if not any(error.get("index") == index for error in errors):
+            accepted_families.append(family)
+            accepted_endpoints.append(endpoint)
+
+    ok = not errors
+    return {
+        "schema": AUDIT_SCHEMA,
+        "schema_version": SCHEMA_VERSION,
+        "ok": ok,
+        "symbol": symbol,
+        "mode": mode,
+        "accepted_families": _dedupe(accepted_families),
+        "rejected_families": _dedupe([item for item in rejected_families if item]),
+        "accepted_endpoints": _dedupe(accepted_endpoints),
+        "errors": errors,
+        "warnings": warnings,
+        "provenance": copy.deepcopy(top_provenance),
+        "source_manifest": top_provenance.get("source_manifest") or DEFAULT_SOURCE_MANIFEST,
+        "safety_boundary_enforced": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "allowed_modes": sorted(ALLOWED_MODES),
+        "allowed_market_context_families": sorted(ALLOWED_ENDPOINTS_BY_FAMILY),
+        "generated_at": _now_iso(),
+    }
+
+
+def agent_market_context_to_market_bundle(context: dict[str, Any]) -> dict[str, Any]:
+    audit = audit_agent_market_context(context)
+    symbol = str(context.get("symbol") or audit.get("symbol") or "").upper().strip()
+    bundle: dict[str, Any] = {
+        "schema": "tradecat_auto.public_market_bundle.v1",
+        "schema_version": SCHEMA_VERSION,
+        "ok": bool(audit.get("ok")),
+        "symbol": symbol,
+        "source": "agent_supplied_market_context",
+        "agent_market_context_audit": audit,
+        "errors": {},
+    }
+    if not audit.get("ok"):
+        bundle["errors"]["agent_market_context"] = audit.get("errors", [])
+        return bundle
+
+    for item in context.get("market_data") or []:
+        if not isinstance(item, dict) or item.get("ok") is False:
+            continue
+        family = str(item.get("family") or "")
+        endpoint = _normalize_endpoint(str(item.get("endpoint") or ""))
+        data = copy.deepcopy(item.get("data"))
+        if family == "24h_ticker":
+            bundle["ticker24hr"] = data
+        elif family == "book_ticker":
+            bundle["bookTicker"] = data
+        elif family == "order_book_depth":
+            bundle["depth"] = data
+            if isinstance(data, dict):
+                bundle["depth_summary"] = summarize_depth(data)
+        elif family == "klines":
+            bundle["klines"] = data
+        elif family == "open_interest":
+            bundle["openInterest"] = data
+        elif family == "open_interest_history":
+            bundle["openInterestHist"] = _ensure_list(data)
+        elif family == "funding_rate":
+            bundle["fundingRate"] = _ensure_list(data)
+        elif family == "premium_index":
+            bundle["premiumIndex"] = data
+        elif family == "long_short_ratios":
+            _map_long_short_ratio(bundle, endpoint, data)
+        elif family == "taker_buy_sell_volume":
+            bundle["takerlongshortRatio"] = _ensure_list(data)
+    return bundle
+
+
+def build_paper_report_from_agent_market_context(
+    context: dict[str, Any],
+    *,
+    mode: str = "paper",
+    requested_notional_usdt: float = 10.0,
+    risk_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    audit = audit_agent_market_context(context)
+    if not audit.get("ok"):
+        return {
+            "schema": "tradecat_auto.run_once_report.v1",
+            "schema_version": SCHEMA_VERSION,
+            "ok": False,
+            "mode": mode,
+            "selected_symbol": audit.get("symbol") or str(context.get("symbol") or "").upper().strip(),
+            "error": "agent_market_context_audit_failed",
+            "agent_market_context_audit": audit,
+            "limitations": [
+                "agent-supplied public/read-only market context rejected before paper pipeline",
+                "no Binance credentials were read",
+                "no real order was placed",
+            ],
+        }
+    selected_symbol = str(context.get("symbol") or audit.get("symbol") or "").upper().strip()
+    anomaly_item = context.get("anomaly_symbol") if isinstance(context.get("anomaly_symbol"), dict) else {}
+    if not anomaly_item:
+        anomaly_item = {"raw_symbol": selected_symbol, "normalized_symbol": selected_symbol, "source_values": {}}
+    anomaly_item = copy.deepcopy(anomaly_item)
+    anomaly_item["normalized_symbol"] = selected_symbol
+    event = context.get("source_event") if isinstance(context.get("source_event"), dict) else {}
+    report = build_paper_pipeline_report(
+        selected_symbol=selected_symbol,
+        anomaly_symbols={"ok": True, "symbols": [anomaly_item], "rejected": []},
+        market_bundle=agent_market_context_to_market_bundle(context),
+        events={"ok": True, "events": [copy.deepcopy(event)] if event else []},
+        mode=mode,
+        requested_notional_usdt=requested_notional_usdt,
+        risk_policy=risk_policy,
+    )
+    report["schema_version"] = SCHEMA_VERSION
+    report["agent_market_context_audit"] = audit
+    report["market_context_provenance"] = copy.deepcopy(context.get("provenance") if isinstance(context.get("provenance"), dict) else {})
+    report.setdefault("limitations", [])
+    if "agent-supplied public/read-only market context" not in report["limitations"]:
+        report["limitations"].append("agent-supplied public/read-only market context")
+    return report
+
+
+def _map_long_short_ratio(bundle: dict[str, Any], endpoint: str, data: Any) -> None:
+    rows = _ensure_list(data)
+    if endpoint.endswith("topLongShortAccountRatio"):
+        bundle["topLongShortAccountRatio"] = rows
+    elif endpoint.endswith("topLongShortPositionRatio"):
+        bundle["topLongShortPositionRatio"] = rows
+    elif endpoint.endswith("globalLongShortAccountRatio"):
+        bundle["globalLongShortAccountRatio"] = rows
+    else:
+        bundle.setdefault("longShortRatios", []).extend(rows)
+
+
+def _ensure_list(data: Any) -> list[Any]:
+    if isinstance(data, list):
+        return copy.deepcopy(data)
+    if data is None:
+        return []
+    return [copy.deepcopy(data)]
+
+
+def _normalize_endpoint(endpoint: str) -> str:
+    clean = endpoint.strip()
+    if not clean:
+        return clean
+    if clean.startswith("http://") or clean.startswith("https://"):
+        # Keep only path for allowlist matching.
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(clean)
+            clean = parsed.path or clean
+        except Exception:
+            pass
+    return clean if clean.startswith("/") else f"/{clean}"
+
+
+def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
+    hits: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            normalized = key_text.lower().replace("-", "_")
+            if any(fragment in normalized for fragment in CREDENTIAL_KEY_FRAGMENTS):
+                # Schema flags such as requires_signature are allowed only as explicit false.
+                if normalized in {"requires_signature", "signed"} and child is False:
+                    pass
+                else:
+                    hits.append(path)
+            hits.extend(_credential_key_hits(child, prefix=path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            hits.extend(_credential_key_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]"))
+    return hits
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(str(item) for item in values if str(item)))
+
+
+def _error(code: str, message: str, *, index: int | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"code": code, "kind": "validation", "message": message, "retryable": False}
+    if index is not None:
+        payload["index"] = index
+    return payload
+
+
+def _warning(code: str, message: str, *, index: int | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"code": code, "message": message}
+    if index is not None:
+        payload["index"] = index
+    return payload
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

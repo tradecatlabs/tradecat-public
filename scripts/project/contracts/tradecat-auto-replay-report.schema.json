@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-replay-report.schema.json",
+  "title": "TradeCat Auto Replay Report",
+  "description": "Reproducible replay/backtest report from local service-cycle JSONL archive and optional paper ledger.",
+  "type": "object",
+  "required": ["schema", "schema_version", "ok", "archive", "paper_backtest", "safety", "limitations"],
+  "properties": {
+    "schema": {"const": "tradecat_auto.replay_report.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "generated_at": {"type": "string"},
+    "archive": {
+      "type": "object",
+      "required": ["schema", "schema_version", "cycle_count", "processed_count", "actions", "sha256", "load_errors"],
+      "properties": {
+        "schema": {"const": "tradecat_auto.replay_archive_summary.v1"},
+        "schema_version": {"const": "1.0.0"},
+        "path": {"type": "string"},
+        "sha256": {"type": "string"},
+        "cycle_count": {"type": "integer", "minimum": 0},
+        "processed_count": {"type": "integer", "minimum": 0},
+        "opened_count": {"type": "integer", "minimum": 0},
+        "rejected_count": {"type": "integer", "minimum": 0},
+        "risk_reject_count": {"type": "integer", "minimum": 0},
+        "actions": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "symbols": {"type": "array", "items": {"type": "string"}},
+        "load_errors": {"type": "array", "items": {"type": "object", "additionalProperties": true}}
+      },
+      "additionalProperties": true
+    },
+    "paper_backtest": {
+      "$ref": "tradecat-auto-paper-backtest-report.schema.json"
+    },
+    "safety": {
+      "type": "object",
+      "required": ["public_readonly", "paper_or_watch_only", "real_orders", "signed_requests", "reads_api_keys"],
+      "properties": {
+        "public_readonly": {"const": true},
+        "paper_or_watch_only": {"const": true},
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false},
+        "write_paths": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

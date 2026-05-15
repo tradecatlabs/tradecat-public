@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-agent-market-context-audit.schema.json",
+  "title": "TradeCat Auto Agent Market Context Audit",
+  "description": "Deterministic audit result for Agent-supplied market context safety, allowlist, provenance, and public/read-only boundaries.",
+  "type": "object",
+  "required": ["schema", "schema_version", "ok", "symbol", "mode", "accepted_families", "errors", "warnings", "safety_boundary_enforced", "real_orders", "signed_requests", "reads_api_keys"],
+  "properties": {
+    "schema": {"const": "tradecat_auto.agent_market_context_audit.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "symbol": {"type": "string"},
+    "mode": {"type": "string"},
+    "accepted_families": {"type": "array", "items": {"type": "string"}},
+    "rejected_families": {"type": "array", "items": {"type": "string"}},
+    "accepted_endpoints": {"type": "array", "items": {"type": "string"}},
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "kind", "message", "retryable"],
+        "properties": {
+          "code": {"type": "string"},
+          "kind": {"type": "string"},
+          "message": {"type": "string"},
+          "retryable": {"type": "boolean"},
+          "index": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": true
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+    "provenance": {"type": "object", "additionalProperties": true},
+    "source_manifest": {"type": "string"},
+    "safety_boundary_enforced": {"const": true},
+    "real_orders": {"const": false},
+    "signed_requests": {"const": false},
+    "reads_api_keys": {"const": false},
+    "allowed_modes": {"type": "array", "items": {"type": "string"}},
+    "allowed_market_context_families": {"type": "array", "items": {"type": "string"}},
+    "generated_at": {"type": "string"}
+  },
+  "additionalProperties": true
+}

@@ -10,5 +10,34 @@ build/
 .coverage
 htmlcov/
 .tradecat/
+.runtime/
 .hermes/
 .tools/
+
+# Local user/runtime data for public repo hygiene.
+# Keep schemas, examples, and sanitized fixtures in git; never commit real local state.
+.env
+*.env
+.env.*
+!.env.example
+secrets.*
+*.secret
+*.secrets
+.secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+.local/
+.mypy_cache/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+paper_ledger*.json
+cycles*.jsonl
+service_state*.json
+run_loop_smoke*.json
+user-data/
+local-data/
+private-data/
