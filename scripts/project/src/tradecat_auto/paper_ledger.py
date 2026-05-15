@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 LEDGER_SCHEMA = "tradecat_auto.paper_ledger.v1"
+PAPER_ACCOUNT_STATE_SCHEMA = "tradecat_auto.paper_account_state.v1"
 DEFAULT_INITIAL_BALANCE_USDT = 1000.0
 DEFAULT_FEE_BPS = 4.0
 DEFAULT_SLIPPAGE_BPS = 0.0
@@ -28,6 +29,7 @@ def default_paper_ledger(*, initial_balance_usdt: float = DEFAULT_INITIAL_BALANC
         "unrealized_pnl_usdt": 0.0,
         "open_positions": {},
         "closed_positions": [],
+        "paper_orders": [],
         "fills": [],
         "applied_execution_ids": [],
         "ignored_execution_ids": [],
@@ -52,6 +54,7 @@ def load_paper_ledger(path: Path | str, *, initial_balance_usdt: float = DEFAULT
     ledger["schema"] = LEDGER_SCHEMA
     ledger["open_positions"] = dict(ledger.get("open_positions") or {})
     ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
+    ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
     ledger["fills"] = list(ledger.get("fills") or [])
     ledger["applied_execution_ids"] = _dedupe(ledger.get("applied_execution_ids") or [])
     ledger["ignored_execution_ids"] = _dedupe(ledger.get("ignored_execution_ids") or [])
@@ -136,6 +139,30 @@ def apply_paper_execution(
         "unrealized_pnl_usdt": 0.0,
     }
     open_positions[symbol] = position
+    updated.setdefault("paper_orders", []).append(
+        {
+            "schema": "tradecat_auto.paper_order.v1",
+            "schema_version": "1.0.0",
+            "order_id": execution_id,
+            "execution_id": execution_id,
+            "position_id": position_id,
+            "symbol": symbol,
+            "side": "BUY" if side == "LONG" else "SELL",
+            "position_side": side,
+            "order_type": "PAPER_MARKET",
+            "status": "FILLED",
+            "requested_price": entry_price,
+            "filled_price": fill_price,
+            "quantity": quantity,
+            "notional_usdt": fill_notional,
+            "fee_usdt": fee,
+            "created_at": now_text,
+            "filled_at": now_text,
+            "real_order": False,
+            "exchange_order_id": None,
+            "source": "tradecat_paper_execution",
+        }
+    )
     updated.setdefault("fills", []).append(
         {
             "fill_id": _fill_id(execution_id, "OPEN"),
@@ -163,6 +190,7 @@ def load_paper_ledger_from_object(value: dict[str, Any]) -> dict[str, Any]:
     ledger["schema"] = LEDGER_SCHEMA
     ledger["open_positions"] = dict(ledger.get("open_positions") or {})
     ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
+    ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
     ledger["fills"] = list(ledger.get("fills") or [])
     ledger["applied_execution_ids"] = _dedupe(ledger.get("applied_execution_ids") or [])
     ledger["ignored_execution_ids"] = _dedupe(ledger.get("ignored_execution_ids") or [])
@@ -205,8 +233,42 @@ def paper_ledger_summary(ledger: dict[str, Any]) -> dict[str, Any]:
         "unrealized_pnl_usdt": normalized.get("unrealized_pnl_usdt"),
         "open_positions_count": len(normalized.get("open_positions") or {}),
         "closed_positions_count": len(normalized.get("closed_positions") or []),
+        "paper_orders_count": len(normalized.get("paper_orders") or []),
         "fills_count": len(normalized.get("fills") or []),
         "last_updated_at": normalized.get("last_updated_at"),
+    }
+
+
+def paper_account_state(ledger: dict[str, Any]) -> dict[str, Any]:
+    """Return prompt-safe paper account state derived only from the local ledger."""
+
+    normalized = _recalculate_equity(load_paper_ledger_from_object(ledger))
+    return {
+        "schema": PAPER_ACCOUNT_STATE_SCHEMA,
+        "schema_version": "1.0.0",
+        "mode": "paper",
+        "source": "local_tradecat_paper_ledger",
+        "cash_balance_usdt": normalized.get("cash_balance_usdt"),
+        "equity_usdt": normalized.get("equity_usdt"),
+        "initial_balance_usdt": normalized.get("initial_balance_usdt"),
+        "realized_pnl_usdt": normalized.get("realized_pnl_usdt"),
+        "unrealized_pnl_usdt": normalized.get("unrealized_pnl_usdt"),
+        "open_positions": list((normalized.get("open_positions") or {}).values()),
+        "recent_paper_orders": list(normalized.get("paper_orders") or [])[-20:],
+        "recent_fills": list(normalized.get("fills") or [])[-20:],
+        "closed_positions_count": len(normalized.get("closed_positions") or []),
+        "last_updated_at": normalized.get("last_updated_at"),
+        "hard_boundaries": {
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "binance_account_state": False,
+        },
+        "limitations": [
+            "derived from local paper ledger only",
+            "not Binance account, balance, position, order, or fill state",
+            "paper/watch research only; no real exchange order was placed",
+        ],
     }
 
 
@@ -383,6 +445,8 @@ def _validate_loaded_payload(data: dict[str, Any], path: Path) -> None:
     for key, expected_type in typed_fields:
         if not isinstance(data.get(key), expected_type):
             raise PaperLedgerError(f"paper_ledger_load_failed: {path}: {key} has invalid type")
+    if "paper_orders" in data and not isinstance(data.get("paper_orders"), list):
+        raise PaperLedgerError(f"paper_ledger_load_failed: {path}: paper_orders has invalid type")
     for symbol, position in data.get("open_positions", {}).items():
         if not str(symbol).strip() or not isinstance(position, dict):
             raise PaperLedgerError(f"paper_ledger_load_failed: {path}: open_positions has invalid entry")

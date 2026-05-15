@@ -429,9 +429,12 @@ tradecat watch --interval 60
 # 全生命周期自动化入口：公开行情 + watch/paper，不读 key、不真实下单
 tradecat auto market-universe --json
 tradecat auto probe-public --json
+tradecat auto soft-layer --json
 tradecat auto run-once --mode paper --notional-usdt 12 --json
 tradecat auto run-loop --mode paper --notional-usdt 12 --state-path .runtime/service_state.json --ledger-path .runtime/paper_ledger.json --archive-path .runtime/cycles.jsonl --once --json
 tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
+tradecat auto context-audit --input /path/to/agent-market-context.json --json
+tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
 
 # 自主持续纸面测试服务：循环用实盘公开数据跑 run-loop --once，写入 ledger/archive/log
 scripts/start-auto-paper.sh status --json
@@ -559,7 +562,8 @@ tradecat doctor --sync --timeout 10
 给人和 Hermes 共用的安装/运行/安全指南见仓库根目录 `references/hermes-agent-guide.md`；机器主契约仍是仓库根目录 `agents/manifest.json`。
 Agent/Hermes 可参考 `resources/agent_market_context/binance/provenance.manifest.json`
 中的本地自包含 Binance skill/API 快照，但运行期仍只接收 public/read-only
-market context。它从 `event_stream` / `anomaly_panel` 和 Binance USDⓈ-M public REST 构造
+market context；软决策层提示词和 endpoint policy 位于 `resources/agent_soft_layer/`，可用
+`tradecat auto soft-layer --json` 读取。它从 `event_stream` / `anomaly_panel` 和 Binance USDⓈ-M public REST 构造
 `tradecat_auto.market_enrichment.v1`、`signal_score.v1`、`strategy_intent.v1`、
 `risk_decision.v1`、`paper_execution_report.v1`、`paper_ledger.v1` 和
 `service_cycle.v1`。当前可运行命令：
@@ -567,6 +571,7 @@ market context。它从 `event_stream` / `anomaly_panel` 和 Binance USDⓈ-M pu
 ```bash
 tradecat auto market-universe --json
 tradecat auto probe-public --json
+tradecat auto soft-layer --json
 tradecat auto run-once --mode paper --notional-usdt 12 --json
 tradecat auto run-loop --mode paper --notional-usdt 12 \
   --state-path .runtime/service_state.json \
@@ -584,8 +589,10 @@ scripts/start-auto-paper.sh stop --json
 
 自动化层仍然不是投资建议接口：它只做公开只读行情、确定性评分、保守风控和
 paper/watch；不会读取 Binance API key，不会签名请求，不会读取真实账户，也不会真实下单。
+Agent 交易研究尽量保持软层：提示词、文档、endpoint policy 和 `agent_trade_thesis`；只有 schema、审计、安全拒绝、paper ledger、paper account state、风控拒绝与报告生成属于硬边界。
 Agent-supplied market context 必须先通过 `context-audit` 的 family/endpoint/provenance
-allowlist，再用 `run-context` 进入同一套 paper/watch 风控闭环；`replay-report` 只读取本地
+allowlist，再用 `run-context` 进入同一套 paper/watch 风控闭环；`paper-report` 中的
+`paper_account_state` 只从本地 paper ledger 派生，不读取 Binance 账户/订单状态；`replay-report` 只读取本地
 JSONL cycle archive 和 paper ledger，生成可复现纸面回放/回测摘要。`.runtime/` 是本地运行态和纸面账本目录，已加入 `.gitignore`，不得提交。
 
 ### Snapshot tap

@@ -11,6 +11,7 @@ from tradecat_auto.paper_ledger import (
     default_paper_ledger,
     load_paper_ledger,
     mark_to_market,
+    paper_account_state,
     save_paper_ledger,
 )
 
@@ -37,6 +38,10 @@ class PaperLedgerTests(unittest.TestCase):
 
         self.assertEqual(updated["schema"], "tradecat_auto.paper_ledger.v1")
         self.assertIn("IRYSUSDT", updated["open_positions"])
+        self.assertEqual(len(updated["paper_orders"]), 1)
+        self.assertEqual(updated["paper_orders"][0]["schema"], "tradecat_auto.paper_order.v1")
+        self.assertFalse(updated["paper_orders"][0]["real_order"])
+        self.assertIsNone(updated["paper_orders"][0]["exchange_order_id"])
         self.assertEqual(len(updated["fills"]), 1)
         self.assertAlmostEqual(updated["fills"][0]["price"], 100.05)
         self.assertAlmostEqual(updated["fills"][0]["fee_usdt"], 0.008004)
@@ -118,6 +123,21 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(updated["open_positions"]["IRYSUSDT"]["execution_id"], "exec-1")
         self.assertEqual(updated["last_rejected_execution"]["reason"], "position_already_open_for_symbol")
         self.assertIn("exec-2", updated["ignored_execution_ids"])
+
+    def test_paper_account_state_is_derived_from_local_ledger_only(self) -> None:
+        ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
+
+        state = paper_account_state(ledger)
+
+        self.assertEqual(state["schema"], "tradecat_auto.paper_account_state.v1")
+        self.assertEqual(state["source"], "local_tradecat_paper_ledger")
+        self.assertFalse(state["hard_boundaries"]["real_orders"])
+        self.assertFalse(state["hard_boundaries"]["signed_requests"])
+        self.assertFalse(state["hard_boundaries"]["reads_api_keys"])
+        self.assertFalse(state["hard_boundaries"]["binance_account_state"])
+        self.assertEqual(state["recent_paper_orders"][0]["schema"], "tradecat_auto.paper_order.v1")
+        self.assertFalse(state["recent_paper_orders"][0]["real_order"])
+        self.assertIn("not Binance account", state["limitations"][1])
 
 
 if __name__ == "__main__":

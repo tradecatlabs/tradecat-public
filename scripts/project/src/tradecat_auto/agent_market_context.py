@@ -32,15 +32,36 @@ ALLOWED_ENDPOINTS_BY_FAMILY: dict[str, set[str]] = {
     "taker_buy_sell_volume": {"/futures/data/takerlongshortRatio"},
 }
 FORBIDDEN_ENDPOINTS = {
+    "/fapi/v1/accountConfig",
+    "/fapi/v1/adlQuantile",
+    "/fapi/v1/algoOrder",
+    "/fapi/v1/allAlgoOrders",
+    "/fapi/v1/allOpenOrders",
+    "/fapi/v1/allOrders",
+    "/fapi/v1/apiTradingStatus",
+    "/fapi/v1/batchOrders",
+    "/fapi/v1/commissionRate",
+    "/fapi/v1/countdownCancelAll",
+    "/fapi/v1/forceOrders",
+    "/fapi/v1/income",
+    "/fapi/v1/leverage",
+    "/fapi/v1/leverageBracket",
+    "/fapi/v1/listenKey",
+    "/fapi/v1/marginType",
+    "/fapi/v1/multiAssetsMargin",
+    "/fapi/v1/openAlgoOrders",
+    "/fapi/v1/openOrder",
+    "/fapi/v1/openOrders",
     "/fapi/v1/order",
     "/fapi/v1/order/test",
-    "/fapi/v1/openOrders",
-    "/fapi/v1/allOrders",
+    "/fapi/v1/orderAmendment",
+    "/fapi/v1/pmAccountInfo",
+    "/fapi/v1/positionMargin",
+    "/fapi/v1/positionMargin/history",
+    "/fapi/v1/positionSide/dual",
+    "/fapi/v1/rateLimit/order",
+    "/fapi/v1/symbolConfig",
     "/fapi/v1/userTrades",
-    "/fapi/v1/leverage",
-    "/fapi/v1/marginType",
-    "/fapi/v1/countdownCancelAll",
-    "/fapi/v1/listenKey",
     "/fapi/v2/account",
     "/fapi/v2/balance",
     "/fapi/v2/positionRisk",
@@ -48,7 +69,61 @@ FORBIDDEN_ENDPOINTS = {
     "/fapi/v3/balance",
     "/fapi/v3/positionRisk",
 }
+FORBIDDEN_ENDPOINT_MARKERS = (
+    "/account",
+    "/balance",
+    "/order",
+    "/openorder",
+    "/openorders",
+    "/allorders",
+    "/allopenorders",
+    "/batchorders",
+    "/algoorder",
+    "/algoopenorders",
+    "/openalgoorders",
+    "/countdowncancelall",
+    "/usertrades",
+    "/positionrisk",
+    "/positionmargin",
+    "/positionside/dual",
+    "/leverage",
+    "/margintype",
+    "/multiassetsmargin",
+    "/listenkey",
+    "/income",
+    "/commissionrate",
+    "/ratelimit/order",
+    "/symbolconfig",
+    "/apitradingstatus",
+    "/forceorders",
+    "/pmaccountinfo",
+)
 CREDENTIAL_KEY_FRAGMENTS = ("api_key", "secret", "signature", "signed", "listen_key", "private_key")
+FORBIDDEN_STATE_KEY_NAMES = {
+    "account",
+    "account_info",
+    "account_state",
+    "all_orders",
+    "allorders",
+    "balance",
+    "balances",
+    "binance_account",
+    "binance_order",
+    "client_order_id",
+    "exchange_order",
+    "exchange_order_id",
+    "open_orders",
+    "openorders",
+    "order_history",
+    "orig_client_order_id",
+    "position_amt",
+    "position_risk",
+    "positionrisk",
+    "real_order",
+    "real_orders",
+    "user_trades",
+    "usertrades",
+}
 
 
 def load_agent_market_context(path: Path | str) -> dict[str, Any]:
@@ -102,6 +177,15 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
     for hit in credential_hits:
         errors.append(_error("credential_material_forbidden", f"credential-like key is not allowed: {hit}"))
 
+    forbidden_state_hits = _forbidden_state_key_hits(context)
+    for hit in forbidden_state_hits:
+        errors.append(
+            _error(
+                "account_or_order_state_forbidden",
+                f"real account/order state key is not allowed in Agent-supplied context: {hit}",
+            )
+        )
+
     accepted_families: list[str] = []
     rejected_families: list[str] = []
     accepted_endpoints: list[str] = []
@@ -125,8 +209,15 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
             continue
         if method != "GET":
             errors.append(_error("forbidden_method", f"market_data[{index}].method must be GET", index=index))
-        if endpoint in FORBIDDEN_ENDPOINTS or "/order" in endpoint:
-            errors.append(_error("forbidden_endpoint", f"market_data[{index}].endpoint is forbidden: {endpoint}", index=index))
+        forbidden_endpoint_reason = _forbidden_endpoint_reason(endpoint)
+        if forbidden_endpoint_reason:
+            errors.append(
+                _error(
+                    "forbidden_endpoint",
+                    f"market_data[{index}].endpoint is forbidden: {endpoint} ({forbidden_endpoint_reason})",
+                    index=index,
+                )
+            )
         elif endpoint not in ALLOWED_ENDPOINTS_BY_FAMILY[family]:
             errors.append(_error("endpoint_not_allowlisted", f"endpoint {endpoint!r} is not allowed for family {family!r}", index=index))
         if item.get("requires_signature") is True or item.get("signed") is True:
@@ -293,6 +384,35 @@ def _normalize_endpoint(endpoint: str) -> str:
         except Exception:
             pass
     return clean if clean.startswith("/") else f"/{clean}"
+
+
+def _forbidden_endpoint_reason(endpoint: str) -> str | None:
+    normalized = _normalize_endpoint(endpoint).lower()
+    explicit = {item.lower() for item in FORBIDDEN_ENDPOINTS}
+    if normalized in explicit:
+        return "hard forbidden account/order endpoint"
+    for marker in FORBIDDEN_ENDPOINT_MARKERS:
+        if marker in normalized:
+            return f"hard forbidden endpoint marker {marker}"
+    return None
+
+
+def _forbidden_state_key_hits(value: Any, *, prefix: str = "") -> list[str]:
+    hits: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            normalized = key_text.lower().replace("-", "_")
+            compact = normalized.replace("_", "")
+            forbidden_compact = {item.replace("_", "") for item in FORBIDDEN_STATE_KEY_NAMES}
+            if normalized in FORBIDDEN_STATE_KEY_NAMES or compact in forbidden_compact:
+                hits.append(path)
+            hits.extend(_forbidden_state_key_hits(child, prefix=path))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            hits.extend(_forbidden_state_key_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]"))
+    return hits
 
 
 def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:

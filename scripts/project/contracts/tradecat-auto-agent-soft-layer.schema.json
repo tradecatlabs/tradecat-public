@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-agent-soft-layer.schema.json",
+  "title": "TradeCat Auto Agent Soft Layer",
+  "description": "Self-contained Agent/Hermes prompt templates, endpoint policy, and soft decision contracts for public-readonly paper research.",
+  "type": "object",
+  "required": ["schema", "schema_version", "ok", "resource_root", "prompt_templates", "endpoint_policy", "soft_output_contract", "hard_boundaries", "provenance"],
+  "properties": {
+    "schema": {"const": "tradecat_auto.agent_soft_layer.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"const": true},
+    "resource_root": {"type": "string"},
+    "purpose": {"type": "string"},
+    "prompt_templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "language", "path"],
+        "properties": {
+          "id": {"type": "string"},
+          "language": {"type": "string"},
+          "path": {"type": "string"},
+          "template": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "endpoint_policy": {
+      "type": "object",
+      "required": ["schema", "schema_version", "allowed_market_context_families", "hard_forbidden_endpoint_categories", "hard_forbidden_state_keys"],
+      "properties": {
+        "schema": {"const": "tradecat_auto.agent_soft_endpoint_policy.v1"},
+        "schema_version": {"const": "1.0.0"},
+        "allowed_market_context_families": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+        "hard_forbidden_endpoint_categories": {"type": "array", "items": {"type": "object", "additionalProperties": true}},
+        "hard_forbidden_state_keys": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "soft_output_contract": {"type": "object", "additionalProperties": true},
+    "hard_boundaries": {
+      "type": "object",
+      "required": ["real_orders", "signed_requests", "reads_api_keys", "account_state_source"],
+      "properties": {
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false},
+        "account_state_source": {"const": "local TradeCat paper ledger only"}
+      },
+      "additionalProperties": true
+    },
+    "provenance": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": true
+}

@@ -143,6 +143,30 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertIn("signed_request_forbidden", codes)
         self.assertTrue(audit["safety_boundary_enforced"])
 
+    def test_audit_rejects_real_account_or_order_state_material(self) -> None:
+        context = sample_context()
+        context["paper_or_account_state"] = {
+            "account_state": {"balance": "1000"},
+            "open_orders": [{"exchange_order_id": "123", "status": "NEW"}],
+        }
+        context["market_data"].append(
+            {
+                "family": "open_interest",
+                "endpoint": "https://fapi.binance.com/fapi/v2/positionRisk",
+                "method": "GET",
+                "ok": True,
+                "provenance": {"source": "bad_agent"},
+                "data": {"positionAmt": "1"},
+            }
+        )
+
+        audit = audit_agent_market_context(context)
+
+        self.assertFalse(audit["ok"])
+        codes = {item["code"] for item in audit["errors"]}
+        self.assertIn("account_or_order_state_forbidden", codes)
+        self.assertIn("forbidden_endpoint", codes)
+
     def test_context_to_market_bundle_maps_allowed_families_for_existing_pipeline(self) -> None:
         bundle = agent_market_context_to_market_bundle(sample_context())
 

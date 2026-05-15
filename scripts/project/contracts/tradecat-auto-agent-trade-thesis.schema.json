@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-agent-trade-thesis.schema.json",
+  "title": "TradeCat Auto Agent Trade Thesis",
+  "description": "Soft Agent/Hermes research-thesis output for paper/watch analysis only; deterministic TradeCat gates remain authoritative.",
+  "type": "object",
+  "required": ["schema", "schema_version", "ok", "symbol", "mode", "direction", "confidence", "rationale", "limitations"],
+  "properties": {
+    "schema": {"const": "tradecat_auto.agent_trade_thesis.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "symbol": {"type": "string"},
+    "mode": {"const": "paper_research"},
+    "direction": {"enum": ["LONG", "SHORT", "WATCH_ONLY"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "holding_horizon": {"enum": ["intraday", "multi_day", "unknown"]},
+    "entry_context": {
+      "type": "object",
+      "properties": {
+        "reference_price": {"type": "number", "minimum": 0},
+        "price_source": {"type": "string"},
+        "not_order_instruction": {"const": true}
+      },
+      "additionalProperties": true
+    },
+    "risk_notes": {"type": "array", "items": {"type": "string"}},
+    "invalidation_conditions": {"type": "array", "items": {"type": "string"}},
+    "requested_followup_context_families": {"type": "array", "items": {"type": "string"}},
+    "paper_intent": {
+      "type": "object",
+      "properties": {
+        "allow_tradecat_paper_gate_to_decide": {"const": true},
+        "requested_notional_usdt": {"type": "number", "minimum": 0},
+        "real_order": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "rationale": {"type": "string"},
+    "error_code": {"type": "string"},
+    "provenance": {"type": "object", "additionalProperties": true},
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string"},
+      "contains": {"type": "string", "pattern": "paper|watch|no Binance|no real", "minLength": 1}
+    }
+  },
+  "additionalProperties": true
+}

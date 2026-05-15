@@ -10,13 +10,15 @@
   "human_docs": [
     "README.md",
     "references/hermes-agent-guide.md",
-    "scripts/project/README.md"
+    "scripts/project/README.md",
+    "references/agent-soft-decision-layer.md"
   ],
   "agent_docs": [
     "SKILL.md",
     "agents/manifest.json",
     "references/agent-contract.md",
-    "references/hermes-agent-guide.md"
+    "references/hermes-agent-guide.md",
+    "references/agent-soft-decision-layer.md"
   ],
   "agent_profiles": [
     {
@@ -383,7 +385,12 @@
     "agent_market_context_input_schema": "scripts/project/contracts/tradecat-auto-agent-market-context.schema.json",
     "agent_market_context_audit_schema": "scripts/project/contracts/tradecat-auto-agent-market-context-audit.schema.json",
     "paper_backtest_report_schema": "scripts/project/contracts/tradecat-auto-paper-backtest-report.schema.json",
-    "replay_report_schema": "scripts/project/contracts/tradecat-auto-replay-report.schema.json"
+    "replay_report_schema": "scripts/project/contracts/tradecat-auto-replay-report.schema.json",
+    "agent_soft_layer_reference": "references/agent-soft-decision-layer.md",
+    "agent_soft_layer_resources": "scripts/project/resources/agent_soft_layer",
+    "agent_soft_layer_schema": "scripts/project/contracts/tradecat-auto-agent-soft-layer.schema.json",
+    "agent_trade_thesis_schema": "scripts/project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
+    "paper_account_state_schema": "scripts/project/contracts/tradecat-auto-paper-account-state.schema.json"
   },
   "references": [
     "references/agent-contract.md",
@@ -398,7 +405,8 @@
     "references/linear-flows.md",
     "references/quality-gate.md",
     "references/first-run-cache.md",
-    "references/agent-readiness-remediation-task-tree.md"
+    "references/agent-readiness-remediation-task-tree.md",
+    "references/agent-soft-decision-layer.md"
   ],
   "known_failure_modes": [
     {
@@ -521,6 +529,13 @@
       "repair": "Use only the families and endpoints advertised by tradecat-auto-agent-market-context.schema.json and context-audit."
     },
     {
+      "code": "account_or_order_state_forbidden",
+      "kind": "safety_gate",
+      "meaning": "The supplied Agent context contains real account, balance, position, order, order-id, or user-trade state.",
+      "retryable": false,
+      "repair": "Remove real exchange account/order state and use only paper_account_state derived from the local TradeCat paper ledger."
+    },
+    {
       "code": "mainnet_execution_not_implemented",
       "kind": "safety_gate",
       "meaning": "Mainnet execution is deliberately rejected by the deterministic risk gate.",
@@ -535,6 +550,8 @@
     "run bash scripts/run-tradecat.sh status --json",
     "run bash scripts/run-tradecat.sh datasets --json",
     "run bash scripts/run-tradecat.sh path event_stream --json",
+    "for Agent soft decisions, load bash scripts/run-tradecat.sh auto soft-layer --json before composing market context or trade thesis prompts",
+    "derive prompt-safe account/order context only from auto paper-report paper_account_state; never from Binance account/order endpoints",
     "run bash scripts/run-tradecat.sh analyze --json when local cache is already populated",
     "run bash scripts/run-tradecat.sh features --json when per-symbol fact bundles are needed",
     "if only inspecting public data, prefer python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
@@ -643,6 +660,36 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Reads only local paper/watch archive and ledger files; no credentials, signed requests, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.agent_soft_layer.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Return self-contained Agent/Hermes prompt templates, endpoint policy, and soft thesis contract resources for public-readonly paper research.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public/read-only plus paper/watch contract only; no Binance credentials, signed requests, real account reads, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.agent_trade_thesis.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Soft Agent/Hermes research-thesis output contract; deterministic TradeCat audit/risk/paper gates remain authoritative.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public/read-only plus paper/watch contract only; no Binance credentials, signed requests, real account reads, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.paper_account_state.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Prompt-safe paper account state derived only from the local TradeCat paper ledger, never Binance account/order endpoints.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public/read-only plus paper/watch contract only; no Binance credentials, signed requests, real account reads, or real orders."
     }
   ],
   "automation_entrypoints": [
@@ -658,6 +705,19 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Local paper ledger reporting only; no Binance credentials, signed requests, or real orders."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto soft-layer --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.agent_soft_layer.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "self-contained Agent soft layer bundle produced"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads local prompt/policy resources only; prompts are advisory and hard gates reject credentials/account/orders."
     },
     {
       "command": "bash scripts/run-tradecat.sh auto market-universe --json",
@@ -821,6 +881,19 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Reference only: public/read-only Binance market context may be used later through explicit contracts; signed/account/order examples in upstream snapshots are not runtime tools."
+    },
+    {
+      "schema": "tradecat_auto.agent_soft_endpoint_policy.v1",
+      "schema_version": "1.0.0",
+      "path": "scripts/project/resources/agent_soft_layer/endpoint_policy.json",
+      "contract_schema": "scripts/project/contracts/tradecat-auto-agent-soft-layer.schema.json",
+      "purpose": "Self-contained soft endpoint policy for Agent market-context prompts; hard safety gates remain in code.",
+      "runtime_dependency": true,
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Policy permits only public/read-only market data families and enumerates hard-forbidden account/order categories."
     }
   ],
   "automation_input_contracts": [
@@ -838,6 +911,19 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Input contract only; TradeCat audits allowlisted public market families before paper/watch processing."
+    },
+    {
+      "schema": "tradecat_auto.agent_trade_thesis.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "scripts/project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
+      "purpose": "Optional Agent/Hermes soft research thesis for paper/watch review; not a real order instruction.",
+      "allowed_modes": [
+        "paper_research"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Soft thesis only; deterministic TradeCat paper/risk gates decide all ledger mutations and reject real-order semantics."
     }
   ]
 }

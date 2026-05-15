@@ -62,6 +62,9 @@ RESOURCE_SCHEMA_FILES = {
 AUTO_SCHEMA_FILES = {
     "tradecat-auto-agent-market-context.schema.json": "tradecat_auto.agent_market_context.v1",
     "tradecat-auto-agent-market-context-audit.schema.json": "tradecat_auto.agent_market_context_audit.v1",
+    "tradecat-auto-agent-soft-layer.schema.json": "tradecat_auto.agent_soft_layer.v1",
+    "tradecat-auto-agent-trade-thesis.schema.json": "tradecat_auto.agent_trade_thesis.v1",
+    "tradecat-auto-paper-account-state.schema.json": "tradecat_auto.paper_account_state.v1",
     "tradecat-auto-paper-backtest-report.schema.json": "tradecat_auto.paper_backtest_report.v1",
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
 }
@@ -124,6 +127,7 @@ def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
     commands = {item["command"] for item in payload.get("automation_entrypoints", [])}
 
     assert "bash scripts/run-tradecat.sh auto paper-report --json" in commands
+    assert "bash scripts/run-tradecat.sh auto soft-layer --json" in commands
     assert "bash scripts/run-tradecat.sh auto run-once --mode paper --notional-usdt 12 --json" in commands
     assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json" in commands
     assert "bash scripts/project/scripts/start-auto-paper.sh status --json" in commands
@@ -142,6 +146,9 @@ def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
         "tradecat_auto.service_cycle.v1",
         "tradecat_auto.paper_service_status.v1",
         "tradecat_auto.agent_market_context_audit.v1",
+        "tradecat_auto.agent_soft_layer.v1",
+        "tradecat_auto.agent_trade_thesis.v1",
+        "tradecat_auto.paper_account_state.v1",
         "tradecat_auto.paper_backtest_report.v1",
         "tradecat_auto.replay_report.v1",
     }.issubset(automation_contracts)
@@ -184,9 +191,12 @@ def test_agent_contract_reference_is_indexed():
 
     assert "agent-contract.md" in index
     assert "hermes-agent-guide.md" in index
+    assert "agent-soft-decision-layer.md" in index
     assert "references/hermes-agent-guide.md" in manifest["human_docs"]
     assert "references/hermes-agent-guide.md" in manifest["agent_docs"]
+    assert "references/agent-soft-decision-layer.md" in manifest["agent_docs"]
     assert manifest["important_paths"]["hermes_agent_guide"] == "references/hermes-agent-guide.md"
+    assert manifest["important_paths"]["agent_soft_layer_resources"] == "scripts/project/resources/agent_soft_layer"
     assert "Agent Fast Path" in contract
     assert "Command Risk Classes" in contract
     assert "Agent-supplied Market Context Contract" in contract

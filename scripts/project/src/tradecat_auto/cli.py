@@ -11,8 +11,9 @@ from tradecat_auto.agent_market_context import (
     build_paper_report_from_agent_market_context,
     load_agent_market_context,
 )
+from tradecat_auto.agent_soft_layer import build_agent_soft_layer_bundle
 from tradecat_auto.binance_market import BinanceMarketClient, normalize_to_usdt_perp_symbol
-from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, paper_ledger_summary
+from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, paper_account_state, paper_ledger_summary
 from tradecat_auto.pipeline import build_paper_pipeline_report
 from tradecat_auto.replay import build_replay_report
 from tradecat_auto.service import DEFAULT_STATE_PATH, run_service_cycle
@@ -70,6 +71,10 @@ def build_parser() -> argparse.ArgumentParser:
     paper.add_argument("--initial-balance-usdt", type=float, default=1000.0)
     paper.add_argument("--json", action="store_true", help="Emit JSON")
 
+    soft_layer = sub.add_parser("soft-layer", help="Show self-contained Agent soft prompt/policy bundle")
+    soft_layer.add_argument("--no-prompt-text", action="store_true", help="List prompt paths without embedding template text")
+    soft_layer.add_argument("--json", action="store_true", help="Emit JSON")
+
     context_audit = sub.add_parser("context-audit", help="Audit Agent-supplied public/read-only market context JSON")
     context_audit.add_argument("--input", required=True, help="Path to agent market context JSON")
     context_audit.add_argument("--json", action="store_true", help="Emit JSON")
@@ -122,6 +127,10 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code_for_payload(args.command, payload)
     if args.command == "paper-report":
         payload = paper_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "soft-layer":
+        payload = soft_layer_report(args)
         _print(payload, as_json=args.json)
         return exit_code_for_payload(args.command, payload)
     if args.command == "context-audit":
@@ -302,11 +311,17 @@ def paper_report(args: argparse.Namespace) -> dict[str, Any]:
         "ok": True,
         "ledger_path": str(ledger_path),
         "summary": paper_ledger_summary(ledger),
+        "paper_account_state": paper_account_state(ledger),
         "open_positions": ledger.get("open_positions", {}),
         "closed_positions": ledger.get("closed_positions", [])[-20:],
+        "recent_paper_orders": ledger.get("paper_orders", [])[-20:],
         "recent_fills": ledger.get("fills", [])[-20:],
         "equity_curve_tail": ledger.get("equity_curve", [])[-50:],
     }
+
+
+def soft_layer_report(args: argparse.Namespace) -> dict[str, Any]:
+    return build_agent_soft_layer_bundle(include_prompt_text=not bool(getattr(args, "no_prompt_text", False)))
 
 
 def context_audit_report(args: argparse.Namespace) -> dict[str, Any]:
