@@ -88,6 +88,54 @@ class ProductionControlTests(unittest.TestCase):
             self.assertIn("cycle_archive_missing", report["alerts"])
             self.assertIn("last_error_present", report["alerts"])
 
+    def test_health_report_ignores_no_events_available_when_runtime_artifacts_are_healthy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_path = root / "service_state.json"
+            ledger_path = root / "paper_ledger.json"
+            archive_path = root / "cycles.jsonl"
+            journal_path = root / "paper_audit.sqlite3"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_state.v1",
+                        "cycles_attempted": 4,
+                        "cycles_processed": 1,
+                        "last_attempt_at": "2026-05-15T00:09:30Z",
+                        "last_success_at": "2026-05-15T00:08:30Z",
+                        "last_error": "no_events_available",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            save_paper_ledger(ledger_path, default_paper_ledger(initial_balance_usdt=1000.0))
+            archive_path.write_text(
+                '{"schema":"tradecat_auto.service_cycle.v1","action":"PROCESSED","ok":true}\n'
+                '{"schema":"tradecat_auto.service_cycle.v1","action":"SKIPPED_NO_EVENT","ok":false,"reason":"no_events_available"}\n',
+                encoding="utf-8",
+            )
+            append_audit_record(
+                journal_path,
+                event_type="service_cycle",
+                payload={"schema": "tradecat_auto.service_cycle.v1", "ok": True},
+                run_id="evt-2",
+                idempotency_key="cycle:evt-2",
+                created_at="2026-05-15T00:08:30Z",
+            )
+
+            report = build_health_report(
+                state_path=state_path,
+                ledger_path=ledger_path,
+                archive_path=archive_path,
+                journal_path=journal_path,
+                now_iso="2026-05-15T00:10:00Z",
+                max_heartbeat_age_seconds=90,
+            )
+
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["status"], "healthy")
+            self.assertNotIn("last_error_present", report["alerts"])
+
     def test_daily_report_and_telegram_alerts_are_machine_contract_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

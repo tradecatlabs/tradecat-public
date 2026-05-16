@@ -10,6 +10,7 @@ from tradecat_auto.audit_journal import journal_summary
 from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, paper_ledger_summary
 
 SCHEMA_VERSION = "1.0.0"
+BENIGN_LAST_ERRORS = {"no_events_available"}
 
 
 def build_health_report(
@@ -35,7 +36,8 @@ def build_health_report(
         alerts.append("service_state_missing")
     if heartbeat.get("stale"):
         alerts.append("heartbeat_stale")
-    if state.get("last_error"):
+    last_error = state.get("last_error")
+    if last_error and str(last_error) not in BENIGN_LAST_ERRORS:
         alerts.append("last_error_present")
     if not ledger.get("ok"):
         alerts.append(str(ledger.get("alert") or "paper_ledger_unhealthy"))
