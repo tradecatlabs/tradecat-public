@@ -135,6 +135,7 @@ def apply_paper_execution(
         "notional_usdt": fill_notional,
         "stop_loss_price": _num(execution.get("stop_loss_price")),
         "take_profit_price": _num(execution.get("take_profit_price")),
+        "max_holding_minutes": _num(execution.get("max_holding_minutes")),
         "last_mark_price": fill_price,
         "unrealized_pnl_usdt": 0.0,
     }
@@ -205,6 +206,7 @@ def mark_to_market(
     fee_bps: float = DEFAULT_FEE_BPS,
     slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
     now_iso: str | None = None,
+    max_holding_minutes: float | None = None,
 ) -> dict[str, Any]:
     fee_bps = _non_negative(fee_bps, "fee_bps")
     slippage_bps = _non_negative(slippage_bps, "slippage_bps")
@@ -216,7 +218,7 @@ def mark_to_market(
             continue
         position["last_mark_price"] = mark_price
         position["unrealized_pnl_usdt"] = _position_pnl(position, mark_price)
-        close_reason = _close_reason(position, mark_price)
+        close_reason = _close_reason(position, mark_price, now_iso=now_text, max_holding_minutes=max_holding_minutes)
         if close_reason:
             _close_position(updated, symbol, mark_price, close_reason, fee_bps=fee_bps, slippage_bps=slippage_bps, now_iso=now_text)
     updated["last_updated_at"] = now_text
@@ -366,7 +368,13 @@ def _position_pnl(position: dict[str, Any], price: float) -> float:
     return 0.0
 
 
-def _close_reason(position: dict[str, Any], mark_price: float) -> str | None:
+def _close_reason(
+    position: dict[str, Any],
+    mark_price: float,
+    *,
+    now_iso: str | None = None,
+    max_holding_minutes: float | None = None,
+) -> str | None:
     side = str(position.get("side") or "").upper()
     stop_loss = _num(position.get("stop_loss_price"))
     take_profit = _num(position.get("take_profit_price"))
@@ -380,7 +388,33 @@ def _close_reason(position: dict[str, Any], mark_price: float) -> str | None:
             return "stop_loss"
         if take_profit is not None and mark_price <= take_profit:
             return "take_profit"
+    effective_max_holding = _num(position.get("max_holding_minutes"))
+    if effective_max_holding is None:
+        effective_max_holding = _num(max_holding_minutes)
+    if effective_max_holding is not None and effective_max_holding > 0 and _holding_minutes(position, now_iso) >= effective_max_holding:
+        return "time_stop"
     return None
+
+
+def _holding_minutes(position: dict[str, Any], now_iso: str | None) -> float:
+    opened_at = _parse_iso_datetime(str(position.get("opened_at") or ""))
+    now = _parse_iso_datetime(str(now_iso or ""))
+    if opened_at is None or now is None:
+        return 0.0
+    return max(0.0, (now - opened_at).total_seconds() / 60.0)
+
+
+def _parse_iso_datetime(text: str) -> datetime | None:
+    value = str(text or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _slipped_price(price: float, side: str, action: str, slippage_bps: float) -> float:

@@ -92,6 +92,16 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(decision["policy"]["current_total_notional_usdt"], 45.0)
         self.assertEqual(decision["policy"]["requested_notional_usdt"], 12.0)
 
+    def test_consecutive_loss_limit_rejects_new_entries(self) -> None:
+        policy = default_risk_policy(mode="paper")
+        policy.update({"max_consecutive_losses": 3, "consecutive_losses": 3})
+
+        decision = evaluate_risk(LONG_SIGNAL, policy)
+
+        self.assertEqual(decision["decision"], "REJECT")
+        self.assertIn("consecutive_loss_limit_reached", decision["reasons"])
+        self.assertEqual(decision["policy"]["consecutive_losses"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

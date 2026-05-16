@@ -81,6 +81,27 @@ bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-cont
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 ```
 
+## 纸面生产运行态与审计报告
+
+持续 paper/watch 服务的默认运行态目录是 `scripts/project/.runtime/auto-paper/`，包含 `service_state.json`、`paper_ledger.json`、`cycles.jsonl`、`paper_audit.sqlite3`、`paper-run-loop.log` 和 PID/heartbeat 文件；这些都是本地运行态，已被 `.gitignore` 隔离，不得提交。先用 status 检查，再启动或停止：
+
+```bash
+bash scripts/project/scripts/start-auto-paper.sh status --json
+bash scripts/project/scripts/start-auto-paper.sh start --json
+bash scripts/project/scripts/start-auto-paper.sh stop --json
+```
+
+运行态报告统一保持 public/read-only + paper/watch：
+
+```bash
+bash scripts/run-tradecat.sh auto audit-journal --json
+bash scripts/run-tradecat.sh auto health-report --json
+bash scripts/run-tradecat.sh auto daily-report --json
+bash scripts/run-tradecat.sh auto alert-payload --kind daily --json
+```
+
+这些命令只读取本地 paper ledger、cycle archive、SQLite audit journal 和 heartbeat；不会读取 Binance key、不会签名、不会查真实账户/订单、不会真实下单。`audit-journal` 输出 `tradecat_auto.audit_journal_summary.v1`，`health-report` 输出 `tradecat_auto.production_health.v1`，`daily-report` 输出 `tradecat_auto.daily_paper_report.v1`，`alert-payload` 输出 `tradecat_auto.telegram_alerts.v1`。
+
 只有明确需要本地运行态时，才执行会写 `.runtime/` 或 `.tradecat/` 的命令，例如 `sync`、`run-loop --once`、`start-auto-paper.sh start`。执行后台服务前先查状态，停止时用匹配的 stop 命令。
 
 ## Agent-supplied market context 输入契约

@@ -99,30 +99,89 @@ FORBIDDEN_ENDPOINT_MARKERS = (
     "/pmaccountinfo",
 )
 CREDENTIAL_KEY_FRAGMENTS = ("api_key", "secret", "signature", "signed", "listen_key", "private_key")
+CREDENTIAL_KEY_COMPACT_FRAGMENTS = tuple(fragment.replace("_", "") for fragment in CREDENTIAL_KEY_FRAGMENTS) + (
+    "apikey",
+    "secretkey",
+)
+SIGNED_TIMESTAMP_CONTEXT_KEYS = {"apikey", "recvwindow", "requiressignature", "secretkey", "signature", "signed"}
 FORBIDDEN_STATE_KEY_NAMES = {
     "account",
     "account_info",
     "account_state",
+    "activate_price",
+    "activateprice",
     "all_orders",
     "allorders",
+    "avg_price",
+    "avgprice",
     "balance",
     "balances",
     "binance_account",
     "binance_order",
     "client_order_id",
+    "clientorderid",
+    "close_position",
+    "closeposition",
+    "cum_qty",
+    "cum_quote",
+    "cumqty",
+    "cumquote",
+    "cummulative_quote_qty",
+    "cummulativequoteqty",
     "exchange_order",
     "exchange_order_id",
+    "executed_qty",
+    "executedqty",
+    "fill",
+    "fills",
+    "good_till_date",
+    "goodtilldate",
+    "new_client_order_id",
+    "newclientorderid",
     "open_orders",
     "openorders",
     "order_history",
+    "order_id",
+    "order_list_id",
+    "order_status",
+    "orderid",
+    "orderlistid",
     "orig_client_order_id",
+    "orig_qty",
+    "origclientorderid",
+    "origqty",
+    "position",
     "position_amt",
     "position_risk",
+    "position_side",
+    "positionamt",
     "positionrisk",
+    "positions",
+    "positionside",
+    "price_match",
+    "price_protect",
+    "price_rate",
+    "pricematch",
+    "priceprotect",
+    "pricerate",
     "real_order",
     "real_orders",
+    "reduce_only",
+    "reduceonly",
+    "self_trade_prevention_mode",
+    "selftradepreventionmode",
+    "stop_price",
+    "stopprice",
+    "time_in_force",
+    "timeinforce",
+    "transact_time",
+    "transacttime",
+    "update_time",
+    "updatetime",
     "user_trades",
     "usertrades",
+    "working_type",
+    "workingtype",
 }
 
 
@@ -171,11 +230,15 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
     if not top_provenance:
         errors.append(_error("missing_provenance", "top-level provenance is required"))
     elif not top_provenance.get("source_manifest"):
-        warnings.append(_warning("missing_source_manifest", "provenance.source_manifest is recommended for reproducible audits"))
+        errors.append(_error("missing_source_manifest", "provenance.source_manifest is required for reproducible audits"))
 
     credential_hits = _credential_key_hits(context)
     for hit in credential_hits:
         errors.append(_error("credential_material_forbidden", f"credential-like key is not allowed: {hit}"))
+
+    signed_timestamp_hits = _signed_timestamp_hits(context)
+    for hit in signed_timestamp_hits:
+        errors.append(_error("signed_timestamp_forbidden", f"timestamp is not allowed inside a signed/request-signature context: {hit}"))
 
     forbidden_state_hits = _forbidden_state_key_hits(context)
     for hit in forbidden_state_hits:
@@ -404,7 +467,7 @@ def _forbidden_state_key_hits(value: Any, *, prefix: str = "") -> list[str]:
             key_text = str(key)
             path = f"{prefix}.{key_text}" if prefix else key_text
             normalized = key_text.lower().replace("-", "_")
-            compact = normalized.replace("_", "")
+            compact = _compact_key(key_text)
             forbidden_compact = {item.replace("_", "") for item in FORBIDDEN_STATE_KEY_NAMES}
             if normalized in FORBIDDEN_STATE_KEY_NAMES or compact in forbidden_compact:
                 hits.append(path)
@@ -415,6 +478,26 @@ def _forbidden_state_key_hits(value: Any, *, prefix: str = "") -> list[str]:
     return hits
 
 
+def _signed_timestamp_hits(value: Any, *, prefix: str = "", signed_context: bool = False) -> list[str]:
+    hits: list[str] = []
+    if isinstance(value, dict):
+        compact_keys = {_compact_key(key): key for key in value}
+        current_signed_context = signed_context or any(
+            compact in SIGNED_TIMESTAMP_CONTEXT_KEYS and value.get(original) is not False
+            for compact, original in compact_keys.items()
+        )
+        for key, child in value.items():
+            key_text = str(key)
+            path = f"{prefix}.{key_text}" if prefix else key_text
+            if _compact_key(key_text) == "timestamp" and current_signed_context:
+                hits.append(path)
+            hits.extend(_signed_timestamp_hits(child, prefix=path, signed_context=current_signed_context))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            hits.extend(_signed_timestamp_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]", signed_context=signed_context))
+    return hits
+
+
 def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
     hits: list[str] = []
     if isinstance(value, dict):
@@ -422,7 +505,10 @@ def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
             key_text = str(key)
             path = f"{prefix}.{key_text}" if prefix else key_text
             normalized = key_text.lower().replace("-", "_")
-            if any(fragment in normalized for fragment in CREDENTIAL_KEY_FRAGMENTS):
+            compact = _compact_key(key_text)
+            if any(fragment in normalized for fragment in CREDENTIAL_KEY_FRAGMENTS) or any(
+                fragment in compact for fragment in CREDENTIAL_KEY_COMPACT_FRAGMENTS
+            ):
                 # Schema flags such as requires_signature are allowed only as explicit false.
                 if normalized in {"requires_signature", "signed"} and child is False:
                     pass
@@ -433,6 +519,10 @@ def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
         for index, child in enumerate(value):
             hits.extend(_credential_key_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]"))
     return hits
+
+
+def _compact_key(key: Any) -> str:
+    return str(key).lower().replace("-", "_").replace("_", "")
 
 
 def _dedupe(values: list[str]) -> list[str]:

@@ -64,9 +64,15 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-agent-market-context-audit.schema.json": "tradecat_auto.agent_market_context_audit.v1",
     "tradecat-auto-agent-soft-layer.schema.json": "tradecat_auto.agent_soft_layer.v1",
     "tradecat-auto-agent-trade-thesis.schema.json": "tradecat_auto.agent_trade_thesis.v1",
+    "tradecat-auto-audit-journal-summary.schema.json": "tradecat_auto.audit_journal_summary.v1",
+    "tradecat-auto-audit-journal-write.schema.json": "tradecat_auto.audit_journal_write.v1",
+    "tradecat-auto-daily-paper-report.schema.json": "tradecat_auto.daily_paper_report.v1",
     "tradecat-auto-paper-account-state.schema.json": "tradecat_auto.paper_account_state.v1",
     "tradecat-auto-paper-backtest-report.schema.json": "tradecat_auto.paper_backtest_report.v1",
+    "tradecat-auto-paper-service-status.schema.json": "tradecat_auto.paper_service_status.v1",
+    "tradecat-auto-production-health.schema.json": "tradecat_auto.production_health.v1",
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
+    "tradecat-auto-telegram-alerts.schema.json": "tradecat_auto.telegram_alerts.v1",
 }
 
 INTERNAL_CLI_SCHEMA_ALLOWLIST = {
@@ -130,8 +136,13 @@ def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
     assert "bash scripts/run-tradecat.sh auto soft-layer --json" in commands
     assert "bash scripts/run-tradecat.sh auto run-once --mode paper --notional-usdt 12 --json" in commands
     assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json" in commands
+    assert "bash scripts/run-tradecat.sh auto audit-journal --json" in commands
+    assert "bash scripts/run-tradecat.sh auto health-report --json" in commands
+    assert "bash scripts/run-tradecat.sh auto daily-report --json" in commands
+    assert "bash scripts/run-tradecat.sh auto alert-payload --kind daily --json" in commands
     assert "bash scripts/project/scripts/start-auto-paper.sh status --json" in commands
     assert payload["important_paths"]["automation_source"] == "scripts/project/src/tradecat_auto"
+    assert payload["important_paths"]["automation_audit_journal"] == "scripts/project/.runtime/auto-paper/paper_audit.sqlite3"
 
 
 def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
@@ -151,6 +162,11 @@ def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
         "tradecat_auto.paper_account_state.v1",
         "tradecat_auto.paper_backtest_report.v1",
         "tradecat_auto.replay_report.v1",
+        "tradecat_auto.audit_journal_summary.v1",
+        "tradecat_auto.audit_journal_write.v1",
+        "tradecat_auto.production_health.v1",
+        "tradecat_auto.daily_paper_report.v1",
+        "tradecat_auto.telegram_alerts.v1",
     }.issubset(automation_contracts)
     for contract in automation_contracts.values():
         assert contract["schema_version"] == "1.0.0"
@@ -200,8 +216,10 @@ def test_agent_contract_reference_is_indexed():
     assert "Agent Fast Path" in contract
     assert "Command Risk Classes" in contract
     assert "Agent-supplied Market Context Contract" in contract
+    assert "Production Paper Runtime Reports" in contract
     assert "给 Hermes/Agent 的最小流程" in guide
     assert "Agent-supplied market context 输入契约" in guide
+    assert "纸面生产运行态与审计报告" in guide
 
 
 def test_formal_contract_schemas_are_valid_json():

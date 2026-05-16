@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-audit-journal-write.schema.json",
+  "title": "TradeCat Auto Audit Journal Write Result",
+  "description": "Result returned when a service cycle is written into the local SQLite paper/watch audit journal.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "path",
+    "run_id",
+    "records_inserted",
+    "records_total",
+    "safety"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat_auto.audit_journal_write.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "path": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "records_inserted": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "records_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "latest_record_sha256": {
+      "type": "string"
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "safety": {
+      "type": "object",
+      "properties": {
+        "public_readonly_market_data": {
+          "const": true
+        },
+        "public_readonly": {
+          "const": true
+        },
+        "paper_or_watch_only": {
+          "const": true
+        },
+        "real_orders": {
+          "const": false
+        },
+        "signed_requests": {
+          "const": false
+        },
+        "reads_api_keys": {
+          "const": false
+        },
+        "binance_account_state": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

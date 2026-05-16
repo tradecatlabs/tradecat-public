@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-telegram-alerts.schema.json",
+  "title": "TradeCat Auto Telegram Alert Payloads",
+  "description": "Telegram-friendly plain-text alert payloads derived from local paper/watch health or daily reports.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "alerts",
+    "safety"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat_auto.telegram_alerts.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "text",
+          "parse_mode",
+          "real_orders",
+          "signed_requests",
+          "reads_api_keys"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "parse_mode": {
+            "const": "plain_text"
+          },
+          "real_orders": {
+            "const": false
+          },
+          "signed_requests": {
+            "const": false
+          },
+          "reads_api_keys": {
+            "const": false
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "safety": {
+      "type": "object",
+      "properties": {
+        "public_readonly_market_data": {
+          "const": true
+        },
+        "public_readonly": {
+          "const": true
+        },
+        "paper_or_watch_only": {
+          "const": true
+        },
+        "real_orders": {
+          "const": false
+        },
+        "signed_requests": {
+          "const": false
+        },
+        "reads_api_keys": {
+          "const": false
+        },
+        "binance_account_state": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

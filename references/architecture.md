@@ -76,7 +76,7 @@ TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snap
 ## Forbidden Paths
 
 - No TradeCat server PostgreSQL access.
-- No SQLite or SQL query layer.
+- No raw SQL/server database query layer. The only allowed SQLite use is the local paper/watch audit journal under ignored `.runtime/` paths; read-only summary commands must not create missing journals or WAL files.
 - No server production-chain dependency.
 - No private credentials, generated cache files, paper ledgers, JSONL archives, or local runtime files in Git.
 - No Binance signed account/trade endpoints or real order execution in the current `tradecat_auto` layer; only public-readonly + paper/watch is allowed until deterministic testnet/mainnet gates are implemented.

@@ -390,7 +390,12 @@
     "agent_soft_layer_resources": "scripts/project/resources/agent_soft_layer",
     "agent_soft_layer_schema": "scripts/project/contracts/tradecat-auto-agent-soft-layer.schema.json",
     "agent_trade_thesis_schema": "scripts/project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
-    "paper_account_state_schema": "scripts/project/contracts/tradecat-auto-paper-account-state.schema.json"
+    "paper_account_state_schema": "scripts/project/contracts/tradecat-auto-paper-account-state.schema.json",
+    "automation_state_path": "scripts/project/.runtime/auto-paper/service_state.json",
+    "automation_paper_ledger": "scripts/project/.runtime/auto-paper/paper_ledger.json",
+    "automation_cycle_archive": "scripts/project/.runtime/auto-paper/cycles.jsonl",
+    "automation_audit_journal": "scripts/project/.runtime/auto-paper/paper_audit.sqlite3",
+    "automation_run_loop_log": "scripts/project/.runtime/auto-paper/paper-run-loop.log"
   },
   "references": [
     "references/agent-contract.md",
@@ -552,6 +557,9 @@
     "run bash scripts/run-tradecat.sh path event_stream --json",
     "for Agent soft decisions, load bash scripts/run-tradecat.sh auto soft-layer --json before composing market context or trade thesis prompts",
     "derive prompt-safe account/order context only from auto paper-report paper_account_state; never from Binance account/order endpoints",
+    "run bash scripts/run-tradecat.sh auto daily-report --json or alert-payload --kind daily --json for reporting without trading side effects",
+    "run bash scripts/run-tradecat.sh auto health-report --json to inspect heartbeat/ledger/archive/audit health before or after starting the service",
+    "run bash scripts/run-tradecat.sh auto audit-journal --json to inspect local paper/watch audit-chain state",
     "run bash scripts/run-tradecat.sh analyze --json when local cache is already populated",
     "run bash scripts/run-tradecat.sh features --json when per-symbol fact bundles are needed",
     "if only inspecting public data, prefer python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
@@ -690,6 +698,60 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Public/read-only plus paper/watch contract only; no Binance credentials, signed requests, real account reads, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.audit_journal_summary.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Summarize local SQLite paper/watch audit journal counts and checksum-chain integrity.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper/watch audit journal metadata; no network, credentials, signed requests, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.audit_journal_write.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Record one service cycle, config snapshot, risk decision, paper orders, and paper fills into the local SQLite audit journal.",
+      "writes": true,
+      "write_paths": [
+        "scripts/project/.runtime/auto-paper/paper_audit.sqlite3",
+        ".runtime/** when explicitly overridden"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Writes only local SQLite paper/watch audit records and rejects real-order or signed/account payloads."
+    },
+    {
+      "schema": "tradecat_auto.production_health.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Report paper/watch production heartbeat, ledger health, cycle archive health, and audit journal chain status.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper/watch runtime files and audit journal; no Binance credentials, account state, signed requests, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.daily_paper_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Build daily paper/watch report from local paper ledger and cycle archive.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper ledger and JSONL archive to summarize paper positions/fills; no real exchange execution."
+    },
+    {
+      "schema": "tradecat_auto.telegram_alerts.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Build Telegram-friendly plain-text alerts from health or daily paper/watch reports.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Formats local paper/watch report text only; delivery is handled outside this contract and no trading side effect occurs."
     }
   ],
   "automation_entrypoints": [
@@ -866,6 +928,61 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Reads local paper/watch runtime files only; no Binance credentials, signed requests, or real orders."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto audit-journal --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.audit_journal_summary.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "audit journal summary produced",
+        "1": "local runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads local SQLite paper/watch audit journal summary only."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto health-report --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.production_health.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "health report produced",
+        "1": "local runtime health degraded or load failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper/watch runtime files and audit journal."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto daily-report --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.daily_paper_report.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "daily paper report produced",
+        "1": "local paper ledger or archive load failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper ledger and cycle archive."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto alert-payload --kind daily --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.telegram_alerts.v1",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "alert payload produced"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Builds a plain-text alert payload from local paper reports only; does not deliver messages or trade."
     }
   ],
   "reference_resources": [

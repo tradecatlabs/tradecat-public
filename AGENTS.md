@@ -98,7 +98,7 @@ tradecat-public/
 - `install.*` / `uninstall.*`：用户安装与卸载入口。
 - `scripts/`：项目级脚本，包含 registry/CSV 与 dataset consumption contract 校验入口。
 - `src/tradecat_terminal/`：TradeCat CLI / TUI / analysis / feature facts 源码，以及 dataset registry 与 dataset consumption contract 机器资源。
-- `src/tradecat_auto/`：TradeCat → Binance USDⓈ-M public-readonly + paper/watch 自动化生命周期源码；当前禁止真实账户读写和真实下单。
+- `src/tradecat_auto/`：TradeCat → Binance USDⓈ-M public-readonly + paper/watch 自动化生命周期源码，包含本地 paper ledger、JSONL cycle archive、SQLite audit journal 与 health/daily/alert 报告；当前禁止真实账户读写和真实下单，运行态必须停留在 gitignored `.runtime/`。
 - `tests/`：项目测试。
 - `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`：项目治理与调试记录，随仓库提交；
   必须保持公开安全，不得写入凭证、缓存内容或私密环境变量。

@@ -12,9 +12,11 @@ from tradecat_auto.agent_market_context import (
     load_agent_market_context,
 )
 from tradecat_auto.agent_soft_layer import build_agent_soft_layer_bundle
+from tradecat_auto.audit_journal import journal_summary
 from tradecat_auto.binance_market import BinanceMarketClient, normalize_to_usdt_perp_symbol
 from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, paper_account_state, paper_ledger_summary
 from tradecat_auto.pipeline import build_paper_pipeline_report
+from tradecat_auto.production_control import build_daily_report, build_health_report, build_telegram_alerts
 from tradecat_auto.replay import build_replay_report
 from tradecat_auto.service import DEFAULT_STATE_PATH, run_service_cycle
 from tradecat_auto.tradecat_source import DEFAULT_TRADECAT_PUBLIC, TradeCatPublicSource
@@ -57,9 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
     run_loop.add_argument("--ledger-path", default="", help="Optional persistent paper ledger JSON path")
     run_loop.add_argument("--archive-path", default="", help="Optional JSONL path for full service-cycle replay records")
+    run_loop.add_argument("--journal-path", default="", help="Optional SQLite audit journal path for run/config/decision/order/fill records")
     run_loop.add_argument("--initial-balance-usdt", type=float, default=1000.0)
     run_loop.add_argument("--paper-fee-bps", type=float, default=4.0)
     run_loop.add_argument("--paper-slippage-bps", type=float, default=5.0)
+    run_loop.add_argument("--paper-max-holding-minutes", type=float, default=60.0)
     run_loop.add_argument("--interval-seconds", type=float, default=60.0)
     run_loop.add_argument("--max-cycles", type=int, default=0, help="Stop after N cycles; 0 means run until interrupted")
     run_loop.add_argument("--once", action="store_true", help="Run exactly one service cycle and exit")
@@ -89,6 +93,36 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument("--archive-path", default=".runtime/cycles.jsonl")
     replay.add_argument("--ledger-path", default=".runtime/paper_ledger.json")
     replay.add_argument("--json", action="store_true", help="Emit JSON")
+
+    audit_journal = sub.add_parser("audit-journal", help="Summarize the local SQLite append-only audit journal")
+    audit_journal.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3")
+    audit_journal.add_argument("--json", action="store_true", help="Emit JSON")
+
+    health = sub.add_parser("health-report", help="Summarize production heartbeat, ledger, cycle archive, and audit journal")
+    health.add_argument("--state-path", default=".runtime/auto-paper/service_state.json")
+    health.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
+    health.add_argument("--archive-path", default=".runtime/auto-paper/cycles.jsonl")
+    health.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3")
+    health.add_argument("--now", default="", help="Optional ISO timestamp for deterministic checks")
+    health.add_argument("--max-heartbeat-age-seconds", type=float, default=180.0)
+    health.add_argument("--json", action="store_true", help="Emit JSON")
+
+    daily = sub.add_parser("daily-report", help="Build a daily paper production report from ledger and cycle archive")
+    daily.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
+    daily.add_argument("--archive-path", default=".runtime/auto-paper/cycles.jsonl")
+    daily.add_argument("--date", default="", help="Report date YYYY-MM-DD; defaults to today")
+    daily.add_argument("--json", action="store_true", help="Emit JSON")
+
+    alerts = sub.add_parser("alert-payload", help="Build Telegram-friendly alert payload from health or daily report")
+    alerts.add_argument("--kind", choices=["health", "daily"], default="health")
+    alerts.add_argument("--state-path", default=".runtime/auto-paper/service_state.json")
+    alerts.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
+    alerts.add_argument("--archive-path", default=".runtime/auto-paper/cycles.jsonl")
+    alerts.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3")
+    alerts.add_argument("--date", default="", help="Daily report date YYYY-MM-DD; defaults to today")
+    alerts.add_argument("--now", default="", help="Optional ISO timestamp for deterministic health checks")
+    alerts.add_argument("--max-heartbeat-age-seconds", type=float, default=180.0)
+    alerts.add_argument("--json", action="store_true", help="Emit JSON")
 
     return parser
 
@@ -143,6 +177,22 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code_for_payload(args.command, payload)
     if args.command == "replay-report":
         payload = replay_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "audit-journal":
+        payload = audit_journal_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "health-report":
+        payload = health_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "daily-report":
+        payload = daily_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "alert-payload":
+        payload = alert_payload_report(args)
         _print(payload, as_json=args.json)
         return exit_code_for_payload(args.command, payload)
     raise AssertionError(args.command)
@@ -368,6 +418,37 @@ def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
 
 def replay_report(args: argparse.Namespace) -> dict[str, Any]:
     return build_replay_report(archive_path=Path(args.archive_path), ledger_path=Path(args.ledger_path))
+
+
+def audit_journal_report(args: argparse.Namespace) -> dict[str, Any]:
+    return journal_summary(Path(args.journal_path))
+
+
+def health_report(args: argparse.Namespace) -> dict[str, Any]:
+    return build_health_report(
+        state_path=Path(args.state_path),
+        ledger_path=Path(args.ledger_path),
+        archive_path=Path(args.archive_path),
+        journal_path=Path(args.journal_path),
+        now_iso=str(getattr(args, "now", "") or "") or None,
+        max_heartbeat_age_seconds=float(getattr(args, "max_heartbeat_age_seconds", 180.0)),
+    )
+
+
+def daily_report(args: argparse.Namespace) -> dict[str, Any]:
+    return build_daily_report(
+        ledger_path=Path(args.ledger_path),
+        archive_path=Path(args.archive_path),
+        date=str(getattr(args, "date", "") or "") or None,
+    )
+
+
+def alert_payload_report(args: argparse.Namespace) -> dict[str, Any]:
+    if getattr(args, "kind", "health") == "daily":
+        report = daily_report(args)
+    else:
+        report = health_report(args)
+    return build_telegram_alerts(report)
 
 
 def _safe_call(func, *args, **kwargs) -> dict[str, Any]:

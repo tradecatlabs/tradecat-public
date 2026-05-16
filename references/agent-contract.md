@@ -200,6 +200,30 @@ Automation payload schemas currently advertised through `agents/manifest.json` i
 | `auto context-audit --input <context.json> --json` | `tradecat_auto.agent_market_context_audit.v1` |
 | `auto run-context --input <context.json> --mode paper --json` | `tradecat_auto.run_once_report.v1` |
 | `auto replay-report --archive-path ... --ledger-path ... --json` | `tradecat_auto.replay_report.v1` |
+| `auto audit-journal --json` | `tradecat_auto.audit_journal_summary.v1` |
+| service-cycle audit write | `tradecat_auto.audit_journal_write.v1` |
+| `auto health-report --json` | `tradecat_auto.production_health.v1` |
+| `auto daily-report --json` | `tradecat_auto.daily_paper_report.v1` |
+| `auto alert-payload --kind daily --json` | `tradecat_auto.telegram_alerts.v1` |
+
+## Production Paper Runtime Reports
+
+The production paper/watch runtime is local state only. Default paths live under
+`scripts/project/.runtime/auto-paper/`: `service_state.json`, `paper_ledger.json`,
+`cycles.jsonl`, `paper_audit.sqlite3`, and `paper-run-loop.log`. These files are
+ignored by Git and must not be committed. Agents should treat them as
+operator-local runtime evidence, not source assets.
+
+Use `bash scripts/project/scripts/start-auto-paper.sh status --json` to inspect
+whether the continuous paper loop is running. Use `auto health-report --json` for
+heartbeat, ledger, archive, and audit-journal health; `auto daily-report --json`
+for a daily paper/watch ledger summary; `auto audit-journal --json` for SQLite
+checksum-chain status; and `auto alert-payload --kind daily --json` to format a
+plain-text notification payload. All four report paths are local read-only and
+retain the same safety boundary: no Binance API key, no signed request, no
+account/order endpoint, and no real order. `audit_journal_write.v1` is the only
+new local-write contract here; it writes paper/watch evidence into the local
+SQLite journal and has no exchange side effect.
 
 ## Exit Code Contract
 

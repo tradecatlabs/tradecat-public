@@ -12,14 +12,17 @@ NOTIONAL_USDT="${TRADECAT_AUTO_PAPER_NOTIONAL_USDT:-12}"
 INITIAL_BALANCE_USDT="${TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT:-1000}"
 PAPER_FEE_BPS="${TRADECAT_AUTO_PAPER_FEE_BPS:-4}"
 PAPER_SLIPPAGE_BPS="${TRADECAT_AUTO_PAPER_SLIPPAGE_BPS:-5}"
+PAPER_MAX_HOLDING_MINUTES="${TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES:-60}"
 MAX_EVENT_AGE_SECONDS="${TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS:-300}"
 EVENT_LIMIT="${TRADECAT_AUTO_PAPER_EVENT_LIMIT:-5}"
 ANOMALY_LIMIT="${TRADECAT_AUTO_PAPER_ANOMALY_LIMIT:-20}"
 SYMBOL="${TRADECAT_AUTO_PAPER_SYMBOL:-auto}"
 BASE_URL="${TRADECAT_AUTO_PAPER_BASE_URL:-https://fapi.binance.com}"
+MAX_HEARTBEAT_AGE_SECONDS="${TRADECAT_AUTO_PAPER_MAX_HEARTBEAT_AGE_SECONDS:-180}"
 STATE_PATH="${TRADECAT_AUTO_PAPER_STATE_PATH:-$RUNTIME_DIR/service_state.json}"
 LEDGER_PATH="${TRADECAT_AUTO_PAPER_LEDGER_PATH:-$RUNTIME_DIR/paper_ledger.json}"
 ARCHIVE_PATH="${TRADECAT_AUTO_PAPER_ARCHIVE_PATH:-$RUNTIME_DIR/cycles.jsonl}"
+JOURNAL_PATH="${TRADECAT_AUTO_PAPER_JOURNAL_PATH:-$RUNTIME_DIR/paper_audit.sqlite3}"
 PID_FILE="$RUNTIME_DIR/paper-run-loop.pid"
 LOG_FILE="${TRADECAT_AUTO_PAPER_LOG_FILE:-$RUNTIME_DIR/paper-run-loop.log}"
 ACTION="status"
@@ -28,8 +31,8 @@ JSON=0
 for arg in "$@"; do
   case "$arg" in
     --json) JSON=1 ;;
-    start|stop|restart|status|systemd-install|systemd-uninstall|_run|_cycle) ACTION="$arg" ;;
-    *) echo "usage: $0 [--json] start|stop|restart|status|systemd-install|systemd-uninstall" >&2; exit 2 ;;
+    start|stop|restart|status|systemd-install|systemd-uninstall|health|daily|alert|_run|_cycle) ACTION="$arg" ;;
+    *) echo "usage: $0 [--json] start|stop|restart|status|health|daily|alert|systemd-install|systemd-uninstall" >&2; exit 2 ;;
   esac
 done
 
@@ -86,6 +89,7 @@ emit_json() {
   AUTO_JSON_STATE_PATH="$STATE_PATH" \
   AUTO_JSON_LEDGER_PATH="$LEDGER_PATH" \
   AUTO_JSON_ARCHIVE_PATH="$ARCHIVE_PATH" \
+  AUTO_JSON_JOURNAL_PATH="$JOURNAL_PATH" \
   AUTO_JSON_LOG_FILE="$LOG_FILE" \
   AUTO_JSON_SYSTEMD_USER_DIR="$SYSTEMD_USER_DIR" \
   AUTO_JSON_SYSTEMD_SERVICE_UNIT="$SYSTEMD_SERVICE_UNIT" \
@@ -95,6 +99,7 @@ emit_json() {
   AUTO_JSON_INITIAL_BALANCE_USDT="$INITIAL_BALANCE_USDT" \
   AUTO_JSON_PAPER_FEE_BPS="$PAPER_FEE_BPS" \
   AUTO_JSON_PAPER_SLIPPAGE_BPS="$PAPER_SLIPPAGE_BPS" \
+  AUTO_JSON_PAPER_MAX_HOLDING_MINUTES="$PAPER_MAX_HOLDING_MINUTES" \
   AUTO_JSON_MAX_EVENT_AGE_SECONDS="$MAX_EVENT_AGE_SECONDS" \
   AUTO_JSON_EVENT_LIMIT="$EVENT_LIMIT" \
   AUTO_JSON_ANOMALY_LIMIT="$ANOMALY_LIMIT" \
@@ -143,6 +148,7 @@ payload = {
     "state_path": os.environ["AUTO_JSON_STATE_PATH"],
     "ledger_path": os.environ["AUTO_JSON_LEDGER_PATH"],
     "archive_path": os.environ["AUTO_JSON_ARCHIVE_PATH"],
+    "journal_path": os.environ["AUTO_JSON_JOURNAL_PATH"],
     "log_file": os.environ["AUTO_JSON_LOG_FILE"],
     "systemd_user_dir": os.environ["AUTO_JSON_SYSTEMD_USER_DIR"],
     "systemd_service_unit": os.environ["AUTO_JSON_SYSTEMD_SERVICE_UNIT"],
@@ -152,6 +158,7 @@ payload = {
     "initial_balance_usdt": optional_float(os.environ["AUTO_JSON_INITIAL_BALANCE_USDT"]),
     "paper_fee_bps": optional_float(os.environ["AUTO_JSON_PAPER_FEE_BPS"]),
     "paper_slippage_bps": optional_float(os.environ["AUTO_JSON_PAPER_SLIPPAGE_BPS"]),
+    "paper_max_holding_minutes": optional_float(os.environ["AUTO_JSON_PAPER_MAX_HOLDING_MINUTES"]),
     "max_event_age_seconds": optional_float(os.environ["AUTO_JSON_MAX_EVENT_AGE_SECONDS"]),
     "event_limit": optional_int(os.environ["AUTO_JSON_EVENT_LIMIT"]),
     "anomaly_limit": optional_int(os.environ["AUTO_JSON_ANOMALY_LIMIT"]),
@@ -177,6 +184,12 @@ if not ok:
     }
 print(json.dumps(payload, ensure_ascii=False))
 PY
+}
+
+json_flag_args() {
+  if [[ "$JSON" -eq 1 ]]; then
+    printf '%s\n' "--json"
+  fi
 }
 
 emit_text_or_json() {
@@ -210,9 +223,11 @@ run_cycle() {
     --state-path "$STATE_PATH" \
     --ledger-path "$LEDGER_PATH" \
     --archive-path "$ARCHIVE_PATH" \
+    --journal-path "$JOURNAL_PATH" \
     --initial-balance-usdt "$INITIAL_BALANCE_USDT" \
     --paper-fee-bps "$PAPER_FEE_BPS" \
     --paper-slippage-bps "$PAPER_SLIPPAGE_BPS" \
+    --paper-max-holding-minutes "$PAPER_MAX_HOLDING_MINUTES" \
     --interval-seconds "$INTERVAL_SECONDS" \
     --max-event-age-seconds "$MAX_EVENT_AGE_SECONDS" \
     --event-limit "$EVENT_LIMIT" \
@@ -286,6 +301,43 @@ status() {
   fi
 }
 
+run_health_report() {
+  local py
+  py="$(python_bin)"
+  cd "$APP_DIR"
+  export PYTHONPATH="$APP_DIR/src:${PYTHONPATH:-}"
+  "$py" -m tradecat_auto.cli health-report \
+    --state-path "$STATE_PATH" \
+    --ledger-path "$LEDGER_PATH" \
+    --archive-path "$ARCHIVE_PATH" \
+    --journal-path "$JOURNAL_PATH" \
+    --max-heartbeat-age-seconds "$MAX_HEARTBEAT_AGE_SECONDS" \
+    $(json_flag_args)
+}
+
+run_daily_report() {
+  local py
+  py="$(python_bin)"
+  cd "$APP_DIR"
+  export PYTHONPATH="$APP_DIR/src:${PYTHONPATH:-}"
+  "$py" -m tradecat_auto.cli daily-report \
+    --ledger-path "$LEDGER_PATH" \
+    --archive-path "$ARCHIVE_PATH" \
+    $(json_flag_args)
+}
+
+run_alert_payload() {
+  local py
+  py="$(python_bin)"
+  cd "$APP_DIR"
+  export PYTHONPATH="$APP_DIR/src:${PYTHONPATH:-}"
+  "$py" -m tradecat_auto.cli alert-payload \
+    --kind daily \
+    --ledger-path "$LEDGER_PATH" \
+    --archive-path "$ARCHIVE_PATH" \
+    $(json_flag_args)
+}
+
 restart() {
   if [[ "$JSON" -eq 1 ]]; then
     stop >/dev/null || true
@@ -315,12 +367,14 @@ Environment=TRADECAT_AUTO_PAPER_RUNTIME_DIR=$RUNTIME_DIR
 Environment=TRADECAT_AUTO_PAPER_STATE_PATH=$STATE_PATH
 Environment=TRADECAT_AUTO_PAPER_LEDGER_PATH=$LEDGER_PATH
 Environment=TRADECAT_AUTO_PAPER_ARCHIVE_PATH=$ARCHIVE_PATH
+Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH=$JOURNAL_PATH
 Environment=TRADECAT_AUTO_PAPER_LOG_FILE=$LOG_FILE
 Environment=TRADECAT_AUTO_PAPER_INTERVAL_SECONDS=$INTERVAL_SECONDS
 Environment=TRADECAT_AUTO_PAPER_NOTIONAL_USDT=$NOTIONAL_USDT
 Environment=TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT=$INITIAL_BALANCE_USDT
 Environment=TRADECAT_AUTO_PAPER_FEE_BPS=$PAPER_FEE_BPS
 Environment=TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=$PAPER_SLIPPAGE_BPS
+Environment=TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES=$PAPER_MAX_HOLDING_MINUTES
 Environment=TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS=$MAX_EVENT_AGE_SECONDS
 Environment=TRADECAT_AUTO_PAPER_EVENT_LIMIT=$EVENT_LIMIT
 Environment=TRADECAT_AUTO_PAPER_ANOMALY_LIMIT=$ANOMALY_LIMIT
@@ -375,6 +429,9 @@ case "$ACTION" in
   stop) stop ;;
   restart) restart ;;
   status) status ;;
+  health) run_health_report ;;
+  daily) run_daily_report ;;
+  alert) run_alert_payload ;;
   systemd-install) systemd_install ;;
   systemd-uninstall) systemd_uninstall ;;
   _run) run_forever ;;

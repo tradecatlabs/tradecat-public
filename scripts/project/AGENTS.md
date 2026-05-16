@@ -183,7 +183,7 @@ Input(输入)：本地结构化缓存、`tradecat.analysis_report.v1` 候选与�
 ### Flow 1.7: 事实/公开行情到 paper/watch 自动化生命周期
 
 ```text
-Input(输入)：`event_stream`、`anomaly_panel`、Binance USDⓈ-M public REST、可选 paper ledger
+Input(输入)：`event_stream`、`anomaly_panel`、Binance USDⓈ-M public REST、可选 paper ledger / audit journal
 -> 节点1：`tradecat_terminal.cli` 的 `auto` 子命令把参数转交给 `tradecat_auto.cli`
 -> 节点2：`tradecat_source.py` 调用本仓 `scripts/project/scripts/request.py` 读取公开 sheet 行，按 `source_time_bj + content` 生成稳定 event_id
 -> 节点3：`binance_market.py` 读取 /fapi public endpoints，带 TTL cache、请求权重统计和 418/429/5xx retry/backoff
@@ -191,8 +191,9 @@ Input(输入)：`event_stream`、`anomaly_panel`、Binance USDⓈ-M public REST�
 -> 节点5：`signals.py` / `strategies.py` 生成确定性 `signal_score.v1` 与 `strategy_intent.v1`
 -> 节点6：`risk.py` 执行保守 deterministic risk gate；mainnet 默认拒绝，paper/watch 才允许继续
 -> 节点7：`paper_broker.py` / `paper_ledger.py` 生成 paper execution、持久化 open/closed positions、fills、equity curve 和 PnL
--> 节点8：`service.py` 作为 run-loop 壳，先检查事件新鲜度与去重，再处理新事件或 mark-to-market 既有纸面仓位，并可写 JSONL archive
--> Output(输出)：`run_once_report.v1` / `service_cycle.v1` / `paper_report.v1`；不包含真实账户状态或真实订单执行
+-> 节点8：`service.py` 作为 run-loop 壳，先检查事件新鲜度与去重，再处理新事件或 mark-to-market 既有纸面仓位，并可写 JSONL archive 与本地 SQLite audit journal
+-> 节点9：`production_control.py` 从 heartbeat、state、ledger、archive 和 audit journal 生成 health/daily/alert 报告
+-> Output(输出)：`run_once_report.v1` / `service_cycle.v1` / `paper_report.v1` / `production_health.v1`；不包含真实账户状态或真实订单执行
 ```
 
 ### Flow 1.8: Binance Agent market context 参考资源
@@ -298,7 +299,9 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `src/tradecat_auto/market_enrichment.py` / `signals.py` / `strategies.py`：公开 sheet + Binance bundle 到 deterministic enrichment、signal score 和 strategy intent。
 - `src/tradecat_auto/risk.py`：保守 deterministic risk gate；paper/watch 才可继续，mainnet 默认拒绝。
 - `src/tradecat_auto/paper_broker.py` / `paper_ledger.py`：纸面执行与持久化 ledger；记录 open/closed positions、fills、fees、slippage、PnL 和 equity curve。
-- `src/tradecat_auto/pipeline.py` / `service.py` / `cli.py`：run-once、run-loop、paper-report 编排层；运行态只能写 `.runtime/` 等 gitignored 本地路径。
+- `src/tradecat_auto/audit_journal.py`：本地 SQLite paper/watch 审计 journal；只写 `.runtime/` 等 gitignored 路径，记录 service cycle、paper fills、risk 决策和 checksum chain，不接入服务端数据库。
+- `src/tradecat_auto/production_control.py`：生产纸面运行态报告层；从 heartbeat、service state、ledger、archive 和 audit journal 生成 health/daily/alert payload，禁止交易副作用。
+- `src/tradecat_auto/pipeline.py` / `service.py` / `cli.py`：run-once、run-loop、paper-report、audit-journal、health/daily/alert 编排层；运行态只能写 `.runtime/` 等 gitignored 本地路径。
 - `scripts/start-auto-paper.sh`：自主持续纸面测试服务管理入口；循环调用 `tradecat_auto.cli run-loop --once --mode paper`，只写 `.runtime/auto-paper`，必须支持 `start|stop|restart|status --json`。
 - `resources/agent_market_context/binance/`：Binance skill/API 本地自包含参考快照；以 `provenance.manifest.json` 暴露来源、checksum、允许的数据族和禁止的 signed/account/order 边界。
 - `header_aliases.py`：字段别名元数据层；只进入 ViewModel 的 `column_meta.display_name`，禁止替代 TUI 表格物理列 A/B/C...
@@ -330,7 +333,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 
 - 新能力必须保持自包含，不能反向依赖 TradeCat 服务端运行环境。
 - CLI / TUI 的唯一运行态数据源是本地 JSON 快照缓存。
-- 禁止重新引入 `db.py`、`query.py`、SQLite schema、SQL 示例或数据库 vacuum/compress 维护命令。
+- 禁止重新引入服务端 `db.py`、`query.py`、任意服务端 SQLite schema、SQL 示例或数据库 vacuum/compress 维护命令；唯一例外是 `tradecat_auto.audit_journal` 的本地 paper/watch SQLite journal，且必须只写 gitignored `.runtime/` 路径并通过 JSON schema 暴露摘要。
 - `sync/probe/watch` 只能写 `TRADECAT_CACHE_DIR` 下的缓存文件；未设置时固定写项目根 `scripts/project/.tradecat/cache`。
 - 每次写入 dataset 缓存必须同步生成 `latest.json`、`latest.jsonl`、`latest.csv`；禁止只写原始 snapshot 而不更新结构化投影。
 - 每次写缓存、manifest、stream state 或 settings 必须使用 `state.py` 文件锁和原子替换；禁止各模块自行发明锁语义。
@@ -351,7 +354,8 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `tradecat auto` 当前只允许 public-readonly + paper/watch；禁止读取 Binance key、签名账户请求、真实下单、真实撤单、真实改杠杆或提交真实账户/订单输出。
 - Agent-supplied market context 进入运行期前必须通过 `context-audit` 的 family/endpoint/provenance allowlist；`run-context` 只能复用同一 paper/watch pipeline，不能新增绕过 risk gate 的执行路径。
 - `tradecat auto replay-report` 只能读取本地 JSONL cycle archive 与 paper ledger 生成可复现报告，不得联网、不读密钥、不写运行态。
-- `tradecat auto run-loop` 的 state、ledger、archive 默认/推荐写入 `.runtime/`；`.runtime/` 必须保持 gitignored，不能提交运行态、paper fills 或 JSONL archive。
+- `tradecat auto audit-journal` / `health-report` / `daily-report` / `alert-payload` 只能读取本地 paper/watch 运行态与审计 journal，输出必须带 schema/version/safety，不得联网、不读密钥、不触发交易。
+- `tradecat auto run-loop` 的 state、ledger、archive、audit journal 默认/推荐写入 `.runtime/`；`.runtime/` 必须保持 gitignored，不能提交运行态、paper fills、JSONL archive、SQLite journal、PID、heartbeat 或 log。
 - export 的 `csv/jsonl` 必须保留原始字段；`table` 必须保持物理列 A/B/C... 与原始表头行，方便对照在线表格。
 - TUI 探针间隔必须支持 dataset 独立配置；`event_stream` 默认 3.0s，其它 tap 默认 10s。
 - 单 tap 环境变量 `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` 优先于全局 `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL`，命令行 `--probe-interval` 优先级最高。

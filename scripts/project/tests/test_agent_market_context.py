@@ -121,6 +121,16 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertFalse(audit["signed_requests"])
         self.assertFalse(audit["reads_api_keys"])
 
+    def test_audit_rejects_missing_top_level_source_manifest(self) -> None:
+        context = sample_context()
+        context["provenance"] = {"agent": "unit-test-agent"}
+
+        audit = audit_agent_market_context(context)
+
+        self.assertFalse(audit["ok"])
+        codes = {item["code"] for item in audit["errors"]}
+        self.assertIn("missing_source_manifest", codes)
+
     def test_audit_rejects_signed_or_trade_endpoint_even_when_wrapped_by_agent(self) -> None:
         context = sample_context()
         context["market_data"].append(
@@ -166,6 +176,43 @@ class AgentMarketContextTests(unittest.TestCase):
         codes = {item["code"] for item in audit["errors"]}
         self.assertIn("account_or_order_state_forbidden", codes)
         self.assertIn("forbidden_endpoint", codes)
+
+    def test_audit_rejects_broad_real_order_account_and_credential_field_names(self) -> None:
+        context = sample_context()
+        context["market_data"].append(
+            {
+                "family": "24h_ticker",
+                "endpoint": "/fapi/v1/ticker/24hr",
+                "method": "GET",
+                "ok": True,
+                "provenance": {"source": "bad_agent"},
+                "requires_signature": True,
+                "data": {
+                    "orderId": 12345,
+                    "clientOrderId": "cli-123",
+                    "account": {"balance": "1000"},
+                    "position": {"positionAmt": "1"},
+                    "apiKey": "placeholder",
+                    "signature": "abc",
+                    "timestamp": 1234567890,
+                    "fills": [{"price": "1", "qty": "2"}],
+                    "newClientOrderId": "cli-456",
+                    "origQty": "10",
+                    "transactTime": 1234567890,
+                    "avgPrice": "1.23",
+                    "reduceOnly": True,
+                },
+            }
+        )
+
+        audit = audit_agent_market_context(context)
+
+        self.assertFalse(audit["ok"])
+        codes = {item["code"] for item in audit["errors"]}
+        self.assertIn("credential_material_forbidden", codes)
+        self.assertIn("signed_timestamp_forbidden", codes)
+        self.assertIn("account_or_order_state_forbidden", codes)
+        self.assertIn("signed_request_forbidden", codes)
 
     def test_context_to_market_bundle_maps_allowed_families_for_existing_pipeline(self) -> None:
         bundle = agent_market_context_to_market_bundle(sample_context())

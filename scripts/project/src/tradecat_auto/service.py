@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from tradecat_auto.audit_journal import record_service_cycle
 from tradecat_auto.binance_market import normalize_to_usdt_perp_symbol
 from tradecat_auto.paper_ledger import (
     PaperLedgerError,
@@ -122,18 +123,22 @@ def run_service_cycle(
     if not selected_symbol:
         state["last_error"] = "no_symbol_selected"
         save_service_state(path, state)
-        return _cycle_payload(
-            action="ERROR",
-            ok=False,
-            reason="no_symbol_selected",
-            state=state,
-            events=events,
-            latest_event=latest_event,
-            universe=_summarize_universe(universe),
-            raw_errors=_collect_errors(universe, events, anomaly, market_bundle),
+        return _archive_and_return(
+            args,
+            _cycle_payload(
+                action="ERROR",
+                ok=False,
+                reason="no_symbol_selected",
+                state=state,
+                events=events,
+                latest_event=latest_event,
+                event_age_seconds=event_age_seconds,
+                universe=_summarize_universe(universe),
+                raw_errors=_collect_errors(universe, events, anomaly, market_bundle),
+            ),
         )
 
-    risk_policy = _risk_policy_from_existing_ledger(args)
+    risk_policy = _risk_policy_from_existing_ledger(args, cycle_time)
     pipeline_report = build_paper_pipeline_report(
         selected_symbol=selected_symbol,
         anomaly_symbols=anomaly,
@@ -175,7 +180,7 @@ def run_service_cycle(
         paper_ledger=paper_ledger,
         raw_errors=pipeline_report.get("raw_errors", []),
     )
-    _archive_cycle(args, payload)
+    _finalize_cycle(args, payload)
     return payload
 
 
@@ -219,14 +224,43 @@ def _new_state() -> dict[str, Any]:
 
 
 def _cycle_payload(**kwargs: Any) -> dict[str, Any]:
-    payload = {"schema": CYCLE_SCHEMA}
+    payload = {
+        "schema": CYCLE_SCHEMA,
+        "schema_version": "1.0.0",
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "safety": {
+            "public_readonly_market_data": True,
+            "paper_or_watch_only": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "binance_account_state": False,
+        },
+    }
     payload.update(kwargs)
     return payload
 
 
 def _archive_and_return(args: Any, payload: dict[str, Any]) -> dict[str, Any]:
-    _archive_cycle(args, payload)
+    _finalize_cycle(args, payload)
     return payload
+
+
+def _finalize_cycle(args: Any, payload: dict[str, Any]) -> None:
+    journal_path = _journal_path(args)
+    if journal_path is not None:
+        journal_payload = dict(payload)
+        journal_result = record_service_cycle(
+            journal_path,
+            journal_payload,
+            run_id=_journal_run_id(journal_payload),
+            config_snapshot=_journal_config_snapshot(args),
+            created_at=_cycle_created_at(journal_payload),
+        )
+        payload["audit_journal"] = journal_result
+    _archive_cycle(args, payload)
 
 
 def _archive_cycle(args: Any, payload: dict[str, Any]) -> None:
@@ -316,6 +350,7 @@ def _update_paper_ledger_from_cycle(
             fee_bps=_paper_fee_bps(args),
             slippage_bps=_paper_slippage_bps(args),
             now_iso=_iso(cycle_time),
+            max_holding_minutes=_paper_max_holding_minutes(args),
         )
     ledger = apply_paper_execution(
         ledger,
@@ -350,6 +385,7 @@ def _monitor_existing_paper_positions(args: Any, client: Any, cycle_time: dateti
             fee_bps=_paper_fee_bps(args),
             slippage_bps=_paper_slippage_bps(args),
             now_iso=_iso(cycle_time),
+            max_holding_minutes=_paper_max_holding_minutes(args),
         )
         save_paper_ledger(ledger_path, ledger)
     summary = paper_ledger_summary(ledger)
@@ -359,7 +395,7 @@ def _monitor_existing_paper_positions(args: Any, client: Any, cycle_time: dateti
     return summary
 
 
-def _risk_policy_from_existing_ledger(args: Any) -> dict[str, Any]:
+def _risk_policy_from_existing_ledger(args: Any, cycle_time: datetime | None = None) -> dict[str, Any]:
     ledger_path = _paper_ledger_path(args)
     if ledger_path is None or not ledger_path.exists():
         return {}
@@ -368,11 +404,17 @@ def _risk_policy_from_existing_ledger(args: Any) -> dict[str, Any]:
     except PaperLedgerError as exc:
         return {"force_reject_reasons": ["paper_ledger_load_failed"], "paper_ledger_error": str(exc)}
     open_positions = ledger.get("open_positions") if isinstance(ledger.get("open_positions"), dict) else {}
+    raw_closed_positions = ledger.get("closed_positions")
+    closed_positions: list[Any] = raw_closed_positions if isinstance(raw_closed_positions, list) else []
     current_total_notional = _open_positions_notional(open_positions)
+    daily_realized = _daily_realized_pnl(closed_positions, cycle_time) if cycle_time is not None else None
+    if daily_realized is None:
+        daily_realized = float(ledger.get("realized_pnl_usdt") or 0.0)
     return {
         "current_open_positions": len(open_positions),
         "current_total_notional_usdt": current_total_notional,
-        "daily_realized_pnl_usdt": float(ledger.get("realized_pnl_usdt") or 0.0),
+        "daily_realized_pnl_usdt": daily_realized,
+        "consecutive_losses": _consecutive_losses(closed_positions),
     }
 
 
@@ -388,6 +430,61 @@ def _open_positions_notional(open_positions: dict[str, Any]) -> float:
             notional = entry_price * quantity
         total += abs(float(notional or 0.0))
     return total
+
+
+def _daily_realized_pnl(closed_positions: list[Any], cycle_time: datetime) -> float | None:
+    target_date = cycle_time.astimezone(UTC).date()
+    total = 0.0
+    matched = False
+    for position in closed_positions:
+        if not isinstance(position, dict):
+            continue
+        closed_at = _parse_closed_at(position.get("closed_at"))
+        if closed_at is None or closed_at.astimezone(UTC).date() != target_date:
+            continue
+        pnl = _num(position.get("net_pnl_usdt"))
+        if pnl is None:
+            pnl = _num(position.get("pnl_usdt"))
+        if pnl is None:
+            continue
+        total += pnl
+        matched = True
+    return total if matched else 0.0
+
+
+def _consecutive_losses(closed_positions: list[Any]) -> int:
+    ordered = [position for position in closed_positions if isinstance(position, dict)]
+    ordered.sort(key=lambda item: _closed_sort_key(item))
+    streak = 0
+    for position in reversed(ordered):
+        pnl = _num(position.get("net_pnl_usdt"))
+        if pnl is None:
+            pnl = _num(position.get("pnl_usdt"))
+        if pnl is None:
+            continue
+        if pnl < 0:
+            streak += 1
+            continue
+        break
+    return streak
+
+
+def _closed_sort_key(position: dict[str, Any]) -> tuple[int, str]:
+    closed_at = _parse_closed_at(position.get("closed_at"))
+    return (1 if closed_at is not None else 0, _iso(closed_at) if closed_at is not None else "")
+
+
+def _parse_closed_at(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _ledger_error_summary(path: Path, exc: PaperLedgerError) -> dict[str, Any]:
@@ -427,6 +524,64 @@ def _last_price_from_bundle(bundle: dict[str, Any]) -> float | None:
     return _num(value)
 
 
+def _journal_path(args: Any) -> Path | None:
+    text = str(getattr(args, "journal_path", "") or "").strip()
+    return Path(text) if text else None
+
+
+def _journal_run_id(payload: dict[str, Any]) -> str:
+    raw_latest_event = payload.get("latest_event")
+    latest_event: dict[str, Any] = raw_latest_event if isinstance(raw_latest_event, dict) else {}
+    event_id = str(latest_event.get("event_id") or "").strip()
+    if event_id:
+        return event_id
+    raw_state = payload.get("state")
+    state: dict[str, Any] = raw_state if isinstance(raw_state, dict) else {}
+    last_attempt_at = str(state.get("last_attempt_at") or "").strip()
+    action = str(payload.get("action") or "cycle")
+    return f"{action}:{last_attempt_at}" if last_attempt_at else action
+
+
+def _cycle_created_at(payload: dict[str, Any]) -> str | None:
+    raw_state = payload.get("state")
+    state: dict[str, Any] = raw_state if isinstance(raw_state, dict) else {}
+    text = str(state.get("last_attempt_at") or "").strip()
+    return text or None
+
+
+def _journal_config_snapshot(args: Any) -> dict[str, Any]:
+    return {
+        "schema": "tradecat_auto.paper_runtime_config_snapshot.v1",
+        "schema_version": "1.0.0",
+        "source": "tradecat_auto.service",
+        "mode": str(getattr(args, "mode", "paper") or "paper"),
+        "symbol": str(getattr(args, "symbol", "auto") or "auto"),
+        "notional_usdt": float(getattr(args, "notional_usdt", 10.0) or 0.0),
+        "initial_balance_usdt": float(getattr(args, "initial_balance_usdt", 1000.0) or 0.0),
+        "paper_fee_bps": float(getattr(args, "paper_fee_bps", 4.0) or 0.0),
+        "paper_slippage_bps": float(getattr(args, "paper_slippage_bps", 0.0) or 0.0),
+        "paper_max_holding_minutes": float(getattr(args, "paper_max_holding_minutes", 60.0) or 0.0),
+        "event_limit": int(getattr(args, "event_limit", 5) or 0),
+        "anomaly_limit": int(getattr(args, "anomaly_limit", 20) or 0),
+        "max_event_age_seconds": float(getattr(args, "max_event_age_seconds", 300.0) or 0.0),
+        "interval_seconds": float(getattr(args, "interval_seconds", 60.0) or 0.0),
+        "base_url": str(getattr(args, "base_url", "") or ""),
+        "runtime_paths": {
+            "state_path": str(getattr(args, "state_path", "") or ""),
+            "ledger_path": str(getattr(args, "ledger_path", "") or ""),
+            "archive_path": str(getattr(args, "archive_path", "") or ""),
+            "journal_path": str(getattr(args, "journal_path", "") or ""),
+        },
+        "safety": {
+            "public_readonly_market_data": True,
+            "paper_or_watch_only": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+        },
+    }
+
+
 def _paper_ledger_path(args: Any) -> Path | None:
     text = str(getattr(args, "ledger_path", "") or "").strip()
     return Path(text) if text else None
@@ -442,6 +597,10 @@ def _paper_fee_bps(args: Any) -> float:
 
 def _paper_slippage_bps(args: Any) -> float:
     return float(getattr(args, "paper_slippage_bps", 0.0) or 0.0)
+
+
+def _paper_max_holding_minutes(args: Any) -> float:
+    return float(getattr(args, "paper_max_holding_minutes", 60.0) or 0.0)
 
 
 def _num(value: Any) -> float | None:

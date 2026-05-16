@@ -435,8 +435,12 @@ tradecat auto run-loop --mode paper --notional-usdt 12 --state-path .runtime/ser
 tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
 tradecat auto context-audit --input /path/to/agent-market-context.json --json
 tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
+tradecat auto audit-journal --json
+tradecat auto health-report --json
+tradecat auto daily-report --json
+tradecat auto alert-payload --kind daily --json
 
-# 自主持续纸面测试服务：循环用实盘公开数据跑 run-loop --once，写入 ledger/archive/log
+# 自主持续纸面测试服务：循环用实盘公开数据跑 run-loop --once，写入 ledger/archive/journal/log
 scripts/start-auto-paper.sh status --json
 scripts/start-auto-paper.sh start --json
 scripts/start-auto-paper.sh stop --json
@@ -582,6 +586,10 @@ tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
 tradecat auto context-audit --input /path/to/agent-market-context.json --json
 tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
 tradecat auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
+tradecat auto audit-journal --json
+tradecat auto health-report --json
+tradecat auto daily-report --json
+tradecat auto alert-payload --kind daily --json
 scripts/start-auto-paper.sh start --json
 scripts/start-auto-paper.sh status --json
 scripts/start-auto-paper.sh stop --json
@@ -593,7 +601,7 @@ Agent 交易研究尽量保持软层：提示词、文档、endpoint policy 和 
 Agent-supplied market context 必须先通过 `context-audit` 的 family/endpoint/provenance
 allowlist，再用 `run-context` 进入同一套 paper/watch 风控闭环；`paper-report` 中的
 `paper_account_state` 只从本地 paper ledger 派生，不读取 Binance 账户/订单状态；`replay-report` 只读取本地
-JSONL cycle archive 和 paper ledger，生成可复现纸面回放/回测摘要。`.runtime/` 是本地运行态和纸面账本目录，已加入 `.gitignore`，不得提交。
+JSONL cycle archive 和 paper ledger，生成可复现纸面回放/回测摘要。持续 paper/watch 服务默认把运行态写入 `scripts/project/.runtime/auto-paper/`：`service_state.json`、`paper_ledger.json`、`cycles.jsonl`、`paper_audit.sqlite3`、PID、heartbeat 和 log 都是本地运行态，已加入 `.gitignore`，不得提交；`audit-journal`、`health-report`、`daily-report` 和 `alert-payload` 只读取这些本地文件生成审计与告警 payload，不触发真实交易。
 
 ### Snapshot tap
 

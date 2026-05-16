@@ -19,6 +19,8 @@ def default_risk_policy(*, mode: str = "paper") -> dict[str, Any]:
         "max_leverage": 3,
         "max_open_positions": 3,
         "current_open_positions": 0,
+        "max_consecutive_losses": 3,
+        "consecutive_losses": 0,
         "max_daily_loss_usdt": 20.0,
         "daily_realized_pnl_usdt": 0.0,
         "current_total_notional_usdt": 0.0,
@@ -56,6 +58,11 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
     daily_realized = _num(active_policy.get("daily_realized_pnl_usdt")) or 0.0
     if max_daily_loss > 0 and daily_realized <= -max_daily_loss:
         reasons.append("daily_loss_limit_reached")
+
+    max_consecutive_losses = int(active_policy.get("max_consecutive_losses") or 0)
+    consecutive_losses = int(active_policy.get("consecutive_losses") or 0)
+    if max_consecutive_losses > 0 and consecutive_losses >= max_consecutive_losses:
+        reasons.append("consecutive_loss_limit_reached")
 
     max_open_positions = int(active_policy.get("max_open_positions") or 0)
     current_open_positions = int(active_policy.get("current_open_positions") or 0)
@@ -108,6 +115,8 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
             "max_leverage": active_policy.get("max_leverage"),
             "max_open_positions": active_policy.get("max_open_positions"),
             "current_open_positions": active_policy.get("current_open_positions"),
+            "max_consecutive_losses": active_policy.get("max_consecutive_losses"),
+            "consecutive_losses": consecutive_losses,
             "max_total_notional_usdt": active_policy.get("max_total_notional_usdt"),
             "current_total_notional_usdt": current_total_notional,
             "requested_notional_usdt": requested_notional,

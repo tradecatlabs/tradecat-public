@@ -13,15 +13,15 @@ Current development happens in `/home/lenovo/.projects/cat/tradecat-public`. Pro
 
 Trigger when any of these applies:
 - The user asks to run, install, debug, validate, or modify TradeCat public terminal behavior.
-- The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, one-shot request script, Binance public market context, replay report, or `tradecat auto context-audit/run-context`.
+- The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, one-shot request script, Binance public market context, replay report, audit journal, production paper health/daily report, or `tradecat auto context-audit/run-context`.
 - The task needs the project contracts for cache-first TUI, local JSON snapshots, structured `latest.*` files, or zero-install public requests.
 - The task asks to reorganize, audit, or optimize the Skill wrapper, root files, references, `AGENTS.md`, or the `scripts/project/` project boundary.
 
 ## Not For / Boundaries
 
 - Do not connect to or write TradeCat server PostgreSQL.
-- Do not add SQLite, SQL query layers, database repair, vacuum, or server production-chain coupling.
-- Do not commit credentials, Google keys, Binance keys/secrets, private `.env` files, generated cache files, `.runtime/` paper ledgers/archives, or local runtime files.
+- Do not add server database repair/vacuum, raw SQL query layers, or server production-chain coupling. The only allowed SQLite use in this public skill is the local paper/watch audit journal under ignored `.runtime/` paths, with schema/versioned JSON summaries and no credentials or exchange side effects.
+- Do not commit credentials, Google keys, Binance keys/secrets, private `.env` files, generated cache files, `.runtime/` paper ledgers/archives/audit journals/logs, or local runtime files.
 - Keep `tradecat auto` public-readonly + paper/watch unless a later explicit implementation adds deterministic testnet/mainnet gates; never let an Agent call raw order endpoints freely.
 - Keep the skill root clean: project source and project docs live in `scripts/project/`; long-form skill references live in `references/`.
 - Do not add root `assets/` or `assets/examples/`; project examples, if ever needed, belong under `scripts/project/` and must be documented.
@@ -59,9 +59,13 @@ bash scripts/run-tradecat.sh features --json
 bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
 bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
+bash scripts/run-tradecat.sh auto audit-journal --json
+bash scripts/run-tradecat.sh auto health-report --json
+bash scripts/run-tradecat.sh auto daily-report --json
+bash scripts/run-tradecat.sh auto alert-payload --kind daily --json
 ```
 
-Rules: audit before run-context; allow only public/read-only GET market endpoints; reject credentials, signatures, account/order endpoints, and real execution.
+Rules: audit before run-context; allow only public/read-only GET market endpoints; reject credentials, signatures, account/order endpoints, and real execution. Runtime reports read only ignored local paper/watch state under `.runtime/`; do not commit ledgers, archives, SQLite journals, PID files, heartbeat files, or logs.
 
 ### Validate Skill And Project
 

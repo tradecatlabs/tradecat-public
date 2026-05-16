@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-production-health.schema.json",
+  "title": "TradeCat Auto Production Health Report",
+  "description": "Health report combining heartbeat, service state, paper ledger, cycle archive, and audit journal.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "status",
+    "generated_at",
+    "heartbeat",
+    "service_state",
+    "ledger",
+    "archive",
+    "audit_journal",
+    "alerts",
+    "safety"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat_auto.production_health.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "healthy",
+        "degraded"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "heartbeat": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "service_state": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ledger": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "audit_journal": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "safety": {
+      "type": "object",
+      "properties": {
+        "public_readonly_market_data": {
+          "const": true
+        },
+        "public_readonly": {
+          "const": true
+        },
+        "paper_or_watch_only": {
+          "const": true
+        },
+        "real_orders": {
+          "const": false
+        },
+        "signed_requests": {
+          "const": false
+        },
+        "reads_api_keys": {
+          "const": false
+        },
+        "binance_account_state": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

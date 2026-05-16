@@ -79,6 +79,41 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertAlmostEqual(updated["cash_balance_usdt"], 1001.38344)
         self.assertAlmostEqual(updated["equity_usdt"], 1001.38344)
 
+    def test_mark_to_market_handles_multi_symbol_stop_loss_and_time_stop(self) -> None:
+        ledger = apply_paper_execution(
+            default_paper_ledger(initial_balance_usdt=1000.0),
+            {**OPEN_LONG, "opened_at": "2026-05-14T00:00:00Z"},
+            fee_bps=0.0,
+            now_iso="2026-05-14T00:00:00Z",
+        )
+        short_execution = {
+            **OPEN_LONG,
+            "paper_execution_id": "exec-short",
+            "symbol": "BTCUSDT",
+            "side": "SHORT",
+            "entry_price": 50.0,
+            "quantity": 0.4,
+            "notional_usdt": 20.0,
+            "stop_loss_price": 52.0,
+            "take_profit_price": 47.0,
+            "opened_at": "2026-05-14T00:20:00Z",
+        }
+        ledger = apply_paper_execution(ledger, short_execution, fee_bps=0.0, now_iso="2026-05-14T00:20:00Z")
+
+        updated = mark_to_market(
+            ledger,
+            {"IRYSUSDT": 101.0, "BTCUSDT": 53.0},
+            fee_bps=0.0,
+            now_iso="2026-05-14T00:45:00Z",
+            max_holding_minutes=30,
+        )
+
+        self.assertEqual(updated["open_positions"], {})
+        reasons_by_symbol = {position["symbol"]: position["close_reason"] for position in updated["closed_positions"]}
+        self.assertEqual(reasons_by_symbol["IRYSUSDT"], "time_stop")
+        self.assertEqual(reasons_by_symbol["BTCUSDT"], "stop_loss")
+        self.assertEqual(len(updated["fills"]), 4)
+
     def test_load_and_save_round_trip_ledger(self) -> None:
         ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
         with tempfile.TemporaryDirectory() as tmp:
