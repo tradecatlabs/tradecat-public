@@ -18,10 +18,21 @@ LONG_SIGNAL = {
 
 
 class RiskTests(unittest.TestCase):
-    def test_default_policy_allows_only_paper_for_strong_signal(self) -> None:
+    def test_default_policy_rejects_strong_signal_without_agent_sizing(self) -> None:
         decision = evaluate_risk(LONG_SIGNAL, default_risk_policy(mode="paper"))
 
         self.assertEqual(decision["schema"], "tradecat_auto.risk_decision.v1")
+        self.assertEqual(decision["decision"], "REJECT")
+        self.assertEqual(decision["mode"], "paper")
+        self.assertIn("agent_sizing_required", decision["reasons"])
+        self.assertIn("paper_only", decision["constraints"])
+
+    def test_explicit_agent_sizing_allows_only_paper_for_strong_signal(self) -> None:
+        policy = default_risk_policy(mode="paper")
+        policy.update({"requested_margin_usdt": 6.0, "requested_notional_usdt": 12.0, "paper_leverage": 2.0})
+
+        decision = evaluate_risk(LONG_SIGNAL, policy)
+
         self.assertEqual(decision["decision"], "ALLOW")
         self.assertEqual(decision["mode"], "paper")
         self.assertGreater(decision["max_notional_usdt"], 0)

@@ -14,6 +14,9 @@ PROMPT_TEMPLATE_FILES = (
     "prompts/context-request.zh.md",
     "prompts/trade-thesis.zh.md",
 )
+ROLE_PROFILE_FILES = (
+    "profiles/discretionary-futures-trader.zh.md",
+)
 
 
 def build_agent_soft_layer_bundle(*, include_prompt_text: bool = True) -> dict[str, Any]:
@@ -25,6 +28,7 @@ def build_agent_soft_layer_bundle(*, include_prompt_text: bool = True) -> dict[s
         "resource_root": RESOURCE_ROOT_CONTRACT_PATH,
         "purpose": "Self-contained Agent/Hermes soft prompt and endpoint-policy layer for public-readonly paper research.",
         "prompt_templates": _prompt_templates(include_prompt_text=include_prompt_text),
+        "role_profiles": _role_profiles(include_prompt_text=include_prompt_text),
         "endpoint_policy": endpoint_policy,
         "soft_output_contract": {
             "schema": AGENT_TRADE_THESIS_SCHEMA,
@@ -70,6 +74,44 @@ def _prompt_templates(*, include_prompt_text: bool) -> list[dict[str, Any]]:
             item["template"] = path.read_text(encoding="utf-8")
         templates.append(item)
     return templates
+
+
+def _role_profiles(*, include_prompt_text: bool) -> list[dict[str, Any]]:
+    profiles: list[dict[str, Any]] = []
+    for rel_path in ROLE_PROFILE_FILES:
+        path = RESOURCE_ROOT / rel_path
+        profile_id = Path(rel_path).name.removesuffix(".zh.md").removesuffix(".md").replace("-", "_")
+        item: dict[str, Any] = {
+            "id": profile_id,
+            "role": "paper_futures_trader",
+            "language": "zh-CN",
+            "path": f"{RESOURCE_ROOT_CONTRACT_PATH}/{rel_path}",
+            "sizing_contract": {
+                "margin_budget_usdt_is_cap": True,
+                "default_order_size": False,
+                "required_for_non_watch": ["requested_margin_usdt", "paper_leverage"],
+                "missing_sizing_error_code": "agent_sizing_required",
+                "legacy_notional_default_allowed": False,
+            },
+            "exit_contract": {
+                "default_stop_loss": False,
+                "default_take_profit": False,
+                "default_max_holding_minutes": None,
+                "optional_fields": ["invalidation_price", "take_profit_price", "max_holding_minutes", "exit_rationale"],
+                "missing_exit_plan_behavior": "keep paper position open for Agent/strategy-managed review; no fixed TP/SL/time stop",
+            },
+            "safety_boundary": {
+                "mode": "public_readonly_plus_paper_watch",
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+                "account_state_source": "local TradeCat paper ledger only",
+            },
+        }
+        if include_prompt_text:
+            item["template"] = path.read_text(encoding="utf-8")
+        profiles.append(item)
+    return profiles
 
 
 def _load_json(path: Path) -> dict[str, Any]:

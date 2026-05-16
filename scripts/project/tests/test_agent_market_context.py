@@ -226,14 +226,29 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertEqual(bundle["globalLongShortAccountRatio"][0]["longShortRatio"], "1.1")
 
     def test_context_can_drive_paper_pipeline_without_network_or_credentials(self) -> None:
-        report = build_paper_report_from_agent_market_context(sample_context(), mode="paper", requested_notional_usdt=12.0)
+        report = build_paper_report_from_agent_market_context(
+            sample_context(),
+            mode="paper",
+            requested_margin_usdt=12.0,
+            paper_leverage=1.0,
+        )
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
         self.assertEqual(report["agent_market_context_audit"]["schema"], "tradecat_auto.agent_market_context_audit.v1")
         self.assertTrue(report["agent_market_context_audit"]["ok"])
         self.assertEqual(report["selected_symbol"], "IRYSUSDT")
+        self.assertEqual(report["paper_sizing"]["mode"], "margin_times_leverage")
+        self.assertEqual(report["requested_margin_usdt"], 12.0)
         self.assertIn(report["paper_execution"]["status"], {"OPENED", "REJECTED"})
         self.assertIn("agent-supplied public/read-only market context", report["limitations"])
+
+    def test_context_without_agent_sizing_is_rejected_before_paper_execution_defaults(self) -> None:
+        report = build_paper_report_from_agent_market_context(sample_context(), mode="paper")
+
+        self.assertEqual(report["paper_sizing"]["error_code"], "agent_sizing_required")
+        self.assertIn(report["risk_decision"]["decision"], {"REJECT", "WATCH_ONLY"})
+        self.assertIn("agent_sizing_required", report["risk_decision"]["reasons"])
+        self.assertEqual(report["paper_execution"]["status"], "REJECTED")
 
     def test_context_audit_cli_reads_json_file_and_returns_audit_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -250,7 +265,16 @@ class AgentMarketContextTests(unittest.TestCase):
             path = Path(tmp) / "context.json"
             path.write_text(json.dumps(sample_context()), encoding="utf-8")
 
-            report = run_context_public(argparse.Namespace(input=str(path), mode="paper", notional_usdt=12.0))
+            report = run_context_public(
+                argparse.Namespace(
+                    input=str(path),
+                    mode="paper",
+                    notional_usdt=None,
+                    agent_margin_usdt=12.0,
+                    paper_leverage=1.0,
+                    paper_margin_budget_usdt=12.0,
+                )
+            )
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
         self.assertEqual(report["agent_market_context_audit"]["schema"], "tradecat_auto.agent_market_context_audit.v1")

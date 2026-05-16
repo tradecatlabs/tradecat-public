@@ -43,7 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_once.add_argument("--base-url", default="https://fapi.binance.com")
     run_once.add_argument("--symbol", default="auto", help="Symbol to run, or auto to use first anomaly candidate")
     run_once.add_argument("--mode", choices=["paper", "watch", "mainnet"], default="paper")
-    run_once.add_argument("--notional-usdt", type=float, default=10.0)
+    run_once.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default")
+    run_once.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default")
+    run_once.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage; no default")
+    run_once.add_argument("--paper-margin-budget-usdt", type=float, default=12.0, help="Local paper margin budget/cap; not an order amount")
     run_once.add_argument("--event-limit", type=int, default=5)
     run_once.add_argument("--anomaly-limit", type=int, default=20)
     run_once.add_argument("--json", action="store_true", help="Emit JSON")
@@ -53,7 +56,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--base-url", default="https://fapi.binance.com")
     run_loop.add_argument("--symbol", default="auto", help="Symbol to run, or auto to use first anomaly candidate")
     run_loop.add_argument("--mode", choices=["paper", "watch"], default="paper")
-    run_loop.add_argument("--notional-usdt", type=float, default=10.0)
+    run_loop.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default")
+    run_loop.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default")
+    run_loop.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage; no default")
+    run_loop.add_argument("--paper-margin-budget-usdt", type=float, default=12.0, help="Local paper margin budget/cap; not an order amount")
     run_loop.add_argument("--event-limit", type=int, default=5)
     run_loop.add_argument("--anomaly-limit", type=int, default=20)
     run_loop.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
@@ -61,9 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--archive-path", default="", help="Optional JSONL path for full service-cycle replay records")
     run_loop.add_argument("--journal-path", default="", help="Optional SQLite audit journal path for run/config/decision/order/fill records")
     run_loop.add_argument("--initial-balance-usdt", type=float, default=1000.0)
-    run_loop.add_argument("--paper-fee-bps", type=float, default=4.0)
-    run_loop.add_argument("--paper-slippage-bps", type=float, default=5.0)
-    run_loop.add_argument("--paper-max-holding-minutes", type=float, default=60.0)
+    run_loop.add_argument("--paper-fee-bps", type=float, default=2.0)
+    run_loop.add_argument("--paper-slippage-bps", type=float, default=0.5)
+    run_loop.add_argument("--paper-max-holding-minutes", type=float, default=0.0, help="Deprecated status/config field; paper time stops require Agent/strategy max_holding_minutes")
     run_loop.add_argument("--interval-seconds", type=float, default=60.0)
     run_loop.add_argument("--max-cycles", type=int, default=0, help="Stop after N cycles; 0 means run until interrupted")
     run_loop.add_argument("--once", action="store_true", help="Run exactly one service cycle and exit")
@@ -86,7 +92,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_context = sub.add_parser("run-context", help="Run paper/watch pipeline from Agent-supplied market context JSON")
     run_context.add_argument("--input", required=True, help="Path to agent market context JSON")
     run_context.add_argument("--mode", choices=["paper", "watch", "mainnet"], default="paper")
-    run_context.add_argument("--notional-usdt", type=float, default=10.0)
+    run_context.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional override; no default")
+    run_context.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin override; no default")
+    run_context.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage override; no default")
+    run_context.add_argument("--paper-margin-budget-usdt", type=float, default=12.0, help="Local paper margin budget/cap; not an order amount")
     run_context.add_argument("--json", action="store_true", help="Emit JSON")
 
     replay = sub.add_parser("replay-report", help="Build a reproducible replay/backtest report from service-cycle archive and paper ledger")
@@ -300,7 +309,11 @@ def run_once_public(args: argparse.Namespace, *, client: Any | None = None, sour
         market_bundle=market_bundle,
         events=events,
         mode=args.mode,
-        requested_notional_usdt=args.notional_usdt,
+        requested_notional_usdt=getattr(args, "notional_usdt", None),
+        requested_margin_usdt=getattr(args, "agent_margin_usdt", None),
+        paper_leverage=getattr(args, "paper_leverage", None),
+        margin_budget_usdt=getattr(args, "paper_margin_budget_usdt", None),
+        sizing_source=_sizing_source_from_args(args),
     )
     report["universe"] = _summarize_universe(universe)
     report["anomaly_symbols"] = {
@@ -412,7 +425,10 @@ def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
     return build_paper_report_from_agent_market_context(
         context,
         mode=args.mode,
-        requested_notional_usdt=float(args.notional_usdt),
+        requested_notional_usdt=getattr(args, "notional_usdt", None),
+        requested_margin_usdt=getattr(args, "agent_margin_usdt", None),
+        paper_leverage=getattr(args, "paper_leverage", None),
+        margin_budget_usdt=getattr(args, "paper_margin_budget_usdt", None),
     )
 
 
@@ -465,8 +481,46 @@ def _format_exception(exc: Exception) -> str:
 
 def _validate_paper_cost_inputs(args: argparse.Namespace) -> None:
     _non_negative_arg(args, "initial_balance_usdt", 1000.0)
-    _non_negative_arg(args, "paper_fee_bps", 4.0)
-    _non_negative_arg(args, "paper_slippage_bps", 5.0)
+    _non_negative_arg(args, "paper_fee_bps", 2.0)
+    _non_negative_arg(args, "paper_slippage_bps", 0.5)
+    _positive_optional_arg(args, "paper_leverage")
+    _positive_optional_arg(args, "agent_margin_usdt")
+    _positive_optional_arg(args, "notional_usdt")
+    _positive_optional_arg(args, "paper_margin_budget_usdt")
+
+
+def _sizing_source_from_args(args: argparse.Namespace) -> str:
+    if getattr(args, "agent_margin_usdt", None) is not None:
+        return "agent_supplied_cli_margin"
+    if getattr(args, "notional_usdt", None) is not None:
+        return "explicit_cli_effective_notional"
+    if getattr(args, "paper_leverage", None) is not None:
+        return "incomplete_cli_sizing"
+    return "agent_required_missing"
+
+
+def _positive_optional_arg(args: argparse.Namespace, name: str) -> float | None:
+    value = getattr(args, name, None)
+    if value is None or value == "":
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if numeric <= 0:
+        raise ValueError(f"{name} must be positive")
+    return numeric
+
+
+def _positive_arg(args: argparse.Namespace, name: str, default: float) -> float:
+    value = getattr(args, name, default)
+    try:
+        numeric = float(default if value is None else value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if numeric <= 0:
+        raise ValueError(f"{name} must be positive")
+    return numeric
 
 
 def _non_negative_arg(args: argparse.Namespace, name: str, default: float) -> float:

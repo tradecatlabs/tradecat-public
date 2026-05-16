@@ -15,7 +15,7 @@ from tradecat_auto.paper_ledger import (
     paper_ledger_summary,
     save_paper_ledger,
 )
-from tradecat_auto.pipeline import build_paper_pipeline_report
+from tradecat_auto.pipeline import build_paper_pipeline_report, resolve_paper_sizing
 
 DEFAULT_STATE_PATH = Path(".runtime/service_state.json")
 STATE_SCHEMA = "tradecat_auto.service_state.v1"
@@ -138,14 +138,18 @@ def run_service_cycle(
             ),
         )
 
-    risk_policy = _risk_policy_from_existing_ledger(args, cycle_time)
+    risk_policy = _risk_policy_from_runtime(args, cycle_time)
+    sizing = _paper_sizing_from_args(args)
     pipeline_report = build_paper_pipeline_report(
         selected_symbol=selected_symbol,
         anomaly_symbols=anomaly,
         market_bundle=market_bundle,
         events=events,
         mode=str(getattr(args, "mode", "paper")),
-        requested_notional_usdt=float(getattr(args, "notional_usdt", 10.0)),
+        requested_margin_usdt=sizing["requested_margin_usdt"],
+        paper_leverage=sizing["paper_leverage"],
+        margin_budget_usdt=sizing["margin_budget_usdt"],
+        sizing_source=sizing["source"],
         risk_policy=risk_policy,
     )
     pipeline_report["universe"] = _summarize_universe(universe)
@@ -395,6 +399,27 @@ def _monitor_existing_paper_positions(args: Any, client: Any, cycle_time: dateti
     return summary
 
 
+def _risk_policy_from_runtime(args: Any, cycle_time: datetime | None = None) -> dict[str, Any]:
+    policy = _risk_policy_from_existing_ledger(args, cycle_time)
+    sizing = _paper_sizing_from_args(args)
+    leverage = _num(sizing.get("paper_leverage"))
+    max_leverage = float(policy.get("max_leverage") or 3.0)
+    policy.update(
+        {
+            "paper_margin_budget_usdt": sizing["margin_budget_usdt"],
+            "paper_leverage": leverage,
+            "requested_margin_usdt": sizing["requested_margin_usdt"],
+            "requested_notional_usdt": sizing["effective_notional_usdt"],
+            "sizing_required": str(getattr(args, "mode", "paper") or "paper") == "paper",
+            "sizing_source": sizing["source"],
+            "max_leverage": max_leverage,
+            "max_symbol_notional_usdt": float(policy.get("max_symbol_notional_usdt") or 36.0),
+            "max_total_notional_usdt": float(policy.get("max_total_notional_usdt") or 50.0),
+        }
+    )
+    return policy
+
+
 def _risk_policy_from_existing_ledger(args: Any, cycle_time: datetime | None = None) -> dict[str, Any]:
     ledger_path = _paper_ledger_path(args)
     if ledger_path is None or not ledger_path.exists():
@@ -550,17 +575,26 @@ def _cycle_created_at(payload: dict[str, Any]) -> str | None:
 
 
 def _journal_config_snapshot(args: Any) -> dict[str, Any]:
+    sizing = _paper_sizing_from_args(args)
     return {
         "schema": "tradecat_auto.paper_runtime_config_snapshot.v1",
         "schema_version": "1.0.0",
         "source": "tradecat_auto.service",
         "mode": str(getattr(args, "mode", "paper") or "paper"),
         "symbol": str(getattr(args, "symbol", "auto") or "auto"),
-        "notional_usdt": float(getattr(args, "notional_usdt", 10.0) or 0.0),
+        "notional_usdt": sizing["requested_notional_usdt"],
+        "notional_semantics": "deprecated explicit effective notional override; paper_margin_budget_usdt is not an order amount",
+        "paper_margin_budget_usdt": sizing["margin_budget_usdt"],
+        "agent_margin_usdt": sizing["requested_margin_usdt"],
+        "paper_leverage": sizing["paper_leverage"],
+        "effective_notional_usdt": sizing["effective_notional_usdt"],
+        "paper_sizing": sizing,
         "initial_balance_usdt": float(getattr(args, "initial_balance_usdt", 1000.0) or 0.0),
-        "paper_fee_bps": float(getattr(args, "paper_fee_bps", 4.0) or 0.0),
-        "paper_slippage_bps": float(getattr(args, "paper_slippage_bps", 0.0) or 0.0),
-        "paper_max_holding_minutes": float(getattr(args, "paper_max_holding_minutes", 60.0) or 0.0),
+        "paper_fee_bps": float(getattr(args, "paper_fee_bps", 2.0) or 0.0),
+        "paper_fee_model": "binance_usdm_vip0_maker_assumption",
+        "paper_slippage_bps": float(getattr(args, "paper_slippage_bps", 0.5) or 0.0),
+        "paper_max_holding_minutes": float(getattr(args, "paper_max_holding_minutes", 0.0) or 0.0),
+        "paper_max_holding_minutes_semantics": "legacy status/config field only; time stops require Agent strategy_intent/agent_trade_thesis max_holding_minutes on the paper position",
         "event_limit": int(getattr(args, "event_limit", 5) or 0),
         "anomaly_limit": int(getattr(args, "anomaly_limit", 20) or 0),
         "max_event_age_seconds": float(getattr(args, "max_event_age_seconds", 300.0) or 0.0),
@@ -592,15 +626,49 @@ def _initial_balance(args: Any) -> float:
 
 
 def _paper_fee_bps(args: Any) -> float:
-    return float(getattr(args, "paper_fee_bps", 4.0) or 0.0)
+    return float(getattr(args, "paper_fee_bps", 2.0) or 0.0)
 
 
 def _paper_slippage_bps(args: Any) -> float:
-    return float(getattr(args, "paper_slippage_bps", 0.0) or 0.0)
+    return float(getattr(args, "paper_slippage_bps", 0.5) or 0.0)
+
+
+def _paper_sizing_from_args(args: Any) -> dict[str, Any]:
+    explicit_effective_notional = getattr(args, "notional_usdt", None)
+    agent_margin = getattr(args, "agent_margin_usdt", None)
+    if agent_margin is None:
+        agent_margin = getattr(args, "requested_margin_usdt", None)
+    paper_leverage = getattr(args, "paper_leverage", None)
+    margin_budget = getattr(args, "paper_margin_budget_usdt", None)
+    if margin_budget is None:
+        margin_budget = 12.0
+    return resolve_paper_sizing(
+        requested_notional_usdt=explicit_effective_notional,
+        requested_margin_usdt=agent_margin,
+        paper_leverage=paper_leverage,
+        margin_budget_usdt=margin_budget,
+        sizing_source=_paper_sizing_source_from_args(args),
+        sizing_required=str(getattr(args, "mode", "paper") or "paper") == "paper",
+    )
+
+
+def _paper_sizing_source_from_args(args: Any) -> str:
+    if getattr(args, "agent_margin_usdt", None) is not None or getattr(args, "requested_margin_usdt", None) is not None:
+        return "agent_supplied_cli_margin"
+    if getattr(args, "notional_usdt", None) is not None:
+        return "explicit_cli_effective_notional"
+    if getattr(args, "paper_leverage", None) is not None:
+        return "incomplete_cli_sizing"
+    return "agent_required_missing"
+
+
+def _paper_leverage(args: Any) -> float:
+    value = _num(getattr(args, "paper_leverage", None))
+    return value if value is not None and value > 0 else 0.0
 
 
 def _paper_max_holding_minutes(args: Any) -> float:
-    return float(getattr(args, "paper_max_holding_minutes", 60.0) or 0.0)
+    return float(getattr(args, "paper_max_holding_minutes", 0.0) or 0.0)
 
 
 def _num(value: Any) -> float | None:

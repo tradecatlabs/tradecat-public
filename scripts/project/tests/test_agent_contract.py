@@ -134,8 +134,8 @@ def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
 
     assert "bash scripts/run-tradecat.sh auto paper-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto soft-layer --json" in commands
-    assert "bash scripts/run-tradecat.sh auto run-once --mode paper --notional-usdt 12 --json" in commands
-    assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json" in commands
+    assert "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json" in commands
+    assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --once --json" in commands
     assert "bash scripts/run-tradecat.sh auto audit-journal --json" in commands
     assert "bash scripts/run-tradecat.sh auto health-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto daily-report --json" in commands
@@ -213,6 +213,7 @@ def test_agent_contract_reference_is_indexed():
     assert "references/agent-soft-decision-layer.md" in manifest["agent_docs"]
     assert manifest["important_paths"]["hermes_agent_guide"] == "references/hermes-agent-guide.md"
     assert manifest["important_paths"]["agent_soft_layer_resources"] == "scripts/project/resources/agent_soft_layer"
+    assert manifest["important_paths"]["agent_soft_layer_trader_profile"] == "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md"
     assert "Agent Fast Path" in contract
     assert "Command Risk Classes" in contract
     assert "Agent-supplied Market Context Contract" in contract

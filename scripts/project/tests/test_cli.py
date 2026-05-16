@@ -79,7 +79,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("BinanceApiError", payload["error"])
 
     def test_run_once_public_returns_paper_pipeline_report_without_real_orders(self) -> None:
-        args = argparse.Namespace(symbol="auto", event_limit=5, anomaly_limit=20, mode="paper", notional_usdt=12.0)
+        args = argparse.Namespace(symbol="auto", event_limit=5, anomaly_limit=20, mode="paper", notional_usdt=None, agent_margin_usdt=6.0, paper_leverage=2.0, paper_margin_budget_usdt=12.0)
 
         report = run_once_public(args, client=FakeClient(), source=FakeSource())
 
@@ -95,7 +95,10 @@ class CliTests(unittest.TestCase):
                 event_limit=5,
                 anomaly_limit=20,
                 mode="paper",
-                notional_usdt=12.0,
+                notional_usdt=None,
+                agent_margin_usdt=6.0,
+                paper_leverage=2.0,
+                paper_margin_budget_usdt=12.0,
                 state_path=str(Path(tmp) / "service_state.json"),
                 interval_seconds=60.0,
                 max_cycles=1,
@@ -136,7 +139,10 @@ class CliTests(unittest.TestCase):
                 event_limit=5,
                 anomaly_limit=20,
                 mode="paper",
-                notional_usdt=12.0,
+                notional_usdt=None,
+                agent_margin_usdt=6.0,
+                paper_leverage=2.0,
+                paper_margin_budget_usdt=12.0,
                 state_path=str(Path(tmp) / "service_state.json"),
                 interval_seconds=0.0,
                 max_cycles=1,
@@ -154,7 +160,10 @@ class CliTests(unittest.TestCase):
                 event_limit=5,
                 anomaly_limit=20,
                 mode="paper",
-                notional_usdt=12.0,
+                notional_usdt=None,
+                agent_margin_usdt=6.0,
+                paper_leverage=2.0,
+                paper_margin_budget_usdt=12.0,
                 state_path=str(Path(tmp) / "service_state.json"),
                 interval_seconds=1.0,
                 max_cycles=-1,
@@ -172,7 +181,10 @@ class CliTests(unittest.TestCase):
                 event_limit=5,
                 anomaly_limit=20,
                 mode="paper",
-                notional_usdt=12.0,
+                notional_usdt=None,
+                agent_margin_usdt=6.0,
+                paper_leverage=2.0,
+                paper_margin_budget_usdt=12.0,
                 state_path=str(Path(tmp) / "service_state.json"),
                 ledger_path=str(Path(tmp) / "paper_ledger.json"),
                 initial_balance_usdt=-1.0,

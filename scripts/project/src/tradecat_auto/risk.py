@@ -13,10 +13,14 @@ def default_risk_policy(*, mode: str = "paper") -> dict[str, Any]:
         "allowed_contract_type": "PERPETUAL",
         "mainnet_enabled": False,
         "min_score": 60,
-        "max_symbol_notional_usdt": 20.0,
+        "max_symbol_notional_usdt": 36.0,
         "max_total_notional_usdt": 50.0,
         "max_spread_bps": 10.0,
         "max_leverage": 3,
+        "paper_margin_budget_usdt": 12.0,
+        "paper_leverage": None,
+        "sizing_required": mode == "paper",
+        "sizing_source": "agent_supplied_or_explicit",
         "max_open_positions": 3,
         "current_open_positions": 0,
         "max_consecutive_losses": 3,
@@ -24,7 +28,8 @@ def default_risk_policy(*, mode: str = "paper") -> dict[str, Any]:
         "max_daily_loss_usdt": 20.0,
         "daily_realized_pnl_usdt": 0.0,
         "current_total_notional_usdt": 0.0,
-        "requested_notional_usdt": 0.0,
+        "requested_margin_usdt": None,
+        "requested_notional_usdt": None,
         "force_reject_reasons": [],
         "kill_switch_file": "",
     }
@@ -69,9 +74,25 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
     if max_open_positions > 0 and current_open_positions >= max_open_positions:
         reasons.append("max_open_positions_reached")
 
+    leverage_raw = _num(active_policy.get("paper_leverage"))
+    leverage = leverage_raw if leverage_raw is not None else 0.0
+    requested_margin = _num(active_policy.get("requested_margin_usdt"))
+    margin_budget = _num(active_policy.get("paper_margin_budget_usdt"))
+    if margin_budget is not None and requested_margin is not None and requested_margin > margin_budget:
+        reasons.append("margin_budget_exceeded")
+    requested_notional_raw = _num(active_policy.get("requested_notional_usdt"))
+    requested_notional = requested_notional_raw if requested_notional_raw is not None else 0.0
+    sizing_required = bool(active_policy.get("sizing_required", mode == "paper"))
+    if mode == "paper" and sizing_required and (requested_notional_raw is None or requested_notional <= 0 or leverage_raw is None):
+        reasons.append("agent_sizing_required")
+    if leverage_raw is not None and leverage <= 0:
+        reasons.append("invalid_leverage")
+    max_leverage = _num(active_policy.get("max_leverage")) or 0.0
+    if leverage > 0 and max_leverage > 0 and leverage > max_leverage:
+        reasons.append("max_leverage_exceeded")
+
     max_total_notional = float(active_policy.get("max_total_notional_usdt") or 0.0)
     current_total_notional = _num(active_policy.get("current_total_notional_usdt")) or 0.0
-    requested_notional = _num(active_policy.get("requested_notional_usdt")) or 0.0
     if max_total_notional > 0 and requested_notional > 0 and current_total_notional + requested_notional > max_total_notional:
         reasons.append("max_total_notional_reached")
 
@@ -93,6 +114,8 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         decision = "REJECT"
     elif "signal_not_tradable" in reasons:
         decision = "WATCH_ONLY"
+    elif "agent_sizing_required" in reasons and mode == "paper":
+        decision = "REJECT"
     elif reasons:
         decision = "REJECT"
     else:
@@ -106,6 +129,7 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         "symbol": str(signal.get("symbol") or ""),
         "direction": signal.get("direction", "WATCH_ONLY"),
         "score": score,
+        "paper_leverage": leverage_raw,
         "max_notional_usdt": float(active_policy.get("max_symbol_notional_usdt") or 0),
         "constraints": constraints,
         "reasons": reasons,
@@ -113,6 +137,11 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
             "min_score": active_policy.get("min_score"),
             "max_symbol_notional_usdt": active_policy.get("max_symbol_notional_usdt"),
             "max_leverage": active_policy.get("max_leverage"),
+            "paper_margin_budget_usdt": margin_budget,
+            "paper_leverage": leverage_raw,
+            "sizing_required": sizing_required,
+            "sizing_source": active_policy.get("sizing_source"),
+            "requested_margin_usdt": requested_margin,
             "max_open_positions": active_policy.get("max_open_positions"),
             "current_open_positions": active_policy.get("current_open_positions"),
             "max_consecutive_losses": active_policy.get("max_consecutive_losses"),

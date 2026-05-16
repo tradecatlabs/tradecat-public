@@ -52,7 +52,54 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["ledger_path"].endswith("paper_ledger.json")
     assert payload["archive_path"].endswith("cycles.jsonl")
     assert payload["journal_path"].endswith("paper_audit.sqlite3")
+    assert payload["paper_margin_budget_usdt"] == 12.0
+    assert payload["agent_margin_usdt"] is None
+    assert payload["notional_usdt"] is None
+    assert payload["paper_leverage"] is None
+    assert payload["effective_notional_usdt"] is None
+    assert payload["agent_sizing_required"] is True
+    assert payload["paper_sizing"]["source"] == "agent_required_missing"
+    assert payload["paper_fee_bps"] == 2.0
+    assert payload["paper_slippage_bps"] == 0.5
+    assert payload["paper_max_holding_minutes"] == 0.0
+    assert "Agent" in payload["paper_max_holding_minutes_semantics"]
     assert str(tmp_path / "run") in payload["runtime_dir"]
+
+
+def test_auto_paper_running_status_reads_effective_sizing_from_process_env(tmp_path: Path) -> None:
+    fake_python = tmp_path / "fake-python"
+    fake_python.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "print(json.dumps({'schema': 'fake.cycle', 'ok': True}))\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    runtime_dir = tmp_path / "run"
+    start_env = {
+        "PYTHON_BIN": str(fake_python),
+        "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir),
+        "TRADECAT_AUTO_PAPER_INTERVAL_SECONDS": "999",
+        "TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT": "12",
+        "TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT": "6",
+        "TRADECAT_AUTO_PAPER_LEVERAGE": "2",
+    }
+    status_env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir)}
+
+    start_proc = run_service_script(["start", "--json"], env=start_env)
+    try:
+        assert start_proc.returncode == 0, start_proc.stderr
+        status_proc = run_service_script(["status", "--json"], env=status_env)
+        assert status_proc.returncode == 0, status_proc.stderr
+        payload = json.loads(status_proc.stdout)
+        assert payload["running"] is True
+        assert payload["agent_margin_usdt"] == 6.0
+        assert payload["paper_leverage"] == 2.0
+        assert payload["effective_notional_usdt"] == 12.0
+        assert payload["agent_sizing_required"] is False
+        assert payload["paper_sizing"]["source"] == "service_environment"
+    finally:
+        run_service_script(["stop", "--json"], env=status_env)
 
 
 def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path) -> None:
@@ -90,6 +137,12 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert f"WorkingDirectory={PROJECT_ROOT}" in service_text
     assert f"ExecStart={PROJECT_ROOT}/scripts/start-auto-paper.sh _cycle" in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_RUNTIME_DIR={runtime_dir}" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT=12" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT=" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_LEVERAGE=" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES=0" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_NOTIONAL_USDT=" not in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH={runtime_dir / 'paper_audit.sqlite3'}" in service_text
     assert "NoNewPrivileges=true" in service_text
     assert "OnBootSec=30s" in timer_text

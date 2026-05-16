@@ -39,7 +39,10 @@ class PipelineTests(unittest.TestCase):
             market_bundle=MARKET_BUNDLE,
             events=EVENTS,
             mode="paper",
-            requested_notional_usdt=12.0,
+            requested_margin_usdt=6.0,
+            paper_leverage=2.0,
+            margin_budget_usdt=12.0,
+            sizing_source="agent_supplied_cli_margin",
         )
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")

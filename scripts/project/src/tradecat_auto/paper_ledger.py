@@ -10,7 +10,7 @@ from typing import Any
 LEDGER_SCHEMA = "tradecat_auto.paper_ledger.v1"
 PAPER_ACCOUNT_STATE_SCHEMA = "tradecat_auto.paper_account_state.v1"
 DEFAULT_INITIAL_BALANCE_USDT = 1000.0
-DEFAULT_FEE_BPS = 4.0
+DEFAULT_FEE_BPS = 2.0
 DEFAULT_SLIPPAGE_BPS = 0.0
 
 
@@ -120,6 +120,15 @@ def apply_paper_execution(
     fill_price = _slipped_price(entry_price, side, "OPEN", slippage_bps)
     fill_notional = abs(fill_price * quantity)
     fee = fill_notional * float(fee_bps) / 10_000
+    leverage = _num(execution.get("leverage")) or 1.0
+    margin_usdt = fill_notional / leverage if leverage > 0 else _num(execution.get("margin_usdt"))
+    sizing_source = str(execution.get("sizing_source") or "").strip() or None
+    stop_loss_price = _num(execution.get("stop_loss_price"))
+    take_profit_price = _num(execution.get("take_profit_price"))
+    max_holding_minutes = _num(execution.get("max_holding_minutes"))
+    has_exit_plan = any(value is not None for value in (stop_loss_price, take_profit_price, max_holding_minutes))
+    exit_management = str(execution.get("exit_management") or ("agent_supplied" if has_exit_plan else "agent_managed"))
+    exit_plan_source = str(execution.get("exit_plan_source") or ("execution_exit_fields" if has_exit_plan else "agent_required_missing"))
     position_id = _position_id(execution_id, symbol)
     position = {
         "position_id": position_id,
@@ -133,9 +142,17 @@ def apply_paper_execution(
         "entry_fee_usdt": fee,
         "quantity": quantity,
         "notional_usdt": fill_notional,
-        "stop_loss_price": _num(execution.get("stop_loss_price")),
-        "take_profit_price": _num(execution.get("take_profit_price")),
-        "max_holding_minutes": _num(execution.get("max_holding_minutes")),
+        "requested_notional_usdt": _num(execution.get("requested_notional_usdt")),
+        "requested_margin_usdt": _num(execution.get("requested_margin_usdt")),
+        "margin_usdt": margin_usdt,
+        "leverage": leverage,
+        "sizing_source": sizing_source,
+        "stop_loss_price": stop_loss_price,
+        "take_profit_price": take_profit_price,
+        "max_holding_minutes": max_holding_minutes,
+        "exit_management": exit_management,
+        "exit_plan_source": exit_plan_source,
+        "exit_rationale": execution.get("exit_rationale"),
         "last_mark_price": fill_price,
         "unrealized_pnl_usdt": 0.0,
     }
@@ -150,12 +167,17 @@ def apply_paper_execution(
             "symbol": symbol,
             "side": "BUY" if side == "LONG" else "SELL",
             "position_side": side,
-            "order_type": "PAPER_MARKET",
+            "order_type": "PAPER_POST_ONLY_MAKER_ASSUMPTION",
             "status": "FILLED",
             "requested_price": entry_price,
             "filled_price": fill_price,
             "quantity": quantity,
             "notional_usdt": fill_notional,
+            "requested_notional_usdt": position.get("requested_notional_usdt"),
+            "requested_margin_usdt": position.get("requested_margin_usdt"),
+            "margin_usdt": position.get("margin_usdt"),
+            "leverage": position.get("leverage"),
+            "sizing_source": sizing_source,
             "fee_usdt": fee,
             "created_at": now_text,
             "filled_at": now_text,
@@ -175,6 +197,11 @@ def apply_paper_execution(
             "price": fill_price,
             "quantity": quantity,
             "notional_usdt": fill_notional,
+            "requested_notional_usdt": position.get("requested_notional_usdt"),
+            "requested_margin_usdt": position.get("requested_margin_usdt"),
+            "margin_usdt": position.get("margin_usdt"),
+            "leverage": position.get("leverage"),
+            "sizing_source": sizing_source,
             "fee_usdt": fee,
             "created_at": now_text,
         }
@@ -321,6 +348,8 @@ def _close_position(
             "price": exit_price,
             "quantity": quantity,
             "notional_usdt": exit_notional,
+            "margin_usdt": position.get("margin_usdt"),
+            "leverage": position.get("leverage"),
             "fee_usdt": fee,
             "gross_pnl_usdt": gross_pnl,
             "net_pnl_usdt": net_pnl,
@@ -388,9 +417,10 @@ def _close_reason(
             return "stop_loss"
         if take_profit is not None and mark_price <= take_profit:
             return "take_profit"
+    # Time stops are strategy/Agent intent, not a wrapper-level fixed default.
+    # Keep the function parameter for backward-compatible callers, but only a
+    # position-level max_holding_minutes persisted from strategy_intent can close.
     effective_max_holding = _num(position.get("max_holding_minutes"))
-    if effective_max_holding is None:
-        effective_max_holding = _num(max_holding_minutes)
     if effective_max_holding is not None and effective_max_holding > 0 and _holding_minutes(position, now_iso) >= effective_max_holding:
         return "time_stop"
     return None

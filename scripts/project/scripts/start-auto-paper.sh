@@ -8,11 +8,14 @@ SYSTEMCTL_BIN="${TRADECAT_AUTO_PAPER_SYSTEMCTL_BIN:-systemctl}"
 SYSTEMD_SERVICE_UNIT="tradecat-auto-paper.service"
 SYSTEMD_TIMER_UNIT="tradecat-auto-paper.timer"
 INTERVAL_SECONDS="${TRADECAT_AUTO_PAPER_INTERVAL_SECONDS:-60}"
-NOTIONAL_USDT="${TRADECAT_AUTO_PAPER_NOTIONAL_USDT:-12}"
+PAPER_MARGIN_BUDGET_USDT="${TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT:-12}"
+AGENT_MARGIN_USDT="${TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT:-}"
+EFFECTIVE_NOTIONAL_USDT="${TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT:-}"
+PAPER_LEVERAGE="${TRADECAT_AUTO_PAPER_LEVERAGE:-}"
 INITIAL_BALANCE_USDT="${TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT:-1000}"
-PAPER_FEE_BPS="${TRADECAT_AUTO_PAPER_FEE_BPS:-4}"
-PAPER_SLIPPAGE_BPS="${TRADECAT_AUTO_PAPER_SLIPPAGE_BPS:-5}"
-PAPER_MAX_HOLDING_MINUTES="${TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES:-60}"
+PAPER_FEE_BPS="${TRADECAT_AUTO_PAPER_FEE_BPS:-2}"
+PAPER_SLIPPAGE_BPS="${TRADECAT_AUTO_PAPER_SLIPPAGE_BPS:-0.5}"
+PAPER_MAX_HOLDING_MINUTES="${TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES:-0}"
 MAX_EVENT_AGE_SECONDS="${TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS:-300}"
 EVENT_LIMIT="${TRADECAT_AUTO_PAPER_EVENT_LIMIT:-5}"
 ANOMALY_LIMIT="${TRADECAT_AUTO_PAPER_ANOMALY_LIMIT:-20}"
@@ -66,6 +69,41 @@ is_running() {
   return 0
 }
 
+proc_env_value() {
+  local pid="$1"
+  local key="$2"
+  local env_path="/proc/$pid/environ"
+  local entry
+  local prefix="$key="
+  [[ -r "$env_path" ]] || return 1
+  while IFS= read -r -d '' entry; do
+    if [[ "$entry" == "$prefix"* ]]; then
+      printf '%s\n' "${entry#"$prefix"}"
+      return 0
+    fi
+  done <"$env_path"
+  return 1
+}
+
+load_running_env_config() {
+  local pid="$1"
+  local value
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_INTERVAL_SECONDS")"; then INTERVAL_SECONDS="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT")"; then PAPER_MARGIN_BUDGET_USDT="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT")"; then AGENT_MARGIN_USDT="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT")"; then EFFECTIVE_NOTIONAL_USDT="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_LEVERAGE")"; then PAPER_LEVERAGE="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT")"; then INITIAL_BALANCE_USDT="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_FEE_BPS")"; then PAPER_FEE_BPS="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_SLIPPAGE_BPS")"; then PAPER_SLIPPAGE_BPS="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES")"; then PAPER_MAX_HOLDING_MINUTES="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS")"; then MAX_EVENT_AGE_SECONDS="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_EVENT_LIMIT")"; then EVENT_LIMIT="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_ANOMALY_LIMIT")"; then ANOMALY_LIMIT="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_SYMBOL")"; then SYMBOL="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_BASE_URL")"; then BASE_URL="$value"; fi
+}
+
 emit_json() {
   local action="$1"
   local state="$2"
@@ -95,7 +133,10 @@ emit_json() {
   AUTO_JSON_SYSTEMD_SERVICE_UNIT="$SYSTEMD_SERVICE_UNIT" \
   AUTO_JSON_SYSTEMD_TIMER_UNIT="$SYSTEMD_TIMER_UNIT" \
   AUTO_JSON_INTERVAL_SECONDS="$INTERVAL_SECONDS" \
-  AUTO_JSON_NOTIONAL_USDT="$NOTIONAL_USDT" \
+  AUTO_JSON_PAPER_MARGIN_BUDGET_USDT="$PAPER_MARGIN_BUDGET_USDT" \
+  AUTO_JSON_AGENT_MARGIN_USDT="$AGENT_MARGIN_USDT" \
+  AUTO_JSON_EFFECTIVE_NOTIONAL_USDT="$EFFECTIVE_NOTIONAL_USDT" \
+  AUTO_JSON_PAPER_LEVERAGE="$PAPER_LEVERAGE" \
   AUTO_JSON_INITIAL_BALANCE_USDT="$INITIAL_BALANCE_USDT" \
   AUTO_JSON_PAPER_FEE_BPS="$PAPER_FEE_BPS" \
   AUTO_JSON_PAPER_SLIPPAGE_BPS="$PAPER_SLIPPAGE_BPS" \
@@ -125,12 +166,24 @@ def optional_int(value: str):
 
 
 def optional_float(value: str):
+    if value == "":
+        return None
     try:
         return float(value)
     except ValueError:
         return value
 
 ok = truthy(os.environ["AUTO_JSON_OK"])
+paper_margin_budget_usdt = optional_float(os.environ["AUTO_JSON_PAPER_MARGIN_BUDGET_USDT"])
+agent_margin_usdt = optional_float(os.environ["AUTO_JSON_AGENT_MARGIN_USDT"])
+explicit_effective_notional_usdt = optional_float(os.environ["AUTO_JSON_EFFECTIVE_NOTIONAL_USDT"])
+paper_leverage = optional_float(os.environ["AUTO_JSON_PAPER_LEVERAGE"])
+effective_notional_usdt = (
+    agent_margin_usdt * paper_leverage
+    if isinstance(agent_margin_usdt, (int, float)) and isinstance(paper_leverage, (int, float))
+    else explicit_effective_notional_usdt if isinstance(explicit_effective_notional_usdt, (int, float)) and isinstance(paper_leverage, (int, float))
+    else None
+)
 payload = {
     "schema": "tradecat_auto.paper_service_status.v1",
     "schema_version": "1.0.0",
@@ -154,11 +207,29 @@ payload = {
     "systemd_service_unit": os.environ["AUTO_JSON_SYSTEMD_SERVICE_UNIT"],
     "systemd_timer_unit": os.environ["AUTO_JSON_SYSTEMD_TIMER_UNIT"],
     "interval_seconds": optional_float(os.environ["AUTO_JSON_INTERVAL_SECONDS"]),
-    "notional_usdt": optional_float(os.environ["AUTO_JSON_NOTIONAL_USDT"]),
+    "paper_margin_budget_usdt": paper_margin_budget_usdt,
+    "agent_margin_usdt": agent_margin_usdt,
+    "notional_usdt": explicit_effective_notional_usdt,
+    "notional_semantics": "deprecated explicit effective notional; margin budget is not an order amount",
+    "paper_leverage": paper_leverage,
+    "effective_notional_usdt": effective_notional_usdt,
+    "agent_sizing_required": effective_notional_usdt is None,
+    "paper_sizing": {
+        "schema": "tradecat_auto.paper_sizing_decision.v1",
+        "schema_version": "1.0.0",
+        "source": "service_environment" if effective_notional_usdt is not None else "agent_required_missing",
+        "margin_budget_usdt": paper_margin_budget_usdt,
+        "requested_margin_usdt": agent_margin_usdt,
+        "paper_leverage": paper_leverage,
+        "effective_notional_usdt": effective_notional_usdt,
+        "notional_semantics": "effective_notional_usdt; margin_budget_usdt is not an order amount",
+    },
     "initial_balance_usdt": optional_float(os.environ["AUTO_JSON_INITIAL_BALANCE_USDT"]),
     "paper_fee_bps": optional_float(os.environ["AUTO_JSON_PAPER_FEE_BPS"]),
+    "paper_fee_model": "binance_usdm_vip0_maker_assumption",
     "paper_slippage_bps": optional_float(os.environ["AUTO_JSON_PAPER_SLIPPAGE_BPS"]),
     "paper_max_holding_minutes": optional_float(os.environ["AUTO_JSON_PAPER_MAX_HOLDING_MINUTES"]),
+    "paper_max_holding_minutes_semantics": "legacy status/config field only; time stops require Agent strategy_intent/agent_trade_thesis max_holding_minutes on the paper position",
     "max_event_age_seconds": optional_float(os.environ["AUTO_JSON_MAX_EVENT_AGE_SECONDS"]),
     "event_limit": optional_int(os.environ["AUTO_JSON_EVENT_LIMIT"]),
     "anomaly_limit": optional_int(os.environ["AUTO_JSON_ANOMALY_LIMIT"]),
@@ -216,10 +287,20 @@ run_cycle() {
   export PYTHONPATH="$APP_DIR/src:${PYTHONPATH:-}"
   export PYTHONUNBUFFERED=1
   mkdir -p "$RUNTIME_DIR"
+  local -a sizing_args=(--paper-margin-budget-usdt "$PAPER_MARGIN_BUDGET_USDT")
+  if [[ -n "$AGENT_MARGIN_USDT" ]]; then
+    sizing_args+=(--agent-margin-usdt "$AGENT_MARGIN_USDT")
+  fi
+  if [[ -n "$EFFECTIVE_NOTIONAL_USDT" ]]; then
+    sizing_args+=(--notional-usdt "$EFFECTIVE_NOTIONAL_USDT")
+  fi
+  if [[ -n "$PAPER_LEVERAGE" ]]; then
+    sizing_args+=(--paper-leverage "$PAPER_LEVERAGE")
+  fi
   printf '{"event":"cycle_start","ts":"%s"}\n' "$(date -Iseconds)"
   "$py" -m tradecat_auto.cli run-loop \
     --mode paper \
-    --notional-usdt "$NOTIONAL_USDT" \
+    "${sizing_args[@]}" \
     --state-path "$STATE_PATH" \
     --ledger-path "$LEDGER_PATH" \
     --archive-path "$ARCHIVE_PATH" \
@@ -253,6 +334,7 @@ start() {
   if is_running; then
     local pid
     pid="$(read_pid)"
+    load_running_env_config "$pid"
     emit_text_or_json "$action" "running" "1" "1" "already_running" "running pid=$pid ledger=$LEDGER_PATH log=$LOG_FILE" "$pid"
     return 0
   fi
@@ -294,6 +376,7 @@ status() {
   if is_running; then
     local pid
     pid="$(read_pid)"
+    load_running_env_config "$pid"
     emit_text_or_json "status" "running" "1" "1" "running" "running pid=$pid ledger=$LEDGER_PATH log=$LOG_FILE" "$pid"
   else
     emit_text_or_json "status" "not_running" "0" "0" "not_running" "not running ledger=$LEDGER_PATH log=$LOG_FILE" "" "paper_service_not_running" "auto paper run-loop is not running"
@@ -370,7 +453,10 @@ Environment=TRADECAT_AUTO_PAPER_ARCHIVE_PATH=$ARCHIVE_PATH
 Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH=$JOURNAL_PATH
 Environment=TRADECAT_AUTO_PAPER_LOG_FILE=$LOG_FILE
 Environment=TRADECAT_AUTO_PAPER_INTERVAL_SECONDS=$INTERVAL_SECONDS
-Environment=TRADECAT_AUTO_PAPER_NOTIONAL_USDT=$NOTIONAL_USDT
+Environment=TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT=$PAPER_MARGIN_BUDGET_USDT
+Environment=TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT=$AGENT_MARGIN_USDT
+Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=$EFFECTIVE_NOTIONAL_USDT
+Environment=TRADECAT_AUTO_PAPER_LEVERAGE=$PAPER_LEVERAGE
 Environment=TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT=$INITIAL_BALANCE_USDT
 Environment=TRADECAT_AUTO_PAPER_FEE_BPS=$PAPER_FEE_BPS
 Environment=TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=$PAPER_SLIPPAGE_BPS

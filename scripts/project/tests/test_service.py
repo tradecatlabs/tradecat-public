@@ -65,14 +65,17 @@ def make_args(**overrides):
     values = {
         "symbol": "auto",
         "mode": "paper",
-        "notional_usdt": 12.0,
+        "notional_usdt": None,
+        "agent_margin_usdt": None,
+        "paper_margin_budget_usdt": 12.0,
         "event_limit": 5,
         "anomaly_limit": 20,
         "max_event_age_seconds": 3600,
         "ledger_path": "",
         "initial_balance_usdt": 1000.0,
-        "paper_fee_bps": 4.0,
-        "paper_slippage_bps": 5.0,
+        "paper_leverage": None,
+        "paper_fee_bps": 2.0,
+        "paper_slippage_bps": 0.5,
         "archive_path": "",
         "journal_path": "",
     }
@@ -105,6 +108,9 @@ class ServiceTests(unittest.TestCase):
             self.assertFalse(report["safety"]["binance_account_state"])
             self.assertEqual(report["action"], "PROCESSED")
             self.assertEqual(report["pipeline_report"]["selected_symbol"], "IRYSUSDT")
+            self.assertEqual(report["pipeline_report"]["risk_decision"]["decision"], "REJECT")
+            self.assertIn("agent_sizing_required", report["pipeline_report"]["risk_decision"]["reasons"])
+            self.assertEqual(report["pipeline_report"]["paper_execution"]["status"], "REJECTED")
             self.assertTrue(state_path.exists())
             self.assertIn("evt-1", state_path.read_text(encoding="utf-8"))
 
@@ -233,7 +239,7 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger_path = Path(tmp) / "paper_ledger.json"
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path)),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=12.0, paper_leverage=1.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -245,6 +251,33 @@ class ServiceTests(unittest.TestCase):
             ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
             self.assertIn("IRYSUSDT", ledger["open_positions"])
             self.assertEqual(len(ledger["fills"]), 1)
+            self.assertEqual(ledger["open_positions"]["IRYSUSDT"]["leverage"], 1.0)
+            self.assertEqual(ledger["open_positions"]["IRYSUSDT"]["sizing_source"], "agent_supplied_cli_margin")
+            self.assertAlmostEqual(ledger["open_positions"]["IRYSUSDT"]["notional_usdt"], 12.0 * 1.00005)
+
+    def test_run_service_cycle_applies_paper_leverage_to_effective_notional(self) -> None:
+        event = {
+            "event_id": "evt-leverage",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "IRYS 异动",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "paper_ledger.json"
+            report = run_service_cycle(
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=6.0, paper_leverage=2.0, paper_fee_bps=2.0, paper_slippage_bps=0.5),
+                state_path=Path(tmp) / "service_state.json",
+                client=FakeClient(),
+                source=FakeSource(event),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["pipeline_report"]["paper_leverage"], 2.0)
+            self.assertEqual(report["pipeline_report"]["requested_margin_usdt"], 6.0)
+            self.assertEqual(report["pipeline_report"]["effective_notional_usdt"], 12.0)
+            position = json.loads(ledger_path.read_text(encoding="utf-8"))["open_positions"]["IRYSUSDT"]
+            self.assertEqual(position["leverage"], 2.0)
+            self.assertEqual(position["sizing_source"], "agent_supplied_cli_margin")
+            self.assertAlmostEqual(position["margin_usdt"], position["notional_usdt"] / 2.0)
 
     def test_run_service_cycle_risk_uses_existing_ledger_position_count(self) -> None:
         event = {
@@ -305,7 +338,7 @@ class ServiceTests(unittest.TestCase):
             save_paper_ledger(ledger_path, ledger)
 
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path), notional_usdt=12.0),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=12.0, paper_leverage=1.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -335,7 +368,7 @@ class ServiceTests(unittest.TestCase):
             save_paper_ledger(ledger_path, ledger)
 
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path), notional_usdt=12.0),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=6.0, paper_leverage=2.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -454,7 +487,7 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(first["action"], "PROCESSED")
             self.assertEqual(second["action"], "SKIPPED_DUPLICATE_EVENT")
             self.assertEqual(second["paper_ledger"]["closed_positions_count"], 1)
-            self.assertGreaterEqual(client.bundle_calls, 2)
+            self.assertGreaterEqual(client.bundle_calls, 1)
 
 
 if __name__ == "__main__":

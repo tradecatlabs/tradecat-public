@@ -4,17 +4,17 @@ import hashlib
 from datetime import UTC, datetime
 from typing import Any
 
-DEFAULT_REQUESTED_NOTIONAL_USDT = 10.0
-DEFAULT_STOP_LOSS_PCT = 0.03
-DEFAULT_TAKE_PROFIT_PCT = 0.06
-
 
 def open_paper_position(
     signal: dict[str, Any],
     risk_decision: dict[str, Any],
     enrichment: dict[str, Any],
     *,
-    requested_notional_usdt: float = DEFAULT_REQUESTED_NOTIONAL_USDT,
+    requested_notional_usdt: float | None = None,
+    requested_margin_usdt: float | None = None,
+    paper_leverage: float | None = None,
+    sizing_source: str = "agent_supplied_or_explicit",
+    strategy_intent: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if risk_decision.get("decision") != "ALLOW":
         return _rejected(signal, risk_decision, ["risk_decision_not_allow"])
@@ -27,13 +27,18 @@ def open_paper_position(
     entry_price = _num(metrics.get("last_price"))
     if not entry_price or entry_price <= 0:
         return _rejected(signal, risk_decision, ["missing_entry_price"])
+    requested_notional = _num(requested_notional_usdt)
+    leverage = _positive_float(paper_leverage)
+    if requested_notional is None or requested_notional <= 0 or leverage is None:
+        return _rejected(signal, risk_decision, ["agent_sizing_required"])
     max_notional = _num(risk_decision.get("max_notional_usdt")) or 0.0
-    notional = min(float(requested_notional_usdt), max_notional) if max_notional > 0 else 0.0
+    notional = min(requested_notional, max_notional) if max_notional > 0 else 0.0
     if notional <= 0:
         return _rejected(signal, risk_decision, ["non_positive_notional"])
+    requested_margin = _num(requested_margin_usdt)
+    margin = notional / leverage if leverage > 0 else requested_margin
     quantity = notional / entry_price
-    stop_loss = entry_price * (1 - DEFAULT_STOP_LOSS_PCT if side == "LONG" else 1 + DEFAULT_STOP_LOSS_PCT)
-    take_profit = entry_price * (1 + DEFAULT_TAKE_PROFIT_PCT if side == "LONG" else 1 - DEFAULT_TAKE_PROFIT_PCT)
+    exit_plan = _exit_plan_from_strategy_intent(strategy_intent)
     opened_at = _now_iso()
     symbol = str(signal.get("symbol") or enrichment.get("symbol") or "")
     return {
@@ -49,8 +54,17 @@ def open_paper_position(
         "entry_price": entry_price,
         "quantity": quantity,
         "notional_usdt": notional,
-        "stop_loss_price": stop_loss,
-        "take_profit_price": take_profit,
+        "requested_notional_usdt": requested_notional,
+        "requested_margin_usdt": requested_margin,
+        "margin_usdt": margin,
+        "leverage": leverage,
+        "sizing_source": str(sizing_source or "agent_supplied_or_explicit"),
+        "stop_loss_price": exit_plan["stop_loss_price"],
+        "take_profit_price": exit_plan["take_profit_price"],
+        "max_holding_minutes": exit_plan["max_holding_minutes"],
+        "exit_management": exit_plan["exit_management"],
+        "exit_plan_source": exit_plan["exit_plan_source"],
+        "exit_rationale": exit_plan["exit_rationale"],
         "risk_decision": risk_decision,
         "limitations": ["paper simulation only; no exchange order was placed"],
     }
@@ -94,6 +108,24 @@ def _rejected(signal: dict[str, Any], risk_decision: dict[str, Any], reasons: li
     }
 
 
+def _exit_plan_from_strategy_intent(strategy_intent: dict[str, Any] | None) -> dict[str, Any]:
+    intent = strategy_intent if isinstance(strategy_intent, dict) else {}
+    stop_loss = _num(intent.get("invalidation_price"))
+    take_profit = _num(intent.get("take_profit_price"))
+    max_holding = _num(intent.get("max_holding_minutes"))
+    if max_holding is not None and max_holding <= 0:
+        max_holding = None
+    supplied = any(value is not None for value in (stop_loss, take_profit, max_holding))
+    return {
+        "stop_loss_price": stop_loss,
+        "take_profit_price": take_profit,
+        "max_holding_minutes": max_holding,
+        "exit_management": str(intent.get("exit_management") or "agent_supplied") if supplied else "agent_managed",
+        "exit_plan_source": str(intent.get("exit_plan_source") or "agent_trade_thesis") if supplied else "agent_required_missing",
+        "exit_rationale": intent.get("exit_rationale") if supplied else None,
+    }
+
+
 def _num(value: Any) -> float | None:
     try:
         if value is None or value == "":
@@ -101,6 +133,11 @@ def _num(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _positive_float(value: Any) -> float | None:
+    numeric = _num(value)
+    return numeric if numeric is not None and numeric > 0 else None
 
 
 def _execution_id(symbol: str, side: str, opened_at: str, entry_price: float, quantity: float, notional: float) -> str:

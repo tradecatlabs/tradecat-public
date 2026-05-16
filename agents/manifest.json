@@ -388,6 +388,7 @@
     "replay_report_schema": "scripts/project/contracts/tradecat-auto-replay-report.schema.json",
     "agent_soft_layer_reference": "references/agent-soft-decision-layer.md",
     "agent_soft_layer_resources": "scripts/project/resources/agent_soft_layer",
+    "agent_soft_layer_trader_profile": "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
     "agent_soft_layer_schema": "scripts/project/contracts/tradecat-auto-agent-soft-layer.schema.json",
     "agent_trade_thesis_schema": "scripts/project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
     "paper_account_state_schema": "scripts/project/contracts/tradecat-auto-paper-account-state.schema.json",
@@ -555,7 +556,7 @@
     "run bash scripts/run-tradecat.sh status --json",
     "run bash scripts/run-tradecat.sh datasets --json",
     "run bash scripts/run-tradecat.sh path event_stream --json",
-    "for Agent soft decisions, load bash scripts/run-tradecat.sh auto soft-layer --json before composing market context or trade thesis prompts",
+    "for Agent soft decisions, load bash scripts/run-tradecat.sh auto soft-layer --json before composing market context or trade thesis prompts; use role_profiles[].id=discretionary_futures_trader when a paper-only trader persona is needed",
     "derive prompt-safe account/order context only from auto paper-report paper_account_state; never from Binance account/order endpoints",
     "run bash scripts/run-tradecat.sh auto daily-report --json or alert-payload --kind daily --json for reporting without trading side effects",
     "run bash scripts/run-tradecat.sh auto health-report --json to inspect heartbeat/ledger/archive/audit health before or after starting the service",
@@ -566,7 +567,7 @@
     "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
     "for autonomous paper testing, run bash scripts/project/scripts/start-auto-paper.sh status --json before starting a new service",
     "run bash scripts/run-tradecat.sh auto paper-report --json to inspect paper ledger state",
-    "run bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json for one verified paper/watch cycle",
+    "run bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --once --json for one verified paper/watch cycle; missing Agent sizing should reject/watch instead of using 12U as default size",
     "start continuous paper testing only with bash scripts/project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
     "for Agent-supplied context, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json before run-context",
     "before delivery run bash scripts/agent-smoke.sh and the validation_commands that match the change scope"
@@ -672,7 +673,7 @@
     {
       "schema": "tradecat_auto.agent_soft_layer.v1",
       "schema_version": "1.0.0",
-      "purpose": "Return self-contained Agent/Hermes prompt templates, endpoint policy, and soft thesis contract resources for public-readonly paper research.",
+      "purpose": "Return self-contained Agent/Hermes prompt templates, configurable role profiles, endpoint policy, and soft thesis contract resources for public-readonly paper research.",
       "writes": false,
       "real_orders": false,
       "signed_requests": false,
@@ -810,7 +811,7 @@
       "safety_boundary": "Public/read-only probe; never places orders or reads account state."
     },
     {
-      "command": "bash scripts/run-tradecat.sh auto run-once --mode paper --notional-usdt 12 --json",
+      "command": "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json",
       "risk_class": "network_readonly",
       "schema": "tradecat_auto.run_once_report.v1",
       "writes": false,
@@ -824,7 +825,7 @@
       "safety_boundary": "Single-cycle paper/watch report only; mainnet execution is rejected by deterministic risk gates."
     },
     {
-      "command": "bash scripts/run-tradecat.sh auto run-loop --mode paper --notional-usdt 12 --once --json",
+      "command": "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --once --json",
       "risk_class": "paper_runtime_write",
       "schema": "tradecat_auto.service_cycle.v1",
       "writes": true,
@@ -902,7 +903,7 @@
       "safety_boundary": "Validation-only audit; rejects signed, account, credential-like, and order endpoints before use."
     },
     {
-      "command": "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json",
+      "command": "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.run_once_report.v1",
       "writes": false,

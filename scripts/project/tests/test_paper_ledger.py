@@ -79,10 +79,40 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertAlmostEqual(updated["cash_balance_usdt"], 1001.38344)
         self.assertAlmostEqual(updated["equity_usdt"], 1001.38344)
 
-    def test_mark_to_market_handles_multi_symbol_stop_loss_and_time_stop(self) -> None:
+    def test_mark_to_market_does_not_apply_legacy_fixed_exits_when_plan_missing(self) -> None:
+        execution = {
+            **OPEN_LONG,
+            "paper_execution_id": "exec-no-exit-plan",
+            "stop_loss_price": None,
+            "take_profit_price": None,
+            "max_holding_minutes": None,
+            "opened_at": "2026-05-14T00:00:00Z",
+        }
         ledger = apply_paper_execution(
             default_paper_ledger(initial_balance_usdt=1000.0),
-            {**OPEN_LONG, "opened_at": "2026-05-14T00:00:00Z"},
+            execution,
+            fee_bps=0.0,
+            now_iso="2026-05-14T00:00:00Z",
+        )
+
+        updated = mark_to_market(
+            ledger,
+            {"IRYSUSDT": 80.0},
+            fee_bps=0.0,
+            now_iso="2026-05-14T12:00:00Z",
+            max_holding_minutes=30,
+        )
+
+        self.assertIn("IRYSUSDT", updated["open_positions"])
+        self.assertEqual(updated["closed_positions"], [])
+        self.assertLess(updated["open_positions"]["IRYSUSDT"]["unrealized_pnl_usdt"], 0)
+        self.assertEqual(updated["open_positions"]["IRYSUSDT"]["exit_management"], "agent_managed")
+        self.assertEqual(updated["open_positions"]["IRYSUSDT"]["exit_plan_source"], "agent_required_missing")
+
+    def test_mark_to_market_handles_multi_symbol_stop_loss_and_agent_time_stop(self) -> None:
+        ledger = apply_paper_execution(
+            default_paper_ledger(initial_balance_usdt=1000.0),
+            {**OPEN_LONG, "opened_at": "2026-05-14T00:00:00Z", "max_holding_minutes": 30},
             fee_bps=0.0,
             now_iso="2026-05-14T00:00:00Z",
         )
@@ -105,7 +135,7 @@ class PaperLedgerTests(unittest.TestCase):
             {"IRYSUSDT": 101.0, "BTCUSDT": 53.0},
             fee_bps=0.0,
             now_iso="2026-05-14T00:45:00Z",
-            max_holding_minutes=30,
+            max_holding_minutes=0,
         )
 
         self.assertEqual(updated["open_positions"], {})

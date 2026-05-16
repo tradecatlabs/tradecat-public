@@ -16,18 +16,19 @@ TradeCat 的 Agent 软决策层只沉淀提示词、端点策略、研究假设�
 - `scripts/project/resources/agent_soft_layer/prompts/system.zh.md`
 - `scripts/project/resources/agent_soft_layer/prompts/context-request.zh.md`
 - `scripts/project/resources/agent_soft_layer/prompts/trade-thesis.zh.md`
+- `scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md`
 
-这些资源从仓库内已复制的 Binance skill/API 快照提炼，不依赖外部私有目录；上游快照 provenance 仍由 `scripts/project/resources/agent_market_context/binance/provenance.manifest.json` 管理。
+这些资源从仓库内已复制的 Binance skill/API 快照提炼，不依赖外部私有目录；上游快照 provenance 仍由 `scripts/project/resources/agent_market_context/binance/provenance.manifest.json` 管理。交易员 role profile 是可配置的软提示词，不增加任何真实交易权限。
 
 ## Agent 最小流程
 
-1. 读取 `bash scripts/run-tradecat.sh auto soft-layer --json`，获得系统提示词、context 采集模板、trade thesis 模板和 endpoint policy。
+1. 读取 `bash scripts/run-tradecat.sh auto soft-layer --json`，获得系统提示词、交易员 role profile、context 采集模板、trade thesis 模板和 endpoint policy。
 2. 只用 `endpoint_policy.allowed_market_context_families` 中的 public/read-only GET 端点采集行情上下文。
 3. 输出 `tradecat_auto.agent_market_context.v1` 到本地 JSON 文件。
 4. 运行 `bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json`。
-5. 只有 audit `ok=true` 时，才运行 `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --notional-usdt 12 --json`。
+5. 只有 audit `ok=true` 时，才运行 `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --json`；缺少 Agent sizing 时应返回 `agent_sizing_required` / `WATCH_ONLY`，不能把 12U 当默认下单金额。缺少 Agent exit plan 时，不得套用固定止损/止盈/持仓时间；只有 thesis 显式写 `invalidation_price`、`take_profit_price`、`max_holding_minutes` 才生效。
 6. 如需账户上下文，只使用 `paper-report` 中的 `paper_account_state`，它来自本地 paper ledger，不来自 Binance。
-7. 生成 `tradecat_auto.agent_trade_thesis.v1` 时，只写研究假设、风险备注、观察条件和 paper intent；不要写真实交易指令。
+7. 生成 `tradecat_auto.agent_trade_thesis.v1` 时，只写研究假设、风险备注、观察条件、可选 exit plan 和 paper intent；不要写真实交易指令。
 
 ## 硬代码必须兜住的内容
 
@@ -46,5 +47,6 @@ TradeCat 的 Agent 软决策层只沉淀提示词、端点策略、研究假设�
 - 市场上下文审计输出：`tradecat_auto.agent_market_context_audit.v1`
 - 本地纸面账户状态：`tradecat_auto.paper_account_state.v1`
 - Agent 研究假设输出：`tradecat_auto.agent_trade_thesis.v1`
+- 交易员 role profile：`role_profiles[].id=discretionary_futures_trader`，路径 `scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md`
 
 对应 JSON Schema 位于 `scripts/project/contracts/`。

@@ -185,7 +185,7 @@ PY
 bash scripts/run-tradecat.sh auto context-audit --input "$TMP_DIR/agent-context.json" --json >"$TMP_DIR/context-audit.json"
 json_expect "$TMP_DIR/context-audit.json" "tradecat_auto.agent_market_context_audit.v1"
 
-bash scripts/run-tradecat.sh auto run-context --input "$TMP_DIR/agent-context.json" --mode paper --notional-usdt 12 --json >"$TMP_DIR/run-context.json"
+bash scripts/run-tradecat.sh auto run-context --input "$TMP_DIR/agent-context.json" --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json >"$TMP_DIR/run-context.json"
 json_expect "$TMP_DIR/run-context.json" "tradecat_auto.run_once_report.v1"
 
 bash scripts/run-tradecat.sh auto replay-report --archive-path "$TMP_DIR/cycles.jsonl" --ledger-path "$TMP_DIR/paper-ledger-complete.json" --json >"$TMP_DIR/replay-report.json"

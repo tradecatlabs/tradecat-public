@@ -5,8 +5,9 @@ This directory contains the self-contained soft layer that Hermes/Agent can load
 ## What this is
 
 - Prompt templates under `prompts/` for research/context gathering and thesis generation.
+- Configurable role profiles under `profiles/`; the bundled `discretionary-futures-trader.zh.md` profile is a paper-only futures trader prompt that requires explicit Agent sizing.
 - `endpoint_policy.json`, an extracted public USDⓈ-M context catalog from the bundled Binance skill/API snapshots.
-- A soft contract: Agent reasoning stays in prompts and JSON thesis fields; deterministic TradeCat code still owns schema audit, account/order safety, risk rejection, paper ledger mutation, and replay.
+- A soft contract: Agent reasoning stays in prompts, role profiles, and JSON thesis fields; deterministic TradeCat code still owns schema audit, account/order safety, risk rejection, paper ledger mutation, and replay.
 
 ## What this is not
 

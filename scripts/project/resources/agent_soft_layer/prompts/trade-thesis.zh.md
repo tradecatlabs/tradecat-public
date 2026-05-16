@@ -28,11 +28,17 @@
     "not_order_instruction": true
   },
   "risk_notes": [],
+  "invalidation_price": 0.058,
+  "take_profit_price": 0.071,
+  "max_holding_minutes": 240,
+  "exit_rationale": "why these paper exit levels/horizon are appropriate, or omit all four exit fields",
   "invalidation_conditions": [],
   "requested_followup_context_families": [],
   "paper_intent": {
     "allow_tradecat_paper_gate_to_decide": true,
-    "requested_notional_usdt": 0.0,
+    "requested_margin_usdt": 6.0,
+    "paper_leverage": 2.0,
+    "requested_notional_usdt": 12.0,
     "real_order": false
   },
   "rationale": "short auditable rationale without hidden chain-of-thought",
@@ -47,7 +53,7 @@
 }
 ```
 
-`confidence` 必须在 0 到 1 之间。`direction=WATCH_ONLY` 时不要填写会被误读为订单的字段。`requested_notional_usdt` 只是给 TradeCat deterministic risk gate 的 paper 参数建议，不是订单金额。
+`confidence` 必须在 0 到 1 之间。`direction=WATCH_ONLY` 时不要填写会被误读为订单的字段。12U 是本地 `paper margin budget` / cap，不是默认订单金额；非 `WATCH_ONLY` 输出必须显式写 `requested_margin_usdt` + `paper_leverage`，缺失 sizing 时使用 `error_code="agent_sizing_required"` 并保持 `WATCH_ONLY`。`requested_notional_usdt` 只是低层兼容/审计字段，不能替代保证金预算与杠杆说明。`invalidation_price`、`take_profit_price`、`max_holding_minutes` 也没有 TradeCat 默认值；只有当 Agent 能基于行情上下文给出明确失效/止盈/持仓周期假设时才填写，否则全部省略，由后续 Agent/策略复核管理纸面仓。
 
 ## 拒绝条件
 

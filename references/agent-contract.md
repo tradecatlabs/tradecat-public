@@ -173,14 +173,14 @@ Canonical input schema:
 - Schema file: `scripts/project/contracts/tradecat-auto-agent-market-context.schema.json`.
 - Source/provenance manifest: `scripts/project/resources/agent_market_context/binance/provenance.manifest.json`.
 - Audit command: `bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json`.
-- Paper/watch command: `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --notional-usdt 12 --json`.
+- Paper/watch command: `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --json`.
 - Replay command: `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
 
 Required command order:
 
 1. Validate JSON syntax and schema/version.
 2. Run `context-audit`.
-3. Continue to `run-context` only when audit `ok=true`.
+3. Continue to `run-context` only when audit `ok=true` and Agent sizing is explicit; 12U is a paper margin budget/cap, not a default order size. Paper exits are also intent-driven: no fixed stop-loss, take-profit, or time-stop is applied unless the Agent thesis supplies it.
 4. Inspect `run_once_report.v1` / paper ledger / replay report; never convert paper output into real orders.
 
 Allowed context families are intentionally narrow and public/read-only: `klines`, `order_book_depth`, `book_ticker`, `24h_ticker`, `funding_rate`, `premium_index`, `open_interest`, `open_interest_history`, `long_short_ratios`, and `taker_buy_sell_volume`. Each item must be `method=GET`, `requires_signature=false`, and `signed=false`.

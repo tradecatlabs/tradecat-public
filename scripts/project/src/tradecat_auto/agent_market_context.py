@@ -369,7 +369,10 @@ def build_paper_report_from_agent_market_context(
     context: dict[str, Any],
     *,
     mode: str = "paper",
-    requested_notional_usdt: float = 10.0,
+    requested_notional_usdt: float | None = None,
+    requested_margin_usdt: float | None = None,
+    paper_leverage: float | None = None,
+    margin_budget_usdt: float | None = None,
     risk_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     audit = audit_agent_market_context(context)
@@ -389,6 +392,13 @@ def build_paper_report_from_agent_market_context(
             ],
         }
     selected_symbol = str(context.get("symbol") or audit.get("symbol") or "").upper().strip()
+    agent_sizing = _agent_paper_sizing(context)
+    resolved_requested_margin = requested_margin_usdt if requested_margin_usdt is not None else agent_sizing.get("requested_margin_usdt")
+    resolved_paper_leverage = paper_leverage if paper_leverage is not None else agent_sizing.get("paper_leverage")
+    resolved_requested_notional = requested_notional_usdt if requested_notional_usdt is not None else agent_sizing.get("requested_notional_usdt")
+    sizing_source = str(agent_sizing.get("source") or "agent_market_context_missing_sizing")
+    if requested_margin_usdt is not None or requested_notional_usdt is not None or paper_leverage is not None:
+        sizing_source = "explicit_cli_override"
     anomaly_item = context.get("anomaly_symbol") if isinstance(context.get("anomaly_symbol"), dict) else {}
     if not anomaly_item:
         anomaly_item = {"raw_symbol": selected_symbol, "normalized_symbol": selected_symbol, "source_values": {}}
@@ -401,16 +411,72 @@ def build_paper_report_from_agent_market_context(
         market_bundle=agent_market_context_to_market_bundle(context),
         events={"ok": True, "events": [copy.deepcopy(event)] if event else []},
         mode=mode,
-        requested_notional_usdt=requested_notional_usdt,
+        requested_notional_usdt=resolved_requested_notional,
+        requested_margin_usdt=resolved_requested_margin,
+        paper_leverage=resolved_paper_leverage,
+        margin_budget_usdt=margin_budget_usdt,
+        sizing_source=sizing_source,
+        agent_trade_thesis=context.get("agent_trade_thesis") if isinstance(context.get("agent_trade_thesis"), dict) else None,
         risk_policy=risk_policy,
     )
     report["schema_version"] = SCHEMA_VERSION
     report["agent_market_context_audit"] = audit
+    report["agent_paper_sizing_input"] = agent_sizing
     report["market_context_provenance"] = copy.deepcopy(context.get("provenance") if isinstance(context.get("provenance"), dict) else {})
     report.setdefault("limitations", [])
     if "agent-supplied public/read-only market context" not in report["limitations"]:
         report["limitations"].append("agent-supplied public/read-only market context")
     return report
+
+
+def _agent_paper_sizing(context: dict[str, Any]) -> dict[str, Any]:
+    paper_intent = _paper_intent_from_context(context)
+    if not paper_intent:
+        return {
+            "schema": "tradecat_auto.agent_paper_sizing_input.v1",
+            "ok": False,
+            "source": "agent_market_context_missing_sizing",
+            "requested_margin_usdt": None,
+            "paper_leverage": None,
+            "requested_notional_usdt": None,
+            "error_code": "agent_sizing_required",
+        }
+    requested_margin = _positive_number(paper_intent.get("requested_margin_usdt"))
+    leverage = _positive_number(
+        paper_intent.get("requested_leverage")
+        if paper_intent.get("requested_leverage") is not None
+        else paper_intent.get("paper_leverage", paper_intent.get("leverage"))
+    )
+    requested_notional = _positive_number(paper_intent.get("requested_notional_usdt"))
+    ok = (requested_margin is not None and leverage is not None) or (requested_notional is not None and leverage is not None)
+    return {
+        "schema": "tradecat_auto.agent_paper_sizing_input.v1",
+        "ok": ok,
+        "source": "agent_trade_thesis.paper_intent",
+        "requested_margin_usdt": requested_margin,
+        "paper_leverage": leverage,
+        "requested_notional_usdt": requested_notional,
+        "error_code": None if ok else "agent_sizing_required",
+    }
+
+
+def _paper_intent_from_context(context: dict[str, Any]) -> dict[str, Any]:
+    thesis = context.get("agent_trade_thesis") if isinstance(context.get("agent_trade_thesis"), dict) else {}
+    if isinstance(thesis.get("paper_intent"), dict):
+        return thesis["paper_intent"]
+    if isinstance(context.get("paper_intent"), dict):
+        return context["paper_intent"]
+    return {}
+
+
+def _positive_number(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if numeric > 0 else None
 
 
 def _map_long_short_ratio(bundle: dict[str, Any], endpoint: str, data: Any) -> None:
@@ -470,7 +536,10 @@ def _forbidden_state_key_hits(value: Any, *, prefix: str = "") -> list[str]:
             compact = _compact_key(key_text)
             forbidden_compact = {item.replace("_", "") for item in FORBIDDEN_STATE_KEY_NAMES}
             if normalized in FORBIDDEN_STATE_KEY_NAMES or compact in forbidden_compact:
-                hits.append(path)
+                if compact in {"realorder", "realorders"} and child is False:
+                    pass
+                else:
+                    hits.append(path)
             hits.extend(_forbidden_state_key_hits(child, prefix=path))
     elif isinstance(value, list):
         for index, child in enumerate(value):

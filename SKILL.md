@@ -57,7 +57,7 @@ bash scripts/run-tradecat.sh features --json
 
 ```bash
 bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
-bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
+bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 bash scripts/run-tradecat.sh auto audit-journal --json
 bash scripts/run-tradecat.sh auto health-report --json
@@ -264,7 +264,7 @@ tradecat-public/
 - Steps:
   1. Read `references/hermes-agent-guide.md` and `references/agent-contract.md`.
   2. Run `bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json`.
-  3. Only if audit `ok=true`, run `bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json`.
+Only if audit `ok=true` and Agent sizing is explicit, run `bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json`; without sizing, expect `agent_sizing_required` instead of a paper open.
   4. For replay, run `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
 - Expected output / acceptance: input stays public/read-only, credentials/signatures/account/order endpoints are rejected, and output remains paper/watch with no real orders.
 

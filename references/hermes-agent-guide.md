@@ -77,9 +77,11 @@ python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 
 ```bash
 bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
-bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --notional-usdt 12 --json
+bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --json
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 ```
+
+`auto soft-layer --json` 也会暴露 `role_profiles[].id=discretionary_futures_trader`；它是可配置的 paper-only 交易员提示词。12U 只是本地 paper margin budget/cap，不是默认订单金额；缺少 Agent sizing 必须变成 `WATCH_ONLY` / `agent_sizing_required`。止损、止盈和最大持仓时间也不再有固定默认值，只有 `agent_trade_thesis` 明确给出 `invalidation_price` / `take_profit_price` / `max_holding_minutes` 时才进入 paper ledger。
 
 ## 纸面生产运行态与审计报告
 

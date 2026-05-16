@@ -24,13 +24,19 @@
       "additionalProperties": true
     },
     "risk_notes": {"type": "array", "items": {"type": "string"}},
+    "invalidation_price": {"type": "number", "exclusiveMinimum": 0},
+    "take_profit_price": {"type": "number", "exclusiveMinimum": 0},
+    "max_holding_minutes": {"type": "number", "exclusiveMinimum": 0},
+    "exit_rationale": {"type": "string"},
     "invalidation_conditions": {"type": "array", "items": {"type": "string"}},
     "requested_followup_context_families": {"type": "array", "items": {"type": "string"}},
     "paper_intent": {
       "type": "object",
       "properties": {
         "allow_tradecat_paper_gate_to_decide": {"const": true},
-        "requested_notional_usdt": {"type": "number", "minimum": 0},
+        "requested_margin_usdt": {"type": "number", "exclusiveMinimum": 0},
+        "paper_leverage": {"type": "number", "exclusiveMinimum": 0},
+        "requested_notional_usdt": {"type": "number", "exclusiveMinimum": 0},
         "real_order": {"const": false}
       },
       "additionalProperties": true
