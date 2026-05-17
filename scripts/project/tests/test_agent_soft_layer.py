@@ -41,14 +41,15 @@ def test_soft_layer_bundle_exposes_configurable_trader_role_profile() -> None:
 
     assert trader["role"] == "paper_futures_trader"
     assert trader["path"] == "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md"
-    assert "12U" in trader["template"]
-    assert "paper margin budget" in trader["template"]
+    assert "不设固定保证金或杠杆上限" in trader["template"]
+    assert "paper margin budget" not in trader["template"]
     assert "agent_margin_usdt" in trader["template"]
     assert "paper_leverage" in trader["template"]
     assert "agent_sizing_required" in trader["template"]
     assert "WATCH_ONLY" in trader["template"]
     assert trader["sizing_contract"]["default_order_size"] is False
-    assert trader["sizing_contract"]["margin_budget_usdt_is_cap"] is True
+    assert trader["sizing_contract"]["margin_budget_usdt_is_cap"] is False
+    assert trader["sizing_contract"]["margin_budget_usdt"] is None
     assert trader["exit_contract"]["default_stop_loss"] is False
     assert trader["exit_contract"]["default_take_profit"] is False
     assert trader["exit_contract"]["default_max_holding_minutes"] is None

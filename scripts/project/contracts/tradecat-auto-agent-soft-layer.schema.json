@@ -42,7 +42,8 @@
             "type": "object",
             "required": ["margin_budget_usdt_is_cap", "default_order_size", "missing_sizing_error_code"],
             "properties": {
-              "margin_budget_usdt_is_cap": {"const": true},
+              "margin_budget_usdt_is_cap": {"const": false},
+              "margin_budget_usdt": {"type": "null"},
               "default_order_size": {"const": false},
               "missing_sizing_error_code": {"const": "agent_sizing_required"}
             },

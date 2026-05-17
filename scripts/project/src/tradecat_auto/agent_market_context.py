@@ -434,6 +434,7 @@ def _agent_paper_sizing(context: dict[str, Any]) -> dict[str, Any]:
     if not paper_intent:
         return {
             "schema": "tradecat_auto.agent_paper_sizing_input.v1",
+            "schema_version": "1.0.0",
             "ok": False,
             "source": "agent_market_context_missing_sizing",
             "requested_margin_usdt": None,
@@ -451,6 +452,7 @@ def _agent_paper_sizing(context: dict[str, Any]) -> dict[str, Any]:
     ok = (requested_margin is not None and leverage is not None) or (requested_notional is not None and leverage is not None)
     return {
         "schema": "tradecat_auto.agent_paper_sizing_input.v1",
+        "schema_version": "1.0.0",
         "ok": ok,
         "source": "agent_trade_thesis.paper_intent",
         "requested_margin_usdt": requested_margin,
@@ -578,8 +580,8 @@ def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
             if any(fragment in normalized for fragment in CREDENTIAL_KEY_FRAGMENTS) or any(
                 fragment in compact for fragment in CREDENTIAL_KEY_COMPACT_FRAGMENTS
             ):
-                # Schema flags such as requires_signature are allowed only as explicit false.
-                if normalized in {"requires_signature", "signed"} and child is False:
+                # Schema/safety flags are allowed only as explicit false.
+                if normalized in {"requires_signature", "signed", "signed_requests", "reads_api_keys", "read_api_keys"} and child is False:
                     pass
                 else:
                     hits.append(path)

@@ -8,7 +8,7 @@ SYSTEMCTL_BIN="${TRADECAT_AUTO_PAPER_SYSTEMCTL_BIN:-systemctl}"
 SYSTEMD_SERVICE_UNIT="tradecat-auto-paper.service"
 SYSTEMD_TIMER_UNIT="tradecat-auto-paper.timer"
 INTERVAL_SECONDS="${TRADECAT_AUTO_PAPER_INTERVAL_SECONDS:-60}"
-PAPER_MARGIN_BUDGET_USDT="${TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT:-12}"
+PAPER_MARGIN_BUDGET_USDT="${TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT:-}"
 AGENT_MARGIN_USDT="${TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT:-}"
 EFFECTIVE_NOTIONAL_USDT="${TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT:-}"
 PAPER_LEVERAGE="${TRADECAT_AUTO_PAPER_LEVERAGE:-}"
@@ -210,7 +210,7 @@ payload = {
     "paper_margin_budget_usdt": paper_margin_budget_usdt,
     "agent_margin_usdt": agent_margin_usdt,
     "notional_usdt": explicit_effective_notional_usdt,
-    "notional_semantics": "deprecated explicit effective notional; margin budget is not an order amount",
+    "notional_semantics": "deprecated explicit effective notional; no default paper order amount or budget cap",
     "paper_leverage": paper_leverage,
     "effective_notional_usdt": effective_notional_usdt,
     "agent_sizing_required": effective_notional_usdt is None,
@@ -222,7 +222,7 @@ payload = {
         "requested_margin_usdt": agent_margin_usdt,
         "paper_leverage": paper_leverage,
         "effective_notional_usdt": effective_notional_usdt,
-        "notional_semantics": "effective_notional_usdt; margin_budget_usdt is not an order amount",
+        "notional_semantics": "effective_notional_usdt; no default paper order amount or budget cap",
     },
     "initial_balance_usdt": optional_float(os.environ["AUTO_JSON_INITIAL_BALANCE_USDT"]),
     "paper_fee_bps": optional_float(os.environ["AUTO_JSON_PAPER_FEE_BPS"]),
@@ -287,7 +287,10 @@ run_cycle() {
   export PYTHONPATH="$APP_DIR/src:${PYTHONPATH:-}"
   export PYTHONUNBUFFERED=1
   mkdir -p "$RUNTIME_DIR"
-  local -a sizing_args=(--paper-margin-budget-usdt "$PAPER_MARGIN_BUDGET_USDT")
+  local -a sizing_args=()
+  if [[ -n "$PAPER_MARGIN_BUDGET_USDT" ]]; then
+    sizing_args+=(--paper-margin-budget-usdt "$PAPER_MARGIN_BUDGET_USDT")
+  fi
   if [[ -n "$AGENT_MARGIN_USDT" ]]; then
     sizing_args+=(--agent-margin-usdt "$AGENT_MARGIN_USDT")
   fi
@@ -435,7 +438,8 @@ write_systemd_units() {
   mkdir -p "$SYSTEMD_USER_DIR" "$RUNTIME_DIR"
   local service_path="$SYSTEMD_USER_DIR/$SYSTEMD_SERVICE_UNIT"
   local timer_path="$SYSTEMD_USER_DIR/$SYSTEMD_TIMER_UNIT"
-  cat >"$service_path" <<UNIT
+  {
+    cat <<UNIT
 [Unit]
 Description=TradeCat auto paper trading cycle (public data, paper only)
 Wants=network-online.target
@@ -453,10 +457,20 @@ Environment=TRADECAT_AUTO_PAPER_ARCHIVE_PATH=$ARCHIVE_PATH
 Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH=$JOURNAL_PATH
 Environment=TRADECAT_AUTO_PAPER_LOG_FILE=$LOG_FILE
 Environment=TRADECAT_AUTO_PAPER_INTERVAL_SECONDS=$INTERVAL_SECONDS
-Environment=TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT=$PAPER_MARGIN_BUDGET_USDT
-Environment=TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT=$AGENT_MARGIN_USDT
-Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=$EFFECTIVE_NOTIONAL_USDT
-Environment=TRADECAT_AUTO_PAPER_LEVERAGE=$PAPER_LEVERAGE
+UNIT
+    if [[ -n "$PAPER_MARGIN_BUDGET_USDT" ]]; then
+      printf 'Environment=TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT=%s\n' "$PAPER_MARGIN_BUDGET_USDT"
+    fi
+    if [[ -n "$AGENT_MARGIN_USDT" ]]; then
+      printf 'Environment=TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT=%s\n' "$AGENT_MARGIN_USDT"
+    fi
+    if [[ -n "$EFFECTIVE_NOTIONAL_USDT" ]]; then
+      printf 'Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=%s\n' "$EFFECTIVE_NOTIONAL_USDT"
+    fi
+    if [[ -n "$PAPER_LEVERAGE" ]]; then
+      printf 'Environment=TRADECAT_AUTO_PAPER_LEVERAGE=%s\n' "$PAPER_LEVERAGE"
+    fi
+    cat <<UNIT
 Environment=TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT=$INITIAL_BALANCE_USDT
 Environment=TRADECAT_AUTO_PAPER_FEE_BPS=$PAPER_FEE_BPS
 Environment=TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=$PAPER_SLIPPAGE_BPS
@@ -473,6 +487,7 @@ PrivateTmp=true
 [Install]
 WantedBy=default.target
 UNIT
+  } >"$service_path"
   cat >"$timer_path" <<UNIT
 [Unit]
 Description=Run TradeCat auto paper cycle every $INTERVAL_SECONDS seconds

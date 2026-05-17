@@ -37,9 +37,9 @@ bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
 bash scripts/run-tradecat.sh auto paper-report --json
-bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --once --json
+bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json
 bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
-bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
+bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 bash scripts/run-tradecat.sh auto audit-journal --json
 bash scripts/run-tradecat.sh auto health-report --json

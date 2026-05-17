@@ -115,6 +115,7 @@ def run_service_cycle(
         if selected_symbol
         else {
             "schema": "tradecat_auto.public_market_bundle.v1",
+            "schema_version": "1.0.0",
             "ok": False,
             "errors": {"symbol": "no tradable symbol selected"},
         }
@@ -310,7 +311,7 @@ def _select_symbol(requested: str, tradable: set[str], anomaly: dict[str, Any]) 
     for item in anomaly.get("symbols") or []:
         if isinstance(item, dict) and item.get("normalized_symbol"):
             return str(item["normalized_symbol"])
-    return "BTCUSDT" if "BTCUSDT" in tradable else (sorted(tradable)[0] if tradable else "")
+    return ""
 
 
 def _summarize_universe(universe: dict[str, Any]) -> dict[str, Any]:
@@ -403,7 +404,6 @@ def _risk_policy_from_runtime(args: Any, cycle_time: datetime | None = None) -> 
     policy = _risk_policy_from_existing_ledger(args, cycle_time)
     sizing = _paper_sizing_from_args(args)
     leverage = _num(sizing.get("paper_leverage"))
-    max_leverage = float(policy.get("max_leverage") or 3.0)
     policy.update(
         {
             "paper_margin_budget_usdt": sizing["margin_budget_usdt"],
@@ -412,9 +412,9 @@ def _risk_policy_from_runtime(args: Any, cycle_time: datetime | None = None) -> 
             "requested_notional_usdt": sizing["effective_notional_usdt"],
             "sizing_required": str(getattr(args, "mode", "paper") or "paper") == "paper",
             "sizing_source": sizing["source"],
-            "max_leverage": max_leverage,
-            "max_symbol_notional_usdt": float(policy.get("max_symbol_notional_usdt") or 36.0),
-            "max_total_notional_usdt": float(policy.get("max_total_notional_usdt") or 50.0),
+            "max_leverage": _num(policy.get("max_leverage")),
+            "max_symbol_notional_usdt": _num(policy.get("max_symbol_notional_usdt")),
+            "max_total_notional_usdt": _num(policy.get("max_total_notional_usdt")),
         }
     )
     return policy
@@ -515,6 +515,7 @@ def _parse_closed_at(value: Any) -> datetime | None:
 def _ledger_error_summary(path: Path, exc: PaperLedgerError) -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.paper_ledger_summary.v1",
+        "schema_version": "1.0.0",
         "ok": False,
         "error": str(exc),
         "path": str(path),
@@ -583,7 +584,7 @@ def _journal_config_snapshot(args: Any) -> dict[str, Any]:
         "mode": str(getattr(args, "mode", "paper") or "paper"),
         "symbol": str(getattr(args, "symbol", "auto") or "auto"),
         "notional_usdt": sizing["requested_notional_usdt"],
-        "notional_semantics": "deprecated explicit effective notional override; paper_margin_budget_usdt is not an order amount",
+        "notional_semantics": "deprecated explicit effective notional override; no default paper order amount or budget cap",
         "paper_margin_budget_usdt": sizing["margin_budget_usdt"],
         "agent_margin_usdt": sizing["requested_margin_usdt"],
         "paper_leverage": sizing["paper_leverage"],
@@ -640,8 +641,6 @@ def _paper_sizing_from_args(args: Any) -> dict[str, Any]:
         agent_margin = getattr(args, "requested_margin_usdt", None)
     paper_leverage = getattr(args, "paper_leverage", None)
     margin_budget = getattr(args, "paper_margin_budget_usdt", None)
-    if margin_budget is None:
-        margin_budget = 12.0
     return resolve_paper_sizing(
         requested_notional_usdt=explicit_effective_notional,
         requested_margin_usdt=agent_margin,

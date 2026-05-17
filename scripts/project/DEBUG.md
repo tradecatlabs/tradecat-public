@@ -227,3 +227,57 @@
 - `test_tui_windows_terminal_uses_curses_when_available`
 - `test_tui_windows_native_can_allow_curses`
 - `test_tui_windows_native_defaults_to_plain`
+
+## 2026-05-17 auto-paper systemd 无事件与未开纸单
+
+### 现象
+
+- user-systemd `tradecat-auto-paper.timer` 正常触发 oneshot service，但 runtime cycles 长时间记录 `SKIPPED_NO_EVENT`。
+- 同一仓库工具在交互 shell 中可读取 `event_stream` 与 `anomaly_panel`。
+- 修复入站后，service 能处理新事件并选出候选，但纸面执行仍因 `agent_sizing_required` 被拒绝。
+
+### 根因
+
+- user-systemd manager / unit 没有继承交互 shell 的网络代理环境，Google Sheets 请求在 service 内变成 `tradecat_auto.source_error.v1`。
+- TradeCat 当前无默认 paper order amount、无默认 margin cap、无默认 leverage；缺少 Agent 显式 `agent_margin_usdt` + `paper_leverage` 时，风险门必须拒绝而不是回退旧默认。
+
+### 修复
+
+- 在本机 user-systemd service drop-in 中加入本地代理环境，并执行 `systemctl --user import-environment`、`daemon-reload`、重启 timer，再立即触发一次 service cycle。
+- 保持 sizing 环境为空；不把任意数值写成 TradeCat 默认。
+
+### 回归
+
+- `start-auto-paper.sh health --json` 恢复 `healthy`，archive 出现 `PROCESSED` 与后续 `SKIPPED_DUPLICATE_EVENT`。
+- 最新 processed cycle 读取 `event_stream` 成功，选中 `CYSUSDT`，但 `risk_decision.reasons=["agent_sizing_required"]`、`paper_execution.status=REJECTED`，符合无默认 sizing 契约。
+- safety flags 保持 `real_orders=false`、`signed_requests=false`、`reads_api_keys=false`。
+
+## 2026-05-17 Agent market context contract audit blockers
+
+### 现象
+
+- 独立只读审查发现多个 `tradecat_auto.*.v1` 子 payload 只有 `schema`，缺少 `schema_version`。
+- 缺 Agent sizing 的 paper run 顶层仍可能 `ok=true`，CLI 会按成功退出。
+- ledger 层对缺 `leverage` 的 OPENED execution 会回退 `1.0` 并开仓。
+- Agent context 中显式安全边界 `signed_requests=false`、`reads_api_keys=false` 会被误判为 credential-like key。
+
+### 根因
+
+- schema/version 门禁只覆盖了部分顶层报告，未覆盖 enrichment/signal/strategy/risk/paper execution/ledger 等嵌套机器契约。
+- pipeline 的 `ok` 只表达计算链路成功，未把 paper 风控拒绝/执行拒绝映射到稳定失败 payload。
+- paper ledger 仍保留旧默认 leverage 兜底，和“Agent/Hermes 必须显式 sizing/exits”契约冲突。
+- credential key 扫描没有区分“携带凭证材料”和“显式 false 安全声明”。
+
+### 修复
+
+- 给 `scripts/project/src/tradecat_auto/*.py` 内公开 `tradecat_auto.*.v1` payload 补 `schema_version=1.0.0`。
+- paper 模式下风险非 ALLOW 或 paper execution 未 OPENED 时，`run_once_report.ok=false` 并输出对象型 `error.code`。
+- `apply_paper_execution()` 在 ledger 层对缺 leverage 或缺等价 explicit sizing 的 OPENED execution fail-closed，记录 `agent_sizing_required`，不落 open position。
+- 允许 `requires_signature=false`、`signed=false`、`signed_requests=false`、`reads_api_keys=false`、`read_api_keys=false` 这类安全声明；true 或实际 credential-like key 仍拒绝。
+
+### 回归
+
+- 最小实验确认缺 sizing：`run_once_report.ok=false`、`error.code=agent_sizing_required`、`paper_execution.status=REJECTED`。
+- 最小实验确认 sized context 的 `enrichment/signal/strategy_intent/risk_decision/paper_execution` 均有 `schema_version=1.0.0`。
+- 最小实验确认 ledger 缺 sizing 不开仓，`last_rejected_execution.reason=agent_sizing_required`。
+- 最小实验确认 false safety flags audit `ok=true`。

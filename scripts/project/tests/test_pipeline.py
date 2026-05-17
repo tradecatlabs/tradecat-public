@@ -39,9 +39,8 @@ class PipelineTests(unittest.TestCase):
             market_bundle=MARKET_BUNDLE,
             events=EVENTS,
             mode="paper",
-            requested_margin_usdt=6.0,
-            paper_leverage=2.0,
-            margin_budget_usdt=12.0,
+            requested_margin_usdt=7.5,
+            paper_leverage=3.0,
             sizing_source="agent_supplied_cli_margin",
         )
 
@@ -54,6 +53,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(report["risk_decision"]["schema"], "tradecat_auto.risk_decision.v1")
         self.assertEqual(report["paper_execution"]["schema"], "tradecat_auto.paper_execution_report.v1")
         self.assertIn(report["paper_execution"]["status"], {"OPENED", "REJECTED"})
+
+    def test_build_paper_pipeline_report_honors_unbounded_agent_sizing_by_default(self) -> None:
+        report = build_paper_pipeline_report(
+            selected_symbol="IRYSUSDT",
+            anomaly_symbols=ANOMALY,
+            market_bundle=MARKET_BUNDLE,
+            events=EVENTS,
+            mode="paper",
+            requested_margin_usdt=1_000_000.0,
+            paper_leverage=125.0,
+            sizing_source="agent_supplied_cli_margin",
+        )
+
+        self.assertEqual(report["paper_sizing"]["margin_budget_usdt"], None)
+        self.assertFalse(report["paper_sizing"]["budget_exceeded"])
+        self.assertEqual(report["effective_notional_usdt"], 125_000_000.0)
+        self.assertEqual(report["risk_decision"]["decision"], "ALLOW")
+        self.assertEqual(report["risk_decision"]["max_notional_usdt"], None)
+        self.assertEqual(report["paper_execution"]["status"], "OPENED")
+        self.assertEqual(report["paper_execution"]["notional_usdt"], 125_000_000.0)
 
     def test_build_paper_pipeline_report_rejects_missing_anomaly_symbol(self) -> None:
         report = build_paper_pipeline_report(

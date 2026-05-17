@@ -31,8 +31,8 @@ def open_paper_position(
     leverage = _positive_float(paper_leverage)
     if requested_notional is None or requested_notional <= 0 or leverage is None:
         return _rejected(signal, risk_decision, ["agent_sizing_required"])
-    max_notional = _num(risk_decision.get("max_notional_usdt")) or 0.0
-    notional = min(requested_notional, max_notional) if max_notional > 0 else 0.0
+    max_notional = _num(risk_decision.get("max_notional_usdt"))
+    notional = min(requested_notional, max_notional) if max_notional is not None and max_notional > 0 else requested_notional
     if notional <= 0:
         return _rejected(signal, risk_decision, ["non_positive_notional"])
     requested_margin = _num(requested_margin_usdt)
@@ -43,6 +43,7 @@ def open_paper_position(
     symbol = str(signal.get("symbol") or enrichment.get("symbol") or "")
     return {
         "schema": "tradecat_auto.paper_execution_report.v1",
+        "schema_version": "1.0.0",
         "ok": True,
         "status": "OPENED",
         "paper_execution_id": _execution_id(symbol, side, opened_at, entry_price, quantity, notional),
@@ -97,6 +98,7 @@ def close_paper_position(position: dict[str, Any], *, exit_price: float) -> dict
 def _rejected(signal: dict[str, Any], risk_decision: dict[str, Any], reasons: list[str]) -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.paper_execution_report.v1",
+        "schema_version": "1.0.0",
         "ok": False,
         "status": "REJECTED",
         "mode": risk_decision.get("mode", "paper"),

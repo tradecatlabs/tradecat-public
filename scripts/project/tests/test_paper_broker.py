@@ -40,6 +40,16 @@ class PaperBrokerTests(unittest.TestCase):
         self.assertIsNone(report["max_holding_minutes"])
         self.assertEqual(report["exit_management"], "agent_managed")
 
+    def test_open_paper_position_does_not_clip_agent_notional_without_explicit_cap(self) -> None:
+        decision = {"decision": "ALLOW", "mode": "paper", "max_notional_usdt": None}
+
+        report = open_paper_position(SIGNAL, decision, ENRICHMENT, requested_notional_usdt=50_000_000.0, paper_leverage=125.0)
+
+        self.assertEqual(report["status"], "OPENED")
+        self.assertEqual(report["notional_usdt"], 50_000_000.0)
+        self.assertAlmostEqual(report["quantity"], 50_000_000.0 / 0.062)
+        self.assertEqual(report["leverage"], 125.0)
+
     def test_open_paper_position_uses_agent_supplied_exit_plan(self) -> None:
         strategy_intent = {
             "invalidation_price": 0.058,

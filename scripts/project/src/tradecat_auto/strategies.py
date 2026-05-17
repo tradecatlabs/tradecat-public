@@ -19,6 +19,7 @@ def build_strategy_intent(
     if not tradable or not entry_price or entry_price <= 0:
         return {
             "schema": "tradecat_auto.strategy_intent.v1",
+            "schema_version": "1.0.0",
             "ok": True,
             "symbol": symbol,
             "action": "WATCH",
@@ -41,6 +42,7 @@ def build_strategy_intent(
     exit_plan = _agent_exit_plan(agent_trade_thesis)
     return {
         "schema": "tradecat_auto.strategy_intent.v1",
+        "schema_version": "1.0.0",
         "ok": True,
         "symbol": symbol,
         "action": "ENTER",

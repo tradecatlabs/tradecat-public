@@ -67,7 +67,7 @@ def make_args(**overrides):
         "mode": "paper",
         "notional_usdt": None,
         "agent_margin_usdt": None,
-        "paper_margin_budget_usdt": 12.0,
+        "paper_margin_budget_usdt": None,
         "event_limit": 5,
         "anomaly_limit": 20,
         "max_event_age_seconds": 3600,
@@ -230,6 +230,30 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(summary["ok"])
             self.assertEqual(summary["event_type_counts"]["service_cycle"], 1)
 
+    def test_run_service_cycle_does_not_fallback_to_btc_without_anomaly_signal(self) -> None:
+        class NoSymbolSource(FakeSource):
+            def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
+                self.anomaly_calls += 1
+                return {"ok": True, "symbols": [], "rejected": []}
+
+        event = {"event_id": "evt-no-anomaly-symbol", "source_time_bj": "2026-05-13 19:57:42", "content": "无可交易异动"}
+        with tempfile.TemporaryDirectory() as tmp:
+            client = FakeClient()
+
+            report = run_service_cycle(
+                make_args(),
+                state_path=Path(tmp) / "service_state.json",
+                client=client,
+                source=NoSymbolSource(event),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "ERROR")
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["reason"], "no_symbol_selected")
+            self.assertEqual(client.bundle_calls, 0)
+            self.assertEqual(client.universe_calls, 1)
+
     def test_run_service_cycle_updates_paper_ledger_when_execution_opens(self) -> None:
         event = {
             "event_id": "evt-ledger",
@@ -239,7 +263,7 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger_path = Path(tmp) / "paper_ledger.json"
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path), agent_margin_usdt=12.0, paper_leverage=1.0),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=7.5, paper_leverage=1.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -253,7 +277,7 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(len(ledger["fills"]), 1)
             self.assertEqual(ledger["open_positions"]["IRYSUSDT"]["leverage"], 1.0)
             self.assertEqual(ledger["open_positions"]["IRYSUSDT"]["sizing_source"], "agent_supplied_cli_margin")
-            self.assertAlmostEqual(ledger["open_positions"]["IRYSUSDT"]["notional_usdt"], 12.0 * 1.00005)
+            self.assertAlmostEqual(ledger["open_positions"]["IRYSUSDT"]["notional_usdt"], 7.5 * 1.00005)
 
     def test_run_service_cycle_applies_paper_leverage_to_effective_notional(self) -> None:
         event = {
@@ -264,22 +288,22 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger_path = Path(tmp) / "paper_ledger.json"
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path), agent_margin_usdt=6.0, paper_leverage=2.0, paper_fee_bps=2.0, paper_slippage_bps=0.5),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=7.5, paper_leverage=3.0, paper_fee_bps=2.0, paper_slippage_bps=0.5),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
                 now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
             )
 
-            self.assertEqual(report["pipeline_report"]["paper_leverage"], 2.0)
-            self.assertEqual(report["pipeline_report"]["requested_margin_usdt"], 6.0)
-            self.assertEqual(report["pipeline_report"]["effective_notional_usdt"], 12.0)
+            self.assertEqual(report["pipeline_report"]["paper_leverage"], 3.0)
+            self.assertEqual(report["pipeline_report"]["requested_margin_usdt"], 7.5)
+            self.assertEqual(report["pipeline_report"]["effective_notional_usdt"], 22.5)
             position = json.loads(ledger_path.read_text(encoding="utf-8"))["open_positions"]["IRYSUSDT"]
-            self.assertEqual(position["leverage"], 2.0)
+            self.assertEqual(position["leverage"], 3.0)
             self.assertEqual(position["sizing_source"], "agent_supplied_cli_margin")
-            self.assertAlmostEqual(position["margin_usdt"], position["notional_usdt"] / 2.0)
+            self.assertAlmostEqual(position["margin_usdt"], position["notional_usdt"] / 3.0)
 
-    def test_run_service_cycle_risk_uses_existing_ledger_position_count(self) -> None:
+    def test_run_service_cycle_records_existing_ledger_position_count_without_default_cap(self) -> None:
         event = {
             "event_id": "evt-risk-ledger",
             "source_time_bj": "2026-05-13 19:57:42",
@@ -303,7 +327,7 @@ class ServiceTests(unittest.TestCase):
             save_paper_ledger(ledger_path, ledger)
 
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path)),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=7.5, paper_leverage=3.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -311,10 +335,12 @@ class ServiceTests(unittest.TestCase):
             )
 
             risk = report["pipeline_report"]["risk_decision"]
-            self.assertEqual(risk["decision"], "REJECT")
-            self.assertIn("max_open_positions_reached", risk["reasons"])
+            self.assertEqual(risk["decision"], "ALLOW")
+            self.assertEqual(risk["policy"]["current_open_positions"], 3)
+            self.assertNotIn("max_open_positions_reached", risk["reasons"])
+            self.assertIsNone(risk["policy"]["max_open_positions"])
 
-    def test_run_service_cycle_risk_uses_existing_ledger_total_notional(self) -> None:
+    def test_run_service_cycle_records_existing_ledger_total_notional_without_default_cap(self) -> None:
         event = {
             "event_id": "evt-risk-ledger-notional",
             "source_time_bj": "2026-05-13 19:57:42",
@@ -338,7 +364,7 @@ class ServiceTests(unittest.TestCase):
             save_paper_ledger(ledger_path, ledger)
 
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path), agent_margin_usdt=12.0, paper_leverage=1.0),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=7.5, paper_leverage=1.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -346,9 +372,10 @@ class ServiceTests(unittest.TestCase):
             )
 
             risk = report["pipeline_report"]["risk_decision"]
-            self.assertEqual(risk["decision"], "REJECT")
+            self.assertEqual(risk["decision"], "ALLOW")
             self.assertEqual(risk["policy"]["current_total_notional_usdt"], 45.0)
-            self.assertIn("max_total_notional_reached", risk["reasons"])
+            self.assertNotIn("max_total_notional_reached", risk["reasons"])
+            self.assertIsNone(risk["policy"]["max_total_notional_usdt"])
 
     def test_run_service_cycle_risk_uses_same_day_loss_and_consecutive_loss_streak(self) -> None:
         event = {
@@ -368,7 +395,7 @@ class ServiceTests(unittest.TestCase):
             save_paper_ledger(ledger_path, ledger)
 
             report = run_service_cycle(
-                make_args(ledger_path=str(ledger_path), agent_margin_usdt=6.0, paper_leverage=2.0),
+                make_args(ledger_path=str(ledger_path), agent_margin_usdt=7.5, paper_leverage=3.0),
                 state_path=Path(tmp) / "service_state.json",
                 client=FakeClient(),
                 source=FakeSource(event),
@@ -376,11 +403,13 @@ class ServiceTests(unittest.TestCase):
             )
 
             risk = report["pipeline_report"]["risk_decision"]
-            self.assertEqual(risk["decision"], "REJECT")
+            self.assertEqual(risk["decision"], "ALLOW")
             self.assertEqual(risk["policy"]["daily_realized_pnl_usdt"], -22.5)
             self.assertEqual(risk["policy"]["consecutive_losses"], 3)
-            self.assertIn("daily_loss_limit_reached", risk["reasons"])
-            self.assertIn("consecutive_loss_limit_reached", risk["reasons"])
+            self.assertNotIn("daily_loss_limit_reached", risk["reasons"])
+            self.assertNotIn("consecutive_loss_limit_reached", risk["reasons"])
+            self.assertEqual(risk["policy"]["max_daily_loss_usdt"], 0.0)
+            self.assertEqual(risk["policy"]["max_consecutive_losses"], 0)
 
     def test_run_service_cycle_fails_closed_when_existing_ledger_is_unreadable(self) -> None:
         event = {

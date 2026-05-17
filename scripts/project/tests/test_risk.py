@@ -29,14 +29,42 @@ class RiskTests(unittest.TestCase):
 
     def test_explicit_agent_sizing_allows_only_paper_for_strong_signal(self) -> None:
         policy = default_risk_policy(mode="paper")
-        policy.update({"requested_margin_usdt": 6.0, "requested_notional_usdt": 12.0, "paper_leverage": 2.0})
+        policy.update({"requested_margin_usdt": 7.5, "requested_notional_usdt": 22.5, "paper_leverage": 3.0})
 
         decision = evaluate_risk(LONG_SIGNAL, policy)
 
         self.assertEqual(decision["decision"], "ALLOW")
         self.assertEqual(decision["mode"], "paper")
-        self.assertGreater(decision["max_notional_usdt"], 0)
+        self.assertIsNone(decision["max_notional_usdt"])
         self.assertIn("paper_only", decision["constraints"])
+
+    def test_default_policy_has_no_strategy_or_budget_upper_caps(self) -> None:
+        policy = default_risk_policy(mode="paper")
+        policy.update(
+            {
+                "requested_margin_usdt": 1_000_000.0,
+                "requested_notional_usdt": 50_000_000.0,
+                "paper_leverage": 125.0,
+                "current_open_positions": 999,
+                "current_total_notional_usdt": 999_999_999.0,
+                "daily_realized_pnl_usdt": -999_999.0,
+                "consecutive_losses": 999,
+            }
+        )
+
+        decision = evaluate_risk(LONG_SIGNAL, policy)
+
+        self.assertEqual(decision["decision"], "ALLOW")
+        self.assertNotIn("margin_budget_exceeded", decision["reasons"])
+        self.assertNotIn("max_leverage_exceeded", decision["reasons"])
+        self.assertNotIn("max_open_positions_reached", decision["reasons"])
+        self.assertNotIn("max_total_notional_reached", decision["reasons"])
+        self.assertNotIn("daily_loss_limit_reached", decision["reasons"])
+        self.assertNotIn("consecutive_loss_limit_reached", decision["reasons"])
+        self.assertEqual(decision["policy"]["paper_margin_budget_usdt"], None)
+        self.assertEqual(decision["policy"]["max_leverage"], None)
+        self.assertEqual(decision["policy"]["max_symbol_notional_usdt"], None)
+        self.assertEqual(decision["policy"]["max_total_notional_usdt"], None)
 
     def test_watch_only_signal_is_not_allowed_to_open_position(self) -> None:
         signal = dict(LONG_SIGNAL)
@@ -92,7 +120,7 @@ class RiskTests(unittest.TestCase):
             {
                 "max_total_notional_usdt": 50.0,
                 "current_total_notional_usdt": 45.0,
-                "requested_notional_usdt": 12.0,
+                "requested_notional_usdt": 7.5,
             }
         )
 
@@ -101,7 +129,7 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(decision["decision"], "REJECT")
         self.assertIn("max_total_notional_reached", decision["reasons"])
         self.assertEqual(decision["policy"]["current_total_notional_usdt"], 45.0)
-        self.assertEqual(decision["policy"]["requested_notional_usdt"], 12.0)
+        self.assertEqual(decision["policy"]["requested_notional_usdt"], 7.5)
 
     def test_consecutive_loss_limit_rejects_new_entries(self) -> None:
         policy = default_risk_policy(mode="paper")

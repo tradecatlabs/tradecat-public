@@ -567,7 +567,7 @@
     "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
     "for autonomous paper testing, run bash scripts/project/scripts/start-auto-paper.sh status --json before starting a new service",
     "run bash scripts/run-tradecat.sh auto paper-report --json to inspect paper ledger state",
-    "run bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --once --json for one verified paper/watch cycle; missing Agent sizing should reject/watch instead of using 12U as default size",
+    "run bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --once --json for one verified paper/watch cycle; missing Agent sizing should reject/watch, and TradeCat has no default sizing cap unless --paper-margin-budget-usdt is explicitly supplied",
     "start continuous paper testing only with bash scripts/project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
     "for Agent-supplied context, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json before run-context",
     "before delivery run bash scripts/agent-smoke.sh and the validation_commands that match the change scope"
@@ -811,7 +811,7 @@
       "safety_boundary": "Public/read-only probe; never places orders or reads account state."
     },
     {
-      "command": "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json",
+      "command": "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json",
       "risk_class": "network_readonly",
       "schema": "tradecat_auto.run_once_report.v1",
       "writes": false,
@@ -825,7 +825,7 @@
       "safety_boundary": "Single-cycle paper/watch report only; mainnet execution is rejected by deterministic risk gates."
     },
     {
-      "command": "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --once --json",
+      "command": "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json",
       "risk_class": "paper_runtime_write",
       "schema": "tradecat_auto.service_cycle.v1",
       "writes": true,
@@ -903,7 +903,7 @@
       "safety_boundary": "Validation-only audit; rejects signed, account, credential-like, and order endpoints before use."
     },
     {
-      "command": "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json",
+      "command": "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.run_once_report.v1",
       "writes": false,

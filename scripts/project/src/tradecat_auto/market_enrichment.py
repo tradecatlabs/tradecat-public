@@ -30,6 +30,7 @@ def build_market_enrichment(anomaly_symbol: dict[str, Any], market_bundle: dict[
         errors.setdefault("missing_required_metrics", ",".join(missing_required))
     return {
         "schema": "tradecat_auto.market_enrichment.v1",
+        "schema_version": "1.0.0",
         "ok": bool(market_bundle.get("ok") and symbol and not missing_required),
         "symbol": symbol,
         "raw_symbol": anomaly_symbol.get("raw_symbol"),

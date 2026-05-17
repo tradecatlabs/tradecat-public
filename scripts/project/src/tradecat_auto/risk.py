@@ -7,25 +7,26 @@ from typing import Any
 def default_risk_policy(*, mode: str = "paper") -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.risk_policy.v1",
+        "schema_version": "1.0.0",
         "mode": mode,
         "allowed_market": "usds_m_futures",
         "allowed_quote_asset": "USDT",
         "allowed_contract_type": "PERPETUAL",
         "mainnet_enabled": False,
-        "min_score": 60,
-        "max_symbol_notional_usdt": 36.0,
-        "max_total_notional_usdt": 50.0,
-        "max_spread_bps": 10.0,
-        "max_leverage": 3,
-        "paper_margin_budget_usdt": 12.0,
+        "min_score": 0,
+        "max_symbol_notional_usdt": None,
+        "max_total_notional_usdt": None,
+        "max_spread_bps": None,
+        "max_leverage": None,
+        "paper_margin_budget_usdt": None,
         "paper_leverage": None,
         "sizing_required": mode == "paper",
         "sizing_source": "agent_supplied_or_explicit",
-        "max_open_positions": 3,
+        "max_open_positions": None,
         "current_open_positions": 0,
-        "max_consecutive_losses": 3,
+        "max_consecutive_losses": 0,
         "consecutive_losses": 0,
-        "max_daily_loss_usdt": 20.0,
+        "max_daily_loss_usdt": 0.0,
         "daily_realized_pnl_usdt": 0.0,
         "current_total_notional_usdt": 0.0,
         "requested_margin_usdt": None,
@@ -56,7 +57,10 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         reasons.append("signal_not_tradable")
 
     score = _num(signal.get("score")) or 0
-    if score < float(active_policy.get("min_score") or 60):
+    min_score = _num(active_policy.get("min_score"))
+    if min_score is None:
+        min_score = 0.0
+    if min_score > 0 and score < min_score:
         reasons.append("score_below_policy_minimum")
 
     max_daily_loss = float(active_policy.get("max_daily_loss_usdt") or 0.0)
@@ -78,7 +82,7 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
     leverage = leverage_raw if leverage_raw is not None else 0.0
     requested_margin = _num(active_policy.get("requested_margin_usdt"))
     margin_budget = _num(active_policy.get("paper_margin_budget_usdt"))
-    if margin_budget is not None and requested_margin is not None and requested_margin > margin_budget:
+    if margin_budget is not None and margin_budget > 0 and requested_margin is not None and requested_margin > margin_budget:
         reasons.append("margin_budget_exceeded")
     requested_notional_raw = _num(active_policy.get("requested_notional_usdt"))
     requested_notional = requested_notional_raw if requested_notional_raw is not None else 0.0
@@ -87,11 +91,11 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         reasons.append("agent_sizing_required")
     if leverage_raw is not None and leverage <= 0:
         reasons.append("invalid_leverage")
-    max_leverage = _num(active_policy.get("max_leverage")) or 0.0
-    if leverage > 0 and max_leverage > 0 and leverage > max_leverage:
+    max_leverage = _num(active_policy.get("max_leverage"))
+    if leverage > 0 and max_leverage is not None and max_leverage > 0 and leverage > max_leverage:
         reasons.append("max_leverage_exceeded")
 
-    max_total_notional = float(active_policy.get("max_total_notional_usdt") or 0.0)
+    max_total_notional = _num(active_policy.get("max_total_notional_usdt")) or 0.0
     current_total_notional = _num(active_policy.get("current_total_notional_usdt")) or 0.0
     if max_total_notional > 0 and requested_notional > 0 and current_total_notional + requested_notional > max_total_notional:
         reasons.append("max_total_notional_reached")
@@ -123,6 +127,7 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
 
     return {
         "schema": "tradecat_auto.risk_decision.v1",
+        "schema_version": "1.0.0",
         "ok": True,
         "decision": decision,
         "mode": mode,
@@ -130,7 +135,7 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         "direction": signal.get("direction", "WATCH_ONLY"),
         "score": score,
         "paper_leverage": leverage_raw,
-        "max_notional_usdt": float(active_policy.get("max_symbol_notional_usdt") or 0),
+        "max_notional_usdt": _positive_cap(active_policy.get("max_symbol_notional_usdt")),
         "constraints": constraints,
         "reasons": reasons,
         "policy": {
@@ -165,6 +170,11 @@ def _num(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _positive_cap(value: Any) -> float | None:
+    numeric = _num(value)
+    return numeric if numeric is not None and numeric > 0 else None
 
 
 def _as_reason_list(value: Any) -> list[str]:

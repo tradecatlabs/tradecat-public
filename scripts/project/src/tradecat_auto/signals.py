@@ -129,6 +129,7 @@ def _payload(
 ) -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.signal_score.v1",
+        "schema_version": "1.0.0",
         "ok": True,
         "symbol": symbol,
         "score": score,

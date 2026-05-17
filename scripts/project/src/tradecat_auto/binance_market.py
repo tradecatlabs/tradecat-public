@@ -197,6 +197,7 @@ class BinanceMarketClient:
         symbols = extract_trading_usdt_perpetual_symbols(exchange_info)
         return {
             "schema": "tradecat_auto.market_universe.v1",
+            "schema_version": "1.0.0",
             "ok": bool(symbols),
             "base_url": self.base_url,
             "symbol_count": len(symbols),
@@ -222,6 +223,7 @@ class BinanceMarketClient:
         }
         bundle: dict[str, Any] = {
             "schema": "tradecat_auto.public_market_bundle.v1",
+            "schema_version": "1.0.0",
             "ok": True,
             "base_url": self.base_url,
             "symbol": normalized_symbol,
@@ -270,6 +272,7 @@ class BinanceMarketClient:
 def _new_usage() -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.binance_api_usage.v1",
+        "schema_version": "1.0.0",
         "requests_attempted": 0,
         "requests_succeeded": 0,
         "requests_failed": 0,

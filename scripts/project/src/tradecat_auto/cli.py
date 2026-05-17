@@ -46,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_once.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default")
     run_once.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default")
     run_once.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage; no default")
-    run_once.add_argument("--paper-margin-budget-usdt", type=float, default=12.0, help="Local paper margin budget/cap; not an order amount")
+    run_once.add_argument("--paper-margin-budget-usdt", type=float, default=None, help="Optional paper margin cap; omitted means no cap and no default order amount")
     run_once.add_argument("--event-limit", type=int, default=5)
     run_once.add_argument("--anomaly-limit", type=int, default=20)
     run_once.add_argument("--json", action="store_true", help="Emit JSON")
@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default")
     run_loop.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default")
     run_loop.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage; no default")
-    run_loop.add_argument("--paper-margin-budget-usdt", type=float, default=12.0, help="Local paper margin budget/cap; not an order amount")
+    run_loop.add_argument("--paper-margin-budget-usdt", type=float, default=None, help="Optional paper margin cap; omitted means no cap and no default order amount")
     run_loop.add_argument("--event-limit", type=int, default=5)
     run_loop.add_argument("--anomaly-limit", type=int, default=20)
     run_loop.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_context.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional override; no default")
     run_context.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin override; no default")
     run_context.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage override; no default")
-    run_context.add_argument("--paper-margin-budget-usdt", type=float, default=12.0, help="Local paper margin budget/cap; not an order amount")
+    run_context.add_argument("--paper-margin-budget-usdt", type=float, default=None, help="Optional paper margin cap; omitted means no cap and no default order amount")
     run_context.add_argument("--json", action="store_true", help="Emit JSON")
 
     replay = sub.add_parser("replay-report", help="Build a reproducible replay/backtest report from service-cycle archive and paper ledger")
@@ -221,6 +221,7 @@ def market_universe_report(args: argparse.Namespace) -> dict[str, Any]:
 def _market_universe_error_payload(base_url: str, exc: Exception, client: Any) -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.market_universe.v1",
+        "schema_version": "1.0.0",
         "ok": False,
         "base_url": base_url,
         "symbol_count": 0,
@@ -254,11 +255,13 @@ def probe_public(args: argparse.Namespace) -> dict[str, Any]:
     selected_symbol = _select_symbol(args.symbol, tradable, anomaly)
     market_bundle = _safe_call(client.fetch_public_market_bundle, selected_symbol) if selected_symbol else {
         "schema": "tradecat_auto.public_market_bundle.v1",
+        "schema_version": "1.0.0",
         "ok": False,
         "errors": {"symbol": "no tradable symbol selected"},
     }
     return {
         "schema": "tradecat_auto.public_probe.v1",
+        "schema_version": "1.0.0",
         "ok": bool(universe.get("ok") and events.get("ok") and anomaly.get("ok") and market_bundle.get("ok")),
         "mode": "public_readonly_no_credentials_no_orders",
         "tradecat_public": str(Path(args.tradecat_public)),
@@ -291,12 +294,14 @@ def run_once_public(args: argparse.Namespace, *, client: Any | None = None, sour
     selected_symbol = _select_symbol(args.symbol, tradable, anomaly)
     market_bundle = _safe_call(market_client.fetch_public_market_bundle, selected_symbol) if selected_symbol else {
         "schema": "tradecat_auto.public_market_bundle.v1",
+        "schema_version": "1.0.0",
         "ok": False,
         "errors": {"symbol": "no tradable symbol selected"},
     }
     if not selected_symbol:
         return {
             "schema": "tradecat_auto.run_once_report.v1",
+            "schema_version": "1.0.0",
             "ok": False,
             "mode": args.mode,
             "error": "no_symbol_selected",
@@ -541,7 +546,7 @@ def _select_symbol(requested: str, tradable: set[str], anomaly: dict[str, Any]) 
     for item in anomaly.get("symbols") or []:
         if isinstance(item, dict) and item.get("normalized_symbol"):
             return str(item["normalized_symbol"])
-    return "BTCUSDT" if "BTCUSDT" in tradable else (sorted(tradable)[0] if tradable else "")
+    return ""
 
 
 def _summarize_universe(universe: dict[str, Any]) -> dict[str, Any]:

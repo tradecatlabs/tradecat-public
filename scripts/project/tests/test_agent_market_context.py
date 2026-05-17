@@ -229,7 +229,7 @@ class AgentMarketContextTests(unittest.TestCase):
         report = build_paper_report_from_agent_market_context(
             sample_context(),
             mode="paper",
-            requested_margin_usdt=12.0,
+            requested_margin_usdt=7.5,
             paper_leverage=1.0,
         )
 
@@ -238,7 +238,7 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertTrue(report["agent_market_context_audit"]["ok"])
         self.assertEqual(report["selected_symbol"], "IRYSUSDT")
         self.assertEqual(report["paper_sizing"]["mode"], "margin_times_leverage")
-        self.assertEqual(report["requested_margin_usdt"], 12.0)
+        self.assertEqual(report["requested_margin_usdt"], 7.5)
         self.assertIn(report["paper_execution"]["status"], {"OPENED", "REJECTED"})
         self.assertIn("agent-supplied public/read-only market context", report["limitations"])
 
@@ -270,9 +270,9 @@ class AgentMarketContextTests(unittest.TestCase):
                     input=str(path),
                     mode="paper",
                     notional_usdt=None,
-                    agent_margin_usdt=12.0,
+                    agent_margin_usdt=7.5,
                     paper_leverage=1.0,
-                    paper_margin_budget_usdt=12.0,
+                    paper_margin_budget_usdt=None,
                 )
             )
 

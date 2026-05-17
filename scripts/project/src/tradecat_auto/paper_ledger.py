@@ -117,11 +117,22 @@ def apply_paper_execution(
         updated["last_updated_at"] = now_text
         return _recalculate_equity(updated, now_iso=now_text)
 
+    leverage = _num(execution.get("leverage"))
+    requested_margin = _num(execution.get("requested_margin_usdt"))
+    requested_notional = _num(execution.get("requested_notional_usdt"))
+    if leverage is None or leverage <= 0 or (requested_margin is None and requested_notional is None):
+        updated["last_rejected_execution"] = {
+            "reason": "agent_sizing_required",
+            "execution": copy.deepcopy(execution),
+        }
+        updated["ignored_execution_ids"] = _dedupe([*(updated.get("ignored_execution_ids") or []), execution_id])
+        updated["last_updated_at"] = now_text
+        return _recalculate_equity(updated, now_iso=now_text)
+
     fill_price = _slipped_price(entry_price, side, "OPEN", slippage_bps)
     fill_notional = abs(fill_price * quantity)
     fee = fill_notional * float(fee_bps) / 10_000
-    leverage = _num(execution.get("leverage")) or 1.0
-    margin_usdt = fill_notional / leverage if leverage > 0 else _num(execution.get("margin_usdt"))
+    margin_usdt = fill_notional / leverage
     sizing_source = str(execution.get("sizing_source") or "").strip() or None
     stop_loss_price = _num(execution.get("stop_loss_price"))
     take_profit_price = _num(execution.get("take_profit_price"))
@@ -256,6 +267,7 @@ def paper_ledger_summary(ledger: dict[str, Any]) -> dict[str, Any]:
     normalized = _recalculate_equity(load_paper_ledger_from_object(ledger))
     return {
         "schema": "tradecat_auto.paper_ledger_summary.v1",
+        "schema_version": "1.0.0",
         "cash_balance_usdt": normalized.get("cash_balance_usdt"),
         "equity_usdt": normalized.get("equity_usdt"),
         "realized_pnl_usdt": normalized.get("realized_pnl_usdt"),

@@ -150,6 +150,10 @@ class ProductionControlTests(unittest.TestCase):
                 "entry_price": 100.0,
                 "quantity": 0.2,
                 "notional_usdt": 20.0,
+                "requested_notional_usdt": 20.0,
+                "requested_margin_usdt": 10.0,
+                "leverage": 2.0,
+                "sizing_source": "agent_supplied_test_fixture",
                 "stop_loss_price": 97.0,
                 "take_profit_price": 106.0,
             }, now_iso="2026-05-15T00:00:00Z")

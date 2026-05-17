@@ -25,6 +25,10 @@ OPEN_LONG = {
     "entry_price": 100.0,
     "quantity": 0.2,
     "notional_usdt": 20.0,
+    "requested_notional_usdt": 20.0,
+    "requested_margin_usdt": 10.0,
+    "leverage": 2.0,
+    "sizing_source": "agent_supplied_test_fixture",
     "stop_loss_price": 97.0,
     "take_profit_price": 106.0,
 }
@@ -47,6 +51,18 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertAlmostEqual(updated["fills"][0]["fee_usdt"], 0.008004)
         self.assertAlmostEqual(updated["cash_balance_usdt"], 999.991996)
         self.assertAlmostEqual(updated["equity_usdt"], 999.991996)
+
+    def test_apply_open_execution_rejects_missing_agent_sizing(self) -> None:
+        execution = copy.deepcopy(OPEN_LONG)
+        execution.pop("leverage", None)
+        execution.pop("requested_margin_usdt", None)
+        execution.pop("requested_notional_usdt", None)
+
+        updated = apply_paper_execution(default_paper_ledger(initial_balance_usdt=1000.0), execution, now_iso="2026-05-14T00:00:00Z")
+
+        self.assertEqual(updated["open_positions"], {})
+        self.assertEqual(updated["last_rejected_execution"]["reason"], "agent_sizing_required")
+        self.assertIn("exec-1", updated["ignored_execution_ids"])
 
     def test_apply_open_execution_is_idempotent_by_execution_id(self) -> None:
         ledger = default_paper_ledger(initial_balance_usdt=1000.0)

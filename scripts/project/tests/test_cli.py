@@ -52,6 +52,11 @@ class FakeSource:
         }
 
 
+class EmptyAnomalySource(FakeSource):
+    def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
+        return {"ok": True, "symbols": [], "rejected": []}
+
+
 class FailingUniverseClient:
     def __init__(self, *, base_url):
         self.base_url = base_url
@@ -79,7 +84,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("BinanceApiError", payload["error"])
 
     def test_run_once_public_returns_paper_pipeline_report_without_real_orders(self) -> None:
-        args = argparse.Namespace(symbol="auto", event_limit=5, anomaly_limit=20, mode="paper", notional_usdt=None, agent_margin_usdt=6.0, paper_leverage=2.0, paper_margin_budget_usdt=12.0)
+        args = argparse.Namespace(symbol="auto", event_limit=5, anomaly_limit=20, mode="paper", notional_usdt=None, agent_margin_usdt=7.5, paper_leverage=3.0, paper_margin_budget_usdt=None)
 
         report = run_once_public(args, client=FakeClient(), source=FakeSource())
 
@@ -87,6 +92,16 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["selected_symbol"], "IRYSUSDT")
         self.assertEqual(report["paper_execution"]["schema"], "tradecat_auto.paper_execution_report.v1")
         self.assertIn("no real order was placed", report["limitations"])
+
+    def test_run_once_public_does_not_fallback_to_btc_without_anomaly_signal(self) -> None:
+        args = argparse.Namespace(symbol="auto", event_limit=5, anomaly_limit=20, mode="paper", notional_usdt=None, agent_margin_usdt=7.5, paper_leverage=3.0, paper_margin_budget_usdt=None)
+
+        report = run_once_public(args, client=FakeClient(), source=EmptyAnomalySource())
+
+        self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error"], "no_symbol_selected")
+        self.assertEqual(report["universe"]["symbol_count"], 2)
 
     def test_run_loop_public_once_returns_service_cycle_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -96,9 +111,9 @@ class CliTests(unittest.TestCase):
                 anomaly_limit=20,
                 mode="paper",
                 notional_usdt=None,
-                agent_margin_usdt=6.0,
-                paper_leverage=2.0,
-                paper_margin_budget_usdt=12.0,
+                agent_margin_usdt=7.5,
+                paper_leverage=3.0,
+                paper_margin_budget_usdt=None,
                 state_path=str(Path(tmp) / "service_state.json"),
                 interval_seconds=60.0,
                 max_cycles=1,
@@ -140,9 +155,9 @@ class CliTests(unittest.TestCase):
                 anomaly_limit=20,
                 mode="paper",
                 notional_usdt=None,
-                agent_margin_usdt=6.0,
-                paper_leverage=2.0,
-                paper_margin_budget_usdt=12.0,
+                agent_margin_usdt=7.5,
+                paper_leverage=3.0,
+                paper_margin_budget_usdt=None,
                 state_path=str(Path(tmp) / "service_state.json"),
                 interval_seconds=0.0,
                 max_cycles=1,
@@ -161,9 +176,9 @@ class CliTests(unittest.TestCase):
                 anomaly_limit=20,
                 mode="paper",
                 notional_usdt=None,
-                agent_margin_usdt=6.0,
-                paper_leverage=2.0,
-                paper_margin_budget_usdt=12.0,
+                agent_margin_usdt=7.5,
+                paper_leverage=3.0,
+                paper_margin_budget_usdt=None,
                 state_path=str(Path(tmp) / "service_state.json"),
                 interval_seconds=1.0,
                 max_cycles=-1,
@@ -182,9 +197,9 @@ class CliTests(unittest.TestCase):
                 anomaly_limit=20,
                 mode="paper",
                 notional_usdt=None,
-                agent_margin_usdt=6.0,
-                paper_leverage=2.0,
-                paper_margin_budget_usdt=12.0,
+                agent_margin_usdt=7.5,
+                paper_leverage=3.0,
+                paper_margin_budget_usdt=None,
                 state_path=str(Path(tmp) / "service_state.json"),
                 ledger_path=str(Path(tmp) / "paper_ledger.json"),
                 initial_balance_usdt=-1.0,

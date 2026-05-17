@@ -87,11 +87,13 @@ def _role_profiles(*, include_prompt_text: bool) -> list[dict[str, Any]]:
             "language": "zh-CN",
             "path": f"{RESOURCE_ROOT_CONTRACT_PATH}/{rel_path}",
             "sizing_contract": {
-                "margin_budget_usdt_is_cap": True,
+                "margin_budget_usdt_is_cap": False,
+                "margin_budget_usdt": None,
                 "default_order_size": False,
                 "required_for_non_watch": ["requested_margin_usdt", "paper_leverage"],
                 "missing_sizing_error_code": "agent_sizing_required",
                 "legacy_notional_default_allowed": False,
+                "upper_cap_semantics": "unbounded_by_default; Agent/Hermes chooses explicit paper sizing while hard public-readonly + paper/watch boundaries stay enforced",
             },
             "exit_contract": {
                 "default_stop_loss": False,

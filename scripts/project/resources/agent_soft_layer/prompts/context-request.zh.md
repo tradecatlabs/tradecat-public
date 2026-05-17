@@ -56,7 +56,7 @@ bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json
 只有 audit `ok=true` 才能进入：
 
 ```bash
-bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --json
+bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --json
 ```
 
-缺少 `--agent-margin-usdt` 或 `--paper-leverage` 时必须保持观望/拒绝，并返回 `agent_sizing_required`；不要把 12U 预算当默认订单金额。
+缺少 `--agent-margin-usdt` 或 `--paper-leverage` 时必须保持观望/拒绝，并返回 `agent_sizing_required`；TradeCat 默认不设订单金额、保证金预算 cap 或杠杆上限，`--paper-margin-budget-usdt` 只在操作者显式要求额外 paper cap 时才传。

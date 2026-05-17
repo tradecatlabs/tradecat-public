@@ -26,7 +26,7 @@ TradeCat 的 Agent 软决策层只沉淀提示词、端点策略、研究假设�
 2. 只用 `endpoint_policy.allowed_market_context_families` 中的 public/read-only GET 端点采集行情上下文。
 3. 输出 `tradecat_auto.agent_market_context.v1` 到本地 JSON 文件。
 4. 运行 `bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json`。
-5. 只有 audit `ok=true` 时，才运行 `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --paper-margin-budget-usdt 12 --json`；缺少 Agent sizing 时应返回 `agent_sizing_required` / `WATCH_ONLY`，不能把 12U 当默认下单金额。缺少 Agent exit plan 时，不得套用固定止损/止盈/持仓时间；只有 thesis 显式写 `invalidation_price`、`take_profit_price`、`max_holding_minutes` 才生效。
+5. 只有 audit `ok=true` 时，才运行 `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --json`；缺少 Agent sizing 时应返回 `agent_sizing_required` / `WATCH_ONLY`，TradeCat 默认不设订单金额、保证金预算 cap 或杠杆上限。缺少 Agent exit plan 时，不得套用固定止损/止盈/持仓时间；只有 thesis 显式写 `invalidation_price`、`take_profit_price`、`max_holding_minutes` 才生效。
 6. 如需账户上下文，只使用 `paper-report` 中的 `paper_account_state`，它来自本地 paper ledger，不来自 Binance。
 7. 生成 `tradecat_auto.agent_trade_thesis.v1` 时，只写研究假设、风险备注、观察条件、可选 exit plan 和 paper intent；不要写真实交易指令。
 

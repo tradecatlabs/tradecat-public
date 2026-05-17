@@ -134,8 +134,8 @@ def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
 
     assert "bash scripts/run-tradecat.sh auto paper-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto soft-layer --json" in commands
-    assert "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json" in commands
-    assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --once --json" in commands
+    assert "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json" in commands
+    assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json" in commands
     assert "bash scripts/run-tradecat.sh auto audit-journal --json" in commands
     assert "bash scripts/run-tradecat.sh auto health-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto daily-report --json" in commands

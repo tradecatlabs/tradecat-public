@@ -430,11 +430,11 @@ tradecat watch --interval 60
 tradecat auto market-universe --json
 tradecat auto probe-public --json
 tradecat auto soft-layer --json
-tradecat auto run-once --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
-tradecat auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --state-path .runtime/service_state.json --ledger-path .runtime/paper_ledger.json --archive-path .runtime/cycles.jsonl --once --json
+tradecat auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
+tradecat auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --state-path .runtime/service_state.json --ledger-path .runtime/paper_ledger.json --archive-path .runtime/cycles.jsonl --once --json
 tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
 tradecat auto context-audit --input /path/to/agent-market-context.json --json
-tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
+tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
 tradecat auto audit-journal --json
 tradecat auto health-report --json
 tradecat auto daily-report --json
@@ -576,15 +576,15 @@ market context；软决策层提示词和 endpoint policy 位于 `resources/agen
 tradecat auto market-universe --json
 tradecat auto probe-public --json
 tradecat auto soft-layer --json
-tradecat auto run-once --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
-tradecat auto run-loop --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 \
+tradecat auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
+tradecat auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> \
   --state-path .runtime/service_state.json \
   --ledger-path .runtime/paper_ledger.json \
   --archive-path .runtime/cycles.jsonl \
   --once --json
 tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
 tradecat auto context-audit --input /path/to/agent-market-context.json --json
-tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
+tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
 tradecat auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 tradecat auto audit-journal --json
 tradecat auto health-report --json

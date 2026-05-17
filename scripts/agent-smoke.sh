@@ -149,7 +149,7 @@ context = {
     },
     "market_data": [
         {"family": "24h_ticker", "endpoint": "/fapi/v1/ticker/24hr", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"symbol": "IRYSUSDT", "lastPrice": "0.062", "priceChangePercent": "24", "quoteVolume": "50000000"}},
-        {"family": "order_book_depth", "endpoint": "/fapi/v1/depth", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"bids": [["0.0619", "100"]], "asks": [["0.0621", "120"]]}},
+        {"family": "order_book_depth", "endpoint": "/fapi/v1/depth", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"bids": [["0.06199", "100"]], "asks": [["0.06201", "120"]]}},
         {"family": "open_interest", "endpoint": "/fapi/v1/openInterest", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"openInterest": "1000000"}},
         {"family": "open_interest_history", "endpoint": "/futures/data/openInterestHist", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": [{"sumOpenInterestValue": "100000"}]},
         {"family": "funding_rate", "endpoint": "/fapi/v1/fundingRate", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": [{"fundingRate": "0.00005"}]},
@@ -174,7 +174,7 @@ cycle = {
         "signal": {"schema": "tradecat_auto.signal_score.v1", "ok": True, "symbol": "IRYSUSDT", "direction": "LONG", "positive_factors": ["large_24h_price_move", "taker_buy_bias"], "do_not_trade_reasons": []},
         "strategy_intent": {"schema": "tradecat_auto.strategy_intent.v1", "ok": True, "symbol": "IRYSUSDT", "action": "ENTER", "direction": "LONG", "strategy_tags": ["momentum_breakout", "taker_flow_bias"], "explanation": {"positive_factors": ["large_24h_price_move", "taker_buy_bias"]}},
         "risk_decision": {"schema": "tradecat_auto.risk_decision.v1", "ok": True, "decision": "ALLOW", "reasons": []},
-        "paper_execution": {"schema": "tradecat_auto.paper_execution_report.v1", "ok": True, "status": "OPENED", "symbol": "IRYSUSDT", "side": "LONG", "notional_usdt": 12.0},
+        "paper_execution": {"schema": "tradecat_auto.paper_execution_report.v1", "ok": True, "status": "OPENED", "symbol": "IRYSUSDT", "side": "LONG", "notional_usdt": 22.5},
     },
 }
 (base / "cycle.json").write_text(json.dumps(cycle, ensure_ascii=False), encoding="utf-8")
@@ -185,7 +185,7 @@ PY
 bash scripts/run-tradecat.sh auto context-audit --input "$TMP_DIR/agent-context.json" --json >"$TMP_DIR/context-audit.json"
 json_expect "$TMP_DIR/context-audit.json" "tradecat_auto.agent_market_context_audit.v1"
 
-bash scripts/run-tradecat.sh auto run-context --input "$TMP_DIR/agent-context.json" --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json >"$TMP_DIR/run-context.json"
+bash scripts/run-tradecat.sh auto run-context --input "$TMP_DIR/agent-context.json" --mode paper --agent-margin-usdt 7.5 --paper-leverage 3.0 --json >"$TMP_DIR/run-context.json"
 json_expect "$TMP_DIR/run-context.json" "tradecat_auto.run_once_report.v1"
 
 bash scripts/run-tradecat.sh auto replay-report --archive-path "$TMP_DIR/cycles.jsonl" --ledger-path "$TMP_DIR/paper-ledger-complete.json" --json >"$TMP_DIR/replay-report.json"

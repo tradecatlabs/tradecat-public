@@ -73,13 +73,33 @@ def build_paper_pipeline_report(
         sizing_source=sizing["source"],
         strategy_intent=strategy_intent,
     )
+    paper_ok = bool(paper_execution.get("ok") and paper_execution.get("status") == "OPENED")
+    report_ok = bool(
+        enrichment.get("ok")
+        and signal.get("ok")
+        and risk_decision.get("ok")
+        and (mode != "paper" or (risk_decision.get("decision") == "ALLOW" and paper_ok))
+    )
+    error = None
+    if mode == "paper" and not report_ok:
+        sizing_error = sizing.get("error_code")
+        execution_reasons = paper_execution.get("reasons") if isinstance(paper_execution.get("reasons"), list) else []
+        risk_reasons = risk_decision.get("reasons") if isinstance(risk_decision.get("reasons"), list) else []
+        error_code = str(sizing_error or (execution_reasons[0] if execution_reasons else None) or (risk_reasons[0] if risk_reasons else None) or "paper_pipeline_rejected")
+        error = {
+            "code": error_code,
+            "kind": "risk_reject" if risk_decision.get("decision") != "ALLOW" else "paper_execution_reject",
+            "message": "paper pipeline did not open a position",
+            "retryable": error_code in {"agent_sizing_required"},
+        }
     return {
         "schema": "tradecat_auto.run_once_report.v1",
         "schema_version": "1.0.0",
-        "ok": bool(enrichment.get("ok") and signal.get("ok") and risk_decision.get("ok")),
+        "ok": report_ok,
         "mode": mode,
         "generated_at": _now_iso(),
         "selected_symbol": selected,
+        "error": error,
         "paper_sizing": sizing,
         "paper_margin_budget_usdt": sizing["margin_budget_usdt"],
         "requested_margin_usdt": sizing["requested_margin_usdt"],
@@ -109,13 +129,15 @@ def resolve_paper_sizing(
     sizing_source: str = "agent_supplied_or_explicit",
     sizing_required: bool = True,
 ) -> dict[str, Any]:
-    """Resolve paper sizing without treating the 12U budget as an order amount.
+    """Resolve paper sizing without inventing a default order amount or cap.
 
-    `margin_budget_usdt` is the local paper margin budget (12U by default in the
-    wrapper).  It is not enough to open a paper position.  Actual paper sizing
+    TradeCat no longer sets a default paper margin budget.  Actual paper sizing
     must come from an Agent/Hermes thesis or explicit override as margin +
     leverage; an explicit effective notional is accepted only for low-level
-    tests/backward-compatible callers.
+    tests/backward-compatible callers.  A positive `margin_budget_usdt`, when
+    explicitly supplied by an operator, is treated as an optional policy cap;
+    omitted/None/0 means unbounded paper sizing subject only to hard safety
+    boundaries.
     """
 
     leverage = _positive_float(paper_leverage)
@@ -132,7 +154,7 @@ def resolve_paper_sizing(
         margin = requested_notional / leverage
         mode = "explicit_effective_notional"
     complete = effective_notional is not None and effective_notional > 0 and leverage is not None and leverage > 0
-    budget_exceeded = bool(margin_budget is not None and margin is not None and margin > margin_budget)
+    budget_exceeded = bool(margin_budget is not None and margin_budget > 0 and margin is not None and margin > margin_budget)
     return {
         "schema": "tradecat_auto.paper_sizing_decision.v1",
         "schema_version": "1.0.0",

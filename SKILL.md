@@ -7,7 +7,7 @@ description: "TradeCat public Hermes skill: when installed as ~/.hermes/skills/t
 
 Use this skill when the user wants their local Hermes/Agent to understand and operate TradeCat through this installed `tradecat-public` skill. The repo root is the Hermes skill boundary; `scripts/project/` is only the bundled local tool/contract implementation used by the skill.
 
-Current development happens in `/home/lenovo/.projects/cat/tradecat-public`. Production use should install a verified copy, clone, or symlink under `~/.hermes/skills/tradecat-public` later; do not treat the development checkout and production skill copy as the same deployment boundary.
+Current development happens in `/home/lenovo/.projects/cat/tradecat-public`. Local Hermes use should install a verified copy, clone, or symlink at `~/.hermes/skills/tradecat-public`; when it is a symlink to the development checkout, treat it as a live development install and validate before use.
 
 ## When to Use This Skill
 
@@ -57,7 +57,7 @@ bash scripts/run-tradecat.sh features --json
 
 ```bash
 bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
-bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json
+bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 bash scripts/run-tradecat.sh auto audit-journal --json
 bash scripts/run-tradecat.sh auto health-report --json
@@ -264,7 +264,7 @@ tradecat-public/
 - Steps:
   1. Read `references/hermes-agent-guide.md` and `references/agent-contract.md`.
   2. Run `bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json`.
-Only if audit `ok=true` and Agent sizing is explicit, run `bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt 6 --paper-leverage 2 --paper-margin-budget-usdt 12 --json`; without sizing, expect `agent_sizing_required` instead of a paper open.
+Only if audit `ok=true` and Agent sizing is explicit, run `bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json`; without sizing, expect `agent_sizing_required` instead of a paper open. TradeCat does not set a default sizing cap; `--paper-margin-budget-usdt` is optional only when an operator explicitly wants an extra paper cap.
   4. For replay, run `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
 - Expected output / acceptance: input stays public/read-only, credentials/signatures/account/order endpoints are rejected, and output remains paper/watch with no real orders.
 

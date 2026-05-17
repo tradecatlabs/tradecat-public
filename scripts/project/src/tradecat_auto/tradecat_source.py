@@ -42,6 +42,7 @@ def parse_event_stream_payload(payload: dict[str, Any]) -> dict[str, Any]:
             events.append(
                 {
                     "schema": "tradecat_auto.sheet_event.v1",
+                    "schema_version": "1.0.0",
                     "event_id": event_id_for(source_time, content),
                     "source_dataset_key": str(payload.get("dataset_key") or "event_stream"),
                     "row_index": index,
@@ -51,6 +52,7 @@ def parse_event_stream_payload(payload: dict[str, Any]) -> dict[str, Any]:
             )
     return {
         "schema": "tradecat_auto.sheet_events.v1",
+        "schema_version": "1.0.0",
         "ok": bool(events),
         "source_schema": payload.get("schema"),
         "source_dataset_key": payload.get("dataset_key", "event_stream"),
@@ -91,6 +93,7 @@ def parse_anomaly_symbols(payload: dict[str, Any], *, tradable_symbols: set[str]
             )
     return {
         "schema": "tradecat_auto.anomaly_symbols.v1",
+        "schema_version": "1.0.0",
         "ok": bool(symbols),
         "source_schema": payload.get("schema"),
         "source_dataset_key": payload.get("dataset_key", "anomaly_panel"),
@@ -126,6 +129,7 @@ class TradeCatPublicSource:
         if proc.returncode != 0:
             return {
                 "schema": "tradecat_auto.source_error.v1",
+                "schema_version": "1.0.0",
                 "ok": False,
                 "dataset_key": dataset_key,
                 "returncode": proc.returncode,
@@ -137,6 +141,7 @@ class TradeCatPublicSource:
         except json.JSONDecodeError as exc:
             return {
                 "schema": "tradecat_auto.source_error.v1",
+                "schema_version": "1.0.0",
                 "ok": False,
                 "dataset_key": dataset_key,
                 "returncode": proc.returncode,
@@ -147,6 +152,7 @@ class TradeCatPublicSource:
             return payload
         return {
             "schema": "tradecat_auto.source_error.v1",
+            "schema_version": "1.0.0",
             "ok": False,
             "dataset_key": dataset_key,
             "stderr": "request.py returned non-object JSON",
