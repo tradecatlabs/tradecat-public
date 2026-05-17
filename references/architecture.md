@@ -71,7 +71,7 @@ project/
 
 ## Mission
 
-TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snapshot cache files, exposes CLI/TUI/export flows for users and agents, and now houses the full local paper/watch automation lifecycle: Binance USDⓈ-M public market enrichment, deterministic signal/strategy/risk contracts, paper execution, paper ledger, and safe run-loop. `agents/manifest.json` is the canonical machine contract for Agent/Hermes consumption.
+TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snapshot cache files, exposes CLI/TUI/export flows for users and agents, and now houses the Agent/Hermes paper/watch contract layer: Agent-supplied Binance public/read-only market context audit, deterministic signal/strategy/risk contracts, paper execution, paper ledger, replay/backtest, and local reports. Legacy public Binance probes remain operator diagnostics, not the canonical Agent market-context input surface. `agents/manifest.json` is the canonical machine contract for Agent/Hermes consumption.
 
 ## Forbidden Paths
 
@@ -118,13 +118,13 @@ tradecat.analysis_report.v1
 
 ```text
 tradecat-public request.py event_stream/anomaly_panel
-+ Binance USDⓈ-M public REST
++ Agent-supplied Binance public/read-only market context
+-> tradecat_auto.agent_market_context.py context-audit/run-context
 -> tradecat_auto.market_enrichment.py
 -> tradecat_auto.signals.py / strategies.py
 -> tradecat_auto.risk.py deterministic risk gate
 -> tradecat_auto.paper_broker.py / paper_ledger.py
--> tradecat_auto.service.py safe run-loop
--> tradecat_auto.cli run-once/run-loop/paper-report
+-> tradecat_auto.cli run-context/paper-report/replay-report
 ```
 
 ## Source Boundaries

@@ -27,7 +27,7 @@
 
 - 公开 Google Sheets 数据消费、cache-first CLI/TUI、zero-install request。
 - Agent-supplied Binance public/read-only market context 对齐与审计。
-- paper/watch run-once、run-loop、replay/backtest、ledger、risk、audit journal、health/daily/alert 报告。
+- Agent-supplied context 的 paper/watch `context-audit` / `run-context`、replay/backtest、ledger、risk、audit journal、health/daily/alert 报告。
 - JSON Schema contracts、资源 provenance、项目测试和项目级验证脚本。
 
 TradeCat 不内置真实交易权限。任何 Agent/交易员配置都只是 soft prompt 或研究假设；真实边界由 schema、context-audit、risk gate 和 paper ledger 代码兜底。

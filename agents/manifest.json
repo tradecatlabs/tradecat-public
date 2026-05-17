@@ -626,11 +626,11 @@
     "run bash scripts/run-tradecat.sh features --json when per-symbol fact bundles are needed",
     "if only inspecting public data, prefer python3 project/scripts/request.py event_stream --format json --limit 5",
     "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
-    "for autonomous paper testing, run bash project/scripts/start-auto-paper.sh status --json before starting a new service",
+    "for operator-managed legacy paper testing, run bash project/scripts/start-auto-paper.sh status --json before starting a new service",
     "run bash scripts/run-tradecat.sh auto paper-report --json to inspect paper ledger state",
-    "run bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --once --json for one verified paper/watch cycle; missing Agent sizing should reject/watch, and TradeCat has no default sizing cap unless --paper-margin-budget-usdt is explicitly supplied",
-    "start continuous paper testing only with bash project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
-    "for Agent-supplied context, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json before run-context",
+    "for Agent-supplied Binance market context, load bash scripts/run-tradecat.sh auto soft-layer --json, let Agent/Hermes gather only public/read-only data, write tradecat_auto.agent_market_context.v1, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json, then run run-context; this is the canonical paper/watch path",
+    "treat auto market-universe/probe-public/run-once/run-loop/start-auto-paper as legacy/operator diagnostics unless a task explicitly asks for TradeCat's own public network probe; they are not the Agent market-context input surface",
+    "start continuous legacy paper testing only with bash project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
     "before delivery run bash scripts/agent-smoke.sh and the validation_commands that match the change scope"
   ],
   "automation_output_contracts": [
@@ -821,6 +821,8 @@
       "command": "bash scripts/run-tradecat.sh auto paper-report --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.paper_report.v1",
+      "agent_default": true,
+      "contract_role": "prompt_safe_paper_state",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -834,6 +836,8 @@
       "command": "bash scripts/run-tradecat.sh auto soft-layer --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.agent_soft_layer.v1",
+      "agent_default": true,
+      "contract_role": "canonical_agent_context_guidance",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -847,6 +851,8 @@
       "command": "bash scripts/run-tradecat.sh auto market-universe --json",
       "risk_class": "network_readonly",
       "schema": "tradecat_auto.market_universe.v1",
+      "agent_default": false,
+      "contract_role": "legacy_public_probe",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -861,6 +867,8 @@
       "command": "bash scripts/run-tradecat.sh auto probe-public --json",
       "risk_class": "network_readonly",
       "schema": "tradecat_auto.public_probe.v1",
+      "agent_default": false,
+      "contract_role": "legacy_public_probe",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -875,6 +883,8 @@
       "command": "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json",
       "risk_class": "network_readonly",
       "schema": "tradecat_auto.run_once_report.v1",
+      "agent_default": false,
+      "contract_role": "legacy_public_probe",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -889,6 +899,8 @@
       "command": "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json",
       "risk_class": "paper_runtime_write",
       "schema": "tradecat_auto.service_cycle.v1",
+      "agent_default": false,
+      "contract_role": "legacy_public_probe",
       "writes": true,
       "write_paths": [
         "project/.runtime/**",
@@ -907,6 +919,8 @@
       "command": "bash project/scripts/start-auto-paper.sh status --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.paper_service_status.v1",
+      "agent_default": false,
+      "contract_role": "legacy_operator_runtime_control",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -921,6 +935,8 @@
       "command": "bash project/scripts/start-auto-paper.sh start --json",
       "risk_class": "background_long_running",
       "schema": "tradecat_auto.paper_service_status.v1",
+      "agent_default": false,
+      "contract_role": "legacy_operator_runtime_control",
       "writes": true,
       "write_paths": [
         "project/.runtime/auto-paper/**"
@@ -937,6 +953,8 @@
       "command": "bash project/scripts/start-auto-paper.sh stop --json",
       "risk_class": "background_long_running",
       "schema": "tradecat_auto.paper_service_status.v1",
+      "agent_default": false,
+      "contract_role": "legacy_operator_runtime_control",
       "writes": true,
       "write_paths": [
         "project/.runtime/auto-paper/paper-run-loop.pid"
@@ -953,6 +971,8 @@
       "command": "bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.agent_market_context_audit.v1",
+      "agent_default": true,
+      "contract_role": "canonical_agent_market_context",
       "writes": false,
       "real_orders": false,
       "exit_codes": {
@@ -967,6 +987,8 @@
       "command": "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.run_once_report.v1",
+      "agent_default": true,
+      "contract_role": "canonical_agent_market_context",
       "writes": false,
       "real_orders": false,
       "exit_codes": {

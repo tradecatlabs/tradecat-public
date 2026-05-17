@@ -206,6 +206,8 @@ Automation payload schemas currently advertised through `agents/manifest.json` i
 | `auto daily-report --json` | `tradecat_auto.daily_paper_report.v1` |
 | `auto alert-payload --kind daily --json` | `tradecat_auto.telegram_alerts.v1` |
 
+Agent/Hermes 默认只把 `soft-layer`、`context-audit` 和 `run-context` 当作 Binance market context 到 paper/watch 的 canonical path。`market-universe`、`probe-public`、`run-once`、`run-loop` 和 `start-auto-paper.sh start` 是 legacy/operator public-readonly diagnostics 或本地运行态控制，不是 Agent market-context 输入面。
+
 ## Production Paper Runtime Reports
 
 The production paper/watch runtime is local state only. Default paths live under

@@ -2,7 +2,7 @@
 
 # TradeCat
 
-用户侧终端面板 + 完整全生命周期本地工作中心：只读 TradeCat 公开数据入口，写入本地 JSON 快照缓存，在终端中浏览市场快照与事件流，并在同一项目内运行 Binance USDⓈ-M 公开行情、确定性信号评分、保守风控、持久化纸面交易 ledger、安全 run-loop 和结构化交易经验沉淀。
+用户侧终端面板 + Agent/Hermes 契约层本地工作中心：只读 TradeCat 公开数据入口，写入本地 JSON 快照缓存，在终端中浏览市场快照与事件流，并在同一项目内接收 Agent-supplied Binance public/read-only market context，运行确定性信号评分、风控拒绝、持久化纸面交易 ledger、replay/backtest 和结构化审计报告。
 
 [![CI](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/tukuaiai/tradecat/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -47,14 +47,14 @@ TradeCat 是一个轻量、可本地运行、可独立分发的用户侧工具�
 1. 从公开在线数据端点读取数据。
 2. 把最新内容保存为用户本地 JSON 快照缓存。
 3. 用 CLI / TUI 在终端里查看市场快照和事件流。
-4. 从 `event_stream` / `anomaly_panel` 读取公开信号，接入 Binance USDⓈ-M 公开行情。
+4. 从 `event_stream` / `anomaly_panel` 读取公开异动信号，并接收 Agent/Hermes 提供的 Binance public/read-only market context。
 5. 生成确定性 `market_enrichment`、`signal_score`、`strategy_intent`、`risk_decision` 和 paper execution / ledger 报告。
-6. 运行 `tradecat auto run-loop` 做安全 watch/paper 轮询、JSONL 审计和纸面仓位生命周期监控。
+6. 通过 `context-audit` / `run-context` 做 Agent-supplied context 审计、paper/watch、JSONL 审计和纸面仓位生命周期监控。
 
 它当前明确不做这些事：
 
 - 不连接或写入 TradeCat 服务端 PostgreSQL。
-- 不使用 SQLite、WAL、本地 SQL 查询层或数据库型后端存储。
+- 不使用服务器数据库或通用本地 SQL 查询层；唯一允许的 SQLite 是 ignored `.runtime/` 下的 paper/watch audit journal。
 - 不需要云端服务账号、私钥、token 或服务端权限。
 - 不承担服务端数据生产、采集、修复或发布职责。
 - 不读取 Binance API key，不签名请求，不读真实账户，不真实下单；主网/测试网执行必须后续另行实现确定性风控、kill switch 和显式启用。
@@ -70,7 +70,7 @@ flowchart TD
     D --> F[TUI 终端面板]
     D --> G[analysis_report / feature_bundle]
     G --> H[tradecat auto]
-    I[Binance USDⓈ-M public REST] --> H
+    I[Agent-supplied Binance public/read-only context] --> H
     H --> J[market_enrichment / signal_score / strategy_intent]
     J --> K[deterministic risk_decision]
     K --> L[paper_execution]
@@ -95,7 +95,7 @@ flowchart TD
     subgraph Interface[用户入口]
         E1[tradecat init/status/sync/probe]
         F1[tradecat / tradecat tui]
-        H1[tradecat auto run-once/run-loop/paper-report]
+        H1[tradecat auto soft-layer/context-audit/run-context/paper-report]
         E --> E1
         F --> F1
         H --> H1
@@ -426,12 +426,8 @@ tradecat export anomaly_panel --format table --lang en
 tradecat watch event_stream --interval 5
 tradecat watch --interval 60
 
-# 全生命周期自动化入口：公开行情 + watch/paper，不读 key、不真实下单
-tradecat auto market-universe --json
-tradecat auto probe-public --json
+# Agent/Hermes canonical 自动化入口：Agent-supplied context + watch/paper，不读 key、不真实下单
 tradecat auto soft-layer --json
-tradecat auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
-tradecat auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --state-path .runtime/service_state.json --ledger-path .runtime/paper_ledger.json --archive-path .runtime/cycles.jsonl --once --json
 tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
 tradecat auto context-audit --input /path/to/agent-market-context.json --json
 tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
@@ -440,7 +436,13 @@ tradecat auto health-report --json
 tradecat auto daily-report --json
 tradecat auto alert-payload --kind daily --json
 
-# 自主持续纸面测试服务：循环用实盘公开数据跑 run-loop --once，写入 ledger/archive/journal/log
+# Legacy/operator diagnostic：TradeCat 自己发起 public-readonly 网络探测，不作为 Agent market-context 输入面
+tradecat auto market-universe --json
+tradecat auto probe-public --json
+tradecat auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
+tradecat auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --state-path .runtime/service_state.json --ledger-path .runtime/paper_ledger.json --archive-path .runtime/cycles.jsonl --once --json
+
+# Operator-only legacy 持续纸面测试服务：循环用 public-readonly 网络探测跑 run-loop --once，写入 ledger/archive/journal/log
 scripts/start-auto-paper.sh status --json
 scripts/start-auto-paper.sh start --json
 scripts/start-auto-paper.sh stop --json
@@ -567,21 +569,13 @@ tradecat doctor --sync --timeout 10
 Agent/Hermes 可参考 `resources/agent_market_context/binance/provenance.manifest.json`
 中的本地自包含 Binance skill/API 快照，但运行期仍只接收 public/read-only
 market context；软决策层提示词和 endpoint policy 位于 `resources/agent_soft_layer/`，可用
-`tradecat auto soft-layer --json` 读取。它从 `event_stream` / `anomaly_panel` 和 Binance USDⓈ-M public REST 构造
+`tradecat auto soft-layer --json` 读取。canonical Agent 路径由 Agent/Hermes 根据仓库内 Binance skill/API 快照采集 public/read-only market context，再交给 `context-audit` / `run-context` 构造
 `tradecat_auto.market_enrichment.v1`、`signal_score.v1`、`strategy_intent.v1`、
 `risk_decision.v1`、`paper_execution_report.v1`、`paper_ledger.v1` 和
-`service_cycle.v1`。当前可运行命令：
+`service_cycle.v1`。旧 `run-once/run-loop` public REST 探测只保留为 operator diagnostic，不作为 Agent market-context 输入面。当前可运行命令：
 
 ```bash
-tradecat auto market-universe --json
-tradecat auto probe-public --json
 tradecat auto soft-layer --json
-tradecat auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
-tradecat auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> \
-  --state-path .runtime/service_state.json \
-  --ledger-path .runtime/paper_ledger.json \
-  --archive-path .runtime/cycles.jsonl \
-  --once --json
 tradecat auto paper-report --ledger-path .runtime/paper_ledger.json --json
 tradecat auto context-audit --input /path/to/agent-market-context.json --json
 tradecat auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json

@@ -37,7 +37,7 @@ bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
 bash scripts/run-tradecat.sh auto paper-report --json
-bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json
+bash scripts/run-tradecat.sh auto soft-layer --json
 bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json
 bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
@@ -56,7 +56,7 @@ python3 project/scripts/request.py event_stream --format json --limit 5
 [references/analysis-contract.md](references/analysis-contract.md)。
 `features --json` 复用本地观察报告逻辑，输出
 `tradecat.feature_bundle.v1` 按 symbol 归一化的事实包；它仍然只是事实层，边界见
-[references/feature-contract.md](references/feature-contract.md)。Hermes/Agent 自动化入口统一走 `tradecat auto ...` / `bash scripts/run-tradecat.sh auto ...`，当前只允许公开行情、Agent-supplied market context 审计、paper/watch、JSONL replay、本地 SQLite audit journal、health/daily report 和 alert payload 生成，不读取 Binance API key，不签名，不真实下单；`.runtime/` 是本地运行态隔离目录，不得提交，它是给 Hermes 使用的本地契约层，不是让 TradeCat 自己越权变成真实交易机器人。
+[references/feature-contract.md](references/feature-contract.md)。Hermes/Agent 自动化入口统一走 `tradecat auto ...` / `bash scripts/run-tradecat.sh auto ...`，当前 canonical paper/watch 路径是 Agent 根据仓库内 Binance 资源采集 public/read-only market context 后交给 `context-audit` / `run-context`；旧 `run-once/run-loop` 公开网络探测只保留为 operator diagnostic，不作为 Agent market-context 输入面。不读取 Binance API key，不签名，不真实下单；`.runtime/` 是本地运行态隔离目录，不得提交，它是给 Hermes 使用的本地契约层，不是让 TradeCat 自己越权变成真实交易机器人。
 
 默认先走只读入口；只有需要写本地缓存时再执行 `sync`、`doctor --repair`、
 安装或卸载。

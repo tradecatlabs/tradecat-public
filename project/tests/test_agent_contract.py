@@ -217,19 +217,54 @@ def test_manifest_entrypoint_schema_references_are_declared():
 
 def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
     payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
-    commands = {item["command"] for item in payload.get("automation_entrypoints", [])}
+    entrypoints = {item["command"]: item for item in payload.get("automation_entrypoints", [])}
+    commands = set(entrypoints)
 
     assert "bash scripts/run-tradecat.sh auto paper-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto soft-layer --json" in commands
-    assert "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json" in commands
-    assert "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json" in commands
+    assert "bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json" in commands
+    assert (
+        "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json"
+        in commands
+    )
     assert "bash scripts/run-tradecat.sh auto audit-journal --json" in commands
     assert "bash scripts/run-tradecat.sh auto health-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto daily-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto alert-payload --kind daily --json" in commands
     assert "bash project/scripts/start-auto-paper.sh status --json" in commands
+    assert entrypoints["bash scripts/run-tradecat.sh auto soft-layer --json"]["agent_default"] is True
+    assert (
+        entrypoints["bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json"]["contract_role"]
+        == "canonical_agent_market_context"
+    )
+    assert (
+        entrypoints[
+            "bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json"
+        ]["agent_default"]
+        is True
+    )
+    for command in (
+        "bash scripts/run-tradecat.sh auto market-universe --json",
+        "bash scripts/run-tradecat.sh auto probe-public --json",
+        "bash scripts/run-tradecat.sh auto run-once --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json",
+        "bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --once --json",
+    ):
+        assert entrypoints[command]["agent_default"] is False
+        assert entrypoints[command]["contract_role"] == "legacy_public_probe"
     assert payload["important_paths"]["automation_source"] == "project/src/tradecat_auto"
     assert payload["important_paths"]["automation_audit_journal"] == "project/.runtime/auto-paper/paper_audit.sqlite3"
+
+
+def test_safe_order_prefers_agent_supplied_market_context_over_legacy_public_fetch():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    safe_order = "\n".join(payload["safe_order_of_operations"])
+
+    assert "Agent-supplied Binance market context" in safe_order
+    assert "tradecat_auto.agent_market_context.v1" in safe_order
+    assert "context-audit" in safe_order
+    assert "run-context" in safe_order
+    assert "legacy/operator diagnostics" in safe_order
+    assert "run-loop --mode paper --agent-margin-usdt" not in safe_order
 
 
 def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
