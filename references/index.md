@@ -4,7 +4,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 
 ## Load Order
 
-1. Layout, movement rules, or root cleanliness: `architecture.md`, then `quality-gate.md`.
+1. Skill package shape, role/profile placement, layout, movement rules, or root cleanliness: `skill-package-governance.md`, then `architecture.md`, then `quality-gate.md`.
 2. Cache, export, sync, prune, doctor, or local repair behavior: `cache-contract.md`.
 3. TUI startup, live probe, rendering, language, or links: `tui-contract.md`.
 4. Installer, launcher update, or uninstall behavior: `install-uninstall.md`.
@@ -25,6 +25,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 
 ## Reference Map
 
+- `skill-package-governance.md`: Hermes Skill 包形态、根目录职责、`scripts/project/` 内部项目边界、Agent/交易员 role profile 和运行态隔离规则。
 - `architecture.md`: Skill root scope, forbidden paths, source boundaries, merged `tradecat_auto` lifecycle layer, documentation map, and linear data flow.
 - `cache-contract.md`: snapshot cache, stream merge, structured latest files, export behavior, and manifest rules.
 - `tui-contract.md`: TUI startup, background probe, rendering, language, terminal fallback, and link behavior.

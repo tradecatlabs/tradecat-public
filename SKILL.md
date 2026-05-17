@@ -164,6 +164,7 @@ tradecat-public/
 |   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- skill-package-governance.md
 |   |-- agent-contract.md
 |   |-- agent-contract-maturity-task-tree.md
 |   |-- agent-contract-maturity-task-tree.json
@@ -210,6 +211,7 @@ tradecat-public/
 ## References
 
 - `references/index.md`: navigation.
+- `references/skill-package-governance.md`: Hermes Skill package shape, root/project boundary, Agent role profile placement, and runtime isolation rules.
 - `references/architecture.md`: project purpose, forbidden paths, and data flows.
 - `references/cache-contract.md`: local JSON cache and structured latest file contract.
 - `references/dataset-consumption-contract.md`: dataset field semantics, missing values, time grain, and quality tier.

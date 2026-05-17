@@ -1,6 +1,6 @@
 # tradecat-public
 
-这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`scripts/project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，长文档契约见 `references/agent-contract.md`，人类与 Hermes 共用的操作指南见 `references/hermes-agent-guide.md`。
+这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`scripts/project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，Skill 包治理见 `references/skill-package-governance.md`，长文档契约见 `references/agent-contract.md`，人类与 Hermes 共用的操作指南见 `references/hermes-agent-guide.md`。
 
 ## 当前开发/生产边界
 
@@ -103,6 +103,7 @@ tradecat-public/
 |   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- skill-package-governance.md
 |   |-- agent-contract.md
 |   |-- agent-contract-maturity-task-tree.md
 |   |-- agent-contract-maturity-task-tree.json
@@ -169,7 +170,7 @@ scripts/project/
 - `.git/`、`.gitignore`、`.github/`：仓库与 CI 元数据。
 - `SKILL.md`：Skill 激活入口。
 - `agents/`：canonical machine manifest 和平台 profile 元数据。
-- `references/`：Skill 长文档与契约。
+- `references/`：Skill 长文档、治理说明与契约；`skill-package-governance.md` 解释根 Skill 包和内部项目边界。
 - `scripts/verify.sh`、`scripts/bootstrap-dev.sh`、`scripts/security-scan.sh`、
   `scripts/supply-chain-audit.sh`、`scripts/install-security-tools.sh`、
   `scripts/clean-local-runtime.sh`、`scripts/run-tradecat.sh`、

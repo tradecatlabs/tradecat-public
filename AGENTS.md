@@ -24,6 +24,7 @@ tradecat-public/
 |   `-- openai.yaml
 |-- references/
 |   |-- index.md
+|   |-- skill-package-governance.md
 |   |-- agent-contract.md
 |   |-- agent-contract-maturity-task-tree.md
 |   |-- agent-contract-maturity-task-tree.json
@@ -74,7 +75,8 @@ tradecat-public/
 
 - `.git/`、`.github/`、`.gitignore` 是 Git / CI 边界，禁止移动到
   `scripts/project/`。
-- `SKILL.md`、`agents/`、`references/` 是 Skill/Agent 契约边界，禁止混入项目源码。
+- `SKILL.md`、`agents/`、`references/` 是 Skill/Agent 契约边界；`references/skill-package-governance.md`
+  解释根 Skill 包与内部项目分层，禁止混入项目源码。
 - `agents/manifest.json` 是唯一机器可读 Agent 主契约；`agents/openai.yaml`
   与 `agents/hermes.yaml` 只能作为平台适配层。
 - `lessons.md` 是事故经验与防复发规则，必须保持脱敏、短句、可执行。

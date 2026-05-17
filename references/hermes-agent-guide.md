@@ -11,6 +11,7 @@
 - Hermes 安装位置：`~/.hermes/skills/tradecat-public`。
 - Skill 入口：`SKILL.md`。
 - 机器主契约：`agents/manifest.json`。
+- Skill 包治理说明：`references/skill-package-governance.md`。
 - 长契约：`references/agent-contract.md`。
 - 本地工具实现：`scripts/project/`。
 - 本地运行态：`.runtime/`、`scripts/project/.runtime/`、`scripts/project/.tradecat/`，这些目录只在本机存在，不提交。
@@ -170,6 +171,7 @@ TradeCat 不要求自己内置抓取所有 Binance 数据。Hermes/Agent 可以�
 - `README.md`：给人看的仓库定位、开发/生产边界、快速入口和目录说明。
 - `SKILL.md`：Hermes 加载 skill 后最先读到的短指令。
 - `agents/manifest.json`：机器可读主契约，包含命令、schema、风险等级、路径和安全边界。
+- `references/skill-package-governance.md`：Skill 包形态、根目录职责、内部项目边界、Agent/交易员 role profile 和运行态隔离规则。
 - `references/agent-contract.md`：Agent 长契约，解释 JSON envelope、错误码、风险等级和自动化入口。
 - `references/hermes-agent-guide.md`：本指南，连接人类操作与 Hermes/Agent 执行协议。
 - `scripts/project/README.md`：用户侧 TradeCat CLI/TUI/auto 工具说明。

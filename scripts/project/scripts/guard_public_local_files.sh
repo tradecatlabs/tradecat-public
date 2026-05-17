@@ -7,11 +7,15 @@ REPO_ROOT="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 runtime_paths=(
+  ".runtime"
+  ".hermes"
   ".venv"
   ".tradecat"
   ".tools"
+  "scripts/project/.runtime"
   "scripts/project/.venv"
   "scripts/project/.tradecat"
+  "scripts/project/.tools"
 )
 
 forbidden_root_paths=(

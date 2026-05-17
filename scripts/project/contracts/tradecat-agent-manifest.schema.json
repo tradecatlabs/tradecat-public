@@ -7,8 +7,12 @@
     "schema",
     "schema_version",
     "name",
+    "skill_root",
     "project_root",
     "default_workdir",
+    "skill_package_governance",
+    "agent_profiles",
+    "agent_role_profiles",
     "preferred_readonly_entrypoints",
     "json_outputs",
     "safe_order_of_operations"
@@ -23,11 +27,95 @@
     "name": {
       "type": "string"
     },
+    "skill_root": {
+      "const": "."
+    },
     "project_root": {
       "const": "scripts/project"
     },
     "default_workdir": {
       "const": "."
+    },
+    "skill_package_governance": {
+      "type": "object",
+      "required": [
+        "shape",
+        "canonical_machine_contract",
+        "skill_root",
+        "implementation_project_root",
+        "no_second_truth",
+        "forbidden_root_paths",
+        "local_runtime_paths"
+      ],
+      "properties": {
+        "shape": {
+          "const": "hermes_skill_package"
+        },
+        "canonical_machine_contract": {
+          "const": "agents/manifest.json"
+        },
+        "skill_root": {
+          "const": "."
+        },
+        "implementation_project_root": {
+          "const": "scripts/project"
+        },
+        "no_second_truth": {
+          "const": true
+        },
+        "forbidden_root_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "local_runtime_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "agent_profiles": {
+      "type": "array",
+      "minItems": 2
+    },
+    "agent_role_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "path",
+          "bundle_command",
+          "real_orders",
+          "signed_requests",
+          "reads_api_keys",
+          "safety_boundary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "real_orders": {
+            "const": false
+          },
+          "signed_requests": {
+            "const": false
+          },
+          "reads_api_keys": {
+            "const": false
+          }
+        },
+        "additionalProperties": true
+      }
     },
     "preferred_readonly_entrypoints": {
       "type": "array",

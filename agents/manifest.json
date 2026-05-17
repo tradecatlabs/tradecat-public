@@ -9,6 +9,7 @@
   "default_workdir": ".",
   "human_docs": [
     "README.md",
+    "references/skill-package-governance.md",
     "references/hermes-agent-guide.md",
     "scripts/project/README.md",
     "references/agent-soft-decision-layer.md"
@@ -16,6 +17,7 @@
   "agent_docs": [
     "SKILL.md",
     "agents/manifest.json",
+    "references/skill-package-governance.md",
     "references/agent-contract.md",
     "references/hermes-agent-guide.md",
     "references/agent-soft-decision-layer.md"
@@ -30,6 +32,63 @@
       "id": "hermes",
       "path": "agents/hermes.yaml",
       "role": "platform adapter"
+    }
+  ],
+  "skill_package_governance": {
+    "shape": "hermes_skill_package",
+    "canonical_machine_contract": "agents/manifest.json",
+    "skill_root": ".",
+    "implementation_project_root": "scripts/project",
+    "no_second_truth": true,
+    "root_responsibilities": [
+      "Hermes Skill activation through SKILL.md",
+      "Agent machine contract through agents/manifest.json",
+      "Platform adapter profiles under agents/",
+      "Long-form operating references under references/",
+      "Thin validation and command wrappers under root scripts/"
+    ],
+    "project_responsibilities": [
+      "Python packaging and dependencies",
+      "TradeCat public cache, CLI, TUI, and zero-install request implementation",
+      "Agent-supplied market context alignment",
+      "Public-readonly paper/watch, replay/backtest, ledger, risk, reports, contracts, resources, tests, and project scripts"
+    ],
+    "forbidden_root_paths": [
+      "assets",
+      "assets/examples",
+      "src",
+      "tests",
+      "pyproject.toml",
+      "Makefile",
+      "install.sh",
+      "install.ps1",
+      "uninstall.sh",
+      "uninstall.ps1"
+    ],
+    "local_runtime_paths": [
+      ".runtime/**",
+      ".hermes/**",
+      ".tradecat/**",
+      ".venv/**",
+      ".tools/**",
+      "scripts/project/.runtime/**",
+      "scripts/project/.tradecat/**",
+      "scripts/project/.venv/**"
+    ],
+    "safety_boundary": "Root Skill wrapper never grants Binance credentials, signed requests, account reads, or real orders; implementation remains public-readonly plus paper/watch under scripts/project/."
+  },
+  "agent_role_profiles": [
+    {
+      "id": "discretionary_futures_trader",
+      "kind": "paper_research_trader_profile",
+      "path": "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
+      "bundle_command": "bash scripts/run-tradecat.sh auto soft-layer --json",
+      "contract_schema": "tradecat_auto.agent_soft_layer.v1",
+      "activation": "Use only as an Agent/Hermes soft prompt for public-readonly market research and paper/watch thesis generation.",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Soft role configuration only; deterministic context-audit, risk, and paper ledger gates remain authoritative."
     }
   ],
   "command_risk_classes": {
@@ -360,6 +419,7 @@
     "skill_readme": "README.md",
     "skill_entry": "SKILL.md",
     "agent_manifest": "agents/manifest.json",
+    "skill_package_governance_reference": "references/skill-package-governance.md",
     "agent_contract": "references/agent-contract.md",
     "hermes_agent_guide": "references/hermes-agent-guide.md",
     "project_readme": "scripts/project/README.md",
@@ -399,6 +459,7 @@
     "automation_run_loop_log": "scripts/project/.runtime/auto-paper/paper-run-loop.log"
   },
   "references": [
+    "references/skill-package-governance.md",
     "references/agent-contract.md",
     "references/hermes-agent-guide.md",
     "references/agent-contract-maturity-task-tree.md",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 
 SKILL_ROOT = Path(__file__).resolve().parents[3]
@@ -93,8 +94,88 @@ def test_agent_manifest_is_canonical_machine_contract():
     assert payload["schema_version"] == "1.0.0"
     assert payload["project_root"] == "scripts/project"
     assert payload["default_workdir"] == "."
+    assert payload["skill_root"] == "."
     assert payload["important_paths"]["project_readme"] == "scripts/project/README.md"
     assert payload["safe_order_of_operations"][0] == "read agents/manifest.json"
+
+
+def test_skill_package_governance_is_machine_readable_and_boundary_safe():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    governance = payload["skill_package_governance"]
+
+    assert governance["shape"] == "hermes_skill_package"
+    assert governance["canonical_machine_contract"] == "agents/manifest.json"
+    assert governance["skill_root"] == "."
+    assert governance["implementation_project_root"] == "scripts/project"
+    assert governance["no_second_truth"] is True
+    assert {"assets", "src", "tests", "pyproject.toml", "Makefile"} <= set(governance["forbidden_root_paths"])
+    assert {".runtime/**", ".hermes/**", "scripts/project/.runtime/**"} <= set(governance["local_runtime_paths"])
+    assert "scripts/project/" in governance["safety_boundary"]
+
+
+def test_skill_package_boundary_has_no_forbidden_tracked_or_root_files():
+    tracked = subprocess.run(
+        ["git", "-C", str(SKILL_ROOT), "ls-files"],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.splitlines()
+    tracked_paths = set(tracked)
+    runtime_roots = {
+        ".runtime",
+        ".hermes",
+        ".tradecat",
+        ".venv",
+        ".tools",
+        "scripts/project/.runtime",
+        "scripts/project/.tradecat",
+        "scripts/project/.venv",
+        "scripts/project/.tools",
+    }
+    forbidden_root_paths = {
+        "assets",
+        "src",
+        "tests",
+        "pyproject.toml",
+        "Makefile",
+        "install.sh",
+        "install.ps1",
+        "uninstall.sh",
+        "uninstall.ps1",
+    }
+
+    for path in runtime_roots:
+        assert all(item != path and not item.startswith(f"{path}/") for item in tracked_paths)
+    for path in forbidden_root_paths:
+        assert not (SKILL_ROOT / path).exists()
+
+
+def test_manifest_important_static_paths_exist_and_runtime_paths_are_local_only():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+
+    for key, value in payload["important_paths"].items():
+        if ".runtime" in value or "*" in value:
+            continue
+        assert (SKILL_ROOT / value).exists(), f"{key}: {value}"
+
+    assert payload["important_paths"]["skill_package_governance_reference"] == "references/skill-package-governance.md"
+    assert payload["important_paths"]["automation_runtime"].startswith("scripts/project/.runtime/")
+
+
+def test_agent_role_profiles_are_soft_paper_only_configs():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    roles = {item["id"]: item for item in payload["agent_role_profiles"]}
+    trader = roles["discretionary_futures_trader"]
+
+    assert trader["kind"] == "paper_research_trader_profile"
+    assert trader["path"] == payload["important_paths"]["agent_soft_layer_trader_profile"]
+    assert (SKILL_ROOT / trader["path"]).exists()
+    assert trader["bundle_command"] == "bash scripts/run-tradecat.sh auto soft-layer --json"
+    assert trader["contract_schema"] == "tradecat_auto.agent_soft_layer.v1"
+    assert trader["real_orders"] is False
+    assert trader["signed_requests"] is False
+    assert trader["reads_api_keys"] is False
+    assert "Soft role configuration only" in trader["safety_boundary"]
 
 
 def test_manifest_advertises_required_agent_json_schemas():
@@ -207,8 +288,14 @@ def test_agent_profiles_point_to_manifest_instead_of_second_truth():
 
     assert "manifest: agents/manifest.json" in openai
     assert "manifest: agents/manifest.json" in hermes
+    assert "skill_package_governance: references/skill-package-governance.md" in openai
+    assert "skill_package_governance: references/skill-package-governance.md" in hermes
     assert "agent_contract: references/agent-contract.md" in openai
     assert "agent_contract: references/agent-contract.md" in hermes
+    assert "canonical_source: agents/manifest.json#agent_role_profiles" in openai
+    assert "canonical_source: agents/manifest.json#agent_role_profiles" in hermes
+    assert "default_paper_trader: discretionary_futures_trader" in openai
+    assert "default_paper_trader: discretionary_futures_trader" in hermes
 
 
 def test_agent_contract_reference_is_indexed():
@@ -218,11 +305,15 @@ def test_agent_contract_reference_is_indexed():
     manifest = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
 
     assert "agent-contract.md" in index
+    assert "skill-package-governance.md" in index
     assert "hermes-agent-guide.md" in index
     assert "agent-soft-decision-layer.md" in index
+    assert "references/skill-package-governance.md" in manifest["human_docs"]
+    assert "references/skill-package-governance.md" in manifest["agent_docs"]
     assert "references/hermes-agent-guide.md" in manifest["human_docs"]
     assert "references/hermes-agent-guide.md" in manifest["agent_docs"]
     assert "references/agent-soft-decision-layer.md" in manifest["agent_docs"]
+    assert manifest["important_paths"]["skill_package_governance_reference"] == "references/skill-package-governance.md"
     assert manifest["important_paths"]["hermes_agent_guide"] == "references/hermes-agent-guide.md"
     assert manifest["important_paths"]["agent_soft_layer_resources"] == "scripts/project/resources/agent_soft_layer"
     assert manifest["important_paths"]["agent_soft_layer_trader_profile"] == "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md"

@@ -29,6 +29,7 @@ tradecat-public/
 │   ├── hermes.yaml
 │   └── openai.yaml
 ├── references/
+│   ├── skill-package-governance.md
 │   ├── agent-contract.md
 │   ├── agent-contract-maturity-task-tree.md
 │   ├── agent-contract-maturity-task-tree.json
