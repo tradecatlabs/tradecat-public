@@ -67,11 +67,16 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-audit-journal-summary.schema.json": "tradecat_auto.audit_journal_summary.v1",
     "tradecat-auto-audit-journal-write.schema.json": "tradecat_auto.audit_journal_write.v1",
     "tradecat-auto-daily-paper-report.schema.json": "tradecat_auto.daily_paper_report.v1",
+    "tradecat-auto-market-universe.schema.json": "tradecat_auto.market_universe.v1",
     "tradecat-auto-paper-account-state.schema.json": "tradecat_auto.paper_account_state.v1",
     "tradecat-auto-paper-backtest-report.schema.json": "tradecat_auto.paper_backtest_report.v1",
+    "tradecat-auto-paper-report.schema.json": "tradecat_auto.paper_report.v1",
     "tradecat-auto-paper-service-status.schema.json": "tradecat_auto.paper_service_status.v1",
     "tradecat-auto-production-health.schema.json": "tradecat_auto.production_health.v1",
+    "tradecat-auto-public-probe.schema.json": "tradecat_auto.public_probe.v1",
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
+    "tradecat-auto-run-once-report.schema.json": "tradecat_auto.run_once_report.v1",
+    "tradecat-auto-service-cycle.schema.json": "tradecat_auto.service_cycle.v1",
     "tradecat-auto-telegram-alerts.schema.json": "tradecat_auto.telegram_alerts.v1",
 }
 
@@ -180,6 +185,13 @@ def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
         assert entrypoint["real_orders"] is False
         assert entrypoint["signed_requests"] is False
         assert entrypoint["reads_api_keys"] is False
+
+
+def test_automation_output_contracts_have_formal_schemas():
+    payload = json.loads((SKILL_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+    automation_schemas = {item["schema"] for item in payload.get("automation_output_contracts", [])}
+
+    assert automation_schemas <= set(AUTO_SCHEMA_FILES.values())
 
 
 def test_manifest_known_failure_modes_cover_agent_error_contract():

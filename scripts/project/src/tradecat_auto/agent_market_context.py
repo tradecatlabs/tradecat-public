@@ -386,6 +386,7 @@ def build_paper_report_from_agent_market_context(
             "reads_api_keys": False,
             "mode": mode,
             "selected_symbol": audit.get("symbol") or str(context.get("symbol") or "").upper().strip(),
+            "error_code": "agent_market_context_audit_failed",
             "error": "agent_market_context_audit_failed",
             "agent_market_context_audit": audit,
             "provenance": _top_provenance(context),

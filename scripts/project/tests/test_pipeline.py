@@ -84,6 +84,7 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertFalse(report["ok"])
+        self.assertEqual(report["error_code"], "selected_symbol_not_found_in_anomaly_symbols")
         self.assertEqual(report["error"], "selected_symbol_not_found_in_anomaly_symbols")
 
     def test_build_paper_pipeline_report_applies_risk_policy_context(self) -> None:

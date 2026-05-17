@@ -71,6 +71,11 @@ tradecat-public/
         ├── Makefile
         ├── constraints.txt
         ├── contracts/
+        │   ├── tradecat-auto-market-universe.schema.json
+        │   ├── tradecat-auto-paper-report.schema.json
+        │   ├── tradecat-auto-public-probe.schema.json
+        │   ├── tradecat-auto-run-once-report.schema.json
+        │   └── tradecat-auto-service-cycle.schema.json
         ├── resources/
         │   ├── agent_market_context/
         │   │   └── binance/
@@ -195,6 +200,10 @@ Input(输入)：`event_stream`、`anomaly_panel`、Binance USDⓈ-M public REST�
 -> 节点9：`production_control.py` 从 heartbeat、state、ledger、archive 和 audit journal 生成 health/daily/alert 报告
 -> Output(输出)：`run_once_report.v1` / `service_cycle.v1` / `paper_report.v1` / `production_health.v1`；不包含真实账户状态或真实订单执行
 ```
+
+`contracts/tradecat-auto-{market-universe,paper-report,public-probe,run-once-report,service-cycle}.schema.json`
+是 automation 入口的正式机器契约；它们与 `agents/manifest.json` 的 automation output schema 对齐，固定
+`schema_version=1.0.0`、顶层 `error_code`、`provenance` 与 public-readonly/paper-only 安全边界。
 
 ### Flow 1.8: Binance Agent market context 参考资源
 

@@ -199,11 +199,17 @@ class BinanceMarketClient:
             "schema": "tradecat_auto.market_universe.v1",
             "schema_version": "1.0.0",
             "ok": bool(symbols),
+            "error_code": None,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
             "base_url": self.base_url,
             "symbol_count": len(symbols),
             "symbols": symbols,
             "rate_limits": exchange_info.get("rateLimits", []),
             "api_usage": self.api_usage(),
+            "provenance": {"source": "binance_usdm_public_exchange_info", "endpoint": "/fapi/v1/exchangeInfo"},
+            "safety": _safety_boundary(),
         }
 
     def fetch_public_market_bundle(self, symbol: str, *, period: str = "5m", depth_limit: int = 5, hist_limit: int = 2) -> dict[str, Any]:
@@ -225,16 +231,23 @@ class BinanceMarketClient:
             "schema": "tradecat_auto.public_market_bundle.v1",
             "schema_version": "1.0.0",
             "ok": True,
+            "error_code": None,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
             "base_url": self.base_url,
             "symbol": normalized_symbol,
             "period": period,
             "errors": {},
+            "provenance": {"source": "binance_usdm_public_market_bundle", "endpoint_count": len(endpoints)},
+            "safety": _safety_boundary(),
         }
         for name, (endpoint_path, params) in endpoints.items():
             try:
                 bundle[name] = self.request_json(endpoint_path, params)
             except Exception as exc:  # keep a probe useful even on partial endpoint failure
                 bundle["ok"] = False
+                bundle["error_code"] = "public_market_bundle_partial_failure"
                 bundle["errors"][name] = f"{type(exc).__name__}: {exc}"
         if isinstance(bundle.get("depth"), dict):
             bundle["depth_summary"] = summarize_depth(bundle["depth"])
@@ -304,3 +317,14 @@ def _endpoint_weight(path: str) -> int:
 
 def _is_transient(exc: BinanceApiError) -> bool:
     return exc.status in TRANSIENT_HTTP_STATUSES or exc.status is None
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }

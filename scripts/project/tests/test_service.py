@@ -105,6 +105,8 @@ class ServiceTests(unittest.TestCase):
             self.assertFalse(report["real_orders"])
             self.assertFalse(report["signed_requests"])
             self.assertFalse(report["reads_api_keys"])
+            self.assertEqual(report["error_code"], "agent_sizing_required")
+            self.assertEqual(report["provenance"]["source"], "tradecat_auto.service.run_service_cycle")
             self.assertFalse(report["safety"]["binance_account_state"])
             self.assertEqual(report["action"], "PROCESSED")
             self.assertEqual(report["pipeline_report"]["selected_symbol"], "IRYSUSDT")
@@ -178,7 +180,9 @@ class ServiceTests(unittest.TestCase):
 
             self.assertEqual(report["action"], "SKIPPED_NO_EVENT")
             self.assertFalse(report["ok"])
+            self.assertEqual(report["error_code"], "no_events_available")
             self.assertEqual(report["reason"], "no_events_available")
+            self.assertEqual(report["provenance"]["source"], "tradecat_auto.service.run_service_cycle")
             self.assertEqual(client.bundle_calls, 0)
             self.assertEqual(client.universe_calls, 0)
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -217,6 +221,7 @@ class ServiceTests(unittest.TestCase):
 
             self.assertEqual(report["action"], "ERROR")
             self.assertFalse(report["ok"])
+            self.assertEqual(report["error_code"], "no_symbol_selected")
             self.assertEqual(report["reason"], "no_symbol_selected")
             self.assertEqual(client.bundle_calls, 0)
             self.assertIn("audit_journal", report)
@@ -250,6 +255,7 @@ class ServiceTests(unittest.TestCase):
 
             self.assertEqual(report["action"], "ERROR")
             self.assertFalse(report["ok"])
+            self.assertEqual(report["error_code"], "no_symbol_selected")
             self.assertEqual(report["reason"], "no_symbol_selected")
             self.assertEqual(client.bundle_calls, 0)
             self.assertEqual(client.universe_calls, 1)

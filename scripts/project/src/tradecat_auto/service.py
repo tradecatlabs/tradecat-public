@@ -232,9 +232,11 @@ def _cycle_payload(**kwargs: Any) -> dict[str, Any]:
     payload = {
         "schema": CYCLE_SCHEMA,
         "schema_version": "1.0.0",
+        "error_code": None,
         "real_orders": False,
         "signed_requests": False,
         "reads_api_keys": False,
+        "provenance": {"source": "tradecat_auto.service.run_service_cycle"},
         "safety": {
             "public_readonly_market_data": True,
             "paper_or_watch_only": True,
@@ -245,6 +247,12 @@ def _cycle_payload(**kwargs: Any) -> dict[str, Any]:
         },
     }
     payload.update(kwargs)
+    if payload.get("ok") is False and not payload.get("error_code"):
+        pipeline_report = payload.get("pipeline_report")
+        if isinstance(pipeline_report, dict) and pipeline_report.get("error_code"):
+            payload["error_code"] = str(pipeline_report["error_code"])
+        else:
+            payload["error_code"] = str(payload.get("reason") or payload.get("action") or "service_cycle_failed")
     return payload
 
 

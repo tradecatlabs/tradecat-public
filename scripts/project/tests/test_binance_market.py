@@ -97,6 +97,11 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(bundle["openInterest"]["openInterest"], "12345.6")
         self.assertIn("depth_summary", bundle)
         self.assertIn("api_usage", bundle)
+        self.assertFalse(bundle["real_orders"])
+        self.assertFalse(bundle["signed_requests"])
+        self.assertFalse(bundle["reads_api_keys"])
+        self.assertEqual(bundle["provenance"]["source"], "binance_usdm_public_market_bundle")
+        self.assertFalse(bundle["safety"]["binance_account_state"])
         self.assertGreaterEqual(len(transport.calls), 10)
 
     def test_market_universe_uses_ttl_cache_and_reports_usage(self) -> None:
@@ -108,6 +113,11 @@ class BinanceMarketTests(unittest.TestCase):
 
         self.assertEqual(first["symbol_count"], 3)
         self.assertEqual(second["symbol_count"], 3)
+        self.assertFalse(first["real_orders"])
+        self.assertFalse(first["signed_requests"])
+        self.assertFalse(first["reads_api_keys"])
+        self.assertEqual(first["provenance"]["endpoint"], "/fapi/v1/exchangeInfo")
+        self.assertFalse(first["safety"]["binance_account_state"])
         exchange_info_calls = [url for url in transport.calls if urlparse(url).path == "/fapi/v1/exchangeInfo"]
         self.assertEqual(len(exchange_info_calls), 1)
         self.assertGreaterEqual(second["api_usage"]["cache_hits"], 1)

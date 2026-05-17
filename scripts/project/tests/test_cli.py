@@ -82,6 +82,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["symbols"], [])
         self.assertEqual(payload["error_code"], "market_universe_failed")
         self.assertIn("BinanceApiError", payload["error"])
+        self.assertFalse(payload["real_orders"])
+        self.assertFalse(payload["signed_requests"])
+        self.assertFalse(payload["reads_api_keys"])
+        self.assertEqual(payload["provenance"]["endpoint"], "/fapi/v1/exchangeInfo")
+        self.assertFalse(payload["safety"]["binance_account_state"])
 
     def test_run_once_public_returns_paper_pipeline_report_without_real_orders(self) -> None:
         args = argparse.Namespace(symbol="auto", event_limit=5, anomaly_limit=20, mode="paper", notional_usdt=None, agent_margin_usdt=7.5, paper_leverage=3.0, paper_margin_budget_usdt=None)
@@ -90,6 +95,11 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
         self.assertEqual(report["selected_symbol"], "IRYSUSDT")
+        self.assertFalse(report["real_orders"])
+        self.assertFalse(report["signed_requests"])
+        self.assertFalse(report["reads_api_keys"])
+        self.assertEqual(report["provenance"]["source"], "tradecat_auto.pipeline.build_paper_pipeline_report")
+        self.assertFalse(report["safety"]["binance_account_state"])
         self.assertEqual(report["paper_execution"]["schema"], "tradecat_auto.paper_execution_report.v1")
         self.assertIn("no real order was placed", report["limitations"])
 
@@ -100,7 +110,13 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
         self.assertFalse(report["ok"])
+        self.assertFalse(report["real_orders"])
+        self.assertFalse(report["signed_requests"])
+        self.assertFalse(report["reads_api_keys"])
+        self.assertEqual(report["error_code"], "no_symbol_selected")
         self.assertEqual(report["error"], "no_symbol_selected")
+        self.assertEqual(report["provenance"]["source"], "tradecat_auto.cli.run_once_public")
+        self.assertFalse(report["safety"]["real_orders"])
         self.assertEqual(report["universe"]["symbol_count"], 2)
 
     def test_run_loop_public_once_returns_service_cycle_report(self) -> None:
@@ -125,6 +141,9 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(report["schema"], "tradecat_auto.service_cycle.v1")
             self.assertEqual(report["action"], "PROCESSED")
+            self.assertIsNone(report["error_code"])
+            self.assertEqual(report["provenance"]["source"], "tradecat_auto.service.run_service_cycle")
+            self.assertFalse(report["safety"]["signed_requests"])
             self.assertEqual(report["pipeline_report"]["selected_symbol"], "IRYSUSDT")
 
     def test_run_loop_no_event_payload_is_successful_process_exit_for_systemd_timer(self) -> None:
@@ -251,6 +270,10 @@ class CliTests(unittest.TestCase):
             report = paper_report(argparse.Namespace(ledger_path=str(ledger_path), initial_balance_usdt=1000.0))
 
             self.assertEqual(report["schema"], "tradecat_auto.paper_report.v1")
+            self.assertFalse(report["real_orders"])
+            self.assertFalse(report["signed_requests"])
+            self.assertFalse(report["reads_api_keys"])
+            self.assertIsNone(report["error_code"])
             self.assertEqual(report["summary"]["open_positions_count"], 1)
             self.assertEqual(report["provenance"]["source"], "local_tradecat_paper_ledger")
             self.assertFalse(report["safety"]["signed_requests"])
@@ -268,6 +291,9 @@ class CliTests(unittest.TestCase):
             self.assertEqual(report["schema_version"], "1.0.0")
             self.assertFalse(report["ok"])
             self.assertEqual(report["ledger_path"], str(ledger_path))
+            self.assertFalse(report["real_orders"])
+            self.assertFalse(report["signed_requests"])
+            self.assertFalse(report["reads_api_keys"])
             self.assertEqual(report["error_code"], "paper_ledger_load_failed")
             self.assertIn("paper_ledger_load_failed", report["error"])
             self.assertEqual(report["provenance"]["source"], "local_tradecat_paper_ledger")

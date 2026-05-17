@@ -6,13 +6,16 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
+from tradecat_auto import cli as auto_cli
+from tradecat_auto.binance_market import BinanceMarketClient
+from tradecat_auto.paper_ledger import default_paper_ledger, save_paper_ledger
 from tradecat_terminal import cli
 from tradecat_terminal.cache import write_dataset_body
 from tradecat_terminal.dataset_contract import load_dataset_consumption_contract
@@ -201,6 +204,48 @@ def test_real_error_payloads_validate_against_formal_schemas(tmp_path, capsys, m
     assert invalid_feature_request["error"]["code"] == "invalid_feature_request"
 
 
+def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "paper_ledger.json"
+    save_paper_ledger(ledger_path, default_paper_ledger(initial_balance_usdt=1000.0))
+    auto_args = SimpleNamespace(
+        tradecat_public=str(tmp_path / "public"),
+        base_url="https://example.test",
+        symbol="auto",
+        event_limit=5,
+        anomaly_limit=20,
+        mode="paper",
+        notional_usdt=None,
+        agent_margin_usdt=7.5,
+        paper_leverage=3.0,
+        paper_margin_budget_usdt=None,
+        state_path=str(tmp_path / "service_state.json"),
+        interval_seconds=60.0,
+        max_cycles=1,
+        once=True,
+        max_event_age_seconds=None,
+        ledger_path=str(ledger_path),
+        archive_path="",
+        journal_path="",
+        initial_balance_usdt=1000.0,
+        paper_fee_bps=2.0,
+        paper_slippage_bps=0.5,
+    )
+    monkeypatch.setattr(auto_cli, "BinanceMarketClient", _FakeAutoClient)
+    monkeypatch.setattr(auto_cli, "TradeCatPublicSource", _FakeAutoSource)
+
+    market_client = BinanceMarketClient(base_url="https://example.test", transport=_fake_binance_transport)
+    payloads = [
+        market_client.market_universe(),
+        auto_cli.probe_public(auto_args),
+        auto_cli.run_once_public(auto_args, client=_FakeAutoClient(), source=_FakeAutoSource()),
+        auto_cli.run_loop_public(auto_args, client=_FakeAutoClient(), source=_FakeAutoSource()),
+        auto_cli.paper_report(SimpleNamespace(ledger_path=str(ledger_path), initial_balance_usdt=1000.0)),
+    ]
+
+    for payload in payloads:
+        validate_payload(payload)
+
+
 def test_golden_json_fixtures_validate_against_formal_schemas():
     expected = {
         "invalid-dataset-error.json",
@@ -283,6 +328,97 @@ def _fake_request_fetch(url: str, *, timeout: float) -> str:
     if url == REQUEST_REGISTRY_URL:
         return json.dumps(REQUEST_REGISTRY)
     return EVENT_CSV
+
+
+class _FakeAutoClient:
+    def __init__(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+    def market_universe(self):
+        return {
+            "schema": "tradecat_auto.market_universe.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "base_url": "https://example.test",
+            "symbol_count": 1,
+            "symbols": ["IRYSUSDT"],
+            "rate_limits": [],
+            "api_usage": {},
+            "provenance": {"source": "test", "endpoint": "/fapi/v1/exchangeInfo"},
+            "safety": _auto_safety(),
+        }
+
+    def fetch_public_market_bundle(self, symbol):
+        return {
+            "schema": "tradecat_auto.public_market_bundle.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "symbol": symbol,
+            "ticker24hr": {"lastPrice": "0.062", "priceChangePercent": "24", "quoteVolume": "50000000"},
+            "depth_summary": {"spread_bps": 3.0},
+            "openInterest": {"openInterest": "1000000"},
+            "openInterestHist": [{"sumOpenInterestValue": "100000"}],
+            "fundingRate": [{"fundingRate": "0.00005"}],
+            "premiumIndex": {"markPrice": "0.062", "indexPrice": "0.0619"},
+            "topLongShortAccountRatio": [{"longShortRatio": "1.1"}],
+            "topLongShortPositionRatio": [{"longShortRatio": "1.1"}],
+            "globalLongShortAccountRatio": [{"longShortRatio": "1.1"}],
+            "takerlongshortRatio": [{"buySellRatio": "1.2"}],
+            "errors": {},
+            "api_usage": {},
+            "provenance": {"source": "test", "endpoint_count": 11},
+            "safety": _auto_safety(),
+        }
+
+
+class _FakeAutoSource:
+    def __init__(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+    def fetch_events(self, *, limit):
+        del limit
+        return {"ok": True, "events": [{"event_id": "evt-schema", "content": "IRYS"}]}
+
+    def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
+        del tradable_symbols, limit
+        return {
+            "ok": True,
+            "symbols": [
+                {"raw_symbol": "IRYS", "normalized_symbol": "IRYSUSDT", "source_values": {"交易对": "IRYS"}}
+            ],
+            "rejected": [],
+        }
+
+
+def _fake_binance_transport(url: str, *, timeout: float, headers: dict[str, str]) -> bytes:
+    del timeout, headers
+    if "/fapi/v1/exchangeInfo" not in url:
+        raise AssertionError(f"unexpected url: {url}")
+    return json.dumps(
+        {
+            "symbols": [
+                {"symbol": "IRYSUSDT", "status": "TRADING", "quoteAsset": "USDT", "contractType": "PERPETUAL"}
+            ],
+            "rateLimits": [],
+        }
+    ).encode()
+
+
+def _auto_safety() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }
 
 
 def _load_request_module() -> ModuleType:
