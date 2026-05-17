@@ -185,6 +185,21 @@ tradecat-public/
 |   |-- stability-hardening-task-tree.md
 |   |-- stability-hardening-task-tree.json
 |   `-- test-strategy.md
+|-- project/
+|   |-- AGENTS.md
+|   |-- DEBUG.md
+|   |-- DEBUG.archive.md
+|   |-- pyproject.toml
+|   |-- constraints.txt
+|   |-- contracts/
+|   |-- resources/
+|   |   |-- agent_market_context/
+|   |   `-- agent_soft_layer/
+|   |-- scripts/
+|   |-- src/
+|   |   |-- tradecat_terminal/
+|   |   `-- tradecat_auto/
+|   `-- tests/
 `-- scripts/
     |-- verify.sh
     |-- bootstrap-dev.sh
@@ -193,19 +208,7 @@ tradecat-public/
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
     |-- clean-local-runtime.sh
-    |-- run-tradecat.sh
-    `-- project/
-        |-- AGENTS.md
-        |-- DEBUG.md
-        |-- DEBUG.archive.md
-        |-- pyproject.toml
-        |-- constraints.txt
-        |-- contracts/
-        |-- scripts/
-        |-- src/
-        |   |-- tradecat_terminal/
-        |   `-- tradecat_auto/
-        `-- tests/
+    `-- run-tradecat.sh
 ```
 
 ## References
