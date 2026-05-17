@@ -5,9 +5,9 @@
 ## 分层边界
 
 - Skill 根目录：只承载 Skill 激活、Agent profile、长文档、治理说明、根级薄脚本和 Git/CI 元数据。
-- 内部项目根：`scripts/project/` 是唯一 Python 项目根，承载源码、测试、contracts、resources、安装/卸载脚本、项目脚本和项目级文档。
-- 资源快照：Binance skill/API 参考、Agent soft layer、endpoint policy 和 trader role profile 都放在 `scripts/project/resources/`，由 manifest 和 schema 暴露来源。
-- 本地运行态：`.runtime/`、`.hermes/`、`.tradecat/`、`.venv/`、`.tools/` 与 `scripts/project/.runtime/` 等目录只属于本机，不得成为源码资产。
+- 内部项目根：`project/` 是唯一 Python 项目根，承载源码、测试、contracts、resources、安装/卸载脚本、项目脚本和项目级文档。
+- 资源快照：Binance skill/API 参考、Agent soft layer、endpoint policy 和 trader role profile 都放在 `project/resources/`，由 manifest 和 schema 暴露来源。
+- 本地运行态：`.runtime/`、`.hermes/`、`.tradecat/`、`.venv/`、`.tools/` 与 `project/.runtime/` 等目录只属于本机，不得成为源码资产。
 
 ## 根目录职责
 
@@ -19,11 +19,11 @@
 - `references/`：长文档与治理说明，引用 manifest，不复制机器契约。
 - `scripts/*.sh`：从 Skill 根进入项目实现或治理门禁的薄封装。
 
-根目录不得新增 `assets/`、`assets/examples/`、`src/`、`tests/`、`pyproject.toml`、`Makefile` 或 install/uninstall 脚本。需要项目示例或资源时，放入 `scripts/project/` 并同步项目文档。
+根目录不得新增 `assets/`、`assets/examples/`、`src/`、`tests/`、`pyproject.toml`、`Makefile` 或 install/uninstall 脚本。需要项目示例或资源时，放入 `project/` 并同步项目文档。
 
 ## 内部项目职责
 
-`scripts/project/` 承载所有 TradeCat 具体实现：
+`project/` 承载所有 TradeCat 具体实现：
 
 - 公开 Google Sheets 数据消费、cache-first CLI/TUI、zero-install request。
 - Agent-supplied Binance public/read-only market context 对齐与审计。
@@ -34,7 +34,7 @@ TradeCat 不内置真实交易权限。任何 Agent/交易员配置都只是 sof
 
 ## Agent/交易员角色配置
 
-机器入口是 `agents/manifest.json` 的 `agent_role_profiles`。当前默认 role 是 `discretionary_futures_trader`，实际文本在 `scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md`，并通过：
+机器入口是 `agents/manifest.json` 的 `agent_role_profiles`。当前默认 role 是 `discretionary_futures_trader`，实际文本在 `project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md`，并通过：
 
 ```bash
 bash scripts/run-tradecat.sh auto soft-layer --json
@@ -49,11 +49,11 @@ bash scripts/run-tradecat.sh auto soft-layer --json
 ```bash
 bash scripts/agent-smoke.sh
 bash scripts/verify.sh
-cd scripts/project && bash scripts/verify.sh
+cd project && bash scripts/verify.sh
 bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
 git diff --check
 ```
 
-边界检查由 `scripts/project/scripts/guard_public_local_files.sh` 和 `scripts/project/tests/test_agent_contract.py` 共同兜底：禁止 root Python 项目形态、禁止跟踪本地运行态、要求 manifest 的关键静态路径存在，并保持 `project_root=scripts/project`。
+边界检查由 `project/scripts/guard_public_local_files.sh` 和 `project/tests/test_agent_contract.py` 共同兜底：禁止 root Python 项目形态、禁止跟踪本地运行态、要求 manifest 的关键静态路径存在，并保持 `project_root=project`。

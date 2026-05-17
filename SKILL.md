@@ -5,7 +5,7 @@ description: "TradeCat public Hermes skill: when installed as ~/.hermes/skills/t
 
 # tradecat-public Skill
 
-Use this skill when the user wants their local Hermes/Agent to understand and operate TradeCat through this installed `tradecat-public` skill. The repo root is the Hermes skill boundary; `scripts/project/` is only the bundled local tool/contract implementation used by the skill.
+Use this skill when the user wants their local Hermes/Agent to understand and operate TradeCat through this installed `tradecat-public` skill. The repo root is the Hermes skill boundary; `project/` is only the bundled local tool/contract implementation used by the skill.
 
 Current development happens in `/home/lenovo/.projects/cat/tradecat-public`. Local Hermes use should install a verified copy, clone, or symlink at `~/.hermes/skills/tradecat-public`; when it is a symlink to the development checkout, treat it as a live development install and validate before use.
 
@@ -15,7 +15,7 @@ Trigger when any of these applies:
 - The user asks to run, install, debug, validate, or modify TradeCat public terminal behavior.
 - The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, one-shot request script, Binance public market context, replay report, audit journal, production paper health/daily report, or `tradecat auto context-audit/run-context`.
 - The task needs the project contracts for cache-first TUI, local JSON snapshots, structured `latest.*` files, or zero-install public requests.
-- The task asks to reorganize, audit, or optimize the Skill wrapper, root files, references, `AGENTS.md`, or the `scripts/project/` project boundary.
+- The task asks to reorganize, audit, or optimize the Skill wrapper, root files, references, `AGENTS.md`, or the `project/` project boundary.
 
 ## Not For / Boundaries
 
@@ -23,8 +23,8 @@ Trigger when any of these applies:
 - Do not add server database repair/vacuum, raw SQL query layers, or server production-chain coupling. The only allowed SQLite use in this public skill is the local paper/watch audit journal under ignored `.runtime/` paths, with schema/versioned JSON summaries and no credentials or exchange side effects.
 - Do not commit credentials, Google keys, Binance keys/secrets, private `.env` files, generated cache files, `.runtime/` paper ledgers/archives/audit journals/logs, or local runtime files.
 - Keep `tradecat auto` public-readonly + paper/watch unless a later explicit implementation adds deterministic testnet/mainnet gates; never let an Agent call raw order endpoints freely.
-- Keep the skill root clean: project source and project docs live in `scripts/project/`; long-form skill references live in `references/`.
-- Do not add root `assets/` or `assets/examples/`; project examples, if ever needed, belong under `scripts/project/` and must be documented.
+- Keep the skill root clean: project source and project docs live in `project/`; long-form skill references live in `references/`.
+- Do not add root `assets/` or `assets/examples/`; project examples, if ever needed, belong under `project/` and must be documented.
 
 ## Quick Reference
 
@@ -88,14 +88,14 @@ bash scripts/bootstrap-dev.sh
 ### Validate Project Only
 
 ```bash
-cd scripts/project
+cd project
 bash scripts/verify.sh
 ```
 
 ### Run CLI From Source
 
 ```bash
-cd scripts/project
+cd project
 PYTHONPATH=src python3 -m tradecat_terminal --help
 PYTHONPATH=src python3 -m tradecat_terminal status --json
 PYTHONPATH=src python3 -m tradecat_terminal auto --help
@@ -105,14 +105,14 @@ PYTHONPATH=src python3 -m tradecat_auto.cli paper-report --json
 ### One-shot Public Request
 
 ```bash
-python3 scripts/project/scripts/request.py --datasets
-python3 scripts/project/scripts/request.py event_stream --format jsonl --limit 5
+python3 project/scripts/request.py --datasets
+python3 project/scripts/request.py event_stream --format jsonl --limit 5
 ```
 
 ### Inspect Cache Paths
 
 ```bash
-cd scripts/project
+cd project
 PYTHONPATH=src python3 -m tradecat_terminal path event_stream --json
 ```
 
@@ -121,7 +121,7 @@ PYTHONPATH=src python3 -m tradecat_terminal path event_stream --json
 ```bash
 test ! -e assets
 git ls-files | sort
-bash scripts/project/scripts/guard_public_local_files.sh
+bash project/scripts/guard_public_local_files.sh
 ```
 
 ### Skill Quality Gate
@@ -145,7 +145,7 @@ bash scripts/supply-chain-audit.sh
 ### Data Contract Check
 
 ```bash
-cd scripts/project
+cd project
 PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
 ```
 
@@ -239,7 +239,7 @@ tradecat-public/
 - Input: "Run the TradeCat checks."
 - Steps:
   1. Run `bash scripts/verify.sh` from the skill root.
-  2. If lint is needed, run `cd scripts/project && ruff check src tests`.
+  2. If lint is needed, run `cd project && ruff check src tests`.
 - Expected output / acceptance: compileall and pytest pass; lint passes when dev dependencies are installed.
 
 ### Example 2: Inspect Local Cache Paths
@@ -248,15 +248,15 @@ tradecat-public/
 - Steps:
   1. Run `bash scripts/run-tradecat.sh path event_stream --json`.
   2. Read `latest_json`, `latest_jsonl`, `latest_csv`, and `stream_events`.
-- Expected output / acceptance: paths point under `scripts/project/.tradecat/cache` unless `TRADECAT_CACHE_DIR` overrides them.
+- Expected output / acceptance: paths point under `project/.tradecat/cache` unless `TRADECAT_CACHE_DIR` overrides them.
 
 ### Example 3: Modify TUI Behavior
 
 - Input: "Change the TUI probe interval behavior."
 - Steps:
   1. Read `references/tui-contract.md`.
-  2. Edit `scripts/project/src/tradecat_terminal/tui.py`.
-  3. Add or adjust focused tests in `scripts/project/tests/test_cache_tui.py`.
+  2. Edit `project/src/tradecat_terminal/tui.py`.
+  3. Add or adjust focused tests in `project/tests/test_cache_tui.py`.
   4. Run `bash scripts/verify.sh`.
 - Expected output / acceptance: cache-first startup, background probe, failure backoff, and plain fallback contracts remain intact.
 
@@ -276,12 +276,12 @@ Only if audit `ok=true` and Agent sizing is explicit, run `bash scripts/run-trad
 - Steps:
   1. Read `SKILL.md`, `references/index.md`, and `references/quality-gate.md`.
   2. Keep root files limited to Skill/Git metadata, references, and thin scripts.
-  3. Put project source, tests, installers, and project README under `scripts/project/`.
+  3. Put project source, tests, installers, and project README under `project/`.
   4. Run the strict skill validator and `bash scripts/verify.sh`.
 - Expected output / acceptance: `SKILL.md` remains short and actionable, references are navigable, root remains clean, and project validation passes.
 
 ## Maintenance
 
-- Source project: `scripts/project/`
+- Source project: `project/`
 - Validation: `bash scripts/verify.sh` from the Skill root; run `bash scripts/validate-skill.sh --strict` when only the Skill gate is needed.
 - Skill root should remain an operator entrypoint, not a second copy of the project.

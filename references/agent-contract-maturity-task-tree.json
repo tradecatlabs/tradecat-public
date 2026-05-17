@@ -24,7 +24,7 @@
         "Generic envelope and error schemas remain shared base contracts."
       ],
       "paths": [
-        "scripts/project/contracts/"
+        "project/contracts/"
       ]
     },
     {
@@ -41,7 +41,7 @@
         "tradecat.watch_cycle.v1 remains explicitly allowlisted as a CLI-internal schema and is not a public Agent surface unless intentionally promoted."
       ],
       "paths": [
-        "scripts/project/tests/test_agent_contract.py"
+        "project/tests/test_agent_contract.py"
       ]
     },
     {
@@ -106,9 +106,9 @@
         "jsonschema remains a dev/test dependency only."
       ],
       "paths": [
-        "scripts/project/tests/test_payload_schema_validation.py",
-        "scripts/project/pyproject.toml",
-        "scripts/project/constraints.txt"
+        "project/tests/test_payload_schema_validation.py",
+        "project/pyproject.toml",
+        "project/constraints.txt"
       ]
     },
     {
@@ -117,12 +117,12 @@
       "priority": "P3",
       "status": "done",
       "acceptance": [
-        "golden samples live under scripts/project/tests/fixtures/json_contract/.",
+        "golden samples live under project/tests/fixtures/json_contract/.",
         "fixtures cover status success, request dataset list success, support bundle success, analysis report success, feature bundle success, empty analysis cache, empty feature cache, invalid dataset, invalid runtime configuration, local runtime error, and watcher not-running status.",
         "fixtures validate against the same formal schema helper used for live payloads."
       ],
       "paths": [
-        "scripts/project/tests/fixtures/json_contract/"
+        "project/tests/fixtures/json_contract/"
       ]
     }
   ]

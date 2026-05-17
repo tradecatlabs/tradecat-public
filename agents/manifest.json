@@ -5,13 +5,13 @@
   "display_name": "TradeCat Public",
   "repo_role": "Hermes/Agent-facing TradeCat skill package and local contract layer; users install this repo as tradecat-public so their local Hermes can load SKILL.md and agents/manifest.json.",
   "skill_root": ".",
-  "project_root": "scripts/project",
+  "project_root": "project",
   "default_workdir": ".",
   "human_docs": [
     "README.md",
     "references/skill-package-governance.md",
     "references/hermes-agent-guide.md",
-    "scripts/project/README.md",
+    "project/README.md",
     "references/agent-soft-decision-layer.md"
   ],
   "agent_docs": [
@@ -38,7 +38,7 @@
     "shape": "hermes_skill_package",
     "canonical_machine_contract": "agents/manifest.json",
     "skill_root": ".",
-    "implementation_project_root": "scripts/project",
+    "implementation_project_root": "project",
     "no_second_truth": true,
     "root_responsibilities": [
       "Hermes Skill activation through SKILL.md",
@@ -71,17 +71,17 @@
       ".tradecat/**",
       ".venv/**",
       ".tools/**",
-      "scripts/project/.runtime/**",
-      "scripts/project/.tradecat/**",
-      "scripts/project/.venv/**"
+      "project/.runtime/**",
+      "project/.tradecat/**",
+      "project/.venv/**"
     ],
-    "safety_boundary": "Root Skill wrapper never grants Binance credentials, signed requests, account reads, or real orders; implementation remains public-readonly plus paper/watch under scripts/project/."
+    "safety_boundary": "Root Skill wrapper never grants Binance credentials, signed requests, account reads, or real orders; implementation remains public-readonly plus paper/watch under project/."
   },
   "agent_role_profiles": [
     {
       "id": "discretionary_futures_trader",
       "kind": "paper_research_trader_profile",
-      "path": "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
+      "path": "project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
       "bundle_command": "bash scripts/run-tradecat.sh auto soft-layer --json",
       "contract_schema": "tradecat_auto.agent_soft_layer.v1",
       "activation": "Use only as an Agent/Hermes soft prompt for public-readonly market research and paper/watch thesis generation.",
@@ -158,7 +158,7 @@
       }
     },
     {
-      "command": "bash scripts/project/scripts/start.sh status --json",
+      "command": "bash project/scripts/start.sh status --json",
       "risk_class": "local_readonly",
       "schema": "tradecat.watch_status.v1",
       "exit_codes": {
@@ -167,11 +167,11 @@
       }
     },
     {
-      "command": "python3 scripts/project/scripts/request.py --datasets",
+      "command": "python3 project/scripts/request.py --datasets",
       "risk_class": "network_readonly",
       "schema": "text/tsv",
       "json_alternative": {
-        "command": "python3 scripts/project/scripts/request.py --datasets --format json",
+        "command": "python3 project/scripts/request.py --datasets --format json",
         "schema": "tradecat.request_dataset_list.v1",
         "schema_version": "1.0.0"
       },
@@ -182,7 +182,7 @@
       }
     },
     {
-      "command": "python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+      "command": "python3 project/scripts/request.py event_stream --format json --limit 5",
       "risk_class": "network_readonly",
       "schema": "tradecat.request_result.v1",
       "exit_codes": {
@@ -219,24 +219,24 @@
       "schema": "tradecat.prune_result.v1"
     },
     {
-      "command": "bash scripts/project/scripts/start.sh start --json",
+      "command": "bash project/scripts/start.sh start --json",
       "risk_class": "background_long_running",
       "schema": "tradecat.watch_status.v1"
     },
     {
-      "command": "bash scripts/project/scripts/start.sh stop --json",
+      "command": "bash project/scripts/start.sh stop --json",
       "risk_class": "background_long_running",
       "schema": "tradecat.watch_status.v1"
     },
     {
-      "command": "bash scripts/project/scripts/watchdog.sh --json",
+      "command": "bash project/scripts/watchdog.sh --json",
       "risk_class": "background_long_running",
       "schema": "tradecat.watch_status.v1"
     }
   ],
   "network_entrypoints": [
     {
-      "command": "python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+      "command": "python3 project/scripts/request.py event_stream --format json --limit 5",
       "mode": "zero-install fallback",
       "writes": false
     },
@@ -246,7 +246,7 @@
       "writes": true
     },
     {
-      "command": "cd scripts/project && PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10",
+      "command": "cd project && PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10",
       "mode": "production transport contract smoke",
       "writes": false
     }
@@ -321,7 +321,7 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "bash scripts/project/scripts/start.sh status --json",
+      "command": "bash project/scripts/start.sh status --json",
       "schema": "tradecat.watch_status.v1",
       "schema_version": "1.0.0"
     },
@@ -331,12 +331,12 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+      "command": "python3 project/scripts/request.py event_stream --format json --limit 5",
       "schema": "tradecat.request_result.v1",
       "schema_version": "1.0.0"
     },
     {
-      "command": "python3 scripts/project/scripts/request.py --datasets --format json",
+      "command": "python3 project/scripts/request.py --datasets --format json",
       "schema": "tradecat.request_dataset_list.v1",
       "schema_version": "1.0.0"
     },
@@ -368,12 +368,12 @@
       "purpose": "Run project tests, lint, contract checks, and shell syntax."
     },
     {
-      "command": "cd scripts/project && PYTHONPATH=src python3 scripts/validate_dataset_consumption_contract.py",
+      "command": "cd project && PYTHONPATH=src python3 scripts/validate_dataset_consumption_contract.py",
       "risk_class": "local_readonly",
       "purpose": "Validate dataset consumption semantics against the bundled registry."
     },
     {
-      "command": "cd scripts/project && PYTHONPATH=src python3 scripts/validate_agent_market_context_resources.py",
+      "command": "cd project && PYTHONPATH=src python3 scripts/validate_agent_market_context_resources.py",
       "risk_class": "local_readonly",
       "purpose": "Validate self-contained Binance Agent market-context resource provenance, hashes, and safety boundaries."
     },
@@ -390,22 +390,22 @@
   ],
   "high_risk_commands": [
     {
-      "command": "sh scripts/project/install.sh",
+      "command": "sh project/install.sh",
       "risk_class": "install_or_uninstall",
       "reason": "Creates or updates user app checkout, virtualenv, launchers, and optional PATH guidance."
     },
     {
-      "command": "powershell -File scripts/project/install.ps1",
+      "command": "powershell -File project/install.ps1",
       "risk_class": "install_or_uninstall",
       "reason": "Windows installer mutates user install paths and launchers."
     },
     {
-      "command": "bash scripts/project/scripts/start.sh start --json",
+      "command": "bash project/scripts/start.sh start --json",
       "risk_class": "background_long_running",
       "reason": "Spawns a watcher process; success means process spawn, not remote data health."
     },
     {
-      "command": "bash scripts/project/scripts/watchdog.sh --json",
+      "command": "bash project/scripts/watchdog.sh --json",
       "risk_class": "background_long_running",
       "reason": "Reports watcher status if running or starts a missing watcher; success means supervision action completed, not remote data health."
     },
@@ -422,41 +422,41 @@
     "skill_package_governance_reference": "references/skill-package-governance.md",
     "agent_contract": "references/agent-contract.md",
     "hermes_agent_guide": "references/hermes-agent-guide.md",
-    "project_readme": "scripts/project/README.md",
-    "project_agents": "scripts/project/AGENTS.md",
-    "formal_contract_schemas": "scripts/project/contracts",
-    "project_source": "scripts/project/src",
-    "project_tests": "scripts/project/tests",
-    "dataset_registry": "scripts/project/src/tradecat_terminal/dataset_registry.json",
-    "dataset_consumption_contract": "scripts/project/src/tradecat_terminal/dataset_consumption_contract.json",
+    "project_readme": "project/README.md",
+    "project_agents": "project/AGENTS.md",
+    "formal_contract_schemas": "project/contracts",
+    "project_source": "project/src",
+    "project_tests": "project/tests",
+    "dataset_registry": "project/src/tradecat_terminal/dataset_registry.json",
+    "dataset_consumption_contract": "project/src/tradecat_terminal/dataset_consumption_contract.json",
     "dataset_consumption_contract_reference": "references/dataset-consumption-contract.md",
     "analysis_contract_reference": "references/analysis-contract.md",
     "feature_contract_reference": "references/feature-contract.md",
     "test_strategy_reference": "references/test-strategy.md",
-    "zero_install_request": "scripts/project/scripts/request.py",
+    "zero_install_request": "project/scripts/request.py",
     "agent_smoke": "scripts/agent-smoke.sh",
-    "project_source_terminal": "scripts/project/src/tradecat_terminal",
-    "automation_source": "scripts/project/src/tradecat_auto",
-    "automation_service_script": "scripts/project/scripts/start-auto-paper.sh",
-    "automation_runtime": "scripts/project/.runtime/auto-paper",
-    "agent_market_context_resources": "scripts/project/resources/agent_market_context/binance",
-    "agent_market_context_provenance": "scripts/project/resources/agent_market_context/binance/provenance.manifest.json",
-    "agent_market_context_sources_schema": "scripts/project/contracts/tradecat-agent-market-context-sources.schema.json",
-    "agent_market_context_input_schema": "scripts/project/contracts/tradecat-auto-agent-market-context.schema.json",
-    "agent_market_context_audit_schema": "scripts/project/contracts/tradecat-auto-agent-market-context-audit.schema.json",
-    "paper_backtest_report_schema": "scripts/project/contracts/tradecat-auto-paper-backtest-report.schema.json",
-    "replay_report_schema": "scripts/project/contracts/tradecat-auto-replay-report.schema.json",
+    "project_source_terminal": "project/src/tradecat_terminal",
+    "automation_source": "project/src/tradecat_auto",
+    "automation_service_script": "project/scripts/start-auto-paper.sh",
+    "automation_runtime": "project/.runtime/auto-paper",
+    "agent_market_context_resources": "project/resources/agent_market_context/binance",
+    "agent_market_context_provenance": "project/resources/agent_market_context/binance/provenance.manifest.json",
+    "agent_market_context_sources_schema": "project/contracts/tradecat-agent-market-context-sources.schema.json",
+    "agent_market_context_input_schema": "project/contracts/tradecat-auto-agent-market-context.schema.json",
+    "agent_market_context_audit_schema": "project/contracts/tradecat-auto-agent-market-context-audit.schema.json",
+    "paper_backtest_report_schema": "project/contracts/tradecat-auto-paper-backtest-report.schema.json",
+    "replay_report_schema": "project/contracts/tradecat-auto-replay-report.schema.json",
     "agent_soft_layer_reference": "references/agent-soft-decision-layer.md",
-    "agent_soft_layer_resources": "scripts/project/resources/agent_soft_layer",
-    "agent_soft_layer_trader_profile": "scripts/project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
-    "agent_soft_layer_schema": "scripts/project/contracts/tradecat-auto-agent-soft-layer.schema.json",
-    "agent_trade_thesis_schema": "scripts/project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
-    "paper_account_state_schema": "scripts/project/contracts/tradecat-auto-paper-account-state.schema.json",
-    "automation_state_path": "scripts/project/.runtime/auto-paper/service_state.json",
-    "automation_paper_ledger": "scripts/project/.runtime/auto-paper/paper_ledger.json",
-    "automation_cycle_archive": "scripts/project/.runtime/auto-paper/cycles.jsonl",
-    "automation_audit_journal": "scripts/project/.runtime/auto-paper/paper_audit.sqlite3",
-    "automation_run_loop_log": "scripts/project/.runtime/auto-paper/paper-run-loop.log"
+    "agent_soft_layer_resources": "project/resources/agent_soft_layer",
+    "agent_soft_layer_trader_profile": "project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
+    "agent_soft_layer_schema": "project/contracts/tradecat-auto-agent-soft-layer.schema.json",
+    "agent_trade_thesis_schema": "project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
+    "paper_account_state_schema": "project/contracts/tradecat-auto-paper-account-state.schema.json",
+    "automation_state_path": "project/.runtime/auto-paper/service_state.json",
+    "automation_paper_ledger": "project/.runtime/auto-paper/paper_ledger.json",
+    "automation_cycle_archive": "project/.runtime/auto-paper/cycles.jsonl",
+    "automation_audit_journal": "project/.runtime/auto-paper/paper_audit.sqlite3",
+    "automation_run_loop_log": "project/.runtime/auto-paper/paper-run-loop.log"
   },
   "references": [
     "references/skill-package-governance.md",
@@ -537,7 +537,7 @@
       "kind": "runtime",
       "meaning": "The watcher lifecycle status command could not find a running watcher process.",
       "retryable": false,
-      "repair": "Run bash scripts/project/scripts/start.sh start --json, then verify remote data health with probe --json --no-write."
+      "repair": "Run bash project/scripts/start.sh start --json, then verify remote data health with probe --json --no-write."
     },
     {
       "code": "invalid_runtime_configuration",
@@ -558,7 +558,7 @@
       "kind": "runtime",
       "meaning": "The autonomous paper run-loop service PID is missing or not alive.",
       "retryable": false,
-      "repair": "Run bash scripts/project/scripts/start-auto-paper.sh start --json and then inspect paper-report/log paths."
+      "repair": "Run bash project/scripts/start-auto-paper.sh start --json and then inspect paper-report/log paths."
     },
     {
       "code": "stale_event",
@@ -624,12 +624,12 @@
     "run bash scripts/run-tradecat.sh auto audit-journal --json to inspect local paper/watch audit-chain state",
     "run bash scripts/run-tradecat.sh analyze --json when local cache is already populated",
     "run bash scripts/run-tradecat.sh features --json when per-symbol fact bundles are needed",
-    "if only inspecting public data, prefer python3 scripts/project/scripts/request.py event_stream --format json --limit 5",
+    "if only inspecting public data, prefer python3 project/scripts/request.py event_stream --format json --limit 5",
     "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
-    "for autonomous paper testing, run bash scripts/project/scripts/start-auto-paper.sh status --json before starting a new service",
+    "for autonomous paper testing, run bash project/scripts/start-auto-paper.sh status --json before starting a new service",
     "run bash scripts/run-tradecat.sh auto paper-report --json to inspect paper ledger state",
     "run bash scripts/run-tradecat.sh auto run-loop --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --once --json for one verified paper/watch cycle; missing Agent sizing should reject/watch, and TradeCat has no default sizing cap unless --paper-margin-budget-usdt is explicitly supplied",
-    "start continuous paper testing only with bash scripts/project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
+    "start continuous paper testing only with bash project/scripts/start-auto-paper.sh start --json; stop it with the matching stop command",
     "for Agent-supplied context, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json before run-context",
     "before delivery run bash scripts/agent-smoke.sh and the validation_commands that match the change scope"
   ],
@@ -680,7 +680,7 @@
       "purpose": "Run one safe service cycle with event freshness/dedupe, paper ledger update, and optional JSONL archive.",
       "writes": true,
       "write_paths": [
-        "scripts/project/.runtime/**",
+        "project/.runtime/**",
         ".runtime/** when invoked from repository root"
       ],
       "real_orders": false,
@@ -694,7 +694,7 @@
       "purpose": "Report, start, or stop the local autonomous paper run-loop process managed by start-auto-paper.sh.",
       "writes": true,
       "write_paths": [
-        "scripts/project/.runtime/auto-paper/**"
+        "project/.runtime/auto-paper/**"
       ],
       "real_orders": false,
       "signed_requests": false,
@@ -777,7 +777,7 @@
       "purpose": "Record one service cycle, config snapshot, risk decision, paper orders, and paper fills into the local SQLite audit journal.",
       "writes": true,
       "write_paths": [
-        "scripts/project/.runtime/auto-paper/paper_audit.sqlite3",
+        "project/.runtime/auto-paper/paper_audit.sqlite3",
         ".runtime/** when explicitly overridden"
       ],
       "real_orders": false,
@@ -891,7 +891,7 @@
       "schema": "tradecat_auto.service_cycle.v1",
       "writes": true,
       "write_paths": [
-        "scripts/project/.runtime/**",
+        "project/.runtime/**",
         ".runtime/** when invoked from repository root"
       ],
       "real_orders": false,
@@ -904,7 +904,7 @@
       "safety_boundary": "Writes only local paper runtime state/ledger/archive; execution remains paper/watch and order-free."
     },
     {
-      "command": "bash scripts/project/scripts/start-auto-paper.sh status --json",
+      "command": "bash project/scripts/start-auto-paper.sh status --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.paper_service_status.v1",
       "writes": false,
@@ -918,12 +918,12 @@
       "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
     },
     {
-      "command": "bash scripts/project/scripts/start-auto-paper.sh start --json",
+      "command": "bash project/scripts/start-auto-paper.sh start --json",
       "risk_class": "background_long_running",
       "schema": "tradecat_auto.paper_service_status.v1",
       "writes": true,
       "write_paths": [
-        "scripts/project/.runtime/auto-paper/**"
+        "project/.runtime/auto-paper/**"
       ],
       "real_orders": false,
       "exit_codes": {
@@ -934,12 +934,12 @@
       "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
     },
     {
-      "command": "bash scripts/project/scripts/start-auto-paper.sh stop --json",
+      "command": "bash project/scripts/start-auto-paper.sh stop --json",
       "risk_class": "background_long_running",
       "schema": "tradecat_auto.paper_service_status.v1",
       "writes": true,
       "write_paths": [
-        "scripts/project/.runtime/auto-paper/paper-run-loop.pid"
+        "project/.runtime/auto-paper/paper-run-loop.pid"
       ],
       "real_orders": false,
       "exit_codes": {
@@ -1051,8 +1051,8 @@
     {
       "schema": "tradecat.agent_market_context_sources.v1",
       "schema_version": "1.0.0",
-      "path": "scripts/project/resources/agent_market_context/binance/provenance.manifest.json",
-      "contract_schema": "scripts/project/contracts/tradecat-agent-market-context-sources.schema.json",
+      "path": "project/resources/agent_market_context/binance/provenance.manifest.json",
+      "contract_schema": "project/contracts/tradecat-agent-market-context-sources.schema.json",
       "purpose": "Local self-contained Binance skill/API reference snapshot for Agent/Hermes-supplied market context provenance and endpoint classification.",
       "runtime_dependency": false,
       "writes": false,
@@ -1064,8 +1064,8 @@
     {
       "schema": "tradecat_auto.agent_soft_endpoint_policy.v1",
       "schema_version": "1.0.0",
-      "path": "scripts/project/resources/agent_soft_layer/endpoint_policy.json",
-      "contract_schema": "scripts/project/contracts/tradecat-auto-agent-soft-layer.schema.json",
+      "path": "project/resources/agent_soft_layer/endpoint_policy.json",
+      "contract_schema": "project/contracts/tradecat-auto-agent-soft-layer.schema.json",
       "purpose": "Self-contained soft endpoint policy for Agent market-context prompts; hard safety gates remain in code.",
       "runtime_dependency": true,
       "writes": false,
@@ -1079,7 +1079,7 @@
     {
       "schema": "tradecat_auto.agent_market_context.v1",
       "schema_version": "1.0.0",
-      "contract_schema": "scripts/project/contracts/tradecat-auto-agent-market-context.schema.json",
+      "contract_schema": "project/contracts/tradecat-auto-agent-market-context.schema.json",
       "purpose": "Explicit file/stdin-style contract for Agent/Hermes-supplied public/read-only Binance market context.",
       "allowed_modes": [
         "public_readonly",
@@ -1094,7 +1094,7 @@
     {
       "schema": "tradecat_auto.agent_trade_thesis.v1",
       "schema_version": "1.0.0",
-      "contract_schema": "scripts/project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
+      "contract_schema": "project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
       "purpose": "Optional Agent/Hermes soft research thesis for paper/watch review; not a real order instruction.",
       "allowed_modes": [
         "paper_research"

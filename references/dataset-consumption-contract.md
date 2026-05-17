@@ -18,19 +18,19 @@ still belong to separate future contracts.
 Canonical file:
 
 ```text
-scripts/project/src/tradecat_terminal/dataset_consumption_contract.json
+project/src/tradecat_terminal/dataset_consumption_contract.json
 ```
 
 Formal schema:
 
 ```text
-scripts/project/contracts/tradecat-dataset-consumption-contract.schema.json
+project/contracts/tradecat-dataset-consumption-contract.schema.json
 ```
 
 Validation:
 
 ```bash
-cd scripts/project
+cd project
 PYTHONPATH=src python3 scripts/validate_dataset_consumption_contract.py
 ```
 

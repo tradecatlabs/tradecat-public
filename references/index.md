@@ -25,7 +25,7 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 
 ## Reference Map
 
-- `skill-package-governance.md`: Hermes Skill 包形态、根目录职责、`scripts/project/` 内部项目边界、Agent/交易员 role profile 和运行态隔离规则。
+- `skill-package-governance.md`: Hermes Skill 包形态、根目录职责、`project/` 内部项目边界、Agent/交易员 role profile 和运行态隔离规则。
 - `architecture.md`: Skill root scope, forbidden paths, source boundaries, merged `tradecat_auto` lifecycle layer, documentation map, and linear data flow.
 - `cache-contract.md`: snapshot cache, stream merge, structured latest files, export behavior, and manifest rules.
 - `tui-contract.md`: TUI startup, background probe, rendering, language, terminal fallback, and link behavior.
@@ -53,4 +53,4 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 
 ## Source Rule
 
-The bundled project lives in `scripts/project/`. Load project source files only when the task requires code-level changes.
+The bundled project lives in `project/`. Load project source files only when the task requires code-level changes.

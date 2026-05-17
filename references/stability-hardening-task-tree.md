@@ -20,17 +20,17 @@ default `assets/tasks/` container.
 
 ## Completion Evidence
 
-- Runtime hardening landed in `scripts/project/src/tradecat_terminal/`:
+- Runtime hardening landed in `project/src/tradecat_terminal/`:
   `sheets.py`, `state.py`, `cache.py`, `settings.py`, `migrations.py`,
   `diagnostics.py`, `lifecycle.py`, `cli.py`, `structured_cache.py`, and `tui.py`.
-- Dependency and installer hardening landed in `scripts/project/constraints.txt`,
-  `scripts/project/install.sh`, `scripts/project/install.ps1`, and
+- Dependency and installer hardening landed in `project/constraints.txt`,
+  `project/install.sh`, `project/install.ps1`, and
   `scripts/bootstrap-dev.sh`.
 - CI/canary hardening landed in `.github/workflows/ci.yml`.
 - Governance and public docs were updated in `AGENTS.md`, `lessons.md`,
-  `scripts/project/AGENTS.md`, `scripts/project/DEBUG.md`, project README, and
+  `project/AGENTS.md`, `project/DEBUG.md`, project README, and
   the relevant `references/` contracts.
-- Local verification passed: `bash scripts/project/scripts/verify.sh`.
+- Local verification passed: `bash project/scripts/verify.sh`.
 - Deferred from this code-landing pass: commit/tag/GitHub Actions observation and
   release publication, because this turn was scoped to code implementation.
 
@@ -38,15 +38,15 @@ default `assets/tasks/` container.
 
 | Priority | Gap | Evidence | Mature Target |
 | --- | --- | --- | --- |
-| P1 | Remote fetch has no retry, jitter, or error classification. | `scripts/project/src/tradecat_terminal/sheets.py:9` | HTTP transport with bounded retry/backoff/jitter and typed errors. |
-| P1 | Local cache/settings writes lack process-level locking. | `scripts/project/src/tradecat_terminal/cache.py:176` | Cross-platform file locks and transactional local state updates. |
-| P1 | Settings writes are not atomic and corrupt JSON is silently ignored. | `scripts/project/src/tradecat_terminal/settings.py:32`, `settings.py:43` | Atomic write, `.bak`, corrupt-file diagnostics, and repair path. |
-| P2 | Dependencies are range-based, not locked. | `scripts/project/pyproject.toml:16` | `uv.lock` or constraints with drift checks and release evidence. |
-| P2 | Installer can bootstrap uv from a remote script. | `scripts/project/install.sh:52` | Fixed version/checksum or explicit opt-in. |
+| P1 | Remote fetch has no retry, jitter, or error classification. | `project/src/tradecat_terminal/sheets.py:9` | HTTP transport with bounded retry/backoff/jitter and typed errors. |
+| P1 | Local cache/settings writes lack process-level locking. | `project/src/tradecat_terminal/cache.py:176` | Cross-platform file locks and transactional local state updates. |
+| P1 | Settings writes are not atomic and corrupt JSON is silently ignored. | `project/src/tradecat_terminal/settings.py:32`, `settings.py:43` | Atomic write, `.bak`, corrupt-file diagnostics, and repair path. |
+| P2 | Dependencies are range-based, not locked. | `project/pyproject.toml:16` | `uv.lock` or constraints with drift checks and release evidence. |
+| P2 | Installer can bootstrap uv from a remote script. | `project/install.sh:52` | Fixed version/checksum or explicit opt-in. |
 | P2 | Public smoke depends on real Google Sheets/network. | `.github/workflows/ci.yml:160` | Keep real smoke, add retry/artifacts and scheduled canary. |
-| P2 | Doctor lacks a support bundle. | `scripts/project/src/tradecat_terminal/lifecycle.py:15` | `doctor --verbose --bundle --repair` with safe diagnostics. |
-| P2 | Cache schema has versions but no migration framework. | `scripts/project/src/tradecat_terminal/cache.py:128` | Explicit migrations, backup, rollback, fixtures. |
-| P3 | Permanent snapshots lack disk-waterline warnings. | `scripts/project/src/tradecat_terminal/cache.py:224` | Doctor cache-size warnings and prune guidance. |
+| P2 | Doctor lacks a support bundle. | `project/src/tradecat_terminal/lifecycle.py:15` | `doctor --verbose --bundle --repair` with safe diagnostics. |
+| P2 | Cache schema has versions but no migration framework. | `project/src/tradecat_terminal/cache.py:128` | Explicit migrations, backup, rollback, fixtures. |
+| P3 | Permanent snapshots lack disk-waterline warnings. | `project/src/tradecat_terminal/cache.py:224` | Doctor cache-size warnings and prune guidance. |
 | P3 | CI only fixes Python at 3.12. | `.github/workflows/ci.yml:16` | Python 3.12/3.13 and broader shell/terminal smoke. |
 
 ## Scope
@@ -235,7 +235,7 @@ bash scripts/validate-skill.sh --strict
 bash scripts/verify.sh
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
-PYTHONPATH=scripts/project/src scripts/project/.venv/bin/python scripts/project/scripts/validate_data_contract.py --remote --timeout 10
+PYTHONPATH=project/src project/.venv/bin/python project/scripts/validate_data_contract.py --remote --timeout 10
 git diff --check
 git status --short --branch --ignored
 ```
@@ -243,7 +243,7 @@ git status --short --branch --ignored
 Release/canary validation:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/<next-tag>/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/<next-tag>/project/install.sh | sh
 tradecat doctor --json
 tradecat doctor --verbose
 tradecat doctor --bundle
@@ -255,6 +255,6 @@ tradecat tui event_stream --plain --limit 3
 
 - Execute Wave 1 first; do not start `TP-07`.
 - Keep each leaf commit scoped to its package unless the change is inherently cross-cutting.
-- For `TP-01` and `TP-02`, maintain `scripts/project/DEBUG.md` while debugging failures.
+- For `TP-01` and `TP-02`, maintain `project/DEBUG.md` while debugging failures.
 - After each wave, run the minimum relevant tests plus `bash scripts/verify.sh`.
 - Before release, run the full validation plan and observe develop/tag CI.

@@ -120,7 +120,7 @@ Acceptance:
 
 - Live CLI payloads for manifest-advertised JSON surfaces validate against
   their formal schema files.
-- `scripts/project/scripts/request.py` success payloads validate without
+- `project/scripts/request.py` success payloads validate without
   network by using a local fake registry/fetch path.
 - `analyze --json` success and empty-cache payloads validate against
   `tradecat-analysis-report.schema.json`.
@@ -138,7 +138,7 @@ Owner: contract governance.
 Acceptance:
 
 - Golden samples live under
-  `scripts/project/tests/fixtures/json_contract/`.
+  `project/tests/fixtures/json_contract/`.
 - Fixtures cover status success, request dataset list success, support bundle
   success, analysis report success, feature bundle success, empty analysis
   cache, empty feature cache, invalid dataset, invalid runtime configuration,

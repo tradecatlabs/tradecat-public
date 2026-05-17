@@ -15,7 +15,7 @@ default `assets/tasks/` container.
 - Status: `Implemented locally`.
 - Source plan: `.hermes/plans/2026-05-08_173607-agent-readiness-remediation-plan.md`.
 - Current baseline: root is a Skill wrapper; Python project lives under
-  `scripts/project/`.
+  `project/`.
 - Core finding: the repository has structure, but not yet strict enough
   machine contracts for autonomous Agent use.
 - Implementation closeout: exit-code propagation, canonical manifest,
@@ -148,7 +148,7 @@ work is release/commit/push/CI observation, controlled by `TP-08`.
 - `scripts/agent-smoke.sh` validates manifest, schemas, readonly fast path, and
   a deliberate non-zero failure.
 - `.github/workflows/ci.yml` has an independent `agent-readiness` job.
-- Formal schema drafts live under `scripts/project/contracts/`.
+- Formal schema drafts live under `project/contracts/`.
 
 Validated locally:
 
@@ -260,7 +260,7 @@ git diff --check
 Targeted project checks:
 
 ```bash
-cd scripts/project
+cd project
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_exit_codes.py
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_json_contract.py
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_agent_contract.py
@@ -273,6 +273,6 @@ PYTHONPATH=src python3 scripts/validate_data_contract.py --remote --timeout 10
 - Execute Wave 1 first.
 - Do not start `TP-08` until all P0/P1 implementation gates are done.
 - Keep P2 maturity upgrades optional unless they remove real maintenance cost.
-- Maintain `scripts/project/DEBUG.md` while debugging `TP-01` and `TP-04`.
+- Maintain `project/DEBUG.md` while debugging `TP-01` and `TP-04`.
 - After each wave, run the smallest relevant targeted tests plus root verify.
 - Before release, run the full validation plan and observe GitHub Actions.

@@ -26,7 +26,7 @@ bash scripts/run-tradecat.sh features --json
 Formal schema:
 
 ```text
-scripts/project/contracts/tradecat-feature-bundle.schema.json
+project/contracts/tradecat-feature-bundle.schema.json
 ```
 
 Payload schema:
@@ -118,7 +118,7 @@ Changing feature output requires updating, in the same change:
 - `references/linear-flows.md`
 - root/project `AGENTS.md`
 - this document
-- `scripts/project/contracts/tradecat-feature-bundle.schema.json`
-- `scripts/project/tests/test_feature_bundle.py`
-- `scripts/project/tests/test_payload_schema_validation.py`
-- `scripts/project/tests/test_agent_contract.py`
+- `project/contracts/tradecat-feature-bundle.schema.json`
+- `project/tests/test_feature_bundle.py`
+- `project/tests/test_payload_schema_validation.py`
+- `project/tests/test_agent_contract.py`

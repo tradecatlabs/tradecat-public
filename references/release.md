@@ -16,13 +16,13 @@ CI evidence:
 Install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/project/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/project/install.ps1 | iex
 ```
 
 Highlights:
@@ -32,7 +32,7 @@ Highlights:
   manifest/schema 1:1 coverage, real payload schema validation, golden JSON
   fixtures, and expanded `agent-smoke`.
 - Adds the formal `tradecat.watch_status.v1` watcher lifecycle contract for
-  `scripts/project/scripts/start.sh --json` status/start/stop output.
+  `project/scripts/start.sh --json` status/start/stop output.
 - Keeps `tradecat.watch_cycle.v1` internal until the long-running watch stream
   is intentionally promoted.
 - Updates GitHub artifact upload actions to the Node 24-compatible major.
@@ -49,7 +49,7 @@ Rollback:
 
 ```bash
 tradecat-uninstall
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.2 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/project/install.sh | TRADECAT_INSTALL_REF=v0.1.2 sh
 ```
 
 ## v0.1.2
@@ -74,13 +74,13 @@ Release evidence rule:
 Install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/project/install.sh | sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/scripts/project/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.2/project/install.ps1 | iex
 ```
 
 Highlights:
@@ -102,7 +102,7 @@ Rollback:
 
 ```bash
 tradecat-uninstall
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
 ```
 
 ## Next Long-Running Contract Work
@@ -144,13 +144,13 @@ CI evidence:
 Install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/project/install.sh | TRADECAT_INSTALL_REF=v0.1.1 sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:TRADECAT_INSTALL_REF = "v0.1.1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/scripts/project/install.ps1 | iex
+$env:TRADECAT_INSTALL_REF = "v0.1.1"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.1/project/install.ps1 | iex
 ```
 
 Highlights:
@@ -169,7 +169,7 @@ Rollback:
 
 ```bash
 tradecat-uninstall
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
 ```
 
 ## v0.1.0
@@ -188,18 +188,18 @@ CI evidence:
 Install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-$env:TRADECAT_INSTALL_REF = "v0.1.0"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.ps1 | iex
+$env:TRADECAT_INSTALL_REF = "v0.1.0"; irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/project/install.ps1 | iex
 ```
 
 Highlights:
 
-- Standard Skill wrapper with all project source under `scripts/project/`.
+- Standard Skill wrapper with all project source under `project/`.
 - Cache-first CLI/TUI backed by local JSON snapshot cache files.
 - POSIX and PowerShell installers with pinned ref install support.
 - Skill strict validation, root boundary guard, secret scan, tests, wheel data
@@ -216,7 +216,7 @@ Rollback:
 
 ```bash
 tradecat-uninstall
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/scripts/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.0/project/install.sh | TRADECAT_INSTALL_REF=v0.1.0 sh
 ```
 
 For Windows, rerun the fixed-ref PowerShell installer above after

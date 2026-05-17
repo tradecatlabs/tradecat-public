@@ -1,0 +1,26 @@
+{
+  "schema": "tradecat.watch_status.v1",
+  "schema_version": "1.0.0",
+  "ok": false,
+  "command": "watch-status",
+  "action": "status",
+  "state": "not_running",
+  "event": "not_running",
+  "running": false,
+  "pid": null,
+  "runtime_dir": "/tmp/tradecat-run",
+  "cache_dir": "/tmp/tradecat-cache",
+  "log_file": "/tmp/tradecat-run/watch.log",
+  "dataset": null,
+  "interval_seconds": 60.0,
+  "write": true,
+  "python": "python3",
+  "health": "not_running",
+  "error": {
+    "code": "watch_not_running",
+    "kind": "runtime",
+    "message": "watch process is not running",
+    "hint": "Run project/scripts/start.sh start --json, then verify remote data with tradecat probe --json --no-write.",
+    "retryable": false
+  }
+}

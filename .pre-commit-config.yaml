@@ -8,12 +8,12 @@ repos:
         pass_filenames: false
       - id: tradecat-root-boundary
         name: TradeCat root boundary guard
-        entry: bash scripts/project/scripts/guard_public_local_files.sh
+        entry: bash project/scripts/guard_public_local_files.sh
         language: system
         pass_filenames: false
       - id: tradecat-shell-syntax
         name: TradeCat shell syntax
-        entry: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/agent-smoke.sh scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh scripts/clean-local-runtime.sh scripts/project/install.sh scripts/project/uninstall.sh scripts/project/scripts/start.sh scripts/project/scripts/watchdog.sh scripts/project/scripts/verify.sh scripts/project/scripts/guard_public_local_files.sh
+        entry: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/agent-smoke.sh scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh scripts/clean-local-runtime.sh project/install.sh project/uninstall.sh project/scripts/start.sh project/scripts/watchdog.sh project/scripts/verify.sh project/scripts/guard_public_local_files.sh
         language: system
         pass_filenames: false
       - id: tradecat-agent-smoke
@@ -23,6 +23,6 @@ repos:
         pass_filenames: false
       - id: tradecat-data-contract
         name: TradeCat registry contract
-        entry: bash -c 'cd scripts/project && PYTHONPATH=src python scripts/validate_data_contract.py'
+        entry: bash -c 'cd project && PYTHONPATH=src python scripts/validate_data_contract.py'
         language: system
         pass_filenames: false

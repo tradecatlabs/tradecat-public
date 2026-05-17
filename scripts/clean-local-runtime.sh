@@ -37,8 +37,8 @@ paths=(
   ".tradecat"
   ".venv"
   ".tools"
-  "scripts/project/.tradecat"
-  "scripts/project/.venv"
+  "project/.tradecat"
+  "project/.venv"
 )
 
 generated_names=(

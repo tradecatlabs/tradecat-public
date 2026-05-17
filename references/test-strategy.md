@@ -8,7 +8,7 @@ local command, a CI job, or a concrete manual check.
 ## Product Understanding
 
 TradeCat public is a Skill-wrapped Python CLI/TUI project. The root repository
-is the Agent/Skill shell; the runnable user project is `scripts/project/`.
+is the Agent/Skill shell; the runnable user project is `project/`.
 
 Core users:
 
@@ -63,10 +63,10 @@ shape drift.
 
 | Type | Scope | Command |
 |---|---|---|
-| Unit | Pure helpers, parsers, state, schema utilities | `cd scripts/project && PYTHONPATH=src pytest -q tests/test_transport.py tests/test_state_migrations.py` |
-| Contract | Manifest/schema/payload compatibility | `cd scripts/project && PYTHONPATH=src pytest -q tests/test_agent_contract.py tests/test_payload_schema_validation.py` |
-| CLI | Exit codes, invalid input, JSON errors | `cd scripts/project && PYTHONPATH=src pytest -q tests/test_exit_codes.py tests/test_cli_boundaries.py` |
-| Integration | Cache writes, TUI fallback, watcher scripts | `cd scripts/project && PYTHONPATH=src pytest -q tests/test_cache_tui.py` |
+| Unit | Pure helpers, parsers, state, schema utilities | `cd project && PYTHONPATH=src pytest -q tests/test_transport.py tests/test_state_migrations.py` |
+| Contract | Manifest/schema/payload compatibility | `cd project && PYTHONPATH=src pytest -q tests/test_agent_contract.py tests/test_payload_schema_validation.py` |
+| CLI | Exit codes, invalid input, JSON errors | `cd project && PYTHONPATH=src pytest -q tests/test_exit_codes.py tests/test_cli_boundaries.py` |
+| Integration | Cache writes, TUI fallback, watcher scripts | `cd project && PYTHONPATH=src pytest -q tests/test_cache_tui.py` |
 | Agent smoke | Minimal Agent fast path and failure semantics | `bash scripts/agent-smoke.sh` |
 | Full local gate | Lint, tests, contracts, cleanup | `bash scripts/verify.sh` |
 | Security | Secret scan and dependency audit | `bash scripts/security-scan.sh && bash scripts/supply-chain-audit.sh` |

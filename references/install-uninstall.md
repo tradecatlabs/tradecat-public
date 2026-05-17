@@ -1,6 +1,6 @@
 # Install And Uninstall
 
-The bundled project keeps installer logic in `scripts/project/install.sh` and `scripts/project/install.ps1`.
+The bundled project keeps installer logic in `project/install.sh` and `project/install.ps1`.
 
 ## Install
 
@@ -8,12 +8,12 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
   `v0.1.3`.
 - Clone or update a configured branch only when `TRADECAT_INSTALL_BRANCH` is
   explicitly set, or checkout a fixed `TRADECAT_INSTALL_REF` tag/ref.
-- Locate the project inside the repository by `TRADECAT_PROJECT_SUBDIR`, defaulting to `scripts/project`.
+- Locate the project inside the repository by `TRADECAT_PROJECT_SUBDIR`, defaulting to `project`.
 - Use Python 3.12 when available.
 - Fall back to an existing `uv` for Python 3.12 environment creation when needed.
 - If neither Python 3.12+ nor `uv` exists, fail with a clear supply-chain
   message unless the user explicitly sets `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1`.
-- Install the bundled project from `scripts/project`; when `constraints.txt`
+- Install the bundled project from `project`; when `constraints.txt`
   exists, POSIX and PowerShell installers must pass that constraints file to
   `pip` / `uv pip`.
 - Write `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` launchers.
@@ -47,4 +47,4 @@ The bundled project keeps installer logic in `scripts/project/install.sh` and `s
 
 - Remove TradeCat install directory, launcher files, and local watch runtime.
 - Do not remove system Python, Git, uv, or user PATH.
-- `TRADECAT_KEEP_CACHE=1` preserves `scripts/project/.tradecat/cache` before deleting the install directory, with legacy root cache as a fallback.
+- `TRADECAT_KEEP_CACHE=1` preserves `project/.tradecat/cache` before deleting the install directory, with legacy root cache as a fallback.

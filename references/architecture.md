@@ -1,6 +1,6 @@
 # Architecture
 
-`tradecat-public` is a multi-Agent skill wrapper around a bundled user-side TradeCat project and the merged TradeCat automation lifecycle layer. `tradecat-auto` has been merged into `scripts/project/src/tradecat_auto/`; new implementation work must happen here.
+`tradecat-public` is a multi-Agent skill wrapper around a bundled user-side TradeCat project and the merged TradeCat automation lifecycle layer. `tradecat-auto` has been merged into `project/src/tradecat_auto/`; new implementation work must happen here.
 
 The Skill root is not the Python project root. It exists to hold Skill metadata,
 Git metadata, references, and thin entry scripts.
@@ -52,10 +52,10 @@ tradecat-public/
     `-- project/
 ```
 
-The project itself lives in `scripts/project/` and keeps its original Python package shape:
+The project itself lives in `project/` and keeps its original Python package shape:
 
 ```text
-scripts/project/
+project/
 |-- AGENTS.md
 |-- DEBUG.md
 |-- DEBUG.archive.md
@@ -85,7 +85,7 @@ TradeCat public reads public Google Sheets CSV endpoints, writes local JSON snap
 ## Movement Rules
 
 - Keep `.git/`, `.github/`, `.gitignore`, `SKILL.md`, `agents/`, `references/`, and root thin validation/helper scripts in the Skill root.
-- Keep Python project files, installers, project README, project scripts, `src/`, and `tests/` in `scripts/project/`.
+- Keep Python project files, installers, project README, project scripts, `src/`, and `tests/` in `project/`.
 - Keep root/project `AGENTS.md` and project `DEBUG*.md` tracked as public governance and debugging memory.
 - Never put credentials, generated cache data, private `.env` values, or machine-local runtime state into tracked governance/debug files.
 - When the layout changes, update `README.md`, `SKILL.md`, `references/index.md`, this file, `references/linear-flows.md` when flow behavior changes, and the tracked `AGENTS.md` copies.
@@ -145,9 +145,9 @@ tradecat-public request.py event_stream/anomaly_panel
 - `structured_cache.py`: structured latest projections.
 - `view_model.py`: display/raw/physical column model.
 - `tui.py`: cache-first terminal browser and background probes.
-- `scripts/project/scripts/request.py`: zero-install standard-library public request entry.
+- `project/scripts/request.py`: zero-install standard-library public request entry.
 - `contracts.py`: CLI JSON schema/version and stable error object helpers.
-- `scripts/bootstrap-dev.sh`: root developer bootstrap wrapper for `scripts/project/.venv`.
+- `scripts/bootstrap-dev.sh`: root developer bootstrap wrapper for `project/.venv`.
 - `scripts/agent-smoke.sh`: root Agent readiness smoke gate for manifest, JSON schema, and exit code contracts.
 - `scripts/security-scan.sh`: root secret-scan wrapper; scans tracked files by default and commit ranges in CI.
 - `scripts/supply-chain-audit.sh`: root pip-audit wrapper for Python dependency vulnerability checks.
@@ -178,9 +178,9 @@ tradecat-public request.py event_stream/anomaly_panel
 - `references/stability-hardening-task-tree.json`: machine-readable TP-XX hardening task tree spec.
 - `references/agent-readiness-remediation-task-tree.md`: Agent/Hermes readiness remediation backlog, execution waves, and validation gates.
 - `references/agent-readiness-remediation-task-tree.json`: machine-readable Agent readiness task tree spec.
-- `scripts/project/README.md`: user-facing install, run, request, config, and development instructions.
-- `scripts/project/AGENTS.md`: tracked project engineering contract and linear flows.
-- `scripts/project/DEBUG.md`: tracked current truth and recent debugging notes.
-- `scripts/project/DEBUG.archive.md`: tracked historical accident record.
+- `project/README.md`: user-facing install, run, request, config, and development instructions.
+- `project/AGENTS.md`: tracked project engineering contract and linear flows.
+- `project/DEBUG.md`: tracked current truth and recent debugging notes.
+- `project/DEBUG.archive.md`: tracked historical accident record.
 
 Root/project `AGENTS.md` and project `DEBUG*.md` are intentionally tracked. Keep them concise, public-safe, and aligned with `README.md`, `SKILL.md`, and `references/`.

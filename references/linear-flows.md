@@ -44,10 +44,10 @@ Input: TUI request, cache_dir, dataset registry, language option or `TRADECAT_LA
 ## Flow 3: Zero-install One-shot Request
 
 ```text
-Input: `python3 <(curl .../scripts/project/scripts/request.py) <dataset_key>`, public registry JSON, public Google Sheets CSV
--> Node 1: `scripts/project/scripts/request.py` reads registry URL and parses format, limit, meta, and headers arguments
--> Node 2: `scripts/project/scripts/request.py` builds a Google Sheets CSV export URL from the shared registry
--> Node 3: `scripts/project/scripts/request.py` fetches CSV, parses top information rows, headers, and business rows without third-party packages
+Input: `python3 <(curl .../project/scripts/request.py) <dataset_key>`, public registry JSON, public Google Sheets CSV
+-> Node 1: `project/scripts/request.py` reads registry URL and parses format, limit, meta, and headers arguments
+-> Node 2: `project/scripts/request.py` builds a Google Sheets CSV export URL from the shared registry
+-> Node 3: `project/scripts/request.py` fetches CSV, parses top information rows, headers, and business rows without third-party packages
 -> Node 4: JSON mode wraps success or failure in `tradecat.request_result.v1` with `schema_version` and stable `error`
 -> Output: table, json, jsonl, csv, raw, or metadata output on stdout with no local writes
 ```
@@ -55,11 +55,11 @@ Input: `python3 <(curl .../scripts/project/scripts/request.py) <dataset_key>`, p
 ## Flow 4: User Install
 
 ```text
-Input: `curl .../scripts/project/install.sh | sh` or `irm .../scripts/project/install.ps1 | iex`
+Input: `curl .../project/install.sh | sh` or `irm .../project/install.ps1 | iex`
 -> Node 1: installer parses install dir, bin dir, repository, branch/ref, project subdir, and Python version environment variables
 -> Node 2: installer checks out the stable default ref, or clones/updates a configured branch only when `TRADECAT_INSTALL_BRANCH` is explicit
 -> Node 3: installer prefers local Python 3.12, then existing uv; remote uv bootstrap requires `TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP=1`
--> Node 4: installer locates `scripts/project/`, creates `.venv`, and performs editable install through `constraints.txt`
+-> Node 4: installer locates `project/`, creates `.venv`, and performs editable install through `constraints.txt`
 -> Node 5: installer writes `tradecat` and `tcat` launchers; stable/pinned installs skip auto-update, while explicit branch-channel installs use throttled background update and force-update support
 -> Node 6: installer writes `tradecat-uninstall` and `tcat-uninstall` launchers
 -> Node 7: installer runs `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`, best-effort `tradecat sync-all` unless skipped, and falls back to `tradecat sync event_stream` if the full sync fails
@@ -69,9 +69,9 @@ Input: `curl .../scripts/project/install.sh | sh` or `irm .../scripts/project/in
 ## Flow 5: User Uninstall
 
 ```text
-Input: `tradecat-uninstall`, `curl .../scripts/project/uninstall.sh | sh`, or `irm .../scripts/project/uninstall.ps1 | iex`
+Input: `tradecat-uninstall`, `curl .../project/uninstall.sh | sh`, or `irm .../project/uninstall.ps1 | iex`
 -> Node 1: uninstaller parses install dir, bin dir, runtime dir, project subdir, and `TRADECAT_KEEP_CACHE`
--> Node 2: if `TRADECAT_KEEP_CACHE=1`, uninstaller preserves `scripts/project/.tradecat/cache` with legacy root cache fallback
+-> Node 2: if `TRADECAT_KEEP_CACHE=1`, uninstaller preserves `project/.tradecat/cache` with legacy root cache fallback
 -> Node 3: uninstaller removes `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` command entries
 -> Node 4: uninstaller removes the TradeCat install directory and watch runtime directory
 -> Output: TradeCat is removed; system Python, Git, uv, and user PATH remain untouched
@@ -126,8 +126,8 @@ Input: `tradecat features --json`, local cache, `tradecat.analysis_report.v1` ca
 
 ```text
 Input: `tradecat auto run-once/run-loop`, public TradeCat sheet rows, Binance USDⓈ-M public REST, optional paper ledger path
--> Node 1: `tradecat_terminal.cli` routes `auto` subcommands to `tradecat_auto.cli` without leaving `scripts/project/`
--> Node 2: `tradecat_source.py` calls this repository's `scripts/project/scripts/request.py` for `event_stream` and `anomaly_panel`
+-> Node 1: `tradecat_terminal.cli` routes `auto` subcommands to `tradecat_auto.cli` without leaving `project/`
+-> Node 2: `tradecat_source.py` calls this repository's `project/scripts/request.py` for `event_stream` and `anomaly_panel`
 -> Node 3: `binance_market.py` fetches public `/fapi` and `/futures/data` market endpoints with request accounting, TTL cache, and transient retry/backoff
 -> Node 4: `market_enrichment.py` merges sheet anomaly rows and Binance market bundle into `tradecat_auto.market_enrichment.v1`
 -> Node 5: `signals.py` and `strategies.py` build deterministic `signal_score.v1` and `strategy_intent.v1`
@@ -148,7 +148,7 @@ Input: shell-capable Agent or Hermes session at repository root
 -> Node 5: Agent runs `bash scripts/run-tradecat.sh analyze --json` when local cache is already populated and an observation report is needed
 -> Node 6: Agent runs `bash scripts/run-tradecat.sh features --json` when per-symbol fact bundles are needed
 -> Node 7: Agent runs `bash scripts/run-tradecat.sh auto paper-report --json` for local paper ledger summary, or `bash scripts/run-tradecat.sh auto run-loop --mode paper --once --json` for one safe paper/watch cycle
--> Node 8: Agent uses `scripts/project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
+-> Node 8: Agent uses `project/scripts/request.py <dataset_key> --format json` for network-readonly public data, or explicit `sync` only when cache writes are required
 -> Node 9: Agent runs `bash scripts/agent-smoke.sh` before delivery to validate manifest, JSON schema, exit-code, dataset consumption, analysis, feature, and automation merge contracts
 -> Output: inspect -> validate -> consume -> diagnose flow with no guessing and no accidental install/uninstall side effects
 ```

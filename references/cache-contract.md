@@ -1,6 +1,6 @@
 # Cache Contract
 
-The runtime data source for CLI and TUI is the local JSON cache under `TRADECAT_CACHE_DIR`; when unset, the bundled project defaults to `scripts/project/.tradecat/cache`.
+The runtime data source for CLI and TUI is the local JSON cache under `TRADECAT_CACHE_DIR`; when unset, the bundled project defaults to `project/.tradecat/cache`.
 
 ## Required Files
 

@@ -3,8 +3,8 @@
   "overall_status": "Implemented Locally",
   "document_blocks": {
     "requirement_alignment": "Convert the Hermes planning document at .hermes/plans/2026-05-08_173607-agent-readiness-remediation-plan.md into a public, executable TP-XX task tree for making tradecat-public safe and low-ambiguity for Hermes and other shell-capable agents.",
-    "repo_evidence": "The repository root is a Skill wrapper, the Python project lives under scripts/project/, root assets/ is forbidden, agents/openai.yaml is currently thin, and existing machine-readable task trees are stored in references/ instead of assets/tasks/.",
-    "constraints_matrix": "Do not create root assets/. Keep source, tests, installers, and project scripts under scripts/project/. Keep machine and long-form agent contract material under agents/ and references/. Do not commit local .hermes runtime state, private .env values, cache payloads, or credentials.",
+    "repo_evidence": "The repository root is a Skill wrapper, the Python project lives under project/, root assets/ is forbidden, agents/openai.yaml is currently thin, and existing machine-readable task trees are stored in references/ instead of assets/tasks/.",
+    "constraints_matrix": "Do not create root assets/. Keep source, tests, installers, and project scripts under project/. Keep machine and long-form agent contract material under agents/ and references/. Do not commit local .hermes runtime state, private .env values, cache payloads, or credentials.",
     "change_boundary": "This task tree has been implemented locally in the working tree. The execution boundary covers process exit codes, agent manifests, JSON contracts, fetch transport reconciliation, agent smoke CI, documentation, optional maturity upgrades, and delivery closeout.",
     "debug_evidence_contract": "Required for TP-01 and TP-04 because they touch observed runtime failures and process semantics. Optional for pure manifest/docs leaves unless implementation uncovers a failing command, CI-only failure, flaky test, or transport regression.",
     "global_acceptance_standards": "A new agent can read agents/manifest.json, run the advertised fast path, trust exit codes, parse versioned JSON schemas, understand command risk classes, and pass a dedicated agent-readiness CI lane.",
@@ -28,15 +28,15 @@
       "title": "修正 Python module 退出码传播",
       "priority": "P0",
       "type": "action",
-      "objective": "将 scripts/project/src/tradecat_terminal/__main__.py 改成 raise SystemExit(main())，确保 python -m tradecat_terminal 传播 main() 返回值。",
+      "objective": "将 project/src/tradecat_terminal/__main__.py 改成 raise SystemExit(main())，确保 python -m tradecat_terminal 传播 main() 返回值。",
       "parent": "TP-01",
       "status": "Not Started",
       "parallelizable": false,
       "debug_required": true,
-      "verify": "在 scripts/project 下运行 PYTHONPATH=src python3 -m tradecat_terminal sync invalid_dataset --json，退出码必须非 0。",
+      "verify": "在 project 下运行 PYTHONPATH=src python3 -m tradecat_terminal sync invalid_dataset --json，退出码必须非 0。",
       "gate": "任何 main() 返回非 0 的路径都不能被 Python 模块入口吞掉。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/__main__.py"
+        "project/src/tradecat_terminal/__main__.py"
       ],
       "acceptance": [
         "module 入口以 SystemExit 包裹 main 返回值",
@@ -60,7 +60,7 @@
       "verify": "对每个非交互命令构造成功、业务失败、参数错误、网络失败或本地状态异常用例，并断言返回码。",
       "gate": "不存在 ok=false 但退出码为 0 的非交互失败路径，除非文档明确声明且测试锁定。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/cli.py"
+        "project/src/tradecat_terminal/cli.py"
       ],
       "acceptance": [
         "CLI 返回码策略有代码和测试双重证据",
@@ -85,9 +85,9 @@
       "gate": "wrapper 退出码必须等于被包装命令的退出码，后台启动命令必须单独声明 spawn/health 语义。",
       "outputs": [
         "scripts/run-tradecat.sh",
-        "scripts/project/install.sh",
-        "scripts/project/install.ps1",
-        "scripts/project/scripts/start.sh"
+        "project/install.sh",
+        "project/install.ps1",
+        "project/scripts/start.sh"
       ],
       "acceptance": [
         "根 wrapper 不掩盖失败",
@@ -100,7 +100,7 @@
       "title": "明确 start/watch 长运行语义",
       "priority": "P1",
       "type": "action",
-      "objective": "定义 scripts/project/scripts/start.sh 与 watch 类命令是只确认进程已启动，还是确认服务健康可用。",
+      "objective": "定义 project/scripts/start.sh 与 watch 类命令是只确认进程已启动，还是确认服务健康可用。",
       "parent": "TP-01",
       "depends_on": [
         "TP-01.03"
@@ -111,7 +111,7 @@
       "verify": "start/watch 文档、脚本输出和返回码对 spawn success、health failure、already running 三种情况给出确定结果。",
       "gate": "Agent 不会把后台进程已 fork 误判为数据通路已健康。",
       "outputs": [
-        "scripts/project/scripts/start.sh",
+        "project/scripts/start.sh",
         "references/agent-contract.md"
       ],
       "acceptance": [
@@ -135,10 +135,10 @@
       "status": "Not Started",
       "parallelizable": false,
       "debug_required": true,
-      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_exit_codes.py 通过。",
+      "verify": "cd project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_exit_codes.py 通过。",
       "gate": "任何退出码契约回归都能在本地和 CI 中失败。",
       "outputs": [
-        "scripts/project/tests/test_exit_codes.py"
+        "project/tests/test_exit_codes.py"
       ],
       "acceptance": [
         "失败命令非 0",
@@ -272,10 +272,10 @@
       "status": "Not Started",
       "parallelizable": false,
       "debug_required": false,
-      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_agent_contract.py 通过。",
+      "verify": "cd project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_agent_contract.py 通过。",
       "gate": "manifest 漂移、路径失效或 profile 失配会直接失败。",
       "outputs": [
-        "scripts/project/tests/test_agent_contract.py"
+        "project/tests/test_agent_contract.py"
       ],
       "acceptance": [
         "机器契约有测试保护",
@@ -332,8 +332,8 @@
       "verify": "代表性 CLI JSON 调用均包含 schema 字段，且旧核心字段仍保留或有迁移说明。",
       "gate": "Agent 不需要依赖命令名猜 payload 类型。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/cli.py",
-        "scripts/project/src/tradecat_terminal/diagnostics.py"
+        "project/src/tradecat_terminal/cli.py",
+        "project/src/tradecat_terminal/diagnostics.py"
       ],
       "acceptance": [
         "所有 manifest 广告的 JSON 命令都有 schema",
@@ -357,9 +357,9 @@
       "verify": "构造参数错误、非法 dataset、网络失败、本地缓存异常时，error 对象字段完整且不泄露私密路径之外的敏感内容。",
       "gate": "上层 Agent 不再解析 str(exc) 或人类文本判断失败类型。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/cli.py",
-        "scripts/project/src/tradecat_terminal/sheets.py",
-        "scripts/project/src/tradecat_terminal/diagnostics.py"
+        "project/src/tradecat_terminal/cli.py",
+        "project/src/tradecat_terminal/sheets.py",
+        "project/src/tradecat_terminal/diagnostics.py"
       ],
       "acceptance": [
         "错误对象字段稳定",
@@ -384,9 +384,9 @@
       "verify": "request、export、bundle 的成功/失败 payload 均有 schema 字段；support bundle 仍保持公开安全。",
       "gate": "Agent 读取数据视图和诊断包时能使用同一套 schema 识别方式。",
       "outputs": [
-        "scripts/project/scripts/request.py",
-        "scripts/project/src/tradecat_terminal/cli.py",
-        "scripts/project/src/tradecat_terminal/diagnostics.py"
+        "project/scripts/request.py",
+        "project/src/tradecat_terminal/cli.py",
+        "project/src/tradecat_terminal/diagnostics.py"
       ],
       "acceptance": [
         "request_result 与 dataset_view schema 明确",
@@ -409,10 +409,10 @@
       "status": "Not Started",
       "parallelizable": false,
       "debug_required": false,
-      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_json_contract.py 通过。",
+      "verify": "cd project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_json_contract.py 通过。",
       "gate": "JSON contract 漂移必须被测试捕获。",
       "outputs": [
-        "scripts/project/tests/test_json_contract.py"
+        "project/tests/test_json_contract.py"
       ],
       "acceptance": [
         "成功和失败 JSON 都被测试",
@@ -470,8 +470,8 @@
       "verify": "成功、connect timeout、SSL handshake timeout、HTTP 429/5xx、4xx、CSV decode 均可用 monkeypatch 或本地假服务测试。",
       "gate": "主 CLI、数据契约校验和 request 路径能共享或明确映射同一错误语义。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/sheets.py",
-        "scripts/project/src/tradecat_terminal/transport.py"
+        "project/src/tradecat_terminal/sheets.py",
+        "project/src/tradecat_terminal/transport.py"
       ],
       "acceptance": [
         "timeout 语义显式",
@@ -485,7 +485,7 @@
       "title": "对齐 request.py 和 validate_data_contract",
       "priority": "P0",
       "type": "action",
-      "objective": "让 scripts/project/scripts/request.py 与 validate_data_contract.py 复用或显式兼容 production fetch 行为。",
+      "objective": "让 project/scripts/request.py 与 validate_data_contract.py 复用或显式兼容 production fetch 行为。",
       "parent": "TP-04",
       "depends_on": [
         "TP-04.02"
@@ -493,11 +493,11 @@
       "status": "Not Started",
       "parallelizable": false,
       "debug_required": true,
-      "verify": "python3 scripts/project/scripts/request.py event_stream --format json --limit 1 与 PYTHONPATH=src python3 scripts/project/scripts/validate_data_contract.py --remote --timeout 10 在同一网络条件下表现一致或差异被标记。",
+      "verify": "python3 project/scripts/request.py event_stream --format json --limit 1 与 PYTHONPATH=src python3 project/scripts/validate_data_contract.py --remote --timeout 10 在同一网络条件下表现一致或差异被标记。",
       "gate": "request path 和 CLI path 的差异不能靠人工经验理解。",
       "outputs": [
-        "scripts/project/scripts/request.py",
-        "scripts/project/scripts/validate_data_contract.py"
+        "project/scripts/request.py",
+        "project/scripts/validate_data_contract.py"
       ],
       "acceptance": [
         "request.py 成功时可解释主 CLI 是否也应成功",
@@ -522,8 +522,8 @@
       "verify": "模拟 empty cache + timeout，doctor/TUI/CLI JSON 均给出明确 error.code、hint、retryable 与下一步命令。",
       "gate": "Agent 不会把空缓存误判为数据真的为空。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/lifecycle.py",
-        "scripts/project/src/tradecat_terminal/tui.py",
+        "project/src/tradecat_terminal/lifecycle.py",
+        "project/src/tradecat_terminal/tui.py",
         "references/first-run-cache.md"
       ],
       "acceptance": [
@@ -547,10 +547,10 @@
       "status": "Not Started",
       "parallelizable": false,
       "debug_required": true,
-      "verify": "cd scripts/project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_transport.py 通过。",
+      "verify": "cd project && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest -q -p no:cacheprovider tests/test_transport.py 通过。",
       "gate": "网络行为差异必须被测试显式批准。",
       "outputs": [
-        "scripts/project/tests/test_transport.py"
+        "project/tests/test_transport.py"
       ],
       "acceptance": [
         "不依赖真实 Google Sheets 的 deterministic transport tests 存在",
@@ -612,10 +612,10 @@
       "status": "Not Started",
       "parallelizable": true,
       "debug_required": false,
-      "verify": "bash scripts/project/scripts/verify.sh 或根 bash scripts/verify.sh 能运行新增测试并清理缓存产物。",
+      "verify": "bash project/scripts/verify.sh 或根 bash scripts/verify.sh 能运行新增测试并清理缓存产物。",
       "gate": "本地 verify 与 CI 对新增 contract tests 使用同一口径。",
       "outputs": [
-        "scripts/project/scripts/verify.sh",
+        "project/scripts/verify.sh",
         "scripts/verify.sh"
       ],
       "acceptance": [
@@ -739,7 +739,7 @@
       "title": "更新 README 与 AGENTS 目录/边界",
       "priority": "P1",
       "type": "action",
-      "objective": "更新 README.md、AGENTS.md、scripts/project/README.md、scripts/project/AGENTS.md，体现 agents/manifest.json、agents/hermes.yaml 和新 references。",
+      "objective": "更新 README.md、AGENTS.md、project/README.md、project/AGENTS.md，体现 agents/manifest.json、agents/hermes.yaml 和新 references。",
       "parent": "TP-06",
       "depends_on": [
         "TP-02.03",
@@ -748,13 +748,13 @@
       "status": "Not Started",
       "parallelizable": true,
       "debug_required": false,
-      "verify": "rg -n 'Codex-only|Codex skill wrapper' README.md AGENTS.md scripts/project/README.md scripts/project/AGENTS.md 无不合适残留；目录树与真实文件一致。",
+      "verify": "rg -n 'Codex-only|Codex skill wrapper' README.md AGENTS.md project/README.md project/AGENTS.md 无不合适残留；目录树与真实文件一致。",
       "gate": "文档描述为 agent skill wrapper 或 multi-agent skill wrapper，而不是单平台仓库。",
       "outputs": [
         "README.md",
         "AGENTS.md",
-        "scripts/project/README.md",
-        "scripts/project/AGENTS.md"
+        "project/README.md",
+        "project/AGENTS.md"
       ],
       "acceptance": [
         "根/项目治理说明与新文件同步",
@@ -832,7 +832,7 @@
       "verify": "公开治理文件保持脱敏；rg 不出现 token、私密 .env、缓存 payload。",
       "gate": "治理记忆可公开提交，且不复制长篇计划噪声。",
       "outputs": [
-        "scripts/project/DEBUG.md",
+        "project/DEBUG.md",
         "lessons.md",
         "references/release.md"
       ],
@@ -870,9 +870,9 @@
       "verify": "pytest 全量通过；移动测试不改变覆盖语义；git diff 显示仅测试组织变化。",
       "gate": "只拆分已有或新增测试，不借机重构生产代码。",
       "outputs": [
-        "scripts/project/tests/test_cli.py",
-        "scripts/project/tests/test_cache.py",
-        "scripts/project/tests/test_diagnostics.py"
+        "project/tests/test_cli.py",
+        "project/tests/test_cache.py",
+        "project/tests/test_diagnostics.py"
       ],
       "acceptance": [
         "测试文件职责更清晰",
@@ -885,7 +885,7 @@
       "title": "引入 formal JSON Schema 文件",
       "priority": "P2",
       "type": "action",
-      "objective": "按需新增 scripts/project/contracts/*.schema.json，让外部工具也能校验 JSON 输出。",
+      "objective": "按需新增 project/contracts/*.schema.json，让外部工具也能校验 JSON 输出。",
       "parent": "TP-07",
       "depends_on": [
         "TP-03.05"
@@ -896,7 +896,7 @@
       "verify": "schema 文件能用 jsonschema 或项目选定工具校验代表性 payload；agent-smoke 可选验证。",
       "gate": "只有在 schema/version 字段稳定后再引入 formal schema，避免早期高 churn。",
       "outputs": [
-        "scripts/project/contracts/"
+        "project/contracts/"
       ],
       "acceptance": [
         "schema 文件与实际 payload 同步",
@@ -946,7 +946,7 @@
       "verify": "secret scan 通过；doctor --bundle 能引用摘要；日志大小有上限或轮转策略。",
       "gate": "只有现有 diagnostics ledger 不足时才新增，不重复已有 recent errors。",
       "outputs": [
-        "scripts/project/src/tradecat_terminal/diagnostics.py"
+        "project/src/tradecat_terminal/diagnostics.py"
       ],
       "acceptance": [
         "诊断事件可被 support bundle 消费",
@@ -987,7 +987,7 @@
       "verify": "所有本地 gate 返回 0；失败项有 DEBUG 记录和最小复现。",
       "gate": "未通过本地验证不得进入 commit/push/release。",
       "outputs": [
-        "scripts/project/DEBUG.md",
+        "project/DEBUG.md",
         "references/quality-gate.md"
       ],
       "acceptance": [
@@ -1063,7 +1063,7 @@
       "outputs": [
         "references/release.md",
         "README.md",
-        "scripts/project/README.md"
+        "project/README.md"
       ],
       "acceptance": [
         "exit code hardening 被明确列为 breaking/contract change",

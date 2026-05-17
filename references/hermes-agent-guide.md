@@ -13,8 +13,8 @@
 - 机器主契约：`agents/manifest.json`。
 - Skill 包治理说明：`references/skill-package-governance.md`。
 - 长契约：`references/agent-contract.md`。
-- 本地工具实现：`scripts/project/`。
-- 本地运行态：`.runtime/`、`scripts/project/.runtime/`、`scripts/project/.tradecat/`，这些目录只在本机存在，不提交。
+- 本地工具实现：`project/`。
+- 本地运行态：`.runtime/`、`project/.runtime/`、`project/.tradecat/`，这些目录只在本机存在，不提交。
 
 当前开发只在 `/home/lenovo/.projects/cat/tradecat-public` 内进行。生产使用时，再把已经验证过的仓库复制、克隆或软链接到目标环境的 `~/.hermes/skills/tradecat-public`。
 
@@ -27,7 +27,7 @@ cd /home/lenovo/.projects/cat/tradecat-public
 git status --short
 ```
 
-不要在旧的 `tradecat-auto` 私有目录或生产 skill 目录里直接开发。当前仓库根目录是 skill 外壳；Python 源码和用户侧工具在 `scripts/project/`。
+不要在旧的 `tradecat-auto` 私有目录或生产 skill 目录里直接开发。当前仓库根目录是 skill 外壳；Python 源码和用户侧工具在 `project/`。
 
 ### 2. 开发态挂载到 Hermes
 
@@ -71,7 +71,7 @@ bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
-python3 scripts/project/scripts/request.py event_stream --format json --limit 5
+python3 project/scripts/request.py event_stream --format json --limit 5
 ```
 
 需要 Agent-supplied market context 时，先审计，再进入 paper/watch：
@@ -86,12 +86,12 @@ bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.j
 
 ## 纸面生产运行态与审计报告
 
-持续 paper/watch 服务的默认运行态目录是 `scripts/project/.runtime/auto-paper/`，包含 `service_state.json`、`paper_ledger.json`、`cycles.jsonl`、`paper_audit.sqlite3`、`paper-run-loop.log` 和 PID/heartbeat 文件；这些都是本地运行态，已被 `.gitignore` 隔离，不得提交。先用 status 检查，再启动或停止：
+持续 paper/watch 服务的默认运行态目录是 `project/.runtime/auto-paper/`，包含 `service_state.json`、`paper_ledger.json`、`cycles.jsonl`、`paper_audit.sqlite3`、`paper-run-loop.log` 和 PID/heartbeat 文件；这些都是本地运行态，已被 `.gitignore` 隔离，不得提交。先用 status 检查，再启动或停止：
 
 ```bash
-bash scripts/project/scripts/start-auto-paper.sh status --json
-bash scripts/project/scripts/start-auto-paper.sh start --json
-bash scripts/project/scripts/start-auto-paper.sh stop --json
+bash project/scripts/start-auto-paper.sh status --json
+bash project/scripts/start-auto-paper.sh start --json
+bash project/scripts/start-auto-paper.sh stop --json
 ```
 
 运行态报告统一保持 public/read-only + paper/watch：
@@ -131,7 +131,7 @@ TradeCat 不要求自己内置抓取所有 Binance 数据。Hermes/Agent 可以�
   "generated_at": "2026-05-15T00:00:00Z",
   "provenance": {
     "agent": "hermes",
-    "source_manifest": "scripts/project/resources/agent_market_context/binance/provenance.manifest.json"
+    "source_manifest": "project/resources/agent_market_context/binance/provenance.manifest.json"
   },
   "market_data": [
     {
@@ -151,7 +151,7 @@ TradeCat 不要求自己内置抓取所有 Binance 数据。Hermes/Agent 可以�
 }
 ```
 
-允许的 family/endpoint 以 `scripts/project/src/tradecat_auto/agent_market_context.py` 和 `scripts/project/contracts/tradecat-auto-agent-market-context.schema.json` 为准；来源资源以 `scripts/project/resources/agent_market_context/binance/provenance.manifest.json` 为准。
+允许的 family/endpoint 以 `project/src/tradecat_auto/agent_market_context.py` 和 `project/contracts/tradecat-auto-agent-market-context.schema.json` 为准；来源资源以 `project/resources/agent_market_context/binance/provenance.manifest.json` 为准。
 
 ## 安全边界
 
@@ -174,7 +174,7 @@ TradeCat 不要求自己内置抓取所有 Binance 数据。Hermes/Agent 可以�
 - `references/skill-package-governance.md`：Skill 包形态、根目录职责、内部项目边界、Agent/交易员 role profile 和运行态隔离规则。
 - `references/agent-contract.md`：Agent 长契约，解释 JSON envelope、错误码、风险等级和自动化入口。
 - `references/hermes-agent-guide.md`：本指南，连接人类操作与 Hermes/Agent 执行协议。
-- `scripts/project/README.md`：用户侧 TradeCat CLI/TUI/auto 工具说明。
+- `project/README.md`：用户侧 TradeCat CLI/TUI/auto 工具说明。
 
 ## 交付前检查清单
 

@@ -7,7 +7,7 @@
     "summary": "TradeCat v0.1.2 is usable and release-gated, but still below mature software robustness in network resilience, concurrent local state safety, dependency reproducibility, observability, schema migration, disk hygiene, and matrix coverage.",
     "constraints": [
       "Do not create root assets/ because this repository keeps the Skill root clean.",
-      "Keep Python project changes under scripts/project/.",
+      "Keep Python project changes under project/.",
       "Prefer mature libraries and platform capabilities over self-built infrastructure.",
       "Every runtime hardening change needs regression tests and public documentation updates."
     ]
@@ -23,8 +23,8 @@
       "status": "Done",
       "parallelizable": false,
       "debug_required": true,
-      "evidence": "scripts/project/src/tradecat_terminal/sheets.py:9 直接执行 urlopen(... timeout=...)，当前只有单次请求。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "evidence": "project/src/tradecat_terminal/sheets.py:9 直接执行 urlopen(... timeout=...)，当前只有单次请求。",
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-01.01",
@@ -39,7 +39,7 @@
       "verify": "单元测试能 monkeypatch transport，不访问真实网络即可覆盖成功、超时、HTTP 错误、DNS 错误。",
       "gate": "业务层仍调用 fetch_csv_body/fetch_csv_rows；网络实现细节只存在于 transport 层。",
       "evidence": "当前 sheets.py 同时承担 Request 构造、urlopen 调用和解码。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-01.02",
@@ -57,7 +57,7 @@
       "verify": "测试证明 timeout、HTTP 429/5xx、连接重置会重试；HTTP 4xx 业务错误不盲目重试；最大等待时间受控。",
       "gate": "默认同步不会因为一次瞬时失败直接失败，也不会无限阻塞 TUI 或 installer。",
       "evidence": "CI 与用户环境依赖公网 Google Sheets，成熟软件通常要有 bounded retry。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-01.03",
@@ -75,7 +75,7 @@
       "verify": "CLI JSON 输出和 doctor payload 包含 error.code、error.kind、retryable、hint；人类文本仍简洁。",
       "gate": "上层不再依赖 str(exc) 猜错误语义。",
       "evidence": "cache.sync_all_datasets 当前只返回 error: str(exc)。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-01.04",
@@ -94,7 +94,7 @@
       "verify": "模拟每类错误时，doctor/TUI/installer 展示不同 hint；缓存命中时网络失败不清空旧数据。",
       "gate": "用户能判断是弱网、远端拒绝、数据格式漂移还是本地缓存问题。",
       "evidence": "tui.py 当前只从错误字符串中识别 timeout 并给固定建议。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-01.05",
@@ -112,7 +112,7 @@
       "verify": "pytest 覆盖 retry、error classification、TUI hint、doctor JSON；references/first-run-cache.md 与 quality-gate 同步。",
       "gate": "网络韧性变成测试和文档契约，不只是实现细节。",
       "evidence": "当前质量门禁主要验证远端表结构，不验证网络错误矩阵。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-02",
@@ -125,7 +125,7 @@
       "parallelizable": false,
       "debug_required": true,
       "evidence": "cache 写入虽然使用 tmp.replace，但没有进程级 lock；settings 直接 write_text。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-02.01",
@@ -140,7 +140,7 @@
       "verify": "设计文档列出每个写路径使用的 lock 文件、超时、失败返回和 stale lock 策略。",
       "gate": "禁止各模块自行发明不同锁语义。",
       "evidence": "成熟桌面/CLI 工具通常用单一锁抽象保护本地状态。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-02.02",
@@ -158,7 +158,7 @@
       "verify": "并发启动两个 sync/probe 进程后，manifest、latest 和 stream_events 都保持合法 JSON/CSV 且无丢字段。",
       "gate": "任一 dataset 写入失败不会留下半更新的 latest/manifest 组合。",
       "evidence": "cache.py:176 写 manifest，随后 write_structured_latest 与 write_cache_manifest；缺少事务锁。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-02.03",
@@ -176,7 +176,7 @@
       "verify": "构造损坏 settings.json 后 doctor 能报告 corrupt_settings 并保留原文件；set/unset 并发执行后 JSON 合法。",
       "gate": "配置损坏不再静默变成空配置。",
       "evidence": "settings.py:32-35 当前吞掉 JSONDecodeError；settings.py:43 直接 write_text。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-02.04",
@@ -195,7 +195,7 @@
       "verify": "pytest 新增并发用例；必要时用 subprocess 模拟真实进程；连续运行不 flaky。",
       "gate": "本地状态一致性有可重复回归证据。",
       "evidence": "当前测试主要覆盖功能路径，没有真实并发写入场景。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-03",
@@ -207,7 +207,7 @@
       "status": "Done",
       "parallelizable": true,
       "evidence": "pyproject.toml 使用范围依赖；install.sh 会远程执行 uv 安装脚本。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-03.01",
@@ -220,8 +220,8 @@
       "parallelizable": false,
       "verify": "全新环境安装使用锁定依赖；CI 可验证 lock 与 pyproject 未漂移。",
       "gate": "同一 tag 在不同时间安装得到同一主依赖集合。",
-      "evidence": "scripts/project/pyproject.toml:16 只声明 rich>=13.7.0 等范围依赖。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "evidence": "project/pyproject.toml:16 只声明 rich>=13.7.0 等范围依赖。",
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-03.02",
@@ -238,7 +238,7 @@
       "verify": "本地 installer smoke 输出版本与 lock 一致；Windows/Unix CI smoke 均通过。",
       "gate": "用户安装路径与开发/CI 依赖口径一致。",
       "evidence": "install.sh 当前执行 pip install -e .，未带 constraints。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-03.03",
@@ -251,8 +251,8 @@
       "parallelizable": true,
       "verify": "无 Python 时 installer 输出明确风险说明；配置开关与 README 文档一致；CI 覆盖跳过/允许两种路径。",
       "gate": "供应链边界由用户可见配置控制，不是静默远程执行。",
-      "evidence": "scripts/project/install.sh:52-59 当前直接 curl astral.sh uv installer。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "evidence": "project/install.sh:52-59 当前直接 curl astral.sh uv installer。",
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-03.04",
@@ -271,7 +271,7 @@
       "verify": "CI 输出 lock/audit/SBOM 或等价 artifact；release notes 能引用结果。",
       "gate": "发布时能回答本版本实际安装了什么依赖。",
       "evidence": "当前 supply-chain-audit 只跑漏洞审计，没有生成安装物料清单。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-04",
@@ -283,7 +283,7 @@
       "status": "Done",
       "parallelizable": true,
       "evidence": "lifecycle.py:15 的 doctor_local_store 只返回本地状态、warnings、repair_hints、sync_results。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-04.01",
@@ -300,7 +300,7 @@
       "verify": "模拟错误后 doctor --json 能读取最近错误；ledger 不包含凭证或完整私密环境变量。",
       "gate": "用户截图之外也有可诊断的近期失败证据。",
       "evidence": "当前错误只在当次返回 payload 或 TUI 状态中短暂存在。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-04.02",
@@ -318,7 +318,7 @@
       "verify": "doctor --bundle 生成公开安全 JSON/zip；secret scan 不报；损坏 settings 和缺失 cache 均有清晰项。",
       "gate": "支持包能直接用于 issue/CI 排障，不需要用户手工拼信息。",
       "evidence": "当前 doctor 还不是完整 support bundle。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-04.03",
@@ -335,7 +335,7 @@
       "verify": "构造大缓存后 doctor 输出 warning 与精确 prune 命令；小缓存不提示。",
       "gate": "永久快照策略不会无声吃满磁盘。",
       "evidence": "prune_cache 存在，但 doctor 不提示磁盘水位。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-04.04",
@@ -353,7 +353,7 @@
       "verify": "pytest 覆盖 bundle schema、脱敏、磁盘水位、repair hints；文档命令可复制。",
       "gate": "doctor 成为可维护的公开诊断契约。",
       "evidence": "当前 README 只描述基础 doctor/sync 修复命令。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-05",
@@ -365,7 +365,7 @@
       "status": "Done",
       "parallelizable": true,
       "evidence": "cache snapshot 有 schema_version，但没有 migrations 目录或迁移 runner。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-05.01",
@@ -379,7 +379,7 @@
       "verify": "references/cache-contract.md 增加 migration section；旧版本读写策略明确。",
       "gate": "后续 schema 变更不能靠临时 if/else 隐式处理。",
       "evidence": "CACHE_SCHEMA_VERSION 存在，但没有升级路径说明。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-05.02",
@@ -397,7 +397,7 @@
       "verify": "从旧 manifest fixture 迁移到当前版本；失败时备份保留且 cache 不被破坏。",
       "gate": "迁移过程受锁保护且可重复执行。",
       "evidence": "成熟本地缓存工具需要显式迁移机制保护历史数据。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-05.03",
@@ -414,7 +414,7 @@
       "verify": "pytest 使用 fixtures 验证迁移结果、备份文件、幂等性和错误报告。",
       "gate": "cache schema 迭代有真实历史样本保护。",
       "evidence": "当前测试主要构造当前版本缓存。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-05.04",
@@ -432,7 +432,7 @@
       "verify": "doctor --json 展示 migration.current/needed/backup；doctor --repair 能执行迁移并输出结果。",
       "gate": "用户能安全完成缓存升级，不需要手动删目录。",
       "evidence": "当前遇到缓存结构变更只能依赖代码兼容或用户清理。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-06",
@@ -444,7 +444,7 @@
       "status": "Done",
       "parallelizable": true,
       "evidence": "CI 有 v0.1.2 raw installer smoke，但仍依赖 Google Sheets 与网络；Python 只固定 3.12。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-06.01",
@@ -461,7 +461,7 @@
       "verify": "模拟首次失败二次成功时 CI step 成功并上传诊断；连续失败时保留 artifact 并失败。",
       "gate": "真实公网 gate 既不脆弱，也不变成永远通过。",
       "evidence": ".github/workflows/ci.yml:160 发布 smoke 直接依赖一次公网安装/同步结果。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-06.02",
@@ -478,7 +478,7 @@
       "verify": "GitHub Actions 可手动触发 canary；失败输出 release ref、dataset 状态和错误分类。",
       "gate": "发布后公网健康不只在 push 时被观察。",
       "evidence": "当前 CI 只在 push/pull_request 触发。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-06.03",
@@ -492,7 +492,7 @@
       "verify": "3.12 与 3.13 的 install/lint/test/wheel 基础 gate 均通过；不扩大公网 smoke 成本。",
       "gate": "提前发现新 Python 版本兼容性问题。",
       "evidence": ".github/workflows/ci.yml:16 当前只使用 python-version 3.12。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-06.04",
@@ -509,7 +509,7 @@
       "verify": "CI 至少覆盖 Unix shell installer、PowerShell installer、plain TUI、status JSON 和 uninstall。",
       "gate": "常见终端入口不会只靠人工发现问题。",
       "evidence": "当前已有基础 installer smoke，但终端模式和 shell 差异仍可更宽。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-06.05",
@@ -529,7 +529,7 @@
       "verify": "references/quality-gate.md 可解释 push CI、tag CI、scheduled canary、manual canary 的不同责任。",
       "gate": "CI 失败时能快速判断是代码门禁、发布门禁还是外部健康探针。",
       "evidence": "当前 quality-gate 已记录发布 smoke，但未区分 canary 与 deterministic gate。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-07",
@@ -563,7 +563,7 @@
       "verify": "references/index.md 能导航新增稳定性契约；AGENTS/README/quality-gate 口径一致。",
       "gate": "架构/契约变更没有文档滞后。",
       "evidence": "本仓要求架构级变更同步 AGENTS 与 references。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-07.02",
@@ -580,7 +580,7 @@
       "verify": "所有本地 gate 返回零；git status 不含运行态目录；失败项必须有 DEBUG 记录。",
       "gate": "本地证据足够进入 commit/push/release。",
       "evidence": "v0.1.2 发布形成了当前验证基线。",
-      "recent_evidence": "Implemented in develop working tree; verified by bash scripts/project/scripts/verify.sh."
+      "recent_evidence": "Implemented in develop working tree; verified by bash project/scripts/verify.sh."
     },
     {
       "id": "TP-07.03",

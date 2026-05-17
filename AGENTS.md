@@ -6,7 +6,7 @@
 ## 目录定位
 
 根目录是 Skill 外壳，不是 Python 项目根。TradeCat 用户侧源码与自动化生命周期源码统一归入
-`scripts/project/`；`tradecat-auto` 已并入此处，不再作为独立实现中心。
+`project/`；`tradecat-auto` 已并入此处，不再作为独立实现中心。
 
 ```text
 tradecat-public/
@@ -45,6 +45,20 @@ tradecat-public/
 |   |-- stability-hardening-task-tree.json
 |   |-- test-strategy.md
 |   `-- tui-contract.md
+|-- project/
+|   |-- README.md
+|   |-- AGENTS.md
+|   |-- DEBUG.md
+|   |-- DEBUG.archive.md
+|   |-- pyproject.toml
+|   |-- constraints.txt
+|   |-- contracts/
+|   |-- resources/
+|   |-- scripts/
+|   |-- src/
+|   |   |-- tradecat_terminal/
+|   |   `-- tradecat_auto/
+|   `-- tests/
 `-- scripts/
     |-- validate-skill.sh
     |-- verify.sh
@@ -54,27 +68,13 @@ tradecat-public/
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
     |-- clean-local-runtime.sh
-    |-- run-tradecat.sh
-    `-- project/
-        |-- README.md
-        |-- AGENTS.md
-        |-- DEBUG.md
-        |-- DEBUG.archive.md
-        |-- pyproject.toml
-        |-- constraints.txt
-        |-- contracts/
-        |-- resources/
-        |-- scripts/
-        |-- src/
-        |   |-- tradecat_terminal/
-        |   `-- tradecat_auto/
-        `-- tests/
+    `-- run-tradecat.sh
 ```
 
 ## 根目录边界
 
 - `.git/`、`.github/`、`.gitignore` 是 Git / CI 边界，禁止移动到
-  `scripts/project/`。
+  `project/`。
 - `SKILL.md`、`agents/`、`references/` 是 Skill/Agent 契约边界；`references/skill-package-governance.md`
   解释根 Skill 包与内部项目分层，禁止混入项目源码。
 - `agents/manifest.json` 是唯一机器可读 Agent 主契约；`agents/openai.yaml`
@@ -84,14 +84,14 @@ tradecat-public/
   `scripts/security-scan.sh`、`scripts/supply-chain-audit.sh`、
   `scripts/install-security-tools.sh`、`scripts/clean-local-runtime.sh`、
   `scripts/agent-smoke.sh` 和
-  `scripts/run-tradecat.sh` 只是薄入口，业务逻辑在 `scripts/project/`，
+  `scripts/run-tradecat.sh` 只是薄入口，业务逻辑在 `project/`，
   治理扫描只读取 Git 跟踪文件或指定提交范围。
 - 根目录禁止创建 `assets/`、`assets/examples/`、`src/`、`tests/`、
   `pyproject.toml`、`Makefile`、安装脚本或卸载脚本。
 
 ## 项目目录边界
 
-`scripts/project/` 是唯一 Python 项目根，承载：
+`project/` 是唯一 Python 项目根，承载：
 
 - `README.md`：用户安装、运行、开发说明。
 - `pyproject.toml` / `constraints.txt` / `Makefile`：Python 项目元数据、依赖锁定口径与开发入口。
@@ -126,6 +126,6 @@ bash scripts/validate-skill.sh --strict
 从项目目录执行：
 
 ```bash
-cd scripts/project
+cd project
 bash scripts/verify.sh
 ```

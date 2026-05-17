@@ -22,7 +22,7 @@ bash scripts/run-tradecat.sh analyze --json
 Formal schema:
 
 ```text
-scripts/project/contracts/tradecat-analysis-report.schema.json
+project/contracts/tradecat-analysis-report.schema.json
 ```
 
 Payload schema:
@@ -92,7 +92,7 @@ Changing analysis output requires updating, in the same change:
 - `agents/manifest.json`
 - `references/agent-contract.md`
 - this document
-- `scripts/project/contracts/tradecat-analysis-report.schema.json`
-- `scripts/project/tests/test_analysis_report.py`
-- `scripts/project/tests/test_payload_schema_validation.py`
-- `scripts/project/tests/test_agent_contract.py`
+- `project/contracts/tradecat-analysis-report.schema.json`
+- `project/tests/test_analysis_report.py`
+- `project/tests/test_payload_schema_validation.py`
+- `project/tests/test_agent_contract.py`

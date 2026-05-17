@@ -34,14 +34,14 @@ bash scripts/supply-chain-audit.sh
 
 Acceptance:
 
-- `scripts/project/scripts/guard_public_local_files.sh` passes.
+- `project/scripts/guard_public_local_files.sh` passes.
 - Python source and tests compile.
 - `pytest` passes.
 - Root/project verification bootstraps the project `.venv` when `pytest` or
   `ruff` is missing on a bare checkout, then runs `ruff` from the bootstrapped
   environment.
 - Shell syntax checks pass.
-- `scripts/project/scripts/request.py` compiles.
+- `project/scripts/request.py` compiles.
 - Project verification removes generated `__pycache__`, `.pytest_cache`, and
   `.ruff_cache` directories before exit.
 - CI runs a Gitleaks secret scan before project install/test steps.
@@ -51,12 +51,12 @@ Acceptance:
   is needed, and can bootstrap a local Gitleaks binary when Docker is absent.
 - `scripts/supply-chain-audit.sh` audits the Python project with pinned
   `pip-audit`.
-- Python dependency installation uses `scripts/project/constraints.txt` for
+- Python dependency installation uses `project/constraints.txt` for
   local bootstrap, CI install, and user installer paths.
 - CI uploads dependency freeze/constraints evidence for release audit.
-- `scripts/project/scripts/validate_data_contract.py --remote` validates the
+- `project/scripts/validate_data_contract.py --remote` validates the
   public Google Sheets CSV shape for active datasets in CI.
-- `scripts/project/scripts/validate_dataset_consumption_contract.py` validates
+- `project/scripts/validate_dataset_consumption_contract.py` validates
   the machine-readable dataset field semantics, missing-value policy, time
   grain, and quality tier against `dataset_registry.json`.
 - `scripts/agent-smoke.sh` validates `agents/manifest.json`, advertised JSON
@@ -67,20 +67,20 @@ Acceptance:
   all-dataset `probe --json --no-write`, plus `features --json` empty-cache
   error semantics.
 - Watcher lifecycle control has a machine-readable JSON contract through
-  `scripts/project/scripts/start.sh status/start/stop --json`,
-  `scripts/project/scripts/watchdog.sh --json`, and
+  `project/scripts/start.sh status/start/stop --json`,
+  `project/scripts/watchdog.sh --json`, and
   `tradecat.watch_status.v1`.
 - CI has an independent `agent-readiness` job so Agent contract drift fails even
   when ordinary human-facing docs still look valid.
 - Advertised JSON commands include `schema` and `schema_version`; failed JSON
   commands include an object `error` with `code`, `kind`, `message`, `hint`, and
   `retryable`.
-- Formal JSON Schema drafts under `scripts/project/contracts/*.schema.json` stay
+- Formal JSON Schema drafts under `project/contracts/*.schema.json` stay
   valid JSON and match the advertised manifest/envelope/error/command contract.
 - Every schema advertised in `agents/manifest.json` has exactly one
   command-level schema file, and CLI-only internal schemas remain explicitly
-  allowlisted in `scripts/project/tests/test_agent_contract.py`.
-- `scripts/project/tests/test_payload_schema_validation.py` validates real
+  allowlisted in `project/tests/test_agent_contract.py`.
+- `project/tests/test_payload_schema_validation.py` validates real
   CLI/request JSON payloads and golden fixtures against those formal schemas;
   `jsonschema` remains a dev/test dependency, not a runtime dependency.
 - `tradecat datasets --json` exposes `consumption_contract` for every dataset,
@@ -110,7 +110,7 @@ Acceptance:
 Run these checks after any layout or documentation movement:
 
 ```bash
-bash scripts/project/scripts/guard_public_local_files.sh
+bash project/scripts/guard_public_local_files.sh
 ```
 
 Acceptance:
@@ -123,7 +123,7 @@ Acceptance:
   `scripts/verify.sh`, `scripts/security-scan.sh`, `scripts/supply-chain-audit.sh`,
   `scripts/agent-smoke.sh`, and `scripts/run-tradecat.sh` remain at root.
 - Project source, tests, installers, project README, and project scripts remain
-  under `scripts/project/`.
+  under `project/`.
 - Root/project `AGENTS.md` and project `DEBUG*.md` are tracked public governance
   files and contain no secrets, cache payloads, or private environment values.
 

@@ -5,7 +5,7 @@ skill_package_governance: references/skill-package-governance.md
 agent_contract: references/agent-contract.md
 hermes_agent_guide: references/hermes-agent-guide.md
 default_workdir: .
-project_root: scripts/project
+project_root: project
 role_profiles:
   canonical_source: agents/manifest.json#agent_role_profiles
   default_paper_trader: discretionary_futures_trader
@@ -16,10 +16,10 @@ fast_path:
   - bash scripts/run-tradecat.sh path event_stream --json
   - bash scripts/run-tradecat.sh analyze --json
   - bash scripts/run-tradecat.sh features --json
-  - python3 scripts/project/scripts/request.py event_stream --format json --limit 5
+  - python3 project/scripts/request.py event_stream --format json --limit 5
 notes:
   - Treat manifest.json as the only canonical machine contract.
-  - Treat this repository root as the Hermes Skill package; implementation details live under scripts/project/.
+  - Treat this repository root as the Hermes Skill package; implementation details live under project/.
   - Use agent_role_profiles only as soft paper/watch research prompts, never as trading authorization.
   - Read references/hermes-agent-guide.md for development-vs-production boundaries and Agent-supplied market context.
   - Prefer readonly commands before sync/install/uninstall.

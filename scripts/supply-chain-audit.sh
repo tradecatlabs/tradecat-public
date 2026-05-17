@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/scripts/project"
+PROJECT_DIR="$ROOT_DIR/project"
 PIP_AUDIT_VERSION="${PIP_AUDIT_VERSION:-2.10.0}"
 
 usage() {
@@ -26,13 +26,28 @@ run_audit() {
 }
 
 if command -v pipx >/dev/null 2>&1; then
-  run_audit pipx run --spec "pip-audit==$PIP_AUDIT_VERSION" pip-audit
-  exit 0
+  tmp_pipx_dir="$(mktemp -d)"
+  if PIPX_HOME="$tmp_pipx_dir/home" \
+    PIPX_BIN_DIR="$tmp_pipx_dir/bin" \
+    PIPX_LOG_DIR="$tmp_pipx_dir/log" \
+    run_audit pipx run --spec "pip-audit==$PIP_AUDIT_VERSION" pip-audit; then
+    rm -rf "$tmp_pipx_dir"
+    exit 0
+  fi
+  rm -rf "$tmp_pipx_dir"
+  echo "WARN: pipx pip-audit failed; trying next available audit runner." >&2
 fi
 
 if command -v uvx >/dev/null 2>&1; then
-  run_audit uvx --from "pip-audit==$PIP_AUDIT_VERSION" pip-audit
-  exit 0
+  tmp_uv_dir="$(mktemp -d)"
+  if UV_CACHE_DIR="$tmp_uv_dir/cache" \
+    UV_TOOL_DIR="$tmp_uv_dir/tools" \
+    run_audit uvx --from "pip-audit==$PIP_AUDIT_VERSION" pip-audit; then
+    rm -rf "$tmp_uv_dir"
+    exit 0
+  fi
+  rm -rf "$tmp_uv_dir"
+  echo "WARN: uvx pip-audit failed; trying temporary virtualenv audit runner." >&2
 fi
 
 tmp_dir="$(mktemp -d)"

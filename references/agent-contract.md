@@ -1,7 +1,7 @@
 # Agent Contract
 
 This repository is a multi-Agent Skill wrapper around the TradeCat public
-CLI/TUI project in `scripts/project/`. The canonical machine-readable contract
+CLI/TUI project in `project/`. The canonical machine-readable contract
 is `agents/manifest.json`; platform files such as `agents/openai.yaml` and
 `agents/hermes.yaml` are thin adapters and must not become second sources of
 truth.
@@ -10,7 +10,7 @@ Human + Hermes operating guide: `references/hermes-agent-guide.md`. Use it when 
 
 ## Hermes Skill Consumption
 
-When this repo is installed under `~/.hermes/skills/tradecat-public`, Hermes should load `SKILL.md` first and then treat this file plus `agents/manifest.json` as the operating contract. The default working directory is always the skill root (`.`), not `scripts/project/`; use the root wrapper `bash scripts/run-tradecat.sh ...` unless a command explicitly says to enter `scripts/project/`.
+When this repo is installed under `~/.hermes/skills/tradecat-public`, Hermes should load `SKILL.md` first and then treat this file plus `agents/manifest.json` as the operating contract. The default working directory is always the skill root (`.`), not `project/`; use the root wrapper `bash scripts/run-tradecat.sh ...` unless a command explicitly says to enter `project/`.
 
 Development is currently performed in `/home/lenovo/.projects/cat/tradecat-public`. Production use should consume a verified copy/clone/symlink under `~/.hermes/skills/tradecat-public`; do not mix local runtime files from development with production runtime state.
 
@@ -25,12 +25,12 @@ bash scripts/run-tradecat.sh datasets --json
 bash scripts/run-tradecat.sh path event_stream --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
-python3 scripts/project/scripts/request.py event_stream --format json --limit 5
+python3 project/scripts/request.py event_stream --format json --limit 5
 ```
 
 `datasets --json` includes each dataset's `consumption_contract`. For full
 field semantics, missing-value rules, time grain, and quality tier, read
-`scripts/project/src/tradecat_terminal/dataset_consumption_contract.json` or
+`project/src/tradecat_terminal/dataset_consumption_contract.json` or
 `references/dataset-consumption-contract.md`.
 
 `analyze --json` reads only local cache and returns
@@ -62,9 +62,9 @@ bash scripts/agent-smoke.sh
 | Class | Meaning | Examples |
 | --- | --- | --- |
 | `local_readonly` | Reads tracked files, settings, or cache metadata only. | `status --json`, `datasets --json`, `path event_stream --json` |
-| `network_readonly` | Reads public network data without writing cache. | `scripts/project/scripts/request.py event_stream --format json` |
+| `network_readonly` | Reads public network data without writing cache. | `project/scripts/request.py event_stream --format json` |
 | `local_cache_write` | Writes only local TradeCat cache, settings, or diagnostics. | `init`, `sync`, `doctor --repair`, `prune --apply` |
-| `background_long_running` | Starts or supervises a local watcher. | `scripts/project/scripts/start.sh start`, `watch` |
+| `background_long_running` | Starts or supervises a local watcher. | `project/scripts/start.sh start`, `watch` |
 | `paper_runtime_write` | Writes only local paper/watch runtime state, ledger, archive, PID, or logs; never real orders. | `auto run-loop --once`, `start-auto-paper.sh start` |
 | `install_or_uninstall` | Changes user install paths, launchers, venv, or PATH guidance. | `install.sh`, `install.ps1`, `uninstall.*` |
 | `security_or_supply_chain` | Runs scanner/audit tooling that may download metadata. | `security-scan.sh`, `supply-chain-audit.sh` |
@@ -117,7 +117,7 @@ Known JSON schemas:
 | `request.py <dataset> --format json` | `tradecat.request_result.v1` |
 | `request.py --datasets --format json` | `tradecat.request_dataset_list.v1` |
 
-Formal schema files live in `scripts/project/contracts/`. The command-level
+Formal schema files live in `project/contracts/`. The command-level
 schemas intentionally pin the stable envelope and high-value fields for Agent
 parsing without making every output closed-world brittle:
 
@@ -152,16 +152,16 @@ schema table update, live payload validation, and bounded smoke coverage in the
 same change.
 
 Real payload validation lives in
-`scripts/project/tests/test_payload_schema_validation.py`. It validates live
+`project/tests/test_payload_schema_validation.py`. It validates live
 CLI/request JSON output and golden samples from
-`scripts/project/tests/fixtures/json_contract/` against the formal schemas.
+`project/tests/fixtures/json_contract/` against the formal schemas.
 `jsonschema` is a dev/test dependency only; TradeCat runtime commands do not
 depend on it.
 
 Breaking JSON changes require updating `agents/manifest.json`, this document,
-`scripts/project/tests/test_json_contract.py`,
-`scripts/project/tests/test_agent_contract.py`, and
-`scripts/project/tests/test_payload_schema_validation.py` in the same change.
+`project/tests/test_json_contract.py`,
+`project/tests/test_agent_contract.py`, and
+`project/tests/test_payload_schema_validation.py` in the same change.
 
 ## Agent-supplied Market Context Contract
 
@@ -170,8 +170,8 @@ Hermes/Agent may gather Binance public market context outside TradeCat, then han
 Canonical input schema:
 
 - Payload schema: `tradecat_auto.agent_market_context.v1`.
-- Schema file: `scripts/project/contracts/tradecat-auto-agent-market-context.schema.json`.
-- Source/provenance manifest: `scripts/project/resources/agent_market_context/binance/provenance.manifest.json`.
+- Schema file: `project/contracts/tradecat-auto-agent-market-context.schema.json`.
+- Source/provenance manifest: `project/resources/agent_market_context/binance/provenance.manifest.json`.
 - Audit command: `bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json`.
 - Paper/watch command: `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --json`.
 - Replay command: `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
@@ -209,12 +209,12 @@ Automation payload schemas currently advertised through `agents/manifest.json` i
 ## Production Paper Runtime Reports
 
 The production paper/watch runtime is local state only. Default paths live under
-`scripts/project/.runtime/auto-paper/`: `service_state.json`, `paper_ledger.json`,
+`project/.runtime/auto-paper/`: `service_state.json`, `paper_ledger.json`,
 `cycles.jsonl`, `paper_audit.sqlite3`, and `paper-run-loop.log`. These files are
 ignored by Git and must not be committed. Agents should treat them as
 operator-local runtime evidence, not source assets.
 
-Use `bash scripts/project/scripts/start-auto-paper.sh status --json` to inspect
+Use `bash project/scripts/start-auto-paper.sh status --json` to inspect
 whether the continuous paper loop is running. Use `auto health-report --json` for
 heartbeat, ledger, archive, and audit-journal health; `auto daily-report --json`
 for a daily paper/watch ledger summary; `auto audit-journal --json` for SQLite
@@ -259,9 +259,9 @@ and `unsupported_family` for market-data families outside the public/read-only a
 There are two explicit remote paths:
 
 1. Production path: `tradecat_terminal.sheets.fetch_csv_body`, used by installed
-   CLI sync/probe and `scripts/project/scripts/validate_data_contract.py`.
+   CLI sync/probe and `project/scripts/validate_data_contract.py`.
    It uses `urllib3` retry/backoff/jitter and typed `RemoteCsvError`.
-2. Zero-install fallback: `scripts/project/scripts/request.py`, kept standard
+2. Zero-install fallback: `project/scripts/request.py`, kept standard
    library only so an Agent can execute it from raw GitHub without installing
    TradeCat. It shares `dataset_registry.json`, writes no local cache, and
    returns `tradecat.request_result.v1` for JSON requests.
@@ -272,7 +272,7 @@ derived from the same registry.
 
 ## Long-Running Semantics
 
-`scripts/project/scripts/start.sh --json` is the machine-readable watcher
+`project/scripts/start.sh --json` is the machine-readable watcher
 lifecycle control plane. The manifest advertises `status --json` as read-only
 inspection, and `start --json` / `stop --json` / `watchdog.sh --json` as
 mutating supervision commands. `restart --json` is operator-only: it is tested

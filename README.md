@@ -1,10 +1,10 @@
 # tradecat-public
 
-这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`scripts/project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，Skill 包治理见 `references/skill-package-governance.md`，长文档契约见 `references/agent-contract.md`，人类与 Hermes 共用的操作指南见 `references/hermes-agent-guide.md`。
+这是给用户本机 Hermes 使用的 TradeCat Skill 包：用户把本仓库安装到 `~/.hermes/skills/tradecat-public` 后，Hermes 通过 `SKILL.md` 和 `agents/manifest.json` 读取规则、入口和契约；`project/` 只是这个 skill 调用的本地只读工具层。Agent / Hermes 的机器第一入口是 `agents/manifest.json`，Skill 包治理见 `references/skill-package-governance.md`，长文档契约见 `references/agent-contract.md`，人类与 Hermes 共用的操作指南见 `references/hermes-agent-guide.md`。
 
 ## 当前开发/生产边界
 
-当前只在开发目录 `/home/lenovo/.projects/cat/tradecat-public` 内开发、验证和提交；后续生产使用时再把验证后的仓库 clone/copy/symlink 到目标环境的 `~/.hermes/skills/tradecat-public`。不要在旧的 `tradecat-auto` 私有目录或生产 skill 目录里直接改实现。根目录是 Hermes Skill 外壳，`scripts/project/` 是唯一 Python 项目根。
+当前只在开发目录 `/home/lenovo/.projects/cat/tradecat-public` 内开发、验证和提交；后续生产使用时再把验证后的仓库 clone/copy/symlink 到目标环境的 `~/.hermes/skills/tradecat-public`。不要在旧的 `tradecat-auto` 私有目录或生产 skill 目录里直接改实现。根目录是 Hermes Skill 外壳，`project/` 是唯一 Python 项目根。
 
 给人看的入口：先读本 README 和 `references/hermes-agent-guide.md`，确认安装、开发/生产边界、运行态隔离和安全限制。
 
@@ -45,7 +45,7 @@ bash scripts/run-tradecat.sh auto audit-journal --json
 bash scripts/run-tradecat.sh auto health-report --json
 bash scripts/run-tradecat.sh auto daily-report --json
 bash scripts/run-tradecat.sh auto alert-payload --kind daily --json
-python3 scripts/project/scripts/request.py event_stream --format json --limit 5
+python3 project/scripts/request.py event_stream --format json --limit 5
 ```
 
 `datasets --json` 同时携带 dataset consumption contract；字段语义、缺失值、
@@ -64,19 +64,19 @@ python3 scripts/project/scripts/request.py event_stream --format json --limit 5
 ## 用户安装入口
 
 TradeCat 用户侧安装、运行和卸载说明见
-[scripts/project/README.md](scripts/project/README.md)。
+[project/README.md](project/README.md)。
 固定版本发布说明见 [references/release.md](references/release.md)。
 
 Linux / macOS / WSL / Git Bash：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/project/install.sh | sh
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/scripts/project/install.ps1 | iex
+irm https://raw.githubusercontent.com/tukuaiai/tradecat/v0.1.3/project/install.ps1 | iex
 ```
 
 根目录承担三件事：
@@ -124,7 +124,24 @@ tradecat-public/
 |   |-- stability-hardening-task-tree.json
 |   |-- test-strategy.md
 |   `-- tui-contract.md
-`-- scripts/
+|-- project/                  # 唯一内部 Python 项目根
+|   |-- README.md
+|   |-- Makefile
+|   |-- pyproject.toml
+|   |-- constraints.txt
+|   |-- contracts/
+|   |-- install.sh
+|   |-- install.ps1
+|   |-- uninstall.sh
+|   |-- uninstall.ps1
+|   |-- AGENTS.md
+|   |-- DEBUG.md
+|   |-- DEBUG.archive.md
+|   |-- scripts/
+|   |-- src/tradecat_terminal/
+|   |-- src/tradecat_auto/
+|   `-- tests/
+`-- scripts/                  # 根级薄 wrapper
     |-- verify.sh
     |-- bootstrap-dev.sh
     |-- agent-smoke.sh
@@ -132,8 +149,7 @@ tradecat-public/
     |-- supply-chain-audit.sh
     |-- install-security-tools.sh
     |-- clean-local-runtime.sh
-    |-- run-tradecat.sh
-    `-- project/
+    `-- run-tradecat.sh
 ```
 
 说明：在 Windows 文件管理器或 WSL 网络路径中，`.git/`、`.github/`、
@@ -142,7 +158,7 @@ tradecat-public/
 ## 项目源码位置
 
 ```text
-scripts/project/
+project/
 |-- README.md
 |-- Makefile
 |-- pyproject.toml
@@ -161,7 +177,7 @@ scripts/project/
 `-- tests/
 ```
 
-`scripts/project/` 是 Python 项目根；`tradecat-auto` 已并入这里，不再作为独立实现中心。运行、打包、安装、测试和源码修改都以这里为准。
+`project/` 是 Python 项目根；`tradecat-auto` 已并入这里，不再作为独立实现中心。运行、打包、安装、测试和源码修改都以这里为准。
 
 ## 移动边界
 
@@ -176,7 +192,7 @@ scripts/project/
   `scripts/clean-local-runtime.sh`、`scripts/run-tradecat.sh`、
   `scripts/agent-smoke.sh`：从 Skill 根进入项目或治理门禁的薄封装。
 
-应放入 `scripts/project/`：
+应放入 `project/`：
 
 - `README.md`、`Makefile`、`pyproject.toml`、`constraints.txt`。
 - `install.*`、`uninstall.*`。
@@ -189,7 +205,7 @@ scripts/project/
   但必须保持脱敏，不得写入凭证、缓存内容或私密环境变量。
 
 根目录禁止重新出现 `assets/` 或 `assets/examples/`。如果以后确实需要项目示例
-资产，应放入 `scripts/project/` 内部，并同步更新项目文档。
+资产，应放入 `project/` 内部，并同步更新项目文档。
 
 ## 常用入口
 
@@ -201,7 +217,7 @@ bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
 bash scripts/validate-skill.sh --strict
 bash scripts/run-tradecat.sh --help
-cd scripts/project
+cd project
 PYTHONPATH=src python3 -m tradecat_terminal --help
 PYTHONPATH=src python3 -m tradecat_auto.cli --help
 PYTHONPATH=src python3 -m tradecat_terminal auto --help
