@@ -306,6 +306,7 @@ def _today_iso() -> str:
 def _safety_boundary() -> dict[str, bool]:
     return {
         "public_readonly_market_data": True,
+        "public_readonly": True,
         "paper_or_watch_only": True,
         "real_orders": False,
         "signed_requests": False,

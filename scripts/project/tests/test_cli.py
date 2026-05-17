@@ -252,6 +252,9 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(report["schema"], "tradecat_auto.paper_report.v1")
             self.assertEqual(report["summary"]["open_positions_count"], 1)
+            self.assertEqual(report["provenance"]["source"], "local_tradecat_paper_ledger")
+            self.assertFalse(report["safety"]["signed_requests"])
+            self.assertFalse(report["safety"]["reads_api_keys"])
             self.assertIn("IRYSUSDT", report["open_positions"])
 
     def test_paper_report_fails_closed_for_corrupt_existing_ledger(self) -> None:
@@ -267,6 +270,9 @@ class CliTests(unittest.TestCase):
             self.assertEqual(report["ledger_path"], str(ledger_path))
             self.assertEqual(report["error_code"], "paper_ledger_load_failed")
             self.assertIn("paper_ledger_load_failed", report["error"])
+            self.assertEqual(report["provenance"]["source"], "local_tradecat_paper_ledger")
+            self.assertFalse(report["safety"]["real_orders"])
+
     def test_production_health_daily_and_alert_payload_cli_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

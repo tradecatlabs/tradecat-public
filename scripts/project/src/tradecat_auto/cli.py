@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from tradecat_auto.agent_market_context import (
+    ALLOWED_ENDPOINTS_BY_FAMILY,
+    ALLOWED_MODES,
+    DEFAULT_SOURCE_MANIFEST,
     audit_agent_market_context,
     build_paper_report_from_agent_market_context,
     load_agent_market_context,
@@ -372,12 +375,16 @@ def paper_report(args: argparse.Namespace) -> dict[str, Any]:
             "ledger_path": str(ledger_path),
             "error_code": "paper_ledger_load_failed",
             "error": _format_exception(exc),
+            "provenance": _paper_report_provenance(ledger_path),
+            "safety": _safety_boundary(),
         }
     return {
         "schema": "tradecat_auto.paper_report.v1",
         "schema_version": "1.0.0",
         "ok": True,
         "ledger_path": str(ledger_path),
+        "provenance": _paper_report_provenance(ledger_path),
+        "safety": _safety_boundary(),
         "summary": paper_ledger_summary(ledger),
         "paper_account_state": paper_account_state(ledger),
         "open_positions": ledger.get("open_positions", {}),
@@ -406,10 +413,14 @@ def context_audit_report(args: argparse.Namespace) -> dict[str, Any]:
             "accepted_endpoints": [],
             "errors": [context["error"]],
             "warnings": [],
+            "provenance": {},
+            "source_manifest": DEFAULT_SOURCE_MANIFEST,
             "safety_boundary_enforced": True,
             "real_orders": False,
             "signed_requests": False,
             "reads_api_keys": False,
+            "allowed_modes": sorted(ALLOWED_MODES),
+            "allowed_market_context_families": sorted(ALLOWED_ENDPOINTS_BY_FAMILY),
         }
     return audit_agent_market_context(context)
 
@@ -425,6 +436,8 @@ def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
             "selected_symbol": "",
             "error": "agent_market_context_load_failed",
             "agent_market_context_audit": context_audit_report(args),
+            "provenance": {"source_manifest": DEFAULT_SOURCE_MANIFEST},
+            "safety": _safety_boundary(),
             "limitations": ["no Binance credentials were read", "no real order was placed"],
         }
     return build_paper_report_from_agent_market_context(
@@ -604,6 +617,24 @@ def _print(payload: dict[str, Any], *, as_json: bool) -> None:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(json.dumps(payload, ensure_ascii=False))
+
+
+def _paper_report_provenance(ledger_path: Path) -> dict[str, Any]:
+    return {
+        "source": "local_tradecat_paper_ledger",
+        "ledger_path": str(ledger_path),
+    }
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }
 
 
 if __name__ == "__main__":

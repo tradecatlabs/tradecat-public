@@ -41,12 +41,17 @@ class PaperLedgerTests(unittest.TestCase):
         updated = apply_paper_execution(ledger, OPEN_LONG, fee_bps=4.0, slippage_bps=5.0, now_iso="2026-05-14T00:00:00Z")
 
         self.assertEqual(updated["schema"], "tradecat_auto.paper_ledger.v1")
+        self.assertEqual(updated["schema_version"], "1.0.0")
+        self.assertFalse(updated["safety"]["reads_api_keys"])
+        self.assertEqual(updated["provenance"]["source"], "local_tradecat_paper_ledger")
         self.assertIn("IRYSUSDT", updated["open_positions"])
         self.assertEqual(len(updated["paper_orders"]), 1)
         self.assertEqual(updated["paper_orders"][0]["schema"], "tradecat_auto.paper_order.v1")
         self.assertFalse(updated["paper_orders"][0]["real_order"])
         self.assertIsNone(updated["paper_orders"][0]["exchange_order_id"])
         self.assertEqual(len(updated["fills"]), 1)
+        self.assertEqual(updated["fills"][0]["schema"], "tradecat_auto.paper_fill.v1")
+        self.assertEqual(updated["fills"][0]["schema_version"], "1.0.0")
         self.assertAlmostEqual(updated["fills"][0]["price"], 100.05)
         self.assertAlmostEqual(updated["fills"][0]["fee_usdt"], 0.008004)
         self.assertAlmostEqual(updated["cash_balance_usdt"], 999.991996)
@@ -169,6 +174,8 @@ class PaperLedgerTests(unittest.TestCase):
             loaded = load_paper_ledger(path)
 
             self.assertEqual(loaded["schema"], "tradecat_auto.paper_ledger.v1")
+            self.assertEqual(loaded["schema_version"], "1.0.0")
+            self.assertFalse(loaded["safety"]["real_orders"])
             self.assertIn("IRYSUSDT", loaded["open_positions"])
 
     def test_load_existing_corrupt_ledger_raises_without_resetting(self) -> None:

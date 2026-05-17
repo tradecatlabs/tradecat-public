@@ -381,10 +381,15 @@ def build_paper_report_from_agent_market_context(
             "schema": "tradecat_auto.run_once_report.v1",
             "schema_version": SCHEMA_VERSION,
             "ok": False,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
             "mode": mode,
             "selected_symbol": audit.get("symbol") or str(context.get("symbol") or "").upper().strip(),
             "error": "agent_market_context_audit_failed",
             "agent_market_context_audit": audit,
+            "provenance": _top_provenance(context),
+            "safety": _safety_boundary(),
             "limitations": [
                 "agent-supplied public/read-only market context rejected before paper pipeline",
                 "no Binance credentials were read",
@@ -423,6 +428,10 @@ def build_paper_report_from_agent_market_context(
     report["agent_market_context_audit"] = audit
     report["agent_paper_sizing_input"] = agent_sizing
     report["market_context_provenance"] = copy.deepcopy(context.get("provenance") if isinstance(context.get("provenance"), dict) else {})
+    report["provenance"] = {
+        **(report.get("provenance") if isinstance(report.get("provenance"), dict) else {}),
+        "agent_market_context": _top_provenance(context),
+    }
     report.setdefault("limitations", [])
     if "agent-supplied public/read-only market context" not in report["limitations"]:
         report["limitations"].append("agent-supplied public/read-only market context")
@@ -616,3 +625,21 @@ def _warning(code: str, message: str, *, index: int | None = None) -> dict[str, 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _top_provenance(context: dict[str, Any]) -> dict[str, Any]:
+    raw_provenance = context.get("provenance") if isinstance(context, dict) else None
+    provenance = copy.deepcopy(raw_provenance) if isinstance(raw_provenance, dict) else {}
+    provenance.setdefault("source_manifest", DEFAULT_SOURCE_MANIFEST)
+    return provenance
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }

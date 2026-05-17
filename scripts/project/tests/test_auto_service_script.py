@@ -45,6 +45,10 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["schema"] == "tradecat_auto.paper_service_status.v1"
     assert payload["schema_version"] == "1.0.0"
     assert payload["ok"] is False
+    assert payload["reads_api_keys"] is False
+    assert payload["safety"]["real_orders"] is False
+    assert payload["safety"]["signed_requests"] is False
+    assert payload["safety"]["reads_api_keys"] is False
     assert payload["running"] is False
     assert payload["error"]["code"] == "paper_service_not_running"
     assert payload["mode"] == "paper"

@@ -129,6 +129,9 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         "schema": "tradecat_auto.risk_decision.v1",
         "schema_version": "1.0.0",
         "ok": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
         "decision": decision,
         "mode": mode,
         "symbol": str(signal.get("symbol") or ""),
@@ -159,6 +162,12 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
             "force_reject_reasons": forced_reject_reasons,
             "mainnet_enabled": active_policy.get("mainnet_enabled"),
         },
+        "provenance": {
+            "source": "tradecat_auto.risk.evaluate_risk",
+            "policy_schema": str(active_policy.get("schema") or "tradecat_auto.risk_policy.v1"),
+            "signal_schema": str(signal.get("schema") or ""),
+        },
+        "safety": _safety_boundary(),
         "limitations": ["risk decision permits paper simulation only in this version"],
     }
 
@@ -186,3 +195,14 @@ def _as_reason_list(value: Any) -> list[str]:
 
 def _dedupe(values: list[str]) -> list[str]:
     return list(dict.fromkeys(value for value in values if value))
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }

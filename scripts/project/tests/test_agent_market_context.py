@@ -114,12 +114,29 @@ class AgentMarketContextTests(unittest.TestCase):
         audit = audit_agent_market_context(sample_context())
 
         self.assertEqual(audit["schema"], "tradecat_auto.agent_market_context_audit.v1")
+        self.assertEqual(audit["schema_version"], "1.0.0")
         self.assertTrue(audit["ok"])
         self.assertEqual(audit["symbol"], "IRYSUSDT")
         self.assertIn("24h_ticker", audit["accepted_families"])
         self.assertFalse(audit["real_orders"])
         self.assertFalse(audit["signed_requests"])
         self.assertFalse(audit["reads_api_keys"])
+
+    def test_false_safety_declarations_are_allowed_but_true_flags_are_rejected(self) -> None:
+        context = sample_context()
+        context["signed_requests"] = False
+        context["reads_api_keys"] = False
+        context["market_data"][0]["signed"] = False
+        context["market_data"][0]["requires_signature"] = False
+
+        accepted = audit_agent_market_context(context)
+        self.assertTrue(accepted["ok"])
+
+        context["reads_api_keys"] = True
+        rejected = audit_agent_market_context(context)
+        self.assertFalse(rejected["ok"])
+        codes = {item["code"] for item in rejected["errors"]}
+        self.assertIn("credential_material_forbidden", codes)
 
     def test_audit_rejects_missing_top_level_source_manifest(self) -> None:
         context = sample_context()
@@ -234,6 +251,11 @@ class AgentMarketContextTests(unittest.TestCase):
         )
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
+        self.assertFalse(report["real_orders"])
+        self.assertFalse(report["signed_requests"])
+        self.assertFalse(report["reads_api_keys"])
+        self.assertFalse(report["safety"]["binance_account_state"])
+        self.assertEqual(report["provenance"]["agent_market_context"]["source_manifest"], "scripts/project/resources/agent_market_context/binance/provenance.manifest.json")
         self.assertEqual(report["agent_market_context_audit"]["schema"], "tradecat_auto.agent_market_context_audit.v1")
         self.assertTrue(report["agent_market_context_audit"]["ok"])
         self.assertEqual(report["selected_symbol"], "IRYSUSDT")

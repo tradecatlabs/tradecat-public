@@ -9,6 +9,7 @@ from typing import Any
 
 LEDGER_SCHEMA = "tradecat_auto.paper_ledger.v1"
 PAPER_ACCOUNT_STATE_SCHEMA = "tradecat_auto.paper_account_state.v1"
+SCHEMA_VERSION = "1.0.0"
 DEFAULT_INITIAL_BALANCE_USDT = 1000.0
 DEFAULT_FEE_BPS = 2.0
 DEFAULT_SLIPPAGE_BPS = 0.0
@@ -22,6 +23,7 @@ def default_paper_ledger(*, initial_balance_usdt: float = DEFAULT_INITIAL_BALANC
     balance = _non_negative(initial_balance_usdt, "initial_balance_usdt")
     return {
         "schema": LEDGER_SCHEMA,
+        "schema_version": SCHEMA_VERSION,
         "cash_balance_usdt": balance,
         "equity_usdt": balance,
         "initial_balance_usdt": balance,
@@ -35,6 +37,8 @@ def default_paper_ledger(*, initial_balance_usdt: float = DEFAULT_INITIAL_BALANC
         "ignored_execution_ids": [],
         "equity_curve": [],
         "last_updated_at": None,
+        "provenance": {"source": "local_tradecat_paper_ledger"},
+        "safety": _safety_boundary(),
     }
 
 
@@ -52,6 +56,9 @@ def load_paper_ledger(path: Path | str, *, initial_balance_usdt: float = DEFAULT
     ledger = default_paper_ledger(initial_balance_usdt=initial_balance_usdt)
     ledger.update(data)
     ledger["schema"] = LEDGER_SCHEMA
+    ledger["schema_version"] = SCHEMA_VERSION
+    ledger["safety"] = _safety_boundary()
+    ledger["provenance"] = _provenance(ledger.get("provenance"))
     ledger["open_positions"] = dict(ledger.get("open_positions") or {})
     ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
     ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
@@ -67,6 +74,9 @@ def save_paper_ledger(path: Path | str, ledger: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     payload = _recalculate_equity(dict(ledger))
     payload["schema"] = LEDGER_SCHEMA
+    payload["schema_version"] = SCHEMA_VERSION
+    payload["safety"] = _safety_boundary()
+    payload["provenance"] = _provenance(payload.get("provenance"))
     tmp = p.with_suffix(f"{p.suffix}.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     tmp.replace(p)
@@ -199,6 +209,8 @@ def apply_paper_execution(
     )
     updated.setdefault("fills", []).append(
         {
+            "schema": "tradecat_auto.paper_fill.v1",
+            "schema_version": SCHEMA_VERSION,
             "fill_id": _fill_id(execution_id, "OPEN"),
             "execution_id": execution_id,
             "position_id": position_id,
@@ -227,6 +239,9 @@ def load_paper_ledger_from_object(value: dict[str, Any]) -> dict[str, Any]:
     ledger = default_paper_ledger(initial_balance_usdt=float(value.get("initial_balance_usdt") or DEFAULT_INITIAL_BALANCE_USDT))
     ledger.update(copy.deepcopy(value))
     ledger["schema"] = LEDGER_SCHEMA
+    ledger["schema_version"] = SCHEMA_VERSION
+    ledger["safety"] = _safety_boundary()
+    ledger["provenance"] = _provenance(ledger.get("provenance"))
     ledger["open_positions"] = dict(ledger.get("open_positions") or {})
     ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
     ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
@@ -351,6 +366,8 @@ def _close_position(
     ledger.setdefault("closed_positions", []).append(position)
     ledger.setdefault("fills", []).append(
         {
+            "schema": "tradecat_auto.paper_fill.v1",
+            "schema_version": SCHEMA_VERSION,
             "fill_id": _fill_id(str(position.get("execution_id") or position.get("position_id")), "CLOSE"),
             "execution_id": position.get("execution_id"),
             "position_id": position.get("position_id"),
@@ -549,3 +566,20 @@ def _num(value: Any) -> float | None:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }
+
+
+def _provenance(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    return {"source": "local_tradecat_paper_ledger"}

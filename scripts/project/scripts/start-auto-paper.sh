@@ -191,6 +191,7 @@ payload = {
     "mode": "paper",
     "real_orders": False,
     "signed_requests": False,
+    "reads_api_keys": False,
     "command": "auto-paper-service",
     "action": os.environ["AUTO_JSON_ACTION"],
     "state": os.environ["AUTO_JSON_STATE"],
@@ -237,6 +238,14 @@ payload = {
     "base_url": os.environ["AUTO_JSON_BASE_URL"],
     "python": os.environ["AUTO_JSON_PYTHON"],
     "health": "spawned_unverified" if truthy(os.environ["AUTO_JSON_RUNNING"]) else "not_running",
+    "safety": {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    },
     "limitations": [
         "public Binance market data only",
         "paper/watch mode only",

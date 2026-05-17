@@ -22,8 +22,14 @@ class RiskTests(unittest.TestCase):
         decision = evaluate_risk(LONG_SIGNAL, default_risk_policy(mode="paper"))
 
         self.assertEqual(decision["schema"], "tradecat_auto.risk_decision.v1")
+        self.assertEqual(decision["schema_version"], "1.0.0")
         self.assertEqual(decision["decision"], "REJECT")
         self.assertEqual(decision["mode"], "paper")
+        self.assertFalse(decision["real_orders"])
+        self.assertFalse(decision["signed_requests"])
+        self.assertFalse(decision["reads_api_keys"])
+        self.assertFalse(decision["safety"]["binance_account_state"])
+        self.assertEqual(decision["provenance"]["source"], "tradecat_auto.risk.evaluate_risk")
         self.assertIn("agent_sizing_required", decision["reasons"])
         self.assertIn("paper_only", decision["constraints"])
 

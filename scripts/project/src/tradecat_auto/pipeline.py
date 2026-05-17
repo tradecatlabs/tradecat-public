@@ -32,10 +32,15 @@ def build_paper_pipeline_report(
             "schema": "tradecat_auto.run_once_report.v1",
             "schema_version": "1.0.0",
             "ok": False,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
             "mode": mode,
             "selected_symbol": selected,
             "error": "selected_symbol_not_found_in_anomaly_symbols",
             "events_count": len(events.get("events") or []) if isinstance(events, dict) else 0,
+            "provenance": _report_provenance(selected, market_bundle),
+            "safety": _safety_boundary(),
         }
     enrichment = build_market_enrichment(anomaly_item, market_bundle)
     signal = build_signal_score(enrichment)
@@ -96,10 +101,15 @@ def build_paper_pipeline_report(
         "schema": "tradecat_auto.run_once_report.v1",
         "schema_version": "1.0.0",
         "ok": report_ok,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
         "mode": mode,
         "generated_at": _now_iso(),
         "selected_symbol": selected,
         "error": error,
+        "provenance": _report_provenance(selected, market_bundle),
+        "safety": _safety_boundary(),
         "paper_sizing": sizing,
         "paper_margin_budget_usdt": sizing["margin_budget_usdt"],
         "requested_margin_usdt": sizing["requested_margin_usdt"],
@@ -198,3 +208,23 @@ def _positive_float(value: Any) -> float | None:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _report_provenance(selected_symbol: str, market_bundle: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": "tradecat_auto.pipeline.build_paper_pipeline_report",
+        "selected_symbol": selected_symbol,
+        "market_bundle_schema": str(market_bundle.get("schema") or ""),
+        "market_bundle_source": str(market_bundle.get("source") or "binance_public_market_bundle"),
+    }
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }
