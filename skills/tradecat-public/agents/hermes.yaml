@@ -1,5 +1,5 @@
-display_name: TradeCat Public Hermes
-short_description: Hermes adapter for the TradeCat public multi-agent Skill wrapper.
+display_name: TradeCat Agent Paper Trader
+short_description: Hermes adapter for the TradeCat public-readonly signal source and paper/watch Agent runtime.
 manifest: skills/tradecat-public/agents/manifest.json
 skill_package_governance: skills/tradecat-public/references/skill-package-governance.md
 agent_contract: skills/tradecat-public/references/agent-contract.md
@@ -11,15 +11,14 @@ role_profiles:
   default_paper_trader: discretionary_futures_trader
 fast_path:
   - read skills/tradecat-public/agents/manifest.json
-  - bash scripts/run-tradecat.sh status --json
-  - bash scripts/run-tradecat.sh datasets --json
-  - bash scripts/run-tradecat.sh path signal_flow --json
-  - bash scripts/run-tradecat.sh analyze --json
-  - bash scripts/run-tradecat.sh features --json
   - python3 scripts/request.py signal_flow --format json --limit 5
+  - python3 scripts/request.py anomaly_panel --format json --limit 0
+  - bash scripts/run-tradecat.sh soft-layer --json
+  - bash scripts/run-tradecat.sh paper-report --json
+  - bash scripts/start-auto-paper.sh status --json
 notes:
   - Treat manifest.json as the only canonical machine contract.
   - Treat skills/tradecat-public as the embedded Hermes Skill package; implementation details live at repository root.
   - Use agent_role_profiles only as soft paper/watch research prompts, never as trading authorization.
   - Read skills/tradecat-public/references/hermes-agent-guide.md for development-vs-production boundaries and Agent-supplied market context.
-  - Prefer readonly commands before sync/install/uninstall.
+  - Prefer readonly public-sheet and paper-report commands before starting or mutating the local paper runtime.

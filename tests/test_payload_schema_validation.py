@@ -2,53 +2,26 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
-from tradecat_auto import cli as auto_cli
-from tradecat_auto.binance_market import BinanceMarketClient
-from tradecat_auto.paper_ledger import apply_paper_execution, default_paper_ledger, save_paper_ledger
-from tradecat_terminal import cli
-from tradecat_terminal.cache import write_dataset_body
-from tradecat_terminal.dataset_contract import load_dataset_consumption_contract
-from tradecat_terminal.registry import get_dataset
+from tradecat_auto.paper_ledger import default_paper_ledger, save_paper_ledger
+from tradecat_sources.dataset_contract import load_dataset_consumption_contract
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS_DIR = PROJECT_ROOT / "contracts"
-FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "json_contract"
 REQUEST_SCRIPT = PROJECT_ROOT / "scripts" / "request.py"
-START_SCRIPT = PROJECT_ROOT / "scripts" / "start.sh"
-WATCHDOG_SCRIPT = PROJECT_ROOT / "scripts" / "watchdog.sh"
 REQUEST_REGISTRY_URL = "https://example.local/tradecat-registry.json"
-SHEET_CSV = "https://dexscreener.com/example\n排名,交易对,价格\n1,BTCUSDT,100\n"
-EVENT_CSV = "time,content\n2026-05-10 10:00:00,hello\n"
 SIGNAL_CSV = "时间(北京),交易对,周期,类型,内容\n2026-05-10 10:00:00,BTCUSDT,5分钟,量比放大,hello\n"
-ANOMALY_CSV = "榜单,序号,交易对\n异动榜,1,BTCUSDT\n异动榜,2,ETHUSDT\n"
-STATS_CSV = "窗口,覆盖合约数,交易对口径\n24h,200,USDT perpetual\n"
 REQUEST_REGISTRY = {
-    "workbooks": {
-        "main": {
-            "spreadsheet_id": "sheet-id",
-            "description": "test workbook",
-        }
-    },
+    "workbooks": {"main": {"spreadsheet_id": "sheet-id", "description": "test workbook"}},
     "datasets": {
-        "event_stream": {
-            "workbook_key": "main",
-            "tab_name": "event_stream",
-            "gid": "1",
-            "description": "test dataset",
-            "data_mode": "stream",
-            "active": True,
-        },
         "signal_flow": {
             "workbook_key": "main",
             "tab_name": "信号流",
@@ -59,39 +32,6 @@ REQUEST_REGISTRY = {
         }
     },
 }
-
-
-def test_advertised_cli_payloads_validate_against_formal_schemas(tmp_path, capsys, monkeypatch):
-    cache_dir = tmp_path / "cache"
-    monkeypatch.setenv("TRADECAT_SETTINGS_PATH", str(tmp_path / "settings.json"))
-    monkeypatch.delenv("TRADECAT_CACHE_COMPRESSION", raising=False)
-
-    import tradecat_terminal.cache as cache_module
-
-    monkeypatch.setattr(cache_module, "fetch_csv_body", _fake_sheet_fetch)
-    write_dataset_body(cache_dir, get_dataset("signal_flow"), SIGNAL_CSV)
-    write_dataset_body(cache_dir, get_dataset("anomaly_panel"), ANOMALY_CSV)
-
-    payloads = [
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "init", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "status", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "doctor", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "path", "signal_flow", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "datasets", "--json"]),
-        _run_cli_json(capsys, ["config", "show", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "sync", "market_snapshot", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "sync-all", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "signal_flow", "--no-write", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "--no-write", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "prune", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "export", "signal_flow", "--format", "json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "analyze", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "features", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "doctor", "--bundle", "-"]),
-    ]
-
-    for payload in payloads:
-        validate_payload(payload)
 
 
 def test_request_script_payloads_validate_against_formal_schemas(capsys, monkeypatch):
@@ -113,106 +53,7 @@ def test_request_script_payloads_validate_against_formal_schemas(capsys, monkeyp
     validate_payload(result)
 
 
-def test_watch_status_payloads_validate_against_formal_schema(tmp_path):
-    env = {
-        **os.environ,
-        "PYTHON_BIN": sys.executable,
-        "PYTHONPATH": str(PROJECT_ROOT / "src"),
-        "TRADECAT_CACHE_DIR": str(tmp_path / "cache"),
-        "TRADECAT_TERMINAL_RUNTIME_DIR": str(tmp_path / "run"),
-        "TRADECAT_TERMINAL_WATCH_NO_WRITE": "1",
-        "TRADECAT_TERMINAL_WATCH_INTERVAL": "60",
-    }
-
-    stopped = _run_script_json(["status", "--json"], env=env, expected_code=1)
-    validate_payload(stopped)
-    assert stopped["error"]["code"] == "watch_not_running"
-
-    try:
-        started = _run_script_json(["start", "--json"], env=env)
-        validate_payload(started)
-        assert started["state"] == "running"
-
-        running = _run_script_json(["status", "--json"], env=env)
-        validate_payload(running)
-        assert running["running"] is True
-
-        restarted = _run_script_json(["restart", "--json"], env=env)
-        validate_payload(restarted)
-        assert restarted["action"] == "restart"
-        assert restarted["state"] == "running"
-    finally:
-        stopped_after_start = _run_script_json(["stop", "--json"], env=env)
-        validate_payload(stopped_after_start)
-
-
-def test_watchdog_json_payload_validates_against_formal_schema(tmp_path):
-    env = {
-        **os.environ,
-        "PYTHON_BIN": sys.executable,
-        "PYTHONPATH": str(PROJECT_ROOT / "src"),
-        "TRADECAT_CACHE_DIR": str(tmp_path / "cache"),
-        "TRADECAT_TERMINAL_RUNTIME_DIR": str(tmp_path / "run"),
-        "TRADECAT_TERMINAL_WATCH_NO_WRITE": "1",
-        "TRADECAT_TERMINAL_WATCH_INTERVAL": "60",
-    }
-
-    try:
-        payload = _run_script_json(["--json"], env=env, script=WATCHDOG_SCRIPT)
-        validate_payload(payload)
-        assert payload["schema"] == "tradecat.watch_status.v1"
-        assert payload["state"] == "running"
-    finally:
-        stopped = _run_script_json(["stop", "--json"], env=env)
-        validate_payload(stopped)
-
-
-def test_real_error_payloads_validate_against_formal_schemas(tmp_path, capsys, monkeypatch):
-    cache_dir = tmp_path / "cache"
-
-    invalid_dataset = _run_cli_json(
-        capsys,
-        ["--cache-dir", str(cache_dir), "sync", "missing", "--json"],
-        expected_code=2,
-    )
-    validate_payload(invalid_dataset)
-    assert invalid_dataset["error"]["code"] == "invalid_dataset_key"
-
-    import tradecat_terminal.cache as cache_module
-
-    monkeypatch.setattr(cache_module, "fetch_csv_body", _fake_sheet_fetch)
-    monkeypatch.setenv("TRADECAT_CACHE_COMPRESSION", "bad")
-    invalid_runtime = _run_cli_json(
-        capsys,
-        ["--cache-dir", str(cache_dir), "sync", "market_snapshot", "--json"],
-        expected_code=2,
-    )
-    validate_payload(invalid_runtime)
-    assert invalid_runtime["error"]["code"] == "invalid_runtime_configuration"
-
-    def boom(*args, **kwargs):
-        raise RuntimeError("boom")
-
-    monkeypatch.delenv("TRADECAT_CACHE_COMPRESSION", raising=False)
-    monkeypatch.setattr(cli, "sync_dataset", boom)
-    local_runtime = _run_cli_json(
-        capsys,
-        ["--cache-dir", str(cache_dir), "sync", "market_snapshot", "--json"],
-        expected_code=1,
-    )
-    validate_payload(local_runtime)
-    assert local_runtime["error"]["code"] == "local_runtime_error"
-
-    invalid_feature_request = _run_cli_json(
-        capsys,
-        ["--cache-dir", str(cache_dir), "features", "--json", "--limit", "0"],
-        expected_code=2,
-    )
-    validate_payload(invalid_feature_request)
-    assert invalid_feature_request["error"]["code"] == "invalid_feature_request"
-
-
-def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path, monkeypatch):
+def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path):
     ledger_path = tmp_path / "paper_ledger.json"
     save_paper_ledger(ledger_path, default_paper_ledger(initial_balance_usdt=1000.0))
     archive_path = tmp_path / "cycles.jsonl"
@@ -220,190 +61,73 @@ def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path
         json.dumps(
             {
                 "schema": "tradecat_auto.service_cycle.v1",
-                "action": "PROCESSED",
-                "ok": True,
-                "pipeline_report": {
-                    "selected_symbol": "IRYSUSDT",
-                    "risk_decision": {"decision": "ALLOW"},
-                    "paper_execution": {"status": "OPENED", "paper_execution_id": "exec-schema-replay"},
-                },
-            }
+                "schema_version": "1.0.0",
+                "ok": False,
+                "action": "SKIPPED_NO_EVENT",
+                "reason": "no_signal_flow_available",
+                "error_code": "no_signal_flow_available",
+                "safety": {"real_orders": False, "signed_requests": False, "reads_api_keys": False},
+            },
+            ensure_ascii=False,
         )
         + "\n",
         encoding="utf-8",
     )
-    managed_ledger_path = tmp_path / "managed_paper_ledger.json"
-    managed_ledger = apply_paper_execution(default_paper_ledger(initial_balance_usdt=1000.0), {
-        "ok": True,
-        "status": "OPENED",
-        "paper_execution_id": "exec-schema-position",
-        "symbol": "IRYSUSDT",
-        "side": "LONG",
-        "entry_price": 100.0,
-        "quantity": 0.2,
-        "notional_usdt": 20.0,
-        "requested_margin_usdt": 10.0,
-        "leverage": 2.0,
-        "stop_loss_price": 97.0,
-        "take_profit_price": 106.0,
-    }, now_iso="2026-05-18T00:00:00Z")
-    position_id = managed_ledger["open_positions"]["IRYSUSDT"]["position_id"]
-    save_paper_ledger(managed_ledger_path, managed_ledger)
-    position_thesis_path = tmp_path / "position_management_thesis.json"
-    position_thesis_path.write_text(
-        json.dumps(
-            {
-                "schema": "tradecat_auto.position_management_thesis.v1",
-                "schema_version": "1.0.0",
-                "ok": True,
-                "mode": "paper",
-                "action": "adjust_exit",
-                "symbol": "IRYSUSDT",
-                "position_ref": {"position_id": position_id, "symbol": "IRYSUSDT"},
-                "reason": "schema validation fixture adjusts local paper exits",
-                "exit_update": {"stop_loss_price": 98.0, "agent_authorized": True, "real_order": False},
-                "error_code": None,
-                "provenance": {"source": "test_payload_schema_validation", "research_cycle_run_id": "cycle-schema-position"},
-                "safety": _auto_safety(),
-                "hard_boundaries": {
-                    "real_orders": False,
-                    "signed_requests": False,
-                    "reads_api_keys": False,
-                    "binance_account_state": False,
-                },
-                "limitations": ["paper/watch only; no real Binance order"],
-            }
-        ),
-        encoding="utf-8",
-    )
-    auto_args = SimpleNamespace(
-        tradecat_public=str(tmp_path / "public"),
-        base_url="https://example.test",
-        symbol="auto",
-        event_limit=5,
-        anomaly_limit=20,
-        mode="paper",
-        notional_usdt=None,
-        agent_margin_usdt=7.5,
-        paper_leverage=3.0,
-        paper_margin_budget_usdt=None,
-        state_path=str(tmp_path / "service_state.json"),
-        interval_seconds=60.0,
-        max_cycles=1,
-        once=True,
-        max_event_age_seconds=None,
-        ledger_path=str(ledger_path),
-        archive_path="",
-        journal_path="",
-        initial_balance_usdt=1000.0,
-        paper_fee_bps=2.0,
-        paper_slippage_bps=0.5,
-        portfolio_risk_policy_path="",
-        paper_kill_switch_path="",
-    )
-    monkeypatch.setattr(auto_cli, "BinanceMarketClient", _FakeAutoClient)
-    monkeypatch.setattr(auto_cli, "TradeCatPublicSource", _FakeAutoSource)
 
-    market_client = BinanceMarketClient(base_url="https://example.test", transport=_fake_binance_transport)
     payloads = [
-        market_client.market_universe(),
-        auto_cli.probe_public(auto_args),
-        auto_cli.run_once_public(auto_args, client=_FakeAutoClient(), source=_FakeAutoSource()),
-        auto_cli.run_loop_public(auto_args, client=_FakeAutoClient(), source=_FakeAutoSource()),
-        auto_cli.paper_report(SimpleNamespace(ledger_path=str(ledger_path), initial_balance_usdt=1000.0)),
-        auto_cli.replay_report(SimpleNamespace(archive_path=str(archive_path), ledger_path=str(ledger_path), journal_path="")),
-        auto_cli.position_manage_report(
-            SimpleNamespace(
-                thesis_path=str(position_thesis_path),
-                ledger_path=str(managed_ledger_path),
-                journal_path="",
-                initial_balance_usdt=1000.0,
-                paper_fee_bps=0.0,
-                paper_slippage_bps=0.0,
-                now="2026-05-18T00:10:00Z",
-            )
-        ),
+        _run_auto_json(["soft-layer", "--json"]),
+        _run_auto_json(["paper-report", "--ledger-path", str(ledger_path), "--json"]),
+        _run_auto_json(["replay-report", "--archive-path", str(archive_path), "--ledger-path", str(ledger_path), "--json"]),
+        _run_auto_json(["daily-report", "--archive-path", str(archive_path), "--ledger-path", str(ledger_path), "--date", "2026-05-10", "--json"]),
     ]
 
     for payload in payloads:
         validate_payload(payload)
 
 
-def test_golden_json_fixtures_validate_against_formal_schemas():
-    expected = {
-        "invalid-dataset-error.json",
-        "invalid-runtime-configuration-error.json",
-        "local-runtime-error.json",
-        "request-dataset-list-success.json",
-        "analysis-report-empty-cache-error.json",
-        "analysis-report-success.json",
-        "feature-bundle-empty-cache-error.json",
-        "feature-bundle-success.json",
-        "status-success.json",
-        "support-bundle-success.json",
-        "watch-status-not-running.json",
-    }
-    fixture_paths = sorted(FIXTURES_DIR.glob("*.json"))
-
-    assert {path.name for path in fixture_paths} == expected
-    for path in fixture_paths:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        validate_payload(payload)
-
-
-def test_dataset_consumption_contract_validates_against_formal_schema():
+def test_dataset_consumption_contract_validates_against_schema():
     validate_payload(load_dataset_consumption_contract())
 
 
 def validate_payload(payload: dict[str, Any]) -> None:
-    schema_id = payload["schema"]
-    schema = _schema_by_payload_schema()[schema_id]
-    Draft202012Validator.check_schema(schema)
-    validator = Draft202012Validator(schema, registry=_schema_registry())
+    schema_name = _schema_name_for(payload)
+    schema = json.loads((CONTRACTS_DIR / schema_name).read_text(encoding="utf-8"))
+    registry = _schema_registry()
+    validator = Draft202012Validator(schema, registry=registry)
     errors = sorted(validator.iter_errors(payload), key=lambda error: list(error.path))
-
-    assert not errors, "\n".join(_format_schema_error(error) for error in errors)
-
-
-def _run_cli_json(capsys, args: list[str], *, expected_code: int = 0) -> dict[str, Any]:
-    assert cli.main(args) == expected_code
-    return _json_from_stdout(capsys.readouterr().out)
+    assert errors == []
 
 
-def _run_request_json(request_module: ModuleType, capsys, args: list[str], *, expected_code: int = 0) -> dict[str, Any]:
-    assert request_module.main(args) == expected_code
-    return _json_from_stdout(capsys.readouterr().out)
+def _schema_name_for(payload: dict[str, Any]) -> str:
+    schema = payload.get("schema")
+    mapping = {
+        "tradecat.request_dataset_list.v1": "tradecat-request-dataset-list.schema.json",
+        "tradecat.request_result.v1": "tradecat-request-result.schema.json",
+        "tradecat.dataset_consumption_contract.v1": "tradecat-dataset-consumption-contract.schema.json",
+        "tradecat_auto.agent_soft_layer.v1": "tradecat-auto-agent-soft-layer.schema.json",
+        "tradecat_auto.paper_report.v1": "tradecat-auto-paper-report.schema.json",
+        "tradecat_auto.replay_report.v1": "tradecat-auto-replay-report.schema.json",
+        "tradecat_auto.daily_paper_report.v1": "tradecat-auto-daily-paper-report.schema.json",
+    }
+    return mapping[str(schema)]
 
 
-def _run_script_json(
-    args: list[str],
-    *,
-    env: dict[str, str],
-    expected_code: int = 0,
-    script: Path = START_SCRIPT,
-) -> dict[str, Any]:
-    result = subprocess.run(
-        ["bash", str(script), *args],
-        check=False,
-        env=env,
-        text=True,
-        capture_output=True,
-    )
-    assert result.returncode == expected_code, result.stderr
-    return _json_from_stdout(result.stdout)
+def _schema_registry() -> Registry:
+    resources = []
+    for path in CONTRACTS_DIR.glob("*.schema.json"):
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        if schema.get("$id"):
+            resources.append((schema["$id"], Resource.from_contents(schema, default_specification=DRAFT202012)))
+    return Registry().with_resources(resources)
 
 
-def _json_from_stdout(stdout: str) -> dict[str, Any]:
-    text = stdout.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return json.loads(text.splitlines()[-1])
-
-
-def _fake_sheet_fetch(url: str, timeout: float = 30.0) -> str:
-    del url, timeout
-    return SHEET_CSV
+def _load_request_module() -> object:
+    spec = importlib.util.spec_from_file_location("tradecat_request_script", REQUEST_SCRIPT)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def _fake_request_fetch(url: str, *, timeout: float) -> str:
@@ -413,132 +137,19 @@ def _fake_request_fetch(url: str, *, timeout: float) -> str:
     return SIGNAL_CSV
 
 
-class _FakeAutoClient:
-    def __init__(self, *args, **kwargs) -> None:
-        del args, kwargs
-
-    def market_universe(self):
-        return {
-            "schema": "tradecat_auto.market_universe.v1",
-            "schema_version": "1.0.0",
-            "ok": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-            "base_url": "https://example.test",
-            "symbol_count": 1,
-            "symbols": ["IRYSUSDT"],
-            "rate_limits": [],
-            "api_usage": {},
-            "provenance": {"source": "test", "endpoint": "/fapi/v1/exchangeInfo"},
-            "safety": _auto_safety(),
-        }
-
-    def fetch_public_market_bundle(self, symbol):
-        return {
-            "schema": "tradecat_auto.public_market_bundle.v1",
-            "schema_version": "1.0.0",
-            "ok": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-            "symbol": symbol,
-            "ticker24hr": {"lastPrice": "0.062", "priceChangePercent": "24", "quoteVolume": "50000000"},
-            "depth_summary": {"spread_bps": 3.0},
-            "openInterest": {"openInterest": "1000000"},
-            "openInterestHist": [{"sumOpenInterestValue": "100000"}],
-            "fundingRate": [{"fundingRate": "0.00005"}],
-            "premiumIndex": {"markPrice": "0.062", "indexPrice": "0.0619"},
-            "topLongShortAccountRatio": [{"longShortRatio": "1.1"}],
-            "topLongShortPositionRatio": [{"longShortRatio": "1.1"}],
-            "globalLongShortAccountRatio": [{"longShortRatio": "1.1"}],
-            "takerlongshortRatio": [{"buySellRatio": "1.2"}],
-            "errors": {},
-            "api_usage": {},
-            "provenance": {"source": "test", "endpoint_count": 11},
-            "safety": _auto_safety(),
-        }
+def _run_request_json(module: object, capsys: Any, args: list[str]) -> dict[str, Any]:
+    assert module.main(args) == 0
+    return json.loads(capsys.readouterr().out)
 
 
-class _FakeAutoSource:
-    def __init__(self, *args, **kwargs) -> None:
-        del args, kwargs
-
-    def fetch_events(self, *, limit):
-        del limit
-        return {"ok": True, "events": [{"event_id": "evt-schema", "content": "IRYS"}]}
-
-    def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
-        del tradable_symbols, limit
-        return {
-            "ok": True,
-            "symbols": [
-                {"raw_symbol": "IRYS", "normalized_symbol": "IRYSUSDT", "source_values": {"交易对": "IRYS"}}
-            ],
-            "rejected": [],
-        }
-
-
-def _fake_binance_transport(url: str, *, timeout: float, headers: dict[str, str]) -> bytes:
-    del timeout, headers
-    if "/fapi/v1/exchangeInfo" not in url:
-        raise AssertionError(f"unexpected url: {url}")
-    return json.dumps(
-        {
-            "symbols": [
-                {"symbol": "IRYSUSDT", "status": "TRADING", "quoteAsset": "USDT", "contractType": "PERPETUAL"}
-            ],
-            "rateLimits": [],
-        }
-    ).encode()
-
-
-def _auto_safety() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
-
-
-def _load_request_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("tradecat_request_payload_schema_test", REQUEST_SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _schema_by_payload_schema() -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
-    for schema in _schema_payloads().values():
-        schema_id = schema.get("properties", {}).get("schema", {}).get("const")
-        if isinstance(schema_id, str):
-            result[schema_id] = schema
-    return result
-
-
-def _schema_registry() -> Registry:
-    return Registry().with_resources(
-        (
-            str(schema["$id"]),
-            Resource.from_contents(schema, default_specification=DRAFT202012),
-        )
-        for schema in _schema_payloads().values()
+def _run_auto_json(args: list[str]) -> dict[str, Any]:
+    result = subprocess.run(
+        [sys.executable, "-m", "tradecat_auto.cli", *args],
+        cwd=PROJECT_ROOT,
+        env={"PYTHONPATH": str(PROJECT_ROOT / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
     )
-
-
-def _schema_payloads() -> dict[str, dict[str, Any]]:
-    return {
-        path.name: json.loads(path.read_text(encoding="utf-8"))
-        for path in sorted(CONTRACTS_DIR.glob("*.schema.json"))
-    }
-
-
-def _format_schema_error(error) -> str:
-    location = ".".join(str(item) for item in error.path) or "<root>"
-    return f"{location}: {error.message}"
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)

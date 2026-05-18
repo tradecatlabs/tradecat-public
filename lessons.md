@@ -1,5 +1,13 @@
 # Lessons
 
+## 2026-05-18 Retired UI Must Not Block The Agent Trader Shape
+
+- 现象：用户目标已经转向 Agent 交易员常驻纸面交易，但仓库仍保留大量 TUI、安装器、cache-browser、analysis facts 文档和门禁，导致工程重心偏离。
+- 本质：旧产品面会变成组织惯性；当目标形态改变时，留下“可运行但不再核心”的入口会持续消耗维护预算并误导 Agent。
+- 规则：TradeCat Public 当前只保留公开信号源、Agent context/thesis contract、paper/watch、ledger、risk、reports、monitor 和验证门禁；TUI/install/cache-browser 不再是默认产品面。
+- 防复发：guard、manifest、README、AGENTS、Skill references 和 CI 必须同时禁止退役路径复活。
+- 验证：每次架构变动都运行 `bash scripts/guard_public_local_files.sh`、`bash scripts/agent-smoke.sh`、`bash scripts/verify.sh` 和 `bash scripts/validate-skill.sh --strict`。
+
 ## 2026-05-08 Agent Consumption Needs A Machine Contract, Not More Prose
 
 - 现象：仓库已经是 Skill 结构，但 Hermes/Agent 仍需要先读长文档、猜命令副作用、猜 JSON 形状和失败退出码。

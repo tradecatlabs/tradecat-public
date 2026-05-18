@@ -49,6 +49,7 @@ def run_service_cycle(
     previous_state = dict(state)
     state["last_attempt_at"] = _iso(cycle_time)
     state["cycles_attempted"] = int(state.get("cycles_attempted") or 0) + 1
+    save_service_state(path, state)
 
     try:
         agent_trade_thesis = _agent_trade_thesis_from_args(args)

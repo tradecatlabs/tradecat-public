@@ -6,17 +6,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from tradecat_terminal.dataset_contract import (
+from tradecat_sources.dataset_contract import (
     DATASET_CONSUMPTION_CONTRACT_RESOURCE,
     DATASET_CONSUMPTION_SCHEMA,
     load_dataset_consumption_contract,
 )
-from tradecat_terminal.registry import DATASETS, REGISTRY_RESOURCE, list_datasets
+from tradecat_sources.registry import DATASETS, REGISTRY_RESOURCE, list_datasets
 
 EXPECTED_CONTRACT_SCHEMA = "tradecat.dataset_consumption_contract.v1"
-REGISTRY_PATH = Path(__file__).resolve().parents[1] / "src" / "tradecat_terminal" / REGISTRY_RESOURCE
+REGISTRY_PATH = Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / REGISTRY_RESOURCE
 CONTRACT_PATH = (
-    Path(__file__).resolve().parents[1] / "src" / "tradecat_terminal" / DATASET_CONSUMPTION_CONTRACT_RESOURCE
+    Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / DATASET_CONSUMPTION_CONTRACT_RESOURCE
 )
 
 

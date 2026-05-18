@@ -9,4 +9,7 @@ fi
 
 cd "$ROOT_DIR"
 export PYTHONPATH="$ROOT_DIR/src:${PYTHONPATH:-}"
-exec "$PYTHON_BIN" -m tradecat_terminal "$@"
+if [[ "${1:-}" == "auto" ]]; then
+  shift
+fi
+exec "$PYTHON_BIN" -m tradecat_auto.cli "$@"

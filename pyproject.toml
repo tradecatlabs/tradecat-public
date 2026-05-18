@@ -1,25 +1,21 @@
 [project]
-name = "tradecat-terminal"
+name = "tradecat-agent"
 version = "0.1.3"
-description = "User-side TradeCat terminal panel backed by local snapshot cache files"
+description = "Headless Agent paper-trading runtime using TradeCat public sheet signals"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "TradeCat Team" }]
-keywords = ["tradecat", "terminal", "tui", "snapshot-cache"]
+keywords = ["tradecat", "agent", "paper-trading", "public-readonly"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Environment :: Console",
-    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Financial and Insurance Industry",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
-    "filelock>=3.13.0",
-    "rich>=13.7.0",
     "urllib3>=2.2.0",
-    "windows-curses>=2.4.0; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
@@ -40,17 +36,15 @@ research = [
 ]
 
 [project.scripts]
-tradecat = "tradecat_terminal.cli:main"
-tradecat-terminal = "tradecat_terminal.cli:main"
 tradecat-auto = "tradecat_auto.cli:main"
-tcat = "tradecat_terminal.cli:main"
+tradecat-agent = "tradecat_auto.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tradecat_terminal", "src/tradecat_auto"]
+packages = ["src/tradecat_sources", "src/tradecat_auto"]
 
 [tool.ruff]
 target-version = "py312"

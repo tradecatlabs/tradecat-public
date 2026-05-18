@@ -18,14 +18,14 @@ CONTRACT_VERSION = "1.0.0"
 REQUEST_SCHEMA = "tradecat.request_result.v1"
 REQUEST_DATASET_LIST_SCHEMA = "tradecat.request_dataset_list.v1"
 DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/tukuaiai/tradecat/develop/src/tradecat_terminal/dataset_registry.json"
+    "https://raw.githubusercontent.com/tukuaiai/tradecat/develop/src/tradecat_sources/dataset_registry.json"
 )
 REGISTRY_URL_ENV = "TRADECAT_REQUEST_REGISTRY_URL"
 
 
 def main(argv: list[str] | None = None) -> int:
     configure_stdio()
-    parser = argparse.ArgumentParser(description="TradeCat 一次性公开数据请求；无需安装，无本地缓存。")
+    parser = argparse.ArgumentParser(description="TradeCat Agent 公开表格只读请求；无需安装，无本地缓存。")
     parser.add_argument("dataset_key", nargs="?", help="dataset_key，例如 signal_flow")
     parser.add_argument("--format", choices=("table", "json", "jsonl", "csv", "raw"), default="table")
     parser.add_argument("--limit", type=int, default=50, help="最多输出业务数据行；0 表示不限制")
@@ -161,7 +161,7 @@ def default_registry_url() -> str:
     explicit = os.environ.get(REGISTRY_URL_ENV)
     if explicit:
         return explicit
-    local_registry = Path(__file__).resolve().parents[1] / "src" / "tradecat_terminal" / "dataset_registry.json"
+    local_registry = Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / "dataset_registry.json"
     if local_registry.exists():
         return local_registry.as_uri()
     return DEFAULT_REGISTRY_URL
@@ -261,7 +261,7 @@ def classify_request_error(exc: Exception) -> dict:
     return {
         "code": "request_failed",
         "kind": "runtime",
-        "hint": "执行 --datasets 确认入口可用，必要时改用安装版 tradecat doctor。",
+            "hint": "执行 --datasets 确认入口可用；检查代理、公开表格权限或 registry URL。",
         "retryable": False,
     }
 

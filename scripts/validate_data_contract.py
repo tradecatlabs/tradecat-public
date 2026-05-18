@@ -5,10 +5,10 @@ import json
 import sys
 from pathlib import Path
 
-from tradecat_terminal.registry import REGISTRY_RESOURCE, get_dataset, list_datasets
-from tradecat_terminal.sheets import fetch_csv_body, find_header_row_index, parse_csv_matrix
+from tradecat_sources.registry import REGISTRY_RESOURCE, get_dataset, list_datasets
+from tradecat_sources.sheets import fetch_csv_body, find_header_row_index, parse_csv_matrix
 
-REGISTRY_PATH = Path(__file__).resolve().parents[1] / "src" / "tradecat_terminal" / REGISTRY_RESOURCE
+REGISTRY_PATH = Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / REGISTRY_RESOURCE
 REQUIRED_LANGS = {"zh", "en", "ko"}
 
 
@@ -89,8 +89,8 @@ def validate_dataset_contract(dataset_key: str) -> list[str]:
         errors.append(f"stream dataset {dataset_key} must define event_key_columns")
     if dataset.is_snapshot() and not dataset.index_columns:
         errors.append(f"snapshot dataset {dataset_key} must define index_columns")
-    if dataset.tui_fetch_timeout_seconds and dataset.tui_probe_interval_seconds:
-        if dataset.tui_fetch_timeout_seconds > dataset.tui_probe_interval_seconds:
+    if dataset.source_fetch_timeout_seconds and dataset.source_poll_interval_seconds:
+        if dataset.source_fetch_timeout_seconds > dataset.source_poll_interval_seconds:
             errors.append(f"dataset {dataset_key} fetch timeout must not exceed probe interval")
     return errors
 

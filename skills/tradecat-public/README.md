@@ -16,15 +16,17 @@
 在仓库根目录运行：
 
 ```bash
-bash scripts/run-tradecat.sh status --json
-bash scripts/run-tradecat.sh datasets --json
-bash scripts/run-tradecat.sh auto soft-layer --json
+python3 scripts/request.py signal_flow --format json --limit 5
+python3 scripts/request.py anomaly_panel --format json --limit 0
+bash scripts/run-tradecat.sh soft-layer --json
+bash scripts/run-tradecat.sh paper-report --json
+bash scripts/start-auto-paper.sh status --json
 ```
 
 从本 Skill 目录运行时，薄 wrapper 会自动跳回仓库根：
 
 ```bash
-bash scripts/run-tradecat.sh status --json
+bash scripts/run-tradecat.sh soft-layer --json
 ```
 
 ## 边界
@@ -33,6 +35,7 @@ bash scripts/run-tradecat.sh status --json
 - 不签名请求。
 - 不调用真实账户、订单、杠杆、保证金修改端点。
 - 不真实下单。
+- 不恢复退役的本地 TUI、安装器或 cache-browser 产品线。
 - 运行态只允许写入 ignored `.runtime/`、`.tradecat/`、`.venv/` 等本地目录。
 
 ## 验证

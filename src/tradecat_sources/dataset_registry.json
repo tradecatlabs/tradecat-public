@@ -16,7 +16,7 @@
       "workbook_key": "market_data",
       "tab_name": "全市场快照",
       "gid": "1904613219",
-      "description": "全市场主宽表快照，本地按 JSON 快照文件缓存。",
+      "description": "全市场主宽表快照，供 Agent 按需只读拉取。",
       "data_mode": "snapshot",
       "index_columns": ["排名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
       "event_key_columns": [],
@@ -26,8 +26,8 @@
         "ko": "전체 시장 스냅샷"
       },
       "history_policy": "permanent",
-      "tui_probe_interval_seconds": null,
-      "tui_fetch_timeout_seconds": null,
+      "source_poll_interval_seconds": null,
+      "source_fetch_timeout_seconds": null,
       "table_region_policy": {
         "header": "auto",
         "top": "public_info_and_meta"
@@ -38,7 +38,7 @@
       "workbook_key": "market_data",
       "tab_name": "异动面板",
       "gid": "1915220137",
-      "description": "市场异动终端面板快照缓存。",
+      "description": "市场异动面板，是 Agent 交易员的主要公开信号源。",
       "data_mode": "snapshot",
       "index_columns": ["榜单", "榜单名", "序号", "交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
       "event_key_columns": [],
@@ -48,8 +48,8 @@
         "ko": "이상 변동 패널"
       },
       "history_policy": "permanent",
-      "tui_probe_interval_seconds": null,
-      "tui_fetch_timeout_seconds": null,
+      "source_poll_interval_seconds": null,
+      "source_fetch_timeout_seconds": null,
       "table_region_policy": {
         "header": "auto",
         "top": "public_info_and_meta"
@@ -60,7 +60,7 @@
       "workbook_key": "market_data",
       "tab_name": "全市场统计",
       "gid": "1161752788",
-      "description": "全市场统计汇总快照缓存。",
+      "description": "全市场统计汇总快照，供 Agent 按需只读拉取。",
       "data_mode": "snapshot",
       "index_columns": ["窗口", "覆盖合约数", "合约数", "交易对口径"],
       "event_key_columns": [],
@@ -70,8 +70,8 @@
         "ko": "전체 시장 통계"
       },
       "history_policy": "permanent",
-      "tui_probe_interval_seconds": null,
-      "tui_fetch_timeout_seconds": null,
+      "source_poll_interval_seconds": null,
+      "source_fetch_timeout_seconds": null,
       "table_region_policy": {
         "header": "auto",
         "top": "public_info_and_meta"
@@ -82,7 +82,7 @@
       "workbook_key": "alternative_data",
       "tab_name": "信号流",
       "gid": null,
-      "description": "交易猫另类数据终端在线信号流增量缓存。",
+      "description": "交易猫另类数据终端在线信号流，是 Agent 交易员的增量公开信号源。",
       "data_mode": "stream",
       "index_columns": ["时间(北京)", "交易对", "周期", "类型", "内容"],
       "event_key_columns": ["时间(北京)", "交易对", "周期", "类型", "内容"],
@@ -92,8 +92,8 @@
         "ko": "신호 스트림"
       },
       "history_policy": "permanent",
-      "tui_probe_interval_seconds": 3.0,
-      "tui_fetch_timeout_seconds": 3.0,
+      "source_poll_interval_seconds": 3.0,
+      "source_fetch_timeout_seconds": 3.0,
       "table_region_policy": {
         "header": "auto",
         "top": "public_info_and_meta"
@@ -104,7 +104,7 @@
       "workbook_key": "alternative_data",
       "tab_name": "事件流",
       "gid": "1419246950",
-      "description": "另类数据事件流增量缓存。",
+      "description": "另类数据事件流；保留为辅助公开事件源，不作为主交易信号。",
       "data_mode": "stream",
       "index_columns": ["时间(北京)", "内容"],
       "event_key_columns": ["时间(北京)", "内容"],
@@ -114,8 +114,8 @@
         "ko": "이벤트 스트림"
       },
       "history_policy": "permanent",
-      "tui_probe_interval_seconds": 3.0,
-      "tui_fetch_timeout_seconds": 3.0,
+      "source_poll_interval_seconds": 3.0,
+      "source_fetch_timeout_seconds": 3.0,
       "table_region_policy": {
         "header": "auto",
         "top": "public_info_and_meta"

@@ -10,7 +10,7 @@ DATASET_CONSUMPTION_SCHEMA = "tradecat.dataset_consumption_contract.v1"
 
 
 def load_dataset_consumption_contract() -> dict[str, Any]:
-    text = files("tradecat_terminal").joinpath(DATASET_CONSUMPTION_CONTRACT_RESOURCE).read_text(encoding="utf-8")
+    text = files("tradecat_sources").joinpath(DATASET_CONSUMPTION_CONTRACT_RESOURCE).read_text(encoding="utf-8")
     payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError(f"{DATASET_CONSUMPTION_CONTRACT_RESOURCE} 必须是 JSON object")

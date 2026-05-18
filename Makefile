@@ -1,4 +1,4 @@
-.PHONY: install install-dev test lint format status init doctor probe start stop watchdog verify
+.PHONY: install install-dev test lint format paper-status paper-health paper-ops paper-start paper-stop monitor verify
 
 install:
 	pip install -e .
@@ -15,26 +15,23 @@ lint:
 format:
 	ruff format src tests
 
-init:
-	python -m tradecat_terminal init
+paper-status:
+	bash scripts/start-auto-paper.sh status --json
 
-status:
-	python -m tradecat_terminal status
+paper-health:
+	bash scripts/start-auto-paper.sh health --json
 
-doctor:
-	python -m tradecat_terminal doctor
+paper-ops:
+	bash scripts/start-auto-paper.sh ops-check --json
 
-probe:
-	python -m tradecat_terminal probe
+paper-start:
+	bash scripts/start-auto-paper.sh start --json
 
-start:
-	bash scripts/start.sh start
+paper-stop:
+	bash scripts/start-auto-paper.sh stop --json
 
-stop:
-	bash scripts/start.sh stop
-
-watchdog:
-	bash scripts/watchdog.sh
+monitor:
+	python scripts/serve-auto-paper-monitor.py
 
 verify:
 	bash scripts/verify.sh

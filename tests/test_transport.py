@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tradecat_terminal.sheets import RemoteCsvError, fetch_csv_body
+from tradecat_sources.sheets import RemoteCsvError, fetch_csv_body
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,7 @@ class _Response:
 
 
 def test_transport_classifies_timeout(monkeypatch):
-    import tradecat_terminal.sheets as sheets
+    import tradecat_sources.sheets as sheets
 
     def fake_request(*args, **kwargs):
         raise sheets.ReadTimeoutError(None, "https://example.invalid", "timed out")
@@ -51,7 +51,7 @@ def test_transport_classifies_timeout(monkeypatch):
 
 
 def test_transport_classifies_connect_failure(monkeypatch):
-    import tradecat_terminal.sheets as sheets
+    import tradecat_sources.sheets as sheets
 
     def fake_request(*args, **kwargs):
         raise sheets.NewConnectionError(None, "connection refused")
@@ -74,7 +74,7 @@ def test_transport_classifies_connect_failure(monkeypatch):
 
 
 def test_transport_classifies_http_status(monkeypatch):
-    import tradecat_terminal.sheets as sheets
+    import tradecat_sources.sheets as sheets
 
     class Response:
         status = 429
@@ -100,7 +100,7 @@ def test_transport_classifies_http_status(monkeypatch):
 
 
 def test_transport_classifies_non_retryable_http_status(monkeypatch):
-    import tradecat_terminal.sheets as sheets
+    import tradecat_sources.sheets as sheets
 
     class Response:
         status = 403
@@ -126,7 +126,7 @@ def test_transport_classifies_non_retryable_http_status(monkeypatch):
 
 
 def test_transport_classifies_decode_error(monkeypatch):
-    import tradecat_terminal.sheets as sheets
+    import tradecat_sources.sheets as sheets
 
     class FakePool:
         def __init__(self, *args, **kwargs):
@@ -147,7 +147,7 @@ def test_transport_classifies_decode_error(monkeypatch):
 
 
 def test_parse_csv_rows_normalizes_blank_and_duplicate_headers():
-    from tradecat_terminal.sheets import parse_csv_rows
+    from tradecat_sources.sheets import parse_csv_rows
 
     rows = parse_csv_rows("名称,名称,\nBTC,duplicate,blank-header-value\n")
 
@@ -184,7 +184,7 @@ def test_request_parser_reads_sectioned_anomaly_panel_rows():
 
 
 def test_request_py_json_contract_uses_local_registry_file():
-    registry = (PROJECT_ROOT / "src" / "tradecat_terminal" / "dataset_registry.json").resolve()
+    registry = (PROJECT_ROOT / "src" / "tradecat_sources" / "dataset_registry.json").resolve()
     result = subprocess.run(
         [
             sys.executable,
@@ -242,7 +242,7 @@ def test_request_py_defaults_to_repo_local_registry_file():
 
 
 def test_request_py_json_error_contract_for_bad_dataset():
-    registry = (PROJECT_ROOT / "src" / "tradecat_terminal" / "dataset_registry.json").resolve()
+    registry = (PROJECT_ROOT / "src" / "tradecat_sources" / "dataset_registry.json").resolve()
     result = subprocess.run(
         [
             sys.executable,

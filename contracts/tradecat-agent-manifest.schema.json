@@ -28,10 +28,10 @@
       "type": "string"
     },
     "skill_root": {
-      "const": "."
+      "const": "skills/tradecat-public"
     },
     "project_root": {
-      "const": "project"
+      "const": "."
     },
     "default_workdir": {
       "const": "."
@@ -49,16 +49,16 @@
       ],
       "properties": {
         "shape": {
-          "const": "hermes_skill_package"
+          "const": "project_with_embedded_hermes_skill"
         },
         "canonical_machine_contract": {
-          "const": "agents/manifest.json"
+          "const": "skills/tradecat-public/agents/manifest.json"
         },
         "skill_root": {
-          "const": "."
+          "const": "skills/tradecat-public"
         },
         "implementation_project_root": {
-          "const": "project"
+          "const": "."
         },
         "no_second_truth": {
           "const": true

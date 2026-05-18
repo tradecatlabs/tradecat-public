@@ -1,24 +1,18 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 from types import ModuleType
 
-from tradecat_terminal import cli
-from tradecat_terminal.dataset_contract import (
+from tradecat_sources.dataset_contract import (
     DATASET_CONSUMPTION_SCHEMA,
     dataset_consumption_contract,
     load_dataset_consumption_contract,
 )
-from tradecat_terminal.registry import get_dataset, list_datasets
+from tradecat_sources.registry import get_dataset, list_datasets
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_SCRIPT = PROJECT_ROOT / "scripts" / "validate_dataset_consumption_contract.py"
-
-
-def _last_json(captured: str) -> dict:
-    return json.loads(captured.strip().splitlines()[-1])
 
 
 def test_dataset_consumption_contract_covers_registry():
@@ -45,19 +39,6 @@ def test_signal_flow_consumption_semantics_are_machine_readable():
     assert set(dataset.event_key_columns).issubset(covered_columns)
     assert contract["missing_value_policy"] == "empty_string_is_missing"
     assert contract["quality_tier"] == "public_sheet_best_effort"
-
-
-def test_datasets_json_exposes_consumption_contract(capsys):
-    assert cli.main(["datasets", "--json"]) == 0
-    payload = _last_json(capsys.readouterr().out)
-    signal_flow = next(dataset for dataset in payload["datasets"] if dataset["key"] == "signal_flow")
-    contract = signal_flow["consumption_contract"]
-
-    assert contract["schema"] == DATASET_CONSUMPTION_SCHEMA
-    assert contract["dataset_key"] == "signal_flow"
-    assert contract["primary_entity"] == "contract_symbol_signal"
-    assert contract["required_column_groups"][0]["name"] == "event_time"
-
 
 def _load_validator_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("tradecat_dataset_consumption_validator_test", VALIDATOR_SCRIPT)

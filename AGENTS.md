@@ -1,35 +1,34 @@
 # tradecat-public Agent 操作手册
 
-本文件作用域：`tradecat-public/**`。本仓现在是正常 Python 项目根，同时内嵌一个 Hermes/Codex Skill 包：`skills/tradecat-public/`。
+本文件作用域：`tradecat-public/**`。本仓库是正常 Python 项目根，同时内嵌 Hermes/Codex Skill 包 `skills/tradecat-public/`。
 
 ## 使命
 
-TradeCat 根项目提供公开在线表格消费、本地快照缓存、CLI/TUI、Agent 观察/事实包、Agent-supplied Binance public/read-only market context 审计、paper/watch、ledger、replay/backtest、报告和本地运维脚本。`skills/tradecat-public/` 只负责 Skill 激活、Agent manifest、平台 profile 和长文档索引。
+TradeCat Public 的当前使命是：Agent 交易员同步公开在线表格作为信号源，自主补齐 Binance public/read-only market context，生成 thesis，再由 TradeCat 执行 schema 审计、paper/watch、账本、风控拒绝、报告和可复现审计。
+
+旧本地 TUI、安装器、watchdog、缓存浏览器和用户侧终端产品线已退役；不要恢复为默认产品形态。
 
 ## 禁区
 
 - 禁止连接或写入 TradeCat 服务端 PostgreSQL。
-- 禁止把该服务接入服务端数据生产链路。
-- 禁止依赖 `apps/sheets` 内部实现细节；只能依赖公开在线表格 CSV 契约。
-- 禁止把缓存文件、凭证、Google key、私密 `.env` 写入仓库。
-- 禁止提交 Binance API key、secret、`.env`、私钥、真实账户输出、真实订单日志或任何可复用凭证。
-- `tradecat_auto` 只能执行 public-readonly + watch/paper；不得调用真实下单、撤单、改杠杆或签名账户接口。
+- 禁止依赖内部 `apps/sheets` 实现细节；只能依赖公开在线表格 CSV 契约。
+- 禁止提交缓存、运行日志、账本、Google key、Binance key、secret、`.env`、私钥、真实账户输出或真实订单日志。
+- `tradecat_auto` 只能执行 public-readonly + paper/watch；不得调用真实下单、撤单、改杠杆、改保证金或签名账户接口。
+- 缺 Agent sizing/leverage/exits 时必须 fail-closed；不得硬编码默认仓位、默认杠杆、默认止损止盈或默认持仓时长。
 
 ## 目录结构
 
 ```text
 tradecat-public/
-|-- README.md                  # 根项目说明、安装、运行、开发入口
+|-- README.md                  # 根项目说明、运行、开发入口
 |-- AGENTS.md                  # 本文件，根项目与 Skill 包边界
 |-- pyproject.toml             # Python 项目元数据
 |-- constraints.txt            # 依赖约束
-|-- install.sh / install.ps1   # 用户安装入口
-|-- uninstall.sh / uninstall.ps1
 |-- contracts/                 # JSON Schema 机器契约
-|-- resources/                 # 自包含公开参考资源与 Agent soft layer
-|-- scripts/                   # 根项目脚本、验证、运维和 thin wrappers
+|-- resources/                 # Binance 快照、Agent soft layer 等公开自包含资源
+|-- scripts/                   # request、paper runtime、监控、验证脚本
 |-- src/
-|   |-- tradecat_terminal/     # 公开表格、缓存、CLI/TUI、分析事实包
+|   |-- tradecat_sources/      # 公开在线表格信号源与 dataset contract
 |   `-- tradecat_auto/         # Agent context 审计、paper/watch、ledger、风控、报告
 |-- tests/                     # 项目测试
 |-- tasks/                     # 任务治理资产
@@ -46,19 +45,17 @@ tradecat-public/
 
 ## 边界
 
-- 根目录是唯一 Python 项目根；源码、测试、contracts、resources、install/uninstall、运行脚本和任务包都在根项目内。
-- `skills/tradecat-public/` 是唯一 Skill 包根；不得在仓库根重新创建 `SKILL.md`、`agents/` 或 `references/` 形成第二真相源。
-- `skills/tradecat-public/agents/manifest.json` 是 Agent/Hermes 机器主契约；文档只解释它，不复制第二份机器契约。
-- `scripts/` 是根项目脚本入口；`skills/tradecat-public/scripts/` 只能是薄 wrapper。
+- 根目录是唯一 Python 项目根；源码、测试、contracts、resources、运行脚本和任务包都在根项目内。
+- `skills/tradecat-public/` 是唯一 Skill 包根；不得在仓库根重新创建 `SKILL.md`、`agents/` 或 `references/`。
+- `skills/tradecat-public/agents/manifest.json` 是 Agent/Hermes 机器主契约；文档只能解释它。
+- `scripts/request.py` 是公开在线表格读取入口；`src/tradecat_sources/` 只做信号源适配，不恢复 TUI 或本地缓存产品。
 - `.runtime/`、`.tradecat/`、`.venv/`、`.hermes/`、`.tools/` 只属于本机运行态或开发态，必须保持 ignored。
 
 ## 主要数据流
 
 ```text
 公开在线表格 CSV
--> scripts/request.py / tradecat_terminal.registry
--> .tradecat/cache 本地快照
--> CLI/TUI / analysis_report / feature_bundle
+-> scripts/request.py / tradecat_sources.registry
 -> Agent/Hermes 生成 agent_market_context + agent_trade_thesis
 -> context-audit / run-context
 -> deterministic risk gate

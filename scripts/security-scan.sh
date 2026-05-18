@@ -145,7 +145,14 @@ case "${1:-}" in
   "")
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' EXIT
-    git -C "$ROOT_DIR" ls-files -z | tar -C "$ROOT_DIR" --null -T - -cf - | tar -xf - -C "$tmp_dir"
+    git -C "$ROOT_DIR" ls-files -z |
+      while IFS= read -r -d '' tracked_path; do
+        if [[ -e "$ROOT_DIR/$tracked_path" ]]; then
+          printf '%s\0' "$tracked_path"
+        fi
+      done |
+      tar -C "$ROOT_DIR" --null -T - -cf - |
+      tar -xf - -C "$tmp_dir"
     run_dir_scan "$tmp_dir"
     ;;
   *)

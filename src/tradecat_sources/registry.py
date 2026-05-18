@@ -6,9 +6,8 @@ from importlib.resources import files
 from typing import Literal
 from urllib.parse import urlencode
 
-from tradecat_terminal.i18n import DEFAULT_LANG, resolve_lang
-
 DataMode = Literal["snapshot", "stream"]
+DEFAULT_LANG = "zh"
 
 
 class UnknownDatasetError(ValueError):
@@ -34,8 +33,8 @@ class DatasetSpec:
     event_key_columns: tuple[str, ...] = field(default_factory=tuple)
     display_names: dict[str, str] = field(default_factory=dict)
     history_policy: str = "permanent"
-    tui_probe_interval_seconds: float | None = None
-    tui_fetch_timeout_seconds: float | None = None
+    source_poll_interval_seconds: float | None = None
+    source_fetch_timeout_seconds: float | None = None
     table_region_policy: dict[str, str | int | None] = field(default_factory=dict)
     active: bool = True
 
@@ -60,7 +59,7 @@ class DatasetSpec:
         return self.data_mode == "stream"
 
     def display_name(self, lang: str | None = None) -> str:
-        resolved = resolve_lang(lang)
+        resolved = lang if lang in self.display_names else DEFAULT_LANG
         return self.display_names.get(resolved) or self.display_names.get(DEFAULT_LANG) or self.tab_name
 
 
@@ -68,7 +67,7 @@ REGISTRY_RESOURCE = "dataset_registry.json"
 
 
 def _load_registry_payload() -> dict[str, object]:
-    text = files("tradecat_terminal").joinpath(REGISTRY_RESOURCE).read_text(encoding="utf-8")
+    text = files("tradecat_sources").joinpath(REGISTRY_RESOURCE).read_text(encoding="utf-8")
     payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError(f"{REGISTRY_RESOURCE} 必须是 JSON object")
@@ -117,8 +116,8 @@ def _load_datasets(payload: dict[str, object]) -> dict[str, DatasetSpec]:
             if isinstance(raw.get("display_names"), dict)
             else {},
             history_policy=str(raw.get("history_policy") or "permanent"),
-            tui_probe_interval_seconds=_optional_float(raw.get("tui_probe_interval_seconds")),
-            tui_fetch_timeout_seconds=_optional_float(raw.get("tui_fetch_timeout_seconds")),
+            source_poll_interval_seconds=_optional_float(raw.get("source_poll_interval_seconds")),
+            source_fetch_timeout_seconds=_optional_float(raw.get("source_fetch_timeout_seconds")),
             table_region_policy={
                 str(name): value for name, value in (raw.get("table_region_policy") or {}).items()
             }
@@ -157,7 +156,7 @@ def list_datasets(include_inactive: bool = False) -> list[DatasetSpec]:
 
 
 def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
-    from tradecat_terminal.dataset_contract import dataset_consumption_contract_summary
+    from tradecat_sources.dataset_contract import dataset_consumption_contract_summary
 
     return {
         "key": dataset.key,
@@ -171,8 +170,8 @@ def dataset_to_dict(dataset: DatasetSpec) -> dict[str, object]:
         "index_columns": list(dataset.index_columns),
         "event_key_columns": list(dataset.event_key_columns),
         "history_policy": dataset.history_policy,
-        "tui_probe_interval_seconds": dataset.tui_probe_interval_seconds,
-        "tui_fetch_timeout_seconds": dataset.tui_fetch_timeout_seconds,
+        "source_poll_interval_seconds": dataset.source_poll_interval_seconds,
+        "source_fetch_timeout_seconds": dataset.source_fetch_timeout_seconds,
         "table_region_policy": dict(dataset.table_region_policy),
         "consumption_contract": dataset_consumption_contract_summary(dataset.key),
     }

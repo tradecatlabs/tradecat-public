@@ -27,6 +27,16 @@ forbidden_root_paths=(
   "references"
 )
 
+retired_product_paths=(
+  "src/tradecat_terminal"
+  "install.sh"
+  "install.ps1"
+  "uninstall.sh"
+  "uninstall.ps1"
+  "scripts/start.sh"
+  "scripts/watchdog.sh"
+)
+
 failed=0
 for path in "${runtime_paths[@]}"; do
   tracked_matches="$(git ls-files "$path")"
@@ -53,6 +63,19 @@ done
 for path in "${forbidden_root_paths[@]}"; do
   if [[ -e "$path" ]]; then
     echo "ERROR: Skill package path must live under skills/tradecat-public/, not repository root: $path" >&2
+    failed=1
+  fi
+done
+
+for path in "${retired_product_paths[@]}"; do
+  if [[ -e "$path" ]]; then
+    echo "ERROR: retired local TUI/install product path must not exist: $path" >&2
+    failed=1
+  fi
+  tracked_matches="$(git ls-files "$path")"
+  if [[ -n "$tracked_matches" ]]; then
+    echo "ERROR: retired local TUI/install product files are still tracked: $path" >&2
+    echo "$tracked_matches" >&2
     failed=1
   fi
 done

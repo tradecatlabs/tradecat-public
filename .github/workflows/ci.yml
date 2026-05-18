@@ -41,14 +41,17 @@ jobs:
           bash scripts/security-scan.sh --history "$log_opts"
       - name: Install
         run: python -m pip install -c constraints.txt -e ".[dev]"
-      - name: Guard root boundary
+      - name: Guard public boundary
         run: bash scripts/guard_public_local_files.sh
       - name: Lint
         run: ruff check src tests
       - name: Test
         run: PYTHONPATH=src pytest -q
-      - name: Data contract
-        run: PYTHONPATH=src python scripts/validate_data_contract.py --remote --timeout 10
+      - name: Data contracts
+        run: |
+          PYTHONPATH=src python scripts/validate_data_contract.py --remote --timeout 10
+          PYTHONPATH=src python scripts/validate_dataset_consumption_contract.py
+          PYTHONPATH=src python scripts/validate_agent_market_context_resources.py
       - name: Supply-chain audit
         run: bash scripts/supply-chain-audit.sh
       - name: Dependency evidence
@@ -63,14 +66,18 @@ jobs:
             ${{ runner.temp }}/tradecat-dependency-freeze.txt
             ${{ runner.temp }}/tradecat-constraints.txt
       - name: Shell syntax
-        run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify-project.sh scripts/guard_public_local_files.sh scripts/start-auto-paper.sh scripts/monitor-auto-paper.sh
-      - name: Root shell syntax
-        run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/agent-smoke.sh scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh scripts/clean-local-runtime.sh
-      - name: PowerShell syntax
-        shell: pwsh
         run: |
-          [scriptblock]::Create((Get-Content install.ps1 -Raw)) | Out-Null
-          [scriptblock]::Create((Get-Content uninstall.ps1 -Raw)) | Out-Null
+          bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/agent-smoke.sh
+          bash -n scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh
+          bash -n scripts/clean-local-runtime.sh scripts/start-auto-paper.sh scripts/monitor-auto-paper.sh scripts/verify-project.sh scripts/guard_public_local_files.sh
+      - name: Python script syntax
+        run: |
+          python -m py_compile \
+            scripts/request.py \
+            scripts/serve-auto-paper-monitor.py \
+            scripts/validate_data_contract.py \
+            scripts/validate_dataset_consumption_contract.py \
+            scripts/validate_agent_market_context_resources.py
       - name: Wheel package data
         shell: bash
         run: |
@@ -83,50 +90,19 @@ jobs:
           with zipfile.ZipFile(wheel) as zf:
               names = set(zf.namelist())
           required = {
-              "tradecat_terminal/dataset_consumption_contract.json",
-              "tradecat_terminal/dataset_registry.json",
-              "tradecat_terminal/header_aliases.py",
-              "tradecat_terminal/settings.py",
-              "tradecat_terminal/view_model.py",
+              "tradecat_sources/dataset_consumption_contract.json",
+              "tradecat_sources/dataset_registry.json",
+              "tradecat_sources/dataset_contract.py",
+              "tradecat_sources/registry.py",
+              "tradecat_sources/sheets.py",
+              "tradecat_auto/cli.py",
+              "tradecat_auto/pipeline.py",
+              "tradecat_auto/service.py",
           }
           missing = sorted(required - names)
           if missing:
               raise SystemExit(f"missing package data: {missing}")
           PY
-
-  cross-platform-smoke:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
-        python-version: ["3.12", "3.13"]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install package
-        run: python -m pip install -c constraints.txt -e ".[dev]"
-      - name: CLI smoke
-        shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          export TRADECAT_NO_AUTO_UPDATE=1
-          tradecat --help >/dev/null
-          tradecat init >/dev/null
-          tradecat status --json >/dev/null
-          TRADECAT_TERMINAL_NO_PAUSE=1 tradecat tui event_stream --plain --limit 1 >/dev/null
-      - name: CLI smoke Windows
-        shell: pwsh
-        if: runner.os == 'Windows'
-        run: |
-          $env:TRADECAT_NO_AUTO_UPDATE = "1"
-          tradecat --help | Out-Null
-          tradecat init | Out-Null
-          tradecat status --json | Out-Null
-          $env:TRADECAT_TERMINAL_NO_PAUSE = "1"
-          tradecat tui event_stream --plain --limit 1 | Out-Null
 
   agent-readiness:
     runs-on: ubuntu-24.04
@@ -147,181 +123,3 @@ jobs:
           path: |
             skills/tradecat-public/agents/manifest.json
             skills/tradecat-public/references/agent-contract.md
-
-  installer-smoke:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Installer smoke Unix
-        shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          git branch -f tradecat-ci HEAD
-          export TRADECAT_INSTALL_REPO="$PWD"
-          export TRADECAT_INSTALL_BRANCH="tradecat-ci"
-          export TRADECAT_INSTALL_DIR="$RUNNER_TEMP/tradecat-app"
-          export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-bin"
-          export TRADECAT_INSTALL_SKIP_SYNC=1
-          export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
-          mkdir -p "$TRADECAT_BIN_DIR"
-          ln -sf "$RUNNER_TEMP/missing-old-tradecat" "$TRADECAT_BIN_DIR/tradecat"
-          ln -sf "$RUNNER_TEMP/missing-old-tcat" "$TRADECAT_BIN_DIR/tcat"
-          sh install.sh
-          "$RUNNER_TEMP/tradecat-bin/tradecat" --help >/dev/null
-          "$RUNNER_TEMP/tradecat-bin/tradecat" status --json >/dev/null
-          TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-bin/tradecat-uninstall"
-      - name: Installer smoke Windows
-        shell: pwsh
-        if: runner.os == 'Windows'
-        run: |
-          git branch -f tradecat-ci HEAD
-          $env:TRADECAT_INSTALL_REPO = $env:GITHUB_WORKSPACE
-          $env:TRADECAT_INSTALL_BRANCH = "tradecat-ci"
-          $env:TRADECAT_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "tradecat-app"
-          $env:TRADECAT_BIN_DIR = Join-Path $env:RUNNER_TEMP "tradecat-bin"
-          $env:TRADECAT_INSTALL_SKIP_SYNC = "1"
-          $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
-          powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json | Out-Null
-          $env:TRADECAT_KEEP_CACHE = "1"
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat-uninstall.cmd")
-
-  published-install-smoke:
-    if: github.event_name != 'pull_request'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
-    runs-on: ${{ matrix.os }}
-    env:
-      TRADECAT_PUBLIC_INSTALL_REF: v0.1.3
-    steps:
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Public raw installer smoke Unix
-        shell: bash
-        if: runner.os != 'Windows'
-        run: |
-          set -euo pipefail
-          export TRADECAT_PUBLIC_SMOKE_DIR="$RUNNER_TEMP/tradecat-public-smoke"
-          mkdir -p "$TRADECAT_PUBLIC_SMOKE_DIR"
-          export TRADECAT_INSTALL_REF="$TRADECAT_PUBLIC_INSTALL_REF"
-          export TRADECAT_INSTALL_DIR="$RUNNER_TEMP/tradecat-public-app"
-          export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-public-bin"
-          export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
-          for attempt in 1 2 3; do
-            if curl -fsSL "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/install.sh" | sh; then
-              break
-            fi
-            echo "install attempt ${attempt} failed" | tee -a "$TRADECAT_PUBLIC_SMOKE_DIR/smoke.log"
-            if [ "$attempt" = "3" ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-          "$RUNNER_TEMP/tradecat-public-bin/tradecat" --help >/dev/null
-          "$RUNNER_TEMP/tradecat-public-bin/tradecat" status --json >"$RUNNER_TEMP/tradecat-status.json"
-          cp "$RUNNER_TEMP/tradecat-status.json" "$TRADECAT_PUBLIC_SMOKE_DIR/status-before-repair.json"
-          python - "$RUNNER_TEMP/tradecat-status.json" <<'PY' || {
-          import json
-          import sys
-          from pathlib import Path
-
-          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          datasets = {item["dataset_key"]: item for item in payload.get("datasets", [])}
-          event_stream = datasets.get("event_stream", {})
-          if payload.get("ready_dataset_count", 0) >= 1 and event_stream.get("cache_state") == "ready":
-              raise SystemExit(0)
-          print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
-          raise SystemExit("public installer did not warm event_stream cache")
-          PY
-            "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --sync --timeout 15 >/dev/null
-            "$RUNNER_TEMP/tradecat-public-bin/tradecat" status --json >"$RUNNER_TEMP/tradecat-status.json"
-            cp "$RUNNER_TEMP/tradecat-status.json" "$TRADECAT_PUBLIC_SMOKE_DIR/status-after-repair.json"
-            python - "$RUNNER_TEMP/tradecat-status.json" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-
-          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          datasets = {item["dataset_key"]: item for item in payload.get("datasets", [])}
-          event_stream = datasets.get("event_stream", {})
-          if payload.get("ready_dataset_count", 0) < 1 or event_stream.get("cache_state") != "ready":
-              print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
-              raise SystemExit("public installer did not warm event_stream cache after repair")
-          PY
-          }
-          TRADECAT_TERMINAL_NO_PAUSE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat" tui event_stream --plain --limit 3 >/dev/null
-          if "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --help | grep -q -- "--bundle"; then
-            "$RUNNER_TEMP/tradecat-public-bin/tradecat" doctor --bundle "$TRADECAT_PUBLIC_SMOKE_DIR/support-bundle.json" >/dev/null
-          else
-            echo "doctor --bundle unavailable in ${TRADECAT_PUBLIC_INSTALL_REF}; skipping support bundle" | tee -a "$TRADECAT_PUBLIC_SMOKE_DIR/smoke.log"
-          fi
-          TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-public-bin/tradecat-uninstall"
-      - name: Upload public smoke artifact Unix
-        uses: actions/upload-artifact@v7
-        if: always() && runner.os != 'Windows'
-        with:
-          name: public-smoke-${{ matrix.os }}-unix
-          path: ${{ runner.temp }}/tradecat-public-smoke
-      - name: Public raw installer smoke Windows
-        shell: pwsh
-        if: runner.os == 'Windows'
-        run: |
-          $SmokeDir = Join-Path $env:RUNNER_TEMP "tradecat-public-smoke"
-          New-Item -ItemType Directory -Force -Path $SmokeDir | Out-Null
-          $env:TRADECAT_INSTALL_REF = $env:TRADECAT_PUBLIC_INSTALL_REF
-          $env:TRADECAT_INSTALL_DIR = Join-Path $env:RUNNER_TEMP "tradecat-public-app"
-          $env:TRADECAT_BIN_DIR = Join-Path $env:RUNNER_TEMP "tradecat-public-bin"
-          $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
-          $Installed = $false
-          for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
-            try {
-              irm "https://raw.githubusercontent.com/tukuaiai/tradecat/$($env:TRADECAT_PUBLIC_INSTALL_REF)/install.ps1" | iex
-              $Installed = $true
-              break
-            } catch {
-              "install attempt $Attempt failed: $($_.Exception.Message)" | Tee-Object -Append -FilePath (Join-Path $SmokeDir "smoke.log")
-              if ($Attempt -eq 3) { throw }
-              Start-Sleep -Seconds ($Attempt * 10)
-            }
-          }
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
-          $StatusJson = & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json
-          $StatusJson | Set-Content -Encoding UTF8 (Join-Path $SmokeDir "status-before-repair.json")
-          $Status = $StatusJson | ConvertFrom-Json
-          $EventStream = $Status.datasets | Where-Object { $_.dataset_key -eq "event_stream" } | Select-Object -First 1
-          if ($Status.ready_dataset_count -lt 1 -or -not $EventStream -or $EventStream.cache_state -ne "ready") {
-            & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --sync --timeout 15 | Out-Null
-            $StatusJson = & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json
-            $StatusJson | Set-Content -Encoding UTF8 (Join-Path $SmokeDir "status-after-repair.json")
-            $Status = $StatusJson | ConvertFrom-Json
-            $EventStream = $Status.datasets | Where-Object { $_.dataset_key -eq "event_stream" } | Select-Object -First 1
-            if ($Status.ready_dataset_count -lt 1 -or -not $EventStream -or $EventStream.cache_state -ne "ready") {
-              $Status | ConvertTo-Json -Depth 10
-              throw "public installer did not warm event_stream cache"
-            }
-          }
-          $env:TRADECAT_TERMINAL_NO_PAUSE = "1"
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") tui event_stream --plain --limit 3 | Out-Null
-          $DoctorHelp = & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --help
-          if ($DoctorHelp -match "--bundle") {
-            & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") doctor --bundle (Join-Path $SmokeDir "support-bundle.json") | Out-Null
-          } else {
-            "doctor --bundle unavailable in $($env:TRADECAT_PUBLIC_INSTALL_REF); skipping support bundle" | Tee-Object -Append -FilePath (Join-Path $SmokeDir "smoke.log")
-          }
-          $env:TRADECAT_KEEP_CACHE = "1"
-          & (Join-Path $env:TRADECAT_BIN_DIR "tradecat-uninstall.cmd")
-      - name: Upload public smoke artifact Windows
-        uses: actions/upload-artifact@v7
-        if: always() && runner.os == 'Windows'
-        with:
-          name: public-smoke-${{ matrix.os }}-windows
-          path: ${{ runner.temp }}/tradecat-public-smoke
