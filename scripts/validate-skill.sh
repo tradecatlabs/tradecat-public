@@ -7,7 +7,7 @@ Usage:
   bash scripts/validate-skill.sh [--strict] [skill-dir]
 
 Defaults:
-  skill-dir defaults to the repository root.
+  skill-dir defaults to skills/tradecat-public.
 
 Environment:
   CODEX_HOME overrides the Codex home directory used to find auto-skill.
@@ -33,7 +33,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 EXPECTED_SKILL_NAME="${TRADECAT_SKILL_NAME:-tradecat-public}"
 strict=0
-skill_dir="$ROOT_DIR"
+skill_dir="$ROOT_DIR/skills/tradecat-public"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

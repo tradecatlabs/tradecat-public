@@ -34,11 +34,10 @@ done
 cd "$ROOT_DIR"
 
 paths=(
+  ".runtime"
   ".tradecat"
   ".venv"
   ".tools"
-  "project/.tradecat"
-  "project/.venv"
 )
 
 generated_names=(

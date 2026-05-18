@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/project"
+SKILL_DIR="$ROOT_DIR/skills/tradecat-public"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -51,13 +51,13 @@ PY
 cd "$ROOT_DIR"
 
 bash scripts/validate-skill.sh --strict >/dev/null
-python3 -m json.tool agents/manifest.json >/dev/null
-python3 -m json.tool project/src/tradecat_terminal/dataset_consumption_contract.json >/dev/null
-for schema_file in project/contracts/*.schema.json; do
+python3 -m json.tool "$SKILL_DIR/agents/manifest.json" >/dev/null
+python3 -m json.tool src/tradecat_terminal/dataset_consumption_contract.json >/dev/null
+for schema_file in contracts/*.schema.json; do
   python3 -m json.tool "$schema_file" >/dev/null
 done
 
-if ! PYTHONPATH="$PROJECT_DIR/src" python3 - <<'PY' >/dev/null 2>&1
+if ! PYTHONPATH="$ROOT_DIR/src" python3 - <<'PY' >/dev/null 2>&1
 import tradecat_terminal.cli
 PY
 then
@@ -83,8 +83,8 @@ for dataset in payload.get("datasets") or []:
         raise SystemExit(f"{dataset.get('key')}: invalid consumption contract schema")
 PY
 
-PYTHONPATH="$PROJECT_DIR/src" python3 project/scripts/validate_dataset_consumption_contract.py >/dev/null
-PYTHONPATH="$PROJECT_DIR/src" python3 project/scripts/validate_agent_market_context_resources.py >/dev/null
+PYTHONPATH="$ROOT_DIR/src" python3 scripts/validate_dataset_consumption_contract.py >/dev/null
+PYTHONPATH="$ROOT_DIR/src" python3 scripts/validate_agent_market_context_resources.py >/dev/null
 
 bash scripts/run-tradecat.sh path signal_flow --json >"$TMP_DIR/path.json"
 json_expect "$TMP_DIR/path.json" "tradecat.path_map.v1"
@@ -139,7 +139,7 @@ context = {
     "mode": "public_readonly",
     "provenance": {
         "agent": "agent-smoke",
-        "source_manifest": "project/resources/agent_market_context/binance/provenance.manifest.json",
+        "source_manifest": "resources/agent_market_context/binance/provenance.manifest.json",
     },
     "source_event": {"event_id": "smoke-event", "content": "IRYS 异动"},
     "anomaly_symbol": {
@@ -224,7 +224,7 @@ json_expect "$TMP_DIR/replay-report.json" "tradecat_auto.replay_report.v1"
 
 set +e
 TRADECAT_AUTO_PAPER_RUNTIME_DIR="$TMP_DIR/auto-paper" \
-bash project/scripts/start-auto-paper.sh status --json >"$TMP_DIR/auto-paper-status.json"
+bash scripts/start-auto-paper.sh status --json >"$TMP_DIR/auto-paper-status.json"
 auto_status_exit_code=$?
 set -e
 if [[ "$auto_status_exit_code" -ne 1 ]]; then
@@ -243,7 +243,7 @@ json_expect "$TMP_DIR/probe-all.json" "tradecat.probe_results.v1"
 set +e
 TRADECAT_TERMINAL_RUNTIME_DIR="$TMP_DIR/run" \
 TRADECAT_CACHE_DIR="$TMP_DIR/cache" \
-bash project/scripts/start.sh status --json >"$TMP_DIR/watch-status.json"
+bash scripts/start.sh status --json >"$TMP_DIR/watch-status.json"
 watch_status_exit_code=$?
 set -e
 if [[ "$watch_status_exit_code" -ne 1 ]]; then
@@ -253,13 +253,13 @@ fi
 json_expect "$TMP_DIR/watch-status.json" "tradecat.watch_status.v1"
 json_expect_error_code "$TMP_DIR/watch-status.json" "watch_not_running"
 
-TRADECAT_REQUEST_REGISTRY_URL="$(python3 - "$PROJECT_DIR/src/tradecat_terminal/dataset_registry.json" <<'PY'
+TRADECAT_REQUEST_REGISTRY_URL="$(python3 - "$ROOT_DIR/src/tradecat_terminal/dataset_registry.json" <<'PY'
 import sys
 from pathlib import Path
 
 print(Path(sys.argv[1]).resolve().as_uri())
 PY
-)" python3 project/scripts/request.py --datasets --format json >"$TMP_DIR/request-datasets.json"
+)" python3 scripts/request.py --datasets --format json >"$TMP_DIR/request-datasets.json"
 json_expect "$TMP_DIR/request-datasets.json" "tradecat.request_dataset_list.v1"
 
 set +e
@@ -276,7 +276,7 @@ json_expect_error_code "$TMP_DIR/invalid.json" "invalid_dataset_key"
 set +e
 TRADECAT_CACHE_COMPRESSION=bad \
 TRADECAT_AGENT_SMOKE_CACHE="$TMP_DIR/config-cache" \
-PYTHONPATH="$PROJECT_DIR/src" \
+PYTHONPATH="$ROOT_DIR/src" \
 python3 - <<'PY' >"$TMP_DIR/config-error.json"
 import os
 

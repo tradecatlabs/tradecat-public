@@ -6,8 +6,8 @@ useDefault = true
 [[allowlists]]
 description = "Vendored Binance reference docs contain literal placeholder API-key header examples, not real credentials. Keep this scoped to the self-contained Agent market-context snapshot."
 paths = [
-  '''project/resources/agent_market_context/binance/api-docs/.*''',
-  '''project/resources/agent_market_context/binance/upstream/binance-skills-hub-main/skills/binance/.*/references/authentication\.md''',
+  '''resources/agent_market_context/binance/api-docs/.*''',
+  '''resources/agent_market_context/binance/upstream/binance-skills-hub-main/skills/binance/.*/references/authentication\.md''',
 ]
 regexes = [
   '''X-MBX-APIKEY:\s*your_api_key''',
@@ -16,7 +16,7 @@ regexes = [
 [[allowlists]]
 description = "Auto-tasks step identifiers are workflow IDs, not credentials. Keep this scoped to task documents and pN-prefixed task refs."
 paths = [
-  '''project/tasks/.*''',
+  '''tasks/.*''',
 ]
 regexes = [
   '''"key":\s*"p[0-9][a-z0-9_]*"''',

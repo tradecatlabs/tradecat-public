@@ -40,24 +40,18 @@ jobs:
           fi
           bash scripts/security-scan.sh --history "$log_opts"
       - name: Install
-        working-directory: project
         run: python -m pip install -c constraints.txt -e ".[dev]"
       - name: Guard root boundary
-        working-directory: project
         run: bash scripts/guard_public_local_files.sh
       - name: Lint
-        working-directory: project
         run: ruff check src tests
       - name: Test
-        working-directory: project
         run: PYTHONPATH=src pytest -q
       - name: Data contract
-        working-directory: project
         run: PYTHONPATH=src python scripts/validate_data_contract.py --remote --timeout 10
       - name: Supply-chain audit
         run: bash scripts/supply-chain-audit.sh
       - name: Dependency evidence
-        working-directory: project
         run: |
           python -m pip freeze --all >"${RUNNER_TEMP}/tradecat-dependency-freeze.txt"
           cp constraints.txt "${RUNNER_TEMP}/tradecat-constraints.txt"
@@ -69,19 +63,16 @@ jobs:
             ${{ runner.temp }}/tradecat-dependency-freeze.txt
             ${{ runner.temp }}/tradecat-constraints.txt
       - name: Shell syntax
-        working-directory: project
-        run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify.sh scripts/guard_public_local_files.sh
+        run: bash -n install.sh uninstall.sh scripts/start.sh scripts/watchdog.sh scripts/verify-project.sh scripts/guard_public_local_files.sh scripts/start-auto-paper.sh scripts/monitor-auto-paper.sh
       - name: Root shell syntax
         run: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/run-tradecat.sh scripts/agent-smoke.sh scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh scripts/clean-local-runtime.sh
       - name: PowerShell syntax
         shell: pwsh
-        working-directory: project
         run: |
           [scriptblock]::Create((Get-Content install.ps1 -Raw)) | Out-Null
           [scriptblock]::Create((Get-Content uninstall.ps1 -Raw)) | Out-Null
       - name: Wheel package data
         shell: bash
-        working-directory: project
         run: |
           python -m pip wheel . --no-deps -w /tmp/tradecat-wheel
           python - <<'PY'
@@ -116,7 +107,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install package
-        working-directory: project
         run: python -m pip install -c constraints.txt -e ".[dev]"
       - name: CLI smoke
         shell: bash
@@ -146,7 +136,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install package
-        working-directory: project
         run: python -m pip install -c constraints.txt -e ".[dev]"
       - name: Agent readiness smoke
         run: bash scripts/agent-smoke.sh
@@ -156,8 +145,8 @@ jobs:
         with:
           name: agent-readiness-${{ github.run_id }}
           path: |
-            agents/manifest.json
-            references/agent-contract.md
+            skills/tradecat-public/agents/manifest.json
+            skills/tradecat-public/references/agent-contract.md
 
   installer-smoke:
     strategy:
@@ -184,7 +173,7 @@ jobs:
           mkdir -p "$TRADECAT_BIN_DIR"
           ln -sf "$RUNNER_TEMP/missing-old-tradecat" "$TRADECAT_BIN_DIR/tradecat"
           ln -sf "$RUNNER_TEMP/missing-old-tcat" "$TRADECAT_BIN_DIR/tcat"
-          sh project/install.sh
+          sh install.sh
           "$RUNNER_TEMP/tradecat-bin/tradecat" --help >/dev/null
           "$RUNNER_TEMP/tradecat-bin/tradecat" status --json >/dev/null
           TRADECAT_KEEP_CACHE=1 "$RUNNER_TEMP/tradecat-bin/tradecat-uninstall"
@@ -199,7 +188,7 @@ jobs:
           $env:TRADECAT_BIN_DIR = Join-Path $env:RUNNER_TEMP "tradecat-bin"
           $env:TRADECAT_INSTALL_SKIP_SYNC = "1"
           $env:TRADECAT_INSTALL_SKIP_PATH_WRITE = "1"
-          powershell -NoProfile -ExecutionPolicy Bypass -File project/install.ps1
+          powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") --help | Out-Null
           & (Join-Path $env:TRADECAT_BIN_DIR "tradecat.cmd") status --json | Out-Null
           $env:TRADECAT_KEEP_CACHE = "1"
@@ -230,7 +219,7 @@ jobs:
           export TRADECAT_BIN_DIR="$RUNNER_TEMP/tradecat-public-bin"
           export TRADECAT_INSTALL_SKIP_PATH_WRITE=1
           for attempt in 1 2 3; do
-            if curl -fsSL "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/project/install.sh" | sh; then
+            if curl -fsSL "https://raw.githubusercontent.com/tukuaiai/tradecat/${TRADECAT_PUBLIC_INSTALL_REF}/install.sh" | sh; then
               break
             fi
             echo "install attempt ${attempt} failed" | tee -a "$TRADECAT_PUBLIC_SMOKE_DIR/smoke.log"
@@ -295,7 +284,7 @@ jobs:
           $Installed = $false
           for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
             try {
-              irm "https://raw.githubusercontent.com/tukuaiai/tradecat/$($env:TRADECAT_PUBLIC_INSTALL_REF)/project/install.ps1" | iex
+              irm "https://raw.githubusercontent.com/tukuaiai/tradecat/$($env:TRADECAT_PUBLIC_INSTALL_REF)/install.ps1" | iex
               $Installed = $true
               break
             } catch {

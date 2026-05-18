@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/project"
 PIP_AUDIT_VERSION="${PIP_AUDIT_VERSION:-2.10.0}"
 
 usage() {
@@ -22,7 +21,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 run_audit() {
-  "$@" "$PROJECT_DIR" --progress-spinner off --skip-editable
+  "$@" "$ROOT_DIR" --progress-spinner off --skip-editable
 }
 
 if command -v pipx >/dev/null 2>&1; then

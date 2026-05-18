@@ -1,133 +1,83 @@
-# tradecat-public Agent 操作说明
+# tradecat-public Agent 操作手册
 
-本文件作用域：`tradecat-public/**`。它是公开治理说明，随仓库提交；内容必须保持
-脱敏，不得包含凭证、缓存内容或私密环境变量。
+本文件作用域：`tradecat-public/**`。本仓现在是正常 Python 项目根，同时内嵌一个 Hermes/Codex Skill 包：`skills/tradecat-public/`。
 
-## 目录定位
+## 使命
 
-根目录是 Skill 外壳，不是 Python 项目根。TradeCat 用户侧源码与自动化生命周期源码统一归入
-`project/`；`tradecat-auto` 已并入此处，不再作为独立实现中心。
+TradeCat 根项目提供公开在线表格消费、本地快照缓存、CLI/TUI、Agent 观察/事实包、Agent-supplied Binance public/read-only market context 审计、paper/watch、ledger、replay/backtest、报告和本地运维脚本。`skills/tradecat-public/` 只负责 Skill 激活、Agent manifest、平台 profile 和长文档索引。
+
+## 禁区
+
+- 禁止连接或写入 TradeCat 服务端 PostgreSQL。
+- 禁止把该服务接入服务端数据生产链路。
+- 禁止依赖 `apps/sheets` 内部实现细节；只能依赖公开在线表格 CSV 契约。
+- 禁止把缓存文件、凭证、Google key、私密 `.env` 写入仓库。
+- 禁止提交 Binance API key、secret、`.env`、私钥、真实账户输出、真实订单日志或任何可复用凭证。
+- `tradecat_auto` 只能执行 public-readonly + watch/paper；不得调用真实下单、撤单、改杠杆或签名账户接口。
+
+## 目录结构
 
 ```text
 tradecat-public/
-|-- README.md
-|-- AGENTS.md
-|-- lessons.md
-|-- .git/
-|-- .github/workflows/ci.yml
-|-- .gitignore
-|-- .pre-commit-config.yaml
-|-- SKILL.md
-|-- agents/
-|   |-- manifest.json
-|   |-- hermes.yaml
-|   `-- openai.yaml
-|-- references/
-|   |-- index.md
-|   |-- skill-package-governance.md
-|   |-- agent-contract.md
-|   |-- agent-contract-maturity-task-tree.md
-|   |-- agent-contract-maturity-task-tree.json
-|   |-- agent-readiness-remediation-task-tree.md
-|   |-- agent-readiness-remediation-task-tree.json
-|   |-- architecture.md
-|   |-- analysis-contract.md
-|   |-- cache-contract.md
-|   |-- dataset-consumption-contract.md
-|   |-- feature-contract.md
-|   |-- first-run-cache.md
-|   |-- hermes-agent-guide.md
-|   |-- install-uninstall.md
-|   |-- linear-flows.md
-|   |-- quality-gate.md
-|   |-- release.md
-|   |-- stability-hardening-task-tree.md
-|   |-- stability-hardening-task-tree.json
-|   |-- test-strategy.md
-|   `-- tui-contract.md
-|-- project/
-|   |-- README.md
-|   |-- AGENTS.md
-|   |-- DEBUG.md
-|   |-- DEBUG.archive.md
-|   |-- pyproject.toml
-|   |-- constraints.txt
-|   |-- contracts/
-|   |-- resources/
-|   |-- tasks/
-|   |-- scripts/
-|   |-- src/
-|   |   |-- tradecat_terminal/
-|   |   `-- tradecat_auto/
-|   `-- tests/
-`-- scripts/
-    |-- validate-skill.sh
-    |-- verify.sh
-    |-- bootstrap-dev.sh
-    |-- agent-smoke.sh
-    |-- security-scan.sh
-    |-- supply-chain-audit.sh
-    |-- install-security-tools.sh
-    |-- clean-local-runtime.sh
-    `-- run-tradecat.sh
+|-- README.md                  # 根项目说明、安装、运行、开发入口
+|-- AGENTS.md                  # 本文件，根项目与 Skill 包边界
+|-- pyproject.toml             # Python 项目元数据
+|-- constraints.txt            # 依赖约束
+|-- install.sh / install.ps1   # 用户安装入口
+|-- uninstall.sh / uninstall.ps1
+|-- contracts/                 # JSON Schema 机器契约
+|-- resources/                 # 自包含公开参考资源与 Agent soft layer
+|-- scripts/                   # 根项目脚本、验证、运维和 thin wrappers
+|-- src/
+|   |-- tradecat_terminal/     # 公开表格、缓存、CLI/TUI、分析事实包
+|   `-- tradecat_auto/         # Agent context 审计、paper/watch、ledger、风控、报告
+|-- tests/                     # 项目测试
+|-- tasks/                     # 任务治理资产
+`-- skills/
+    `-- tradecat-public/
+        |-- SKILL.md           # Hermes/Codex Skill 激活说明
+        |-- agents/
+        |   |-- manifest.json  # 唯一机器主契约
+        |   |-- hermes.yaml
+        |   `-- openai.yaml
+        |-- references/        # Skill 长文档
+        `-- scripts/           # 从 Skill 包跳回根项目的薄 wrapper
 ```
 
-## 根目录边界
+## 边界
 
-- `.git/`、`.github/`、`.gitignore` 是 Git / CI 边界，禁止移动到
-  `project/`。
-- `SKILL.md`、`agents/`、`references/` 是 Skill/Agent 契约边界；`references/skill-package-governance.md`
-  解释根 Skill 包与内部项目分层，禁止混入项目源码。
-- `agents/manifest.json` 是唯一机器可读 Agent 主契约；`agents/openai.yaml`
-  与 `agents/hermes.yaml` 只能作为平台适配层。
-- `lessons.md` 是事故经验与防复发规则，必须保持脱敏、短句、可执行。
-- `scripts/validate-skill.sh`、`scripts/verify.sh`、`scripts/bootstrap-dev.sh`、
-  `scripts/security-scan.sh`、`scripts/supply-chain-audit.sh`、
-  `scripts/install-security-tools.sh`、`scripts/clean-local-runtime.sh`、
-  `scripts/agent-smoke.sh` 和
-  `scripts/run-tradecat.sh` 只是薄入口，业务逻辑在 `project/`，
-  治理扫描只读取 Git 跟踪文件或指定提交范围。
-- 根目录禁止创建 `assets/`、`assets/examples/`、`src/`、`tests/`、
-  `pyproject.toml`、`Makefile`、安装脚本或卸载脚本。
+- 根目录是唯一 Python 项目根；源码、测试、contracts、resources、install/uninstall、运行脚本和任务包都在根项目内。
+- `skills/tradecat-public/` 是唯一 Skill 包根；不得在仓库根重新创建 `SKILL.md`、`agents/` 或 `references/` 形成第二真相源。
+- `skills/tradecat-public/agents/manifest.json` 是 Agent/Hermes 机器主契约；文档只解释它，不复制第二份机器契约。
+- `scripts/` 是根项目脚本入口；`skills/tradecat-public/scripts/` 只能是薄 wrapper。
+- `.runtime/`、`.tradecat/`、`.venv/`、`.hermes/`、`.tools/` 只属于本机运行态或开发态，必须保持 ignored。
 
-## 项目目录边界
+## 主要数据流
 
-`project/` 是唯一 Python 项目根，承载：
+```text
+公开在线表格 CSV
+-> scripts/request.py / tradecat_terminal.registry
+-> .tradecat/cache 本地快照
+-> CLI/TUI / analysis_report / feature_bundle
+-> Agent/Hermes 生成 agent_market_context + agent_trade_thesis
+-> context-audit / run-context
+-> deterministic risk gate
+-> paper_broker / paper_ledger
+-> .runtime/auto-paper JSONL archive + SQLite audit journal
+-> health/daily/alert/replay 报告
+```
 
-- `README.md`：用户安装、运行、开发说明。
-- `pyproject.toml` / `constraints.txt` / `Makefile`：Python 项目元数据、依赖锁定口径与开发入口。
-- `contracts/`：公开 JSON Schema 草案文件，用于外部工具校验 Agent/CLI 契约。
-- `resources/`：项目内自包含参考资源；当前包含 Binance Agent market context 的只读 skill/API 快照与 provenance manifest。
-- `tasks/`：项目内任务治理目录；用于承载 auto-tasks 生成的长期任务容器、任务树、执行波次与验收证据，不属于运行态。
-- `install.*` / `uninstall.*`：用户安装与卸载入口。
-- `scripts/`：项目级脚本，包含 registry/CSV 与 dataset consumption contract 校验入口。
-- `src/tradecat_terminal/`：TradeCat CLI / TUI / analysis / feature facts 源码，以及 dataset registry 与 dataset consumption contract 机器资源。
-- `src/tradecat_auto/`：TradeCat → Binance USDⓈ-M public-readonly + paper/watch 自动化生命周期源码，包含本地 paper ledger、JSONL cycle archive、SQLite audit journal 与 health/daily/alert 报告；当前禁止真实账户读写和真实下单，运行态必须停留在 gitignored `.runtime/`。
-- `tests/`：项目测试。
-- `AGENTS.md`、`DEBUG.md`、`DEBUG.archive.md`：项目治理与调试记录，随仓库提交；
-  必须保持公开安全，不得写入凭证、缓存内容或私密环境变量。
+Binance 资源只作为 public/read-only market context 参考和 Agent 输入 provenance；TradeCat 不读取 key、不签名、不访问真实账户/订单、不真实下单。
 
 ## 验证
 
-从根目录执行：
-
 ```bash
-bash scripts/bootstrap-dev.sh
 bash scripts/agent-smoke.sh
 bash scripts/verify.sh
+bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
+git diff --check
 ```
 
-从根目录执行 Skill 严格校验：
-
-```bash
-bash scripts/validate-skill.sh --strict
-```
-
-从项目目录执行：
-
-```bash
-cd project
-bash scripts/verify.sh
-```
+架构、目录、入口、数据流或控制流变化时，必须同步更新本文件、根 README、`skills/tradecat-public/SKILL.md`、`skills/tradecat-public/agents/manifest.json` 和相关 references。

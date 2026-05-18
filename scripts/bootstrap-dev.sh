@@ -2,10 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/project"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-cd "$PROJECT_DIR"
+cd "$ROOT_DIR"
 
 if command -v uv >/dev/null 2>&1; then
   uv venv .venv
@@ -24,4 +23,4 @@ else
   fi
 fi
 
-echo "dev environment ready: $PROJECT_DIR/.venv"
+echo "dev environment ready: $ROOT_DIR/.venv"

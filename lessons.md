@@ -45,5 +45,5 @@
 - 现象：自主纸面交易任务完成后只做了实现和验证，`auto-paper` 服务没有常驻运行，状态为 `not_running`。
 - 本质：工程交付和运行交付是两件事；如果用户目标是 autonomous trader，纸面 run-loop 停止就等于目标未进入运行态。
 - 规则：当任务目标明确包含“持续纸面交易 / autonomous paper trader / 常驻 loop”时，`paper_service_not_running` 必须作为阻塞状态处理，不能在汇报中当作普通信息略过。
-- 防复发：交付前必须检查 `bash project/scripts/start-auto-paper.sh status --json` 和 `tradecat auto health-report --json`；若需要常驻，应由 operator/Hermes 明确执行 `start` 或 systemd/timer keepalive，并持续检查 heartbeat。
+- 防复发：交付前必须检查 `bash scripts/start-auto-paper.sh status --json` 和 `tradecat auto health-report --json`；若需要常驻，应由 operator/Hermes 明确执行 `start` 或 systemd/timer keepalive，并持续检查 heartbeat。
 - 验证：常驻目标的验收必须包含 `running=true`、heartbeat 未 stale、`real_orders=false`、`signed_requests=false`、`reads_api_keys=false`，且所有运行态只在 gitignored `.runtime/auto-paper/`。

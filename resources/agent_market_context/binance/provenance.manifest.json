@@ -1,0 +1,249 @@
+{
+  "schema": "tradecat.agent_market_context_sources.v1",
+  "schema_version": "1.0.0",
+  "copied_at": "2026-05-15T16:55:43+08:00",
+  "destination_root": "resources/agent_market_context/binance",
+  "copy_policy": {
+    "mode": "read_only_snapshot",
+    "source_files_modified": false,
+    "symlinked": false,
+    "runtime_dependency": false,
+    "activation": "reference_only_until_explicit_adapter_contract_is_implemented"
+  },
+  "tradecat_boundary": {
+    "allowed_modes": [
+      "public_readonly",
+      "paper",
+      "watch"
+    ],
+    "forbidden": [
+      "binance_api_keys",
+      "signed_requests",
+      "account_reads",
+      "real_orders",
+      "order_cancel_modify",
+      "leverage_or_margin_changes"
+    ],
+    "allowed_market_context_families": [
+      "klines",
+      "order_book_depth",
+      "book_ticker",
+      "24h_ticker",
+      "funding_rate",
+      "premium_index",
+      "open_interest",
+      "open_interest_history",
+      "long_short_ratios",
+      "taker_buy_sell_volume"
+    ]
+  },
+  "sources": [
+    {
+      "kind": "external_skill_mirror",
+      "source_path": "/home/lenovo/.projects/cat/tradecat/assets/repos/binance-skills-hub-main",
+      "destination_path": "resources/agent_market_context/binance/upstream/binance-skills-hub-main",
+      "file_count": 83,
+      "bytes": 462144,
+      "source_sha256_manifest": "b38d0840c3d5ca2fd9735335735b79de58a232a8daeb0008cea0c64cf626b071"
+    },
+    {
+      "kind": "archived_api_doc",
+      "source_path": "/home/lenovo/.projects/cat/tradecat/assets/docs/_archive/analysis/币安全部api.md",
+      "destination_path": "resources/agent_market_context/binance/api-docs/币安全部api.md",
+      "bytes": 86077,
+      "sha256": "bbaa5a1fa7ff9ff768474fafc83ea95ace25dfcd8071cf4279cdd693e55ef9d5"
+    },
+    {
+      "kind": "archived_api_doc",
+      "source_path": "/home/lenovo/.projects/cat/tradecat/assets/docs/_archive/analysis/币安API完整文档汇总.md",
+      "destination_path": "resources/agent_market_context/binance/api-docs/币安API完整文档汇总.md",
+      "bytes": 61770,
+      "sha256": "6d82126e30c93869ab8c9453acd3fd99c363912263b89ff823549eaaab627390"
+    }
+  ],
+  "copied_files": {
+    "file_count": 87,
+    "bytes": 613185,
+    "sha256_manifest": "e7c16179976159d30b4380c241ff3ce64325fe8230d81ed085dcea40c9c0d3fe"
+  },
+  "safety_scan": {
+    "env_credential_names": {
+      "file_count": 17,
+      "examples": [
+        {
+          "path": "api-docs/币安API完整文档汇总.md",
+          "lines": [
+            1506,
+            1507,
+            1545,
+            1546,
+            1571
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/algo/SKILL.md",
+          "lines": [
+            84,
+            88,
+            89,
+            105,
+            106
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/alpha/SKILL.md",
+          "lines": [
+            67,
+            71,
+            72,
+            88,
+            89
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/assets/SKILL.md",
+          "lines": [
+            167,
+            171,
+            172,
+            188,
+            189
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/convert/SKILL.md",
+          "lines": [
+            88,
+            92,
+            93,
+            109,
+            110
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-coin-futures/SKILL.md",
+          "lines": [
+            176,
+            177,
+            181,
+            182,
+            198
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-options/SKILL.md",
+          "lines": [
+            142,
+            143,
+            147,
+            148,
+            164
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-portfolio-margin/SKILL.md",
+          "lines": [
+            229,
+            230,
+            234,
+            235,
+            251
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-portfolio-margin-pro/SKILL.md",
+          "lines": [
+            90,
+            94,
+            95,
+            111,
+            112
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-usds-futures/SKILL.md",
+          "lines": [
+            225,
+            226,
+            230,
+            231,
+            247
+          ]
+        }
+      ]
+    },
+    "possible_secret_assignment": {
+      "file_count": 0,
+      "examples": []
+    },
+    "private_key_block": {
+      "file_count": 0,
+      "examples": []
+    },
+    "signed_or_trade_endpoint_reference": {
+      "file_count": 7,
+      "examples": [
+        {
+          "path": "api-docs/币安API完整文档汇总.md",
+          "lines": [
+            209,
+            234,
+            238,
+            253,
+            256
+          ]
+        },
+        {
+          "path": "api-docs/币安全部api.md",
+          "lines": [
+            48,
+            49,
+            50,
+            51,
+            52
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/.github/pull_request_template.md",
+          "lines": [
+            12
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-usds-futures/SKILL.md",
+          "lines": [
+            26,
+            27,
+            28,
+            29,
+            37
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/derivatives-trading-usds-futures/references/authentication.md",
+          "lines": [
+            88,
+            118
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/spot/SKILL.md",
+          "lines": [
+            41,
+            42,
+            43,
+            44,
+            45
+          ]
+        },
+        {
+          "path": "upstream/binance-skills-hub-main/skills/binance/spot/references/authentication.md",
+          "lines": [
+            88,
+            118
+          ]
+        }
+      ]
+    }
+  }
+}
