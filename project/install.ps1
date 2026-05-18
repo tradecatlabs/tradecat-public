@@ -310,13 +310,13 @@ function Bootstrap-Cache {
         & (Join-Path $BinDir "tradecat.cmd") sync-all | Out-Null
         Log "synced public data to local cache"
     } catch {
-        Log "full initial public data sync failed; trying default event stream fallback"
+        Log "full initial public data sync failed; trying default signal flow fallback"
         try {
-            & (Join-Path $BinDir "tradecat.cmd") sync event_stream | Out-Null
-            Log "synced default event stream cache; run tradecat sync-all later to fill other taps"
+            & (Join-Path $BinDir "tradecat.cmd") sync signal_flow | Out-Null
+            Log "synced default signal flow cache; run tradecat sync-all later to fill other taps"
         } catch {
-            Log "default event stream fallback also failed; installation is complete and tradecat will keep probing on first run"
-            Log "weak network hint: tradecat config set tui_fetch_timeout.event_stream 3; tradecat sync-all"
+            Log "default signal flow fallback also failed; installation is complete and tradecat will keep probing on first run"
+            Log "weak network hint: tradecat config set tui_fetch_timeout.signal_flow 3; tradecat sync-all"
         }
     } finally {
         $env:TRADECAT_NO_AUTO_UPDATE = $OldNoAutoUpdate

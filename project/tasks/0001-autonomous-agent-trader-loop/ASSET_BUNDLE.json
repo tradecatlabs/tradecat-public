@@ -1,0 +1,471 @@
+{
+  "schema_version": "1.0.0",
+  "task_meta": {
+    "objective": "将 TradeCat 从 Agent-supplied paper/watch 契约层推进为 Hermes/Codex 协作的自主研究与纸面交易员闭环，保持 public-read-only、paper/watch 和真实交易私有层隔离。",
+    "overall_status": "Not Started",
+    "task_dir": "project/tasks/0001-autonomous-agent-trader-loop"
+  },
+  "source_plan": {
+    "schema_version": "1.0.0",
+    "plan_path": "project/tasks/0001-autonomous-agent-trader-loop/APPROVED_PLAN.json"
+  },
+  "generated_assets": [
+    {
+      "id": "tree-spec",
+      "type": "task-tree-spec",
+      "path": "project/tasks/0001-autonomous-agent-trader-loop/TREE_SPEC.json",
+      "description": "approved plan 编译后的递归任务树规格",
+      "source_step_keys": [
+        "p0_stabilize_baseline",
+        "p0_01_preflight",
+        "p0_02_track_thesis_helper",
+        "p0_03_validate_safety",
+        "p0_04_checkpoint_ready",
+        "p1_research_loop_contract",
+        "p1_01_schema",
+        "p1_02_fixtures",
+        "p1_03_validator",
+        "p1_04_docs_manifest",
+        "p2_observe_only_loop",
+        "p2_01_loop_cli",
+        "p2_02_tool_plan",
+        "p2_03_outputs",
+        "p2_04_audit_smoke",
+        "p3_paper_execution_loop",
+        "p3_01_audit_gate",
+        "p3_02_thesis_execution",
+        "p3_03_journal_health",
+        "p3_04_service_mode",
+        "p4_position_management",
+        "p4_01_account_state",
+        "p4_02_position_thesis_schema",
+        "p4_03_apply_position_actions",
+        "p5_replay_review",
+        "p5_01_trace",
+        "p5_02_quality_report",
+        "p5_03_replay_determinism",
+        "p6_portfolio_risk",
+        "p6_01_risk_policy_schema",
+        "p6_02_risk_engine",
+        "p6_03_kill_switch",
+        "p7_private_executor_design",
+        "p7_01_boundary_doc",
+        "p7_02_intent_handshake",
+        "p7_03_public_guardrails"
+      ]
+    },
+    {
+      "id": "asset-bundle",
+      "type": "asset-bundle-manifest",
+      "path": "project/tasks/0001-autonomous-agent-trader-loop/ASSET_BUNDLE.json",
+      "description": "编译输出的资产包 manifest",
+      "source_step_keys": [
+        "p0_stabilize_baseline",
+        "p0_01_preflight",
+        "p0_02_track_thesis_helper",
+        "p0_03_validate_safety",
+        "p0_04_checkpoint_ready",
+        "p1_research_loop_contract",
+        "p1_01_schema",
+        "p1_02_fixtures",
+        "p1_03_validator",
+        "p1_04_docs_manifest",
+        "p2_observe_only_loop",
+        "p2_01_loop_cli",
+        "p2_02_tool_plan",
+        "p2_03_outputs",
+        "p2_04_audit_smoke",
+        "p3_paper_execution_loop",
+        "p3_01_audit_gate",
+        "p3_02_thesis_execution",
+        "p3_03_journal_health",
+        "p3_04_service_mode",
+        "p4_position_management",
+        "p4_01_account_state",
+        "p4_02_position_thesis_schema",
+        "p4_03_apply_position_actions",
+        "p5_replay_review",
+        "p5_01_trace",
+        "p5_02_quality_report",
+        "p5_03_replay_determinism",
+        "p6_portfolio_risk",
+        "p6_01_risk_policy_schema",
+        "p6_02_risk_engine",
+        "p6_03_kill_switch",
+        "p7_private_executor_design",
+        "p7_01_boundary_doc",
+        "p7_02_intent_handshake",
+        "p7_03_public_guardrails"
+      ]
+    },
+    {
+      "id": "task-package-set",
+      "type": "task-package-set",
+      "path": "project/tasks/0001-autonomous-agent-trader-loop/TASK_PACKAGE_SET.json",
+      "description": "编译输出的结构化任务包集合",
+      "source_step_keys": [
+        "p0_stabilize_baseline",
+        "p0_01_preflight",
+        "p0_02_track_thesis_helper",
+        "p0_03_validate_safety",
+        "p0_04_checkpoint_ready",
+        "p1_research_loop_contract",
+        "p1_01_schema",
+        "p1_02_fixtures",
+        "p1_03_validator",
+        "p1_04_docs_manifest",
+        "p2_observe_only_loop",
+        "p2_01_loop_cli",
+        "p2_02_tool_plan",
+        "p2_03_outputs",
+        "p2_04_audit_smoke",
+        "p3_paper_execution_loop",
+        "p3_01_audit_gate",
+        "p3_02_thesis_execution",
+        "p3_03_journal_health",
+        "p3_04_service_mode",
+        "p4_position_management",
+        "p4_01_account_state",
+        "p4_02_position_thesis_schema",
+        "p4_03_apply_position_actions",
+        "p5_replay_review",
+        "p5_01_trace",
+        "p5_02_quality_report",
+        "p5_03_replay_determinism",
+        "p6_portfolio_risk",
+        "p6_01_risk_policy_schema",
+        "p6_02_risk_engine",
+        "p6_03_kill_switch",
+        "p7_private_executor_design",
+        "p7_01_boundary_doc",
+        "p7_02_intent_handshake",
+        "p7_03_public_guardrails"
+      ]
+    },
+    {
+      "id": "task-doc-set",
+      "type": "task-docs",
+      "description": "README/CONTEXT/ACCEPTANCE/PLAN/TODO/STATUS 任务文档集合",
+      "source_step_keys": [
+        "p0_stabilize_baseline",
+        "p0_01_preflight",
+        "p0_02_track_thesis_helper",
+        "p0_03_validate_safety",
+        "p0_04_checkpoint_ready",
+        "p1_research_loop_contract",
+        "p1_01_schema",
+        "p1_02_fixtures",
+        "p1_03_validator",
+        "p1_04_docs_manifest",
+        "p2_observe_only_loop",
+        "p2_01_loop_cli",
+        "p2_02_tool_plan",
+        "p2_03_outputs",
+        "p2_04_audit_smoke",
+        "p3_paper_execution_loop",
+        "p3_01_audit_gate",
+        "p3_02_thesis_execution",
+        "p3_03_journal_health",
+        "p3_04_service_mode",
+        "p4_position_management",
+        "p4_01_account_state",
+        "p4_02_position_thesis_schema",
+        "p4_03_apply_position_actions",
+        "p5_replay_review",
+        "p5_01_trace",
+        "p5_02_quality_report",
+        "p5_03_replay_determinism",
+        "p6_portfolio_risk",
+        "p6_01_risk_policy_schema",
+        "p6_02_risk_engine",
+        "p6_03_kill_switch",
+        "p7_private_executor_design",
+        "p7_01_boundary_doc",
+        "p7_02_intent_handshake",
+        "p7_03_public_guardrails"
+      ],
+      "path": "project/tasks/0001-autonomous-agent-trader-loop"
+    }
+  ],
+  "logical_deliverables": [
+    {
+      "step_key": "p0_stabilize_baseline",
+      "step_id": "TP-01",
+      "outputs": [
+        "把当前未提交的 Agent trade thesis / paper pipeline 补丁收敛成可验证、可继续开发的稳定基线。"
+      ]
+    },
+    {
+      "step_key": "p0_01_preflight",
+      "step_id": "TP-01.01",
+      "outputs": [
+        "当前工程状态说明",
+        "运行态是否 active 的证据"
+      ]
+    },
+    {
+      "step_key": "p0_02_track_thesis_helper",
+      "step_id": "TP-01.02",
+      "outputs": [
+        "可追踪的 agent_trade_thesis 实现",
+        "失败路径 agent_trade_thesis_load_failed"
+      ]
+    },
+    {
+      "step_key": "p0_03_validate_safety",
+      "step_id": "TP-01.03",
+      "outputs": [
+        "安全验证证据",
+        "fail-closed 测试覆盖"
+      ]
+    },
+    {
+      "step_key": "p0_04_checkpoint_ready",
+      "step_id": "TP-01.04",
+      "outputs": [
+        "P0 closeout 摘要",
+        "可提交或可继续迭代的基线状态"
+      ]
+    },
+    {
+      "step_key": "p1_research_loop_contract",
+      "step_id": "TP-02",
+      "outputs": [
+        "把 Agent 自主研究循环定义为机器契约、fixture、validator 和文档，而不是先实现复杂运行器。"
+      ]
+    },
+    {
+      "step_key": "p1_01_schema",
+      "step_id": "TP-02.01",
+      "outputs": [
+        "project/contracts/tradecat-auto-agent-research-cycle.schema.json"
+      ]
+    },
+    {
+      "step_key": "p1_02_fixtures",
+      "step_id": "TP-02.02",
+      "outputs": [
+        "project/tests/fixtures/agent_research_cycle/*.json"
+      ]
+    },
+    {
+      "step_key": "p1_03_validator",
+      "step_id": "TP-02.03",
+      "outputs": [
+        "validator/helper",
+        "pytest 覆盖"
+      ]
+    },
+    {
+      "step_key": "p1_04_docs_manifest",
+      "step_id": "TP-02.04",
+      "outputs": [
+        "manifest important_paths/commands",
+        "Hermes Agent 使用说明"
+      ]
+    },
+    {
+      "step_key": "p2_observe_only_loop",
+      "step_id": "TP-03",
+      "outputs": [
+        "实现只观察和产出报告的 Agent 研究循环，不写 ledger、不启动 run-loop、不产生 paper order/fill。"
+      ]
+    },
+    {
+      "step_key": "p2_01_loop_cli",
+      "step_id": "TP-03.01",
+      "outputs": [
+        "observe-only CLI",
+        "schema 化输出"
+      ]
+    },
+    {
+      "step_key": "p2_02_tool_plan",
+      "step_id": "TP-03.02",
+      "outputs": [
+        "tool orchestration policy",
+        "endpoint family mapping"
+      ]
+    },
+    {
+      "step_key": "p2_03_outputs",
+      "step_id": "TP-03.03",
+      "outputs": [
+        "agent_market_context.json",
+        "agent_trade_thesis.json",
+        "research_cycle.json"
+      ]
+    },
+    {
+      "step_key": "p2_04_audit_smoke",
+      "step_id": "TP-03.04",
+      "outputs": [
+        "audit report",
+        "observe-only smoke evidence"
+      ]
+    },
+    {
+      "step_key": "p3_paper_execution_loop",
+      "step_id": "TP-04",
+      "outputs": [
+        "让 audit 通过的 Agent thesis 驱动 paper/watch，而不是 CLI 默认参数驱动。"
+      ]
+    },
+    {
+      "step_key": "p3_01_audit_gate",
+      "step_id": "TP-04.01",
+      "outputs": [
+        "audit gate",
+        "拒绝路径测试"
+      ]
+    },
+    {
+      "step_key": "p3_02_thesis_execution",
+      "step_id": "TP-04.02",
+      "outputs": [
+        "paper execution report",
+        "paper ledger position fields"
+      ]
+    },
+    {
+      "step_key": "p3_03_journal_health",
+      "step_id": "TP-04.03",
+      "outputs": [
+        "audit journal record",
+        "health report",
+        "daily report"
+      ]
+    },
+    {
+      "step_key": "p3_04_service_mode",
+      "step_id": "TP-04.04",
+      "outputs": [
+        "service mode contract",
+        "runtime lock policy"
+      ]
+    },
+    {
+      "step_key": "p4_position_management",
+      "step_id": "TP-05",
+      "outputs": [
+        "让 Agent 每轮先读取本地 paper account state，再决定 hold/close/adjust/new thesis。"
+      ]
+    },
+    {
+      "step_key": "p4_01_account_state",
+      "step_id": "TP-05.01",
+      "outputs": [
+        "paper_account_state contract usage"
+      ]
+    },
+    {
+      "step_key": "p4_02_position_thesis_schema",
+      "step_id": "TP-05.02",
+      "outputs": [
+        "position management schema",
+        "fixtures"
+      ]
+    },
+    {
+      "step_key": "p4_03_apply_position_actions",
+      "step_id": "TP-05.03",
+      "outputs": [
+        "paper position action reports",
+        "ledger 更新"
+      ]
+    },
+    {
+      "step_key": "p5_replay_review",
+      "step_id": "TP-06",
+      "outputs": [
+        "把每轮 context/thesis/execution/ledger 做成可重放 decision trace 和质量报告。"
+      ]
+    },
+    {
+      "step_key": "p5_01_trace",
+      "step_id": "TP-06.01",
+      "outputs": [
+        "decision trace contract"
+      ]
+    },
+    {
+      "step_key": "p5_02_quality_report",
+      "step_id": "TP-06.02",
+      "outputs": [
+        "decision quality report"
+      ]
+    },
+    {
+      "step_key": "p5_03_replay_determinism",
+      "step_id": "TP-06.03",
+      "outputs": [
+        "replay determinism tests"
+      ]
+    },
+    {
+      "step_key": "p6_portfolio_risk",
+      "step_id": "TP-07",
+      "outputs": [
+        "把 contract 风控升级为 portfolio 级 paper 风控，但仍不进入真实交易。"
+      ]
+    },
+    {
+      "step_key": "p6_01_risk_policy_schema",
+      "step_id": "TP-07.01",
+      "outputs": [
+        "risk policy schema/contract"
+      ]
+    },
+    {
+      "step_key": "p6_02_risk_engine",
+      "step_id": "TP-07.02",
+      "outputs": [
+        "risk_decision.v1 reason coverage"
+      ]
+    },
+    {
+      "step_key": "p6_03_kill_switch",
+      "step_id": "TP-07.03",
+      "outputs": [
+        "kill switch policy",
+        "cooldown rejection"
+      ]
+    },
+    {
+      "step_key": "p7_private_executor_design",
+      "step_id": "TP-08",
+      "outputs": [
+        "只设计未来私有 executor 与 public TradeCat 的边界，不在 public repo 实现真实交易。"
+      ]
+    },
+    {
+      "step_key": "p7_01_boundary_doc",
+      "step_id": "TP-08.01",
+      "outputs": [
+        "executor boundary design"
+      ]
+    },
+    {
+      "step_key": "p7_02_intent_handshake",
+      "step_id": "TP-08.02",
+      "outputs": [
+        "intent handoff schema draft"
+      ]
+    },
+    {
+      "step_key": "p7_03_public_guardrails",
+      "step_id": "TP-08.03",
+      "outputs": [
+        "security guard tests",
+        "supply-chain scan coverage"
+      ]
+    }
+  ],
+  "execution_snapshot": {
+    "total_nodes": 36,
+    "total_leaf_nodes": 28,
+    "ready_leaf_ids": [
+      "TP-01.01"
+    ]
+  }
+}

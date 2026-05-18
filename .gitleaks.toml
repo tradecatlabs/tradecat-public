@@ -12,3 +12,15 @@ paths = [
 regexes = [
   '''X-MBX-APIKEY:\s*your_api_key''',
 ]
+
+[[allowlists]]
+description = "Auto-tasks step identifiers are workflow IDs, not credentials. Keep this scoped to task documents and pN-prefixed task refs."
+paths = [
+  '''project/tasks/.*''',
+]
+regexes = [
+  '''"key":\s*"p[0-9][a-z0-9_]*"''',
+  '''"step_key":\s*"p[0-9][a-z0-9_]*"''',
+  '''Step Key:\s*`p[0-9][a-z0-9_]*`''',
+  '''依赖步骤 Key:\s*p[0-9][a-z0-9_]*''',
+]

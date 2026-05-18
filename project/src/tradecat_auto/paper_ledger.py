@@ -9,6 +9,7 @@ from typing import Any
 
 LEDGER_SCHEMA = "tradecat_auto.paper_ledger.v1"
 PAPER_ACCOUNT_STATE_SCHEMA = "tradecat_auto.paper_account_state.v1"
+POSITION_MANAGEMENT_ACTION_REPORT_SCHEMA = "tradecat_auto.position_management_action_report.v1"
 SCHEMA_VERSION = "1.0.0"
 DEFAULT_INITIAL_BALANCE_USDT = 1000.0
 DEFAULT_FEE_BPS = 2.0
@@ -117,10 +118,24 @@ def apply_paper_execution(
         return _recalculate_equity(updated, now_iso=now_text)
 
     open_positions = updated.setdefault("open_positions", {})
-    if symbol in open_positions:
+    max_concurrent = _positive_int(execution.get("max_concurrent_positions_per_symbol"))
+    allow_multiple = bool(execution.get("allow_multiple_open_positions_per_symbol") is True or (max_concurrent is not None and max_concurrent > 1))
+    same_symbol_count = _open_position_count_for_symbol(open_positions, symbol)
+    if same_symbol_count and not allow_multiple:
         updated["last_rejected_execution"] = {
             "reason": "position_already_open_for_symbol",
             "symbol": symbol,
+            "execution": copy.deepcopy(execution),
+        }
+        updated["ignored_execution_ids"] = _dedupe([*(updated.get("ignored_execution_ids") or []), execution_id])
+        updated["last_updated_at"] = now_text
+        return _recalculate_equity(updated, now_iso=now_text)
+    if max_concurrent is not None and same_symbol_count >= max_concurrent:
+        updated["last_rejected_execution"] = {
+            "reason": "max_concurrent_positions_per_symbol_reached",
+            "symbol": symbol,
+            "current_open_positions_for_symbol": same_symbol_count,
+            "max_concurrent_positions_per_symbol": max_concurrent,
             "execution": copy.deepcopy(execution),
         }
         updated["ignored_execution_ids"] = _dedupe([*(updated.get("ignored_execution_ids") or []), execution_id])
@@ -144,6 +159,7 @@ def apply_paper_execution(
     fee = fill_notional * float(fee_bps) / 10_000
     margin_usdt = fill_notional / leverage
     sizing_source = str(execution.get("sizing_source") or "").strip() or None
+    research_cycle_run_id = str(execution.get("research_cycle_run_id") or "").strip() or None
     stop_loss_price = _num(execution.get("stop_loss_price"))
     take_profit_price = _num(execution.get("take_profit_price"))
     max_holding_minutes = _num(execution.get("max_holding_minutes"))
@@ -151,6 +167,7 @@ def apply_paper_execution(
     exit_management = str(execution.get("exit_management") or ("agent_supplied" if has_exit_plan else "agent_managed"))
     exit_plan_source = str(execution.get("exit_plan_source") or ("execution_exit_fields" if has_exit_plan else "agent_required_missing"))
     position_id = _position_id(execution_id, symbol)
+    position_key = position_id if allow_multiple else symbol
     position = {
         "position_id": position_id,
         "execution_id": execution_id,
@@ -168,16 +185,19 @@ def apply_paper_execution(
         "margin_usdt": margin_usdt,
         "leverage": leverage,
         "sizing_source": sizing_source,
+        "research_cycle_run_id": research_cycle_run_id,
         "stop_loss_price": stop_loss_price,
         "take_profit_price": take_profit_price,
         "max_holding_minutes": max_holding_minutes,
         "exit_management": exit_management,
         "exit_plan_source": exit_plan_source,
         "exit_rationale": execution.get("exit_rationale"),
+        "allow_multiple_open_positions_per_symbol": allow_multiple,
+        "max_concurrent_positions_per_symbol": max_concurrent,
         "last_mark_price": fill_price,
         "unrealized_pnl_usdt": 0.0,
     }
-    open_positions[symbol] = position
+    open_positions[position_key] = position
     updated.setdefault("paper_orders", []).append(
         {
             "schema": "tradecat_auto.paper_order.v1",
@@ -199,6 +219,7 @@ def apply_paper_execution(
             "margin_usdt": position.get("margin_usdt"),
             "leverage": position.get("leverage"),
             "sizing_source": sizing_source,
+            "research_cycle_run_id": research_cycle_run_id,
             "fee_usdt": fee,
             "created_at": now_text,
             "filled_at": now_text,
@@ -225,6 +246,7 @@ def apply_paper_execution(
             "margin_usdt": position.get("margin_usdt"),
             "leverage": position.get("leverage"),
             "sizing_source": sizing_source,
+            "research_cycle_run_id": research_cycle_run_id,
             "fee_usdt": fee,
             "created_at": now_text,
         }
@@ -265,7 +287,8 @@ def mark_to_market(
     slippage_bps = _non_negative(slippage_bps, "slippage_bps")
     updated = load_paper_ledger_from_object(ledger)
     now_text = now_iso or _now_iso()
-    for symbol, position in list((updated.get("open_positions") or {}).items()):
+    for position_key, position in list((updated.get("open_positions") or {}).items()):
+        symbol = _position_symbol(position, fallback=position_key)
         mark_price = _num(prices.get(symbol))
         if mark_price is None or mark_price <= 0:
             continue
@@ -273,9 +296,140 @@ def mark_to_market(
         position["unrealized_pnl_usdt"] = _position_pnl(position, mark_price)
         close_reason = _close_reason(position, mark_price, now_iso=now_text, max_holding_minutes=max_holding_minutes)
         if close_reason:
-            _close_position(updated, symbol, mark_price, close_reason, fee_bps=fee_bps, slippage_bps=slippage_bps, now_iso=now_text)
+            _close_position(updated, position_key, mark_price, close_reason, fee_bps=fee_bps, slippage_bps=slippage_bps, now_iso=now_text)
     updated["last_updated_at"] = now_text
     return _recalculate_equity(updated, now_iso=now_text)
+
+
+def apply_position_management_thesis(
+    ledger: dict[str, Any],
+    thesis: dict[str, Any],
+    *,
+    fee_bps: float = DEFAULT_FEE_BPS,
+    slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Apply an explicit Agent position-management thesis to the local paper ledger.
+
+    The function returns a machine-readable action report and keeps the updated
+    ledger in the private ``_ledger`` field for callers that are allowed to save
+    local paper runtime state. It never talks to Binance and never creates real
+    orders.
+    """
+
+    fee_bps = _non_negative(fee_bps, "fee_bps")
+    slippage_bps = _non_negative(slippage_bps, "slippage_bps")
+    updated = load_paper_ledger_from_object(ledger)
+    now_text = now_iso or _now_iso()
+    payload = thesis if isinstance(thesis, dict) else {}
+    action = str(payload.get("action") or "").strip().lower()
+    if action == "":
+        action = "hold"
+    mode = str(payload.get("mode") or "paper").strip().lower()
+    reason = str(payload.get("reason") or "").strip()
+    action_id = _position_management_action_id(payload)
+    base = {
+        "schema": POSITION_MANAGEMENT_ACTION_REPORT_SCHEMA,
+        "schema_version": SCHEMA_VERSION,
+        "ok": False,
+        "mode": mode if mode in {"paper", "watch"} else "paper",
+        "action": action if action in {"hold", "noop", "close", "adjust_exit", "add", "reduce"} else "hold",
+        "status": "REJECTED",
+        "error_code": "position_management_rejected",
+        "reason": reason,
+        "symbol": _position_management_symbol(payload),
+        "position_id": "",
+        "position_ref": payload.get("position_ref") if isinstance(payload.get("position_ref"), dict) else {},
+        "ledger_mutated": False,
+        "action_id": action_id,
+        "updated_fields": [],
+        "provenance": _position_management_provenance(payload),
+        "safety": _safety_boundary(),
+        "_ledger": updated,
+    }
+
+    safety_error = _position_management_safety_error(payload)
+    if safety_error:
+        return {**base, "error_code": safety_error, "reason": reason or safety_error}
+    if mode not in {"paper", "watch"}:
+        return {**base, "error_code": "position_management_mode_rejected", "reason": reason or "mode must be paper or watch"}
+    if action in {"hold", "noop"}:
+        return {
+            **base,
+            "ok": True,
+            "status": "HELD" if action == "hold" else "NOOP",
+            "error_code": None,
+            "reason": reason or "no explicit paper position change requested",
+        }
+    if action not in {"close", "adjust_exit", "add", "reduce"}:
+        return {**base, "error_code": "position_management_action_unknown", "reason": reason or "unknown position management action"}
+    if not reason:
+        return {**base, "error_code": "position_management_reason_required", "reason": "Agent reason is required"}
+    if action in {"add", "reduce"}:
+        return {
+            **base,
+            "status": "UNSUPPORTED",
+            "error_code": "position_management_action_not_supported",
+            "reason": "add/reduce requires a future paper execution or partial-fill contract; no ledger mutation was applied",
+        }
+
+    position_match = _find_open_position(updated.get("open_positions") or {}, payload.get("position_ref"))
+    if position_match.get("error_code"):
+        return {**base, "error_code": position_match["error_code"], "reason": position_match["reason"]}
+    position_key = str(position_match["position_key"])
+    position = position_match["position"]
+    position_id = str(position.get("position_id") or position_key)
+    symbol = _position_symbol(position, fallback=position_key)
+
+    if action == "adjust_exit":
+        exit_update = payload.get("exit_update") if isinstance(payload.get("exit_update"), dict) else {}
+        updated_fields = _apply_exit_update(position, exit_update, now_text, reason, base["provenance"])
+        if not updated_fields:
+            return {**base, "symbol": symbol, "position_id": position_id, "error_code": "position_exit_update_required", "reason": "Agent exit_update must contain stop_loss_price, take_profit_price, or max_holding_minutes"}
+        open_positions = updated.setdefault("open_positions", {})
+        open_positions[position_key] = position
+        report = {
+            **base,
+            "ok": True,
+            "status": "APPLIED",
+            "error_code": None,
+            "symbol": symbol,
+            "position_id": position_id,
+            "ledger_mutated": True,
+            "updated_fields": updated_fields,
+        }
+        _record_position_management_action(updated, report, now_text)
+        return {**report, "_ledger": _recalculate_equity(updated, now_iso=now_text)}
+
+    close_intent = payload.get("close_intent") if isinstance(payload.get("close_intent"), dict) else {}
+    close_fraction = _num(close_intent.get("close_fraction"))
+    if close_fraction != 1:
+        return {**base, "symbol": symbol, "position_id": position_id, "error_code": "full_close_fraction_required", "reason": "close action currently requires close_fraction=1; partial reduce stays fail-closed"}
+    mark_price = _num(close_intent.get("mark_price"))
+    if mark_price is None or mark_price <= 0:
+        return {**base, "symbol": symbol, "position_id": position_id, "error_code": "agent_mark_price_required", "reason": "close action requires an explicit positive Agent mark_price"}
+    _close_position(
+        updated,
+        position_key,
+        mark_price,
+        "agent_position_management_close",
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        now_iso=now_text,
+    )
+    _annotate_last_position_management_close(updated, action_id, reason, base["provenance"])
+    report = {
+        **base,
+        "ok": True,
+        "status": "APPLIED",
+        "error_code": None,
+        "symbol": symbol,
+        "position_id": position_id,
+        "ledger_mutated": True,
+        "updated_fields": ["status", "closed_at", "exit_price", "close_reason", "fills"],
+    }
+    _record_position_management_action(updated, report, now_text)
+    return {**report, "_ledger": _recalculate_equity(updated, now_iso=now_text)}
 
 
 def paper_ledger_summary(ledger: dict[str, Any]) -> dict[str, Any]:
@@ -304,6 +458,11 @@ def paper_account_state(ledger: dict[str, Any]) -> dict[str, Any]:
         "schema_version": "1.0.0",
         "mode": "paper",
         "source": "local_tradecat_paper_ledger",
+        "provenance": {
+            "source": "local_tradecat_paper_ledger",
+            "ledger_schema": str(normalized.get("schema") or LEDGER_SCHEMA),
+        },
+        "safety": _safety_boundary(),
         "cash_balance_usdt": normalized.get("cash_balance_usdt"),
         "equity_usdt": normalized.get("equity_usdt"),
         "initial_balance_usdt": normalized.get("initial_balance_usdt"),
@@ -330,7 +489,7 @@ def paper_account_state(ledger: dict[str, Any]) -> dict[str, Any]:
 
 def _close_position(
     ledger: dict[str, Any],
-    symbol: str,
+    position_key: str,
     mark_price: float,
     close_reason: str,
     *,
@@ -338,7 +497,8 @@ def _close_position(
     slippage_bps: float,
     now_iso: str,
 ) -> None:
-    position = dict((ledger.get("open_positions") or {}).pop(symbol))
+    position = dict((ledger.get("open_positions") or {}).pop(position_key))
+    symbol = _position_symbol(position, fallback=position_key)
     side = str(position.get("side") or "").upper()
     quantity = _num(position.get("quantity")) or 0.0
     exit_price = _slipped_price(mark_price, side, "CLOSE", slippage_bps)
@@ -508,6 +668,169 @@ def _position_id(execution_id: str, symbol: str) -> str:
 
 def _fill_id(execution_id: str, action: str) -> str:
     return hashlib.sha256(f"{execution_id}\n{action}".encode()).hexdigest()[:24]
+
+
+def _position_symbol(position: Any, *, fallback: Any = "") -> str:
+    if isinstance(position, dict):
+        symbol = str(position.get("symbol") or "").upper().strip()
+        if symbol:
+            return symbol
+    return str(fallback or "").upper().strip()
+
+
+def _open_position_count_for_symbol(open_positions: dict[str, Any], symbol: str) -> int:
+    normalized = str(symbol or "").upper().strip()
+    return sum(1 for key, position in open_positions.items() if _position_symbol(position, fallback=key) == normalized)
+
+
+def _find_open_position(open_positions: dict[str, Any], position_ref: Any) -> dict[str, Any]:
+    ref = position_ref if isinstance(position_ref, dict) else {}
+    if not ref:
+        return {"error_code": "position_ref_required", "reason": "position_ref is required for this action"}
+    wanted_position_id = str(ref.get("position_id") or "").strip()
+    wanted_execution_id = str(ref.get("execution_id") or "").strip()
+    wanted_symbol = str(ref.get("symbol") or "").upper().strip()
+    matches: list[tuple[str, dict[str, Any]]] = []
+    for key, raw_position in open_positions.items():
+        if not isinstance(raw_position, dict):
+            continue
+        position = raw_position
+        symbol = _position_symbol(position, fallback=key)
+        if wanted_position_id or wanted_execution_id:
+            if wanted_position_id and str(position.get("position_id") or "") == wanted_position_id:
+                matches.append((str(key), position))
+            elif wanted_execution_id and str(position.get("execution_id") or "") == wanted_execution_id:
+                matches.append((str(key), position))
+            continue
+        if wanted_symbol and symbol == wanted_symbol:
+            matches.append((str(key), position))
+    if not matches:
+        return {"error_code": "position_not_found", "reason": "no matching open paper position found"}
+    unique = {(key, str(position.get("position_id") or "")): (key, position) for key, position in matches}
+    if len(unique) > 1 and not (wanted_position_id or wanted_execution_id):
+        return {"error_code": "position_ref_ambiguous", "reason": "symbol-only position_ref matched multiple open paper positions"}
+    position_key, position = next(iter(unique.values()))
+    return {"position_key": position_key, "position": dict(position)}
+
+
+def _apply_exit_update(
+    position: dict[str, Any],
+    exit_update: dict[str, Any],
+    now_iso: str,
+    reason: str,
+    provenance: dict[str, Any],
+) -> list[str]:
+    updated_fields: list[str] = []
+    for source_key, target_key in (
+        ("stop_loss_price", "stop_loss_price"),
+        ("take_profit_price", "take_profit_price"),
+        ("max_holding_minutes", "max_holding_minutes"),
+    ):
+        if source_key not in exit_update:
+            continue
+        value = _num(exit_update.get(source_key))
+        if value is None or value <= 0:
+            continue
+        position[target_key] = value
+        updated_fields.append(target_key)
+    if not updated_fields:
+        return []
+    if isinstance(exit_update.get("exit_rationale"), str) and exit_update.get("exit_rationale"):
+        position["exit_rationale"] = str(exit_update["exit_rationale"])
+        updated_fields.append("exit_rationale")
+    position["exit_management"] = "agent_supplied"
+    position["exit_plan_source"] = "position_management_thesis"
+    position["position_management_updated_at"] = now_iso
+    position["position_management_reason"] = reason
+    position["position_management_provenance"] = provenance
+    updated_fields.extend(["exit_management", "exit_plan_source"])
+    return _dedupe(updated_fields)
+
+
+def _record_position_management_action(ledger: dict[str, Any], report: dict[str, Any], now_iso: str) -> None:
+    clean = {key: value for key, value in report.items() if key != "_ledger"}
+    clean["created_at"] = now_iso
+    ledger.setdefault("position_management_actions", []).append(clean)
+    ledger["last_position_management_action"] = clean
+    ledger["last_updated_at"] = now_iso
+
+
+def _annotate_last_position_management_close(
+    ledger: dict[str, Any],
+    action_id: str,
+    reason: str,
+    provenance: dict[str, Any],
+) -> None:
+    for position in reversed(ledger.get("closed_positions") or []):
+        if isinstance(position, dict):
+            position["position_management_action_id"] = action_id
+            position["position_management_reason"] = reason
+            position["position_management_provenance"] = provenance
+            break
+    for fill in reversed(ledger.get("fills") or []):
+        if isinstance(fill, dict) and fill.get("action") == "CLOSE":
+            fill["position_management_action_id"] = action_id
+            fill["position_management_reason"] = reason
+            research_cycle_run_id = str(provenance.get("research_cycle_run_id") or "").strip()
+            if research_cycle_run_id:
+                fill["research_cycle_run_id"] = research_cycle_run_id
+            break
+
+
+def _position_management_safety_error(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return "position_management_thesis_required"
+    if value.get("schema") not in (None, "", "tradecat_auto.position_management_thesis.v1"):
+        return "position_management_schema_rejected"
+    if value.get("schema_version") not in (None, "", SCHEMA_VERSION):
+        return "position_management_schema_version_rejected"
+    if _nested_truthy_key(value, {"real_order", "real_orders", "signed_requests", "reads_api_keys", "binance_account_state", "signed"}):
+        return "position_management_safety_violation"
+    return None
+
+
+def _nested_truthy_key(value: Any, keys: set[str]) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key) in keys and child is True:
+                return True
+            if _nested_truthy_key(child, keys):
+                return True
+    if isinstance(value, list):
+        return any(_nested_truthy_key(item, keys) for item in value)
+    return False
+
+
+def _position_management_symbol(value: dict[str, Any]) -> str:
+    symbol = str(value.get("symbol") or "").upper().strip()
+    if symbol:
+        return symbol
+    ref = value.get("position_ref")
+    if isinstance(ref, dict):
+        return str(ref.get("symbol") or "").upper().strip()
+    return ""
+
+
+def _position_management_provenance(value: dict[str, Any]) -> dict[str, Any]:
+    provenance = value.get("provenance") if isinstance(value.get("provenance"), dict) else {}
+    result = dict(provenance)
+    result.setdefault("source", "tradecat_auto.paper_ledger.apply_position_management_thesis")
+    return result
+
+
+def _position_management_action_id(value: dict[str, Any]) -> str:
+    material = json.dumps(value if isinstance(value, dict) else {}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if numeric > 0 else None
 
 
 def _dedupe(values: Any) -> list[str]:

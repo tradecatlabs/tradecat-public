@@ -188,6 +188,89 @@
         "Window labels are strings until a downstream analytics contract defines numeric duration parsing."
       ]
     },
+    "signal_flow": {
+      "dataset_key": "signal_flow",
+      "data_mode": "stream",
+      "primary_entity": "contract_symbol_signal",
+      "time_grain": "event_time",
+      "quality_tier": "public_sheet_best_effort",
+      "missing_value_policy": "empty_string_is_missing",
+      "history_semantics": "Local cache merges signal events by configured event key and preserves seen_count/last_seen_at.",
+      "time_semantics": {
+        "timezone": "UTC+8",
+        "event_time_column": "时间(北京)",
+        "timestamp_columns": ["时间(北京)"]
+      },
+      "required_column_groups": [
+        {
+          "name": "event_time",
+          "any_of": ["时间(北京)"],
+          "purpose": "Signal timestamp in Beijing time."
+        },
+        {
+          "name": "contract_symbol",
+          "any_of": ["交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+          "purpose": "Primary market instrument identity exposed by the online signal stream."
+        },
+        {
+          "name": "signal_body",
+          "any_of": ["内容"],
+          "purpose": "Human-readable online signal body."
+        }
+      ],
+      "fields": [
+        {
+          "canonical_name": "event_time",
+          "source_columns": ["时间(北京)"],
+          "role": "event_time",
+          "value_type": "datetime",
+          "nullable": false,
+          "unit": "UTC+8",
+          "description": "Signal timestamp in Beijing time."
+        },
+        {
+          "canonical_name": "symbol",
+          "source_columns": ["交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"],
+          "role": "entity_key",
+          "value_type": "string",
+          "nullable": false,
+          "unit": null,
+          "description": "Contract or token symbol observed in the online signal stream."
+        },
+        {
+          "canonical_name": "period",
+          "source_columns": ["周期"],
+          "role": "time_window",
+          "value_type": "string",
+          "nullable": true,
+          "unit": null,
+          "description": "Signal period label emitted by the online signal stream."
+        },
+        {
+          "canonical_name": "signal_type",
+          "source_columns": ["类型"],
+          "role": "category",
+          "value_type": "string",
+          "nullable": true,
+          "unit": null,
+          "description": "Signal type label emitted by the online signal stream."
+        },
+        {
+          "canonical_name": "content",
+          "source_columns": ["内容"],
+          "role": "signal_text",
+          "value_type": "text",
+          "nullable": false,
+          "unit": null,
+          "description": "Signal body used together with time, symbol, period, and type as the stream identity."
+        }
+      ],
+      "consumer_notes": [
+        "Use signal_flow as the online trading-signal input stream together with anomaly_panel.",
+        "Treat signal rows as observation candidates, not final strategy decisions.",
+        "Repeated signal rows update cache observation metadata and should not be counted as new unique signals."
+      ]
+    },
     "event_stream": {
       "dataset_key": "event_stream",
       "data_mode": "stream",

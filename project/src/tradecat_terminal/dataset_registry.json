@@ -77,6 +77,28 @@
         "top": "public_info_and_meta"
       }
     },
+    "signal_flow": {
+      "active": true,
+      "workbook_key": "alternative_data",
+      "tab_name": "信号流",
+      "gid": null,
+      "description": "交易猫另类数据终端在线信号流增量缓存。",
+      "data_mode": "stream",
+      "index_columns": ["时间(北京)", "交易对", "周期", "类型", "内容"],
+      "event_key_columns": ["时间(北京)", "交易对", "周期", "类型", "内容"],
+      "display_names": {
+        "zh": "信号流",
+        "en": "Signal Flow",
+        "ko": "신호 스트림"
+      },
+      "history_policy": "permanent",
+      "tui_probe_interval_seconds": 3.0,
+      "tui_fetch_timeout_seconds": 3.0,
+      "table_region_policy": {
+        "header": "auto",
+        "top": "public_info_and_meta"
+      }
+    },
     "event_stream": {
       "active": true,
       "workbook_key": "alternative_data",

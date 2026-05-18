@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-agent-research-cycle.schema.json",
+  "title": "TradeCat Auto Agent Research Cycle",
+  "description": "Hermes/Agent autonomous research-loop envelope for signal-driven public/read-only market research and paper/watch intent handoff.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "run_id",
+    "mode",
+    "source_signal",
+    "requested_market_data",
+    "next_action",
+    "error_code",
+    "provenance",
+    "safety"
+  ],
+  "properties": {
+    "schema": {"const": "tradecat_auto.agent_research_cycle.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "run_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string"},
+    "mode": {"enum": ["observe_only", "paper", "watch"]},
+    "symbol": {"type": "string"},
+    "error_code": {
+      "anyOf": [
+        {"type": "string"},
+        {"type": "null"}
+      ]
+    },
+    "source_signal": {
+      "type": "object",
+      "required": ["kind", "provenance"],
+      "properties": {
+        "kind": {"enum": ["tradecat_sheet_event", "manual_fixture", "replay"]},
+        "event_id": {"type": "string"},
+        "symbol": {"type": "string"},
+        "raw": true,
+        "provenance": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "requested_market_data": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/requestedMarketData"}
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/publicReadOnlyToolCall"}
+    },
+    "tool_orchestration_policy": {
+      "type": "object",
+      "properties": {
+        "schema": {"const": "tradecat_auto.agent_tool_orchestration.v1"},
+        "schema_version": {"const": "1.0.0"},
+        "symbol": {"type": "string"},
+        "execution": {"type": "string"},
+        "required_tool_failure": {"$ref": "#/$defs/toolFailurePolicy"},
+        "optional_tool_failure": {"$ref": "#/$defs/toolFailurePolicy"},
+        "prohibited": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "agent_market_context": {
+      "type": "object",
+      "properties": {
+        "schema": {"const": "tradecat_auto.agent_market_context.v1"},
+        "schema_version": {"const": "1.0.0"}
+      },
+      "additionalProperties": true
+    },
+    "agent_trade_thesis": {
+      "type": "object",
+      "properties": {
+        "schema": {"const": "tradecat_auto.agent_trade_thesis.v1"},
+        "schema_version": {"const": "1.0.0"}
+      },
+      "additionalProperties": true
+    },
+    "risk_notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "next_action": {
+      "type": "object",
+      "required": ["action", "reason"],
+      "properties": {
+        "action": {
+          "enum": [
+            "observe_only",
+            "request_more_context",
+            "run_context_paper",
+            "run_context_watch",
+            "reject",
+            "hold"
+          ]
+        },
+        "reason": {"type": "string", "minLength": 1},
+        "required_inputs": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "tradecat_command_hint": {"type": "string"},
+        "writes_paper_ledger": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "agent": {"type": "string"},
+        "source_manifest": {"type": "string"},
+        "notes": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "safety": {"$ref": "#/$defs/safetyBoundary"},
+    "limitations": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "marketDataFamily": {
+      "enum": [
+        "klines",
+        "order_book_depth",
+        "book_ticker",
+        "24h_ticker",
+        "funding_rate",
+        "premium_index",
+        "open_interest",
+        "open_interest_history",
+        "long_short_ratios",
+        "taker_buy_sell_volume"
+      ]
+    },
+    "requestedMarketData": {
+      "type": "object",
+      "required": ["family", "endpoint", "method", "reason"],
+      "properties": {
+        "family": {"$ref": "#/$defs/marketDataFamily"},
+        "endpoint": {"$ref": "#/$defs/publicMarketEndpoint"},
+        "method": {"const": "GET"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "required": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1},
+        "fallback": {"type": "string"},
+        "fallback_next_action": {
+          "enum": ["observe_only", "request_more_context", "hold", "reject"]
+        },
+        "error_code": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "toolFailurePolicy": {
+      "type": "object",
+      "required": ["next_action", "error_code", "writes_paper_ledger"],
+      "properties": {
+        "next_action": {
+          "enum": ["observe_only", "request_more_context", "hold", "reject"]
+        },
+        "error_code": {"type": "string", "minLength": 1},
+        "writes_paper_ledger": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "publicReadOnlyToolCall": {
+      "type": "object",
+      "required": ["family", "endpoint", "method", "ok", "provenance"],
+      "properties": {
+        "family": {"$ref": "#/$defs/marketDataFamily"},
+        "endpoint": {"$ref": "#/$defs/publicMarketEndpoint"},
+        "method": {"const": "GET"},
+        "ok": {"type": "boolean"},
+        "fetched_at": {"type": "string"},
+        "requires_signature": {"const": false},
+        "signed": {"const": false},
+        "reads_api_keys": {"const": false},
+        "real_orders": {"const": false},
+        "provenance": {"type": "object", "additionalProperties": true},
+        "data": true,
+        "error": {"type": "object", "additionalProperties": true}
+      },
+      "additionalProperties": true
+    },
+    "publicMarketEndpoint": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "(?i)(account|order|listenKey|leverage|marginType|positionMargin|apiKey|secret|signature)"
+      }
+    },
+    "safetyBoundary": {
+      "type": "object",
+      "required": [
+        "public_readonly_market_data",
+        "paper_or_watch_only",
+        "real_orders",
+        "signed_requests",
+        "reads_api_keys",
+        "binance_account_state"
+      ],
+      "properties": {
+        "public_readonly_market_data": {"const": true},
+        "paper_or_watch_only": {"const": true},
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false},
+        "binance_account_state": {"const": false}
+      },
+      "additionalProperties": true
+    }
+  }
+}

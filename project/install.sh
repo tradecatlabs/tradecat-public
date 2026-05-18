@@ -303,12 +303,12 @@ bootstrap_cache() {
   if TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" sync-all >/dev/null 2>&1; then
     log "已同步公开数据到本地缓存"
   else
-    log "公开数据全量初次同步失败；开始兜底同步默认事件流"
-    if TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" sync event_stream >/dev/null 2>&1; then
-      log "已同步默认事件流缓存；其它 tap 可稍后执行 tradecat sync-all 补齐"
+    log "公开数据全量初次同步失败；开始兜底同步默认信号流"
+    if TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" sync signal_flow >/dev/null 2>&1; then
+      log "已同步默认信号流缓存；其它 tap 可稍后执行 tradecat sync-all 补齐"
     else
-      log "默认事件流兜底同步也失败；安装已完成，首次运行 tradecat 时会继续探测"
-      log "弱网可执行：tradecat config set tui_fetch_timeout.event_stream 3 && tradecat sync-all"
+      log "默认信号流兜底同步也失败；安装已完成，首次运行 tradecat 时会继续探测"
+      log "弱网可执行：tradecat config set tui_fetch_timeout.signal_flow 3 && tradecat sync-all"
     fi
   fi
 }

@@ -57,6 +57,7 @@ Each dataset row includes `consumption_contract` with:
 | `market_snapshot` | `contract_symbol` | `latest_snapshot` | `public_sheet_best_effort` |
 | `anomaly_panel` | `contract_symbol` | `latest_snapshot` | `public_sheet_best_effort` |
 | `market_stats` | `market_window` | `aggregated_window` | `public_sheet_best_effort` |
+| `signal_flow` | `contract_symbol_signal` | `event_time` | `public_sheet_best_effort` |
 | `event_stream` | `event` | `event_time` | `public_sheet_best_effort` |
 
 ## Missing Values

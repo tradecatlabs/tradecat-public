@@ -1,0 +1,52 @@
+{
+  "schema": "tradecat_auto.portfolio_risk_policy.v1",
+  "schema_version": "1.0.0",
+  "mode": "paper",
+  "enabled": true,
+  "new_entries_enabled": true,
+  "limits": {
+    "max_daily_loss_usdt": 25,
+    "max_drawdown_usdt": 50,
+    "max_open_positions": 5,
+    "max_positions_per_symbol": 2,
+    "max_symbol_notional_usdt": 100,
+    "max_total_notional_usdt": 250,
+    "max_symbol_risk_usdt": 10,
+    "max_symbol_risk_pct": 0.02,
+    "max_leverage": 5,
+    "min_agent_confidence": 0.65,
+    "cooldown_minutes_after_reject": 30,
+    "cooldown_minutes_after_close": 15,
+    "abnormal_move_halt_bps": 800,
+    "max_consecutive_losses": 3
+  },
+  "kill_switch": {
+    "active": false,
+    "reason": "",
+    "source": "operator_local_policy"
+  },
+  "provenance": {
+    "source": "portfolio_risk_policy_fixture",
+    "generated_at": "2026-05-18T00:00:00Z",
+    "agent": "hermes"
+  },
+  "safety": {
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "hard_boundaries": {
+    "does_not_set_order_size": true,
+    "does_not_set_leverage": true,
+    "does_not_set_exit_plan": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false
+  },
+  "limitations": [
+    "paper/watch risk rejection policy only",
+    "no real exchange order is authorized"
+  ]
+}

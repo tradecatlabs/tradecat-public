@@ -90,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     prune_parser.add_argument("--json", action="store_true", help="输出 JSON")
 
     export_parser = subparsers.add_parser("export", help="从本地缓存导出当前 dataset 视图")
-    export_parser.add_argument("dataset_key", help="dataset_key，例如 event_stream")
+    export_parser.add_argument("dataset_key", help="dataset_key，例如 signal_flow")
     export_parser.add_argument("--format", choices=["json", "jsonl", "csv", "table"], default="json")
     export_parser.add_argument("--limit", type=int, default=0, help="最多导出行数；0 表示不限制")
     export_parser.add_argument("--output", help="输出文件；不传则输出 stdout")
@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     watch_parser.add_argument("--json", action="store_true", help="每轮输出 JSON")
 
     tui_parser = subparsers.add_parser("tui", help="打开终端浏览面板")
-    tui_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key，例如 event_stream")
+    tui_parser.add_argument("dataset_key", nargs="?", help="可选 dataset_key，例如 signal_flow")
     tui_parser.add_argument("--limit", type=int, default=0, help="展示行数；0 表示按屏幕高度自动分页")
     tui_parser.add_argument("--plain", action="store_true", help="输出静态文本，不进入交互式 TUI")
     tui_parser.add_argument("--no-live", action="store_true", help="不启动实时探针，只浏览本地缓存")
@@ -655,7 +655,7 @@ def print_config(payload: dict) -> None:
     if not settings:
         print("settings: {}")
         print("常用键：default_lang, default_dataset, cache_dir, tui_probe_interval_seconds")
-        print("单 tap 键：tui_probe_interval.event_stream, tui_fetch_timeout.event_stream")
+        print("单 tap 键：tui_probe_interval.signal_flow, tui_fetch_timeout.signal_flow")
         return
     print(json.dumps(settings, ensure_ascii=False, indent=2, sort_keys=True))
 

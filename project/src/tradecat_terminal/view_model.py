@@ -127,6 +127,9 @@ def build_dataset_view(
 
 
 def _physical_table_rows(base: dict[str, Any]) -> list[dict[str, Any]]:
+    table_rows = [row for row in base.get("table_rows") or [] if isinstance(row, dict)]
+    if any(str(row.get("section") or "").strip() for row in table_rows):
+        return table_rows
     rows = list(base.get("rows") or [])
     layout = base.get("layout") if isinstance(base.get("layout"), dict) else {}
     physical_rows = layout.get("physical_rows") if isinstance(layout.get("physical_rows"), dict) else {}
@@ -145,11 +148,17 @@ def _display_row(
         for key, value in (row.get("physical_values") or row.get("values") or {}).items()
         if value is not None
     }
-    raw_values = {
-        raw: str(physical_values.get(physical_columns[index], ""))
-        for index, raw in enumerate(raw_columns)
-        if index < len(physical_columns)
-    }
+    source_raw_values = row.get("raw_values") if isinstance(row.get("raw_values"), dict) else {}
+    raw_values = {raw: str(source_raw_values.get(raw, "")) for raw in raw_columns}
+    if not source_raw_values:
+        raw_values = {
+            raw: str(physical_values.get(physical_columns[index], ""))
+            for index, raw in enumerate(raw_columns)
+            if index < len(physical_columns)
+        }
+    else:
+        for raw, value in source_raw_values.items():
+            raw_values.setdefault(str(raw), str(value))
     return DisplayRow(
         row_index=int(row.get("row_index") or 0),
         row_number=int(row.get("row_number") or 0),

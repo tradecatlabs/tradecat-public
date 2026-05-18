@@ -22,10 +22,10 @@ Use this order for inspection and diagnosis:
 python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
-bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh path signal_flow --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
-python3 project/scripts/request.py event_stream --format json --limit 5
+python3 project/scripts/request.py signal_flow --format json --limit 5
 ```
 
 `datasets --json` includes each dataset's `consumption_contract`. For full
@@ -47,7 +47,7 @@ rows.
 Only write local cache after the readonly path proves what is needed:
 
 ```bash
-bash scripts/run-tradecat.sh sync event_stream --json --timeout 10
+bash scripts/run-tradecat.sh sync signal_flow --json --timeout 10
 bash scripts/run-tradecat.sh doctor --json
 ```
 
@@ -61,8 +61,8 @@ bash scripts/agent-smoke.sh
 
 | Class | Meaning | Examples |
 | --- | --- | --- |
-| `local_readonly` | Reads tracked files, settings, or cache metadata only. | `status --json`, `datasets --json`, `path event_stream --json` |
-| `network_readonly` | Reads public network data without writing cache. | `project/scripts/request.py event_stream --format json` |
+| `local_readonly` | Reads tracked files, settings, or cache metadata only. | `status --json`, `datasets --json`, `path signal_flow --json` |
+| `network_readonly` | Reads public network data without writing cache. | `project/scripts/request.py signal_flow --format json` |
 | `local_cache_write` | Writes only local TradeCat cache, settings, or diagnostics. | `init`, `sync`, `doctor --repair`, `prune --apply` |
 | `background_long_running` | Starts or supervises a local watcher. | `project/scripts/start.sh start`, `watch` |
 | `paper_runtime_write` | Writes only local paper/watch runtime state, ledger, archive, PID, or logs; never real orders. | `auto run-loop --once`, `start-auto-paper.sh start` |
@@ -167,21 +167,34 @@ Breaking JSON changes require updating `agents/manifest.json`, this document,
 
 Hermes/Agent may gather Binance public market context outside TradeCat, then hand a local JSON file to TradeCat for schema validation, signal alignment, paper/watch analysis, ledger/replay, and audit. TradeCat must not read Binance credentials, sign requests, read account state, or place real orders.
 
-Canonical input schema:
+Canonical research/input schemas:
 
+- Research-cycle payload schema: `tradecat_auto.agent_research_cycle.v1`.
+- Research-cycle schema file: `project/contracts/tradecat-auto-agent-research-cycle.schema.json`.
 - Payload schema: `tradecat_auto.agent_market_context.v1`.
 - Schema file: `project/contracts/tradecat-auto-agent-market-context.schema.json`.
+- Paper position-management thesis schema: `tradecat_auto.position_management_thesis.v1`.
+- Position-management schema file: `project/contracts/tradecat-auto-position-management-thesis.schema.json`.
+- Position-management action report schema: `tradecat_auto.position_management_action_report.v1`.
+- Position-management command: `bash scripts/run-tradecat.sh auto position-manage --thesis-path <position-management-thesis.json> --json`.
+- Portfolio risk policy schema: `tradecat_auto.portfolio_risk_policy.v1`; schema file: `project/contracts/tradecat-auto-portfolio-risk-policy.schema.json`.
+- Future private executor handoff draft schema: `tradecat_auto.audited_intent_handoff.v1`; schema file: `project/contracts/tradecat-auto-audited-intent-handoff.schema.json`.
 - Source/provenance manifest: `project/resources/agent_market_context/binance/provenance.manifest.json`.
 - Audit command: `bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json`.
 - Paper/watch command: `bash scripts/run-tradecat.sh auto run-context --input <context.json> --mode paper --agent-margin-usdt <agent_decision> --paper-leverage <agent_decision> --json`.
-- Replay command: `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
+- Replay command: `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`; deterministic checks may add `--generated-at <fixed-iso>`.
+- Replay reports include `tradecat_auto.decision_trace_report.v1`, which reconstructs per-cycle decision, risk reasons, paper execution status, and `error_code` aggregation from the local service-cycle archive and optional audit journal metadata. They also include `tradecat_auto.decision_quality_report.v1`, which aggregates Agent input completeness, reject causes, and paper outcomes for engineering review only.
 
 Required command order:
 
-1. Validate JSON syntax and schema/version.
-2. Run `context-audit`.
-3. Continue to `run-context` only when audit `ok=true` and Agent sizing is explicit. TradeCat defaults to no paper margin budget/cap, no fixed order size, and no leverage/notional upper cap; `--paper-margin-budget-usdt` is optional only for an operator-supplied extra paper cap. Paper exits are also intent-driven: no fixed stop-loss, take-profit, or time-stop is applied unless the Agent thesis supplies it.
-4. Inspect `run_once_report.v1` / paper ledger / replay report; never convert paper output into real orders.
+1. Optionally build `agent_research_cycle.v1` as the top-level Agent loop envelope linking source signal, requested public market data, tool provenance, market context, trade thesis, risk notes, and `next_action`.
+2. Validate JSON syntax and schema/version.
+3. Run `context-audit` on the embedded or emitted `agent_market_context.v1`.
+4. Continue to `run-context` only when audit `ok=true` and Agent sizing is explicit. TradeCat defaults to no paper margin budget/cap, no fixed order size, and no leverage/notional upper cap; `--paper-margin-budget-usdt` is optional only for an operator-supplied extra paper cap. Paper exits are also intent-driven: no fixed stop-loss, take-profit, or time-stop is applied unless the Agent thesis supplies it. For long-running paper autonomy, an operator may instead pass `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH` / `--paper-autonomy-profile-path` with `tradecat_auto.paper_autonomy_profile.v1`; this only delegates local paper/watch sizing/exits and optional paper-only `direction_conflict` override, and still requires all safety fields to keep real orders, signing, API key reads, and Binance account state disabled.
+5. Inspect `run_once_report.v1` / paper ledger / replay report. If managing an existing paper position, emit `position_management_thesis.v1`; default to `hold`/`noop`, and only express `close`, `adjust_exit`, `add`, or `reduce` when the Agent supplies explicit reason, provenance, and paper-only intent.
+6. If portfolio constraints are needed, provide `portfolio_risk_policy.v1` as risk limits only; it must not contain order size, leverage, or exit-plan defaults.
+7. To pause local paper entries, pass `--paper-kill-switch-path <local-file>` or set `TRADECAT_AUTO_PAPER_KILL_SWITCH_PATH`; if the file exists, new paper entries are rejected with `kill_switch_active`.
+8. Never convert paper output into real orders.
 
 Allowed context families are intentionally narrow and public/read-only: `klines`, `order_book_depth`, `book_ticker`, `24h_ticker`, `funding_rate`, `premium_index`, `open_interest`, `open_interest_history`, `long_short_ratios`, and `taker_buy_sell_volume`. Each item must be `method=GET`, `requires_signature=false`, and `signed=false`.
 
@@ -192,6 +205,7 @@ Automation payload schemas currently advertised through `agents/manifest.json` i
 | Command | Schema |
 | --- | --- |
 | `auto paper-report --json` | `tradecat_auto.paper_report.v1` |
+| `auto position-manage --thesis-path ... --json` | `tradecat_auto.position_management_action_report.v1` |
 | `auto market-universe --json` | `tradecat_auto.market_universe.v1` |
 | `auto probe-public --json` | `tradecat_auto.public_probe.v1` |
 | `auto run-once --mode paper --json` | `tradecat_auto.run_once_report.v1` |
@@ -200,6 +214,8 @@ Automation payload schemas currently advertised through `agents/manifest.json` i
 | `auto context-audit --input <context.json> --json` | `tradecat_auto.agent_market_context_audit.v1` |
 | `auto run-context --input <context.json> --mode paper --json` | `tradecat_auto.run_once_report.v1` |
 | `auto replay-report --archive-path ... --ledger-path ... --json` | `tradecat_auto.replay_report.v1` |
+| replay decision trace section | `tradecat_auto.decision_trace_report.v1` |
+| replay decision quality section | `tradecat_auto.decision_quality_report.v1` |
 | `auto audit-journal --json` | `tradecat_auto.audit_journal_summary.v1` |
 | service-cycle audit write | `tradecat_auto.audit_journal_write.v1` |
 | `auto health-report --json` | `tradecat_auto.production_health.v1` |
@@ -265,7 +281,9 @@ There are two explicit remote paths:
    It uses `urllib3` retry/backoff/jitter and typed `RemoteCsvError`.
 2. Zero-install fallback: `project/scripts/request.py`, kept standard
    library only so an Agent can execute it from raw GitHub without installing
-   TradeCat. It shares `dataset_registry.json`, writes no local cache, and
+   TradeCat. When run inside this repository it defaults to the local
+   `project/src/tradecat_terminal/dataset_registry.json`; raw zero-install
+   usage falls back to the public registry URL. It writes no local cache and
    returns `tradecat.request_result.v1` for JSON requests.
 
 The fallback path is intentional, not a hidden second source of truth. It may

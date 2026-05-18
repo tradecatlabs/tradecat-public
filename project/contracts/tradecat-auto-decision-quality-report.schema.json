@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-decision-quality-report.schema.json",
+  "title": "TradeCat Auto Decision Quality Report",
+  "description": "Paper/watch decision quality metrics for engineering review. This is not investment advice.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "trace_count",
+    "decision_counts",
+    "error_code_counts",
+    "agent_input_completeness",
+    "paper_outcomes",
+    "quality_notes",
+    "provenance",
+    "safety"
+  ],
+  "properties": {
+    "schema": {"const": "tradecat_auto.decision_quality_report.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "generated_at": {"type": "string"},
+    "trace_count": {"type": "integer", "minimum": 0},
+    "decision_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "error_code_counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "agent_input_completeness": {
+      "type": "object",
+      "required": [
+        "missing_sizing_count",
+        "missing_exit_plan_count",
+        "context_audit_reject_count",
+        "risk_reject_count"
+      ],
+      "properties": {
+        "missing_sizing_count": {"type": "integer", "minimum": 0},
+        "missing_exit_plan_count": {"type": "integer", "minimum": 0},
+        "context_audit_reject_count": {"type": "integer", "minimum": 0},
+        "risk_reject_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "paper_outcomes": {
+      "type": "object",
+      "required": [
+        "opened_count",
+        "rejected_count",
+        "closed_positions_count",
+        "open_positions_count",
+        "net_pnl_usdt",
+        "win_rate",
+        "max_drawdown_usdt"
+      ],
+      "properties": {
+        "opened_count": {"type": "integer", "minimum": 0},
+        "rejected_count": {"type": "integer", "minimum": 0},
+        "closed_positions_count": {"type": "integer", "minimum": 0},
+        "open_positions_count": {"type": "integer", "minimum": 0},
+        "net_pnl_usdt": {"type": "number"},
+        "win_rate": {"type": "number", "minimum": 0},
+        "max_drawdown_usdt": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "quality_notes": {"type": "array", "items": {"type": "string"}},
+    "provenance": {"type": "object", "additionalProperties": true},
+    "safety": {
+      "type": "object",
+      "required": ["paper_or_watch_only", "not_investment_advice", "real_orders", "signed_requests", "reads_api_keys"],
+      "properties": {
+        "paper_or_watch_only": {"const": true},
+        "not_investment_advice": {"const": true},
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

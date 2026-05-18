@@ -68,10 +68,10 @@ Hermes/Agent 必须把 `agents/manifest.json` 当作唯一机器入口，不要�
 python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
-bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh path signal_flow --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
-python3 project/scripts/request.py event_stream --format json --limit 5
+python3 project/scripts/request.py signal_flow --format json --limit 5
 ```
 
 需要 Agent-supplied market context 时，先审计，再进入 paper/watch：
@@ -82,17 +82,26 @@ bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-cont
 bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json
 ```
 
-`auto soft-layer --json` 也会暴露 `role_profiles[].id=discretionary_futures_trader`；它是可配置的 paper-only 交易员提示词。TradeCat 默认不设 paper margin budget/cap、固定保证金、名义价值或杠杆上限；缺少 Agent sizing 必须变成 `WATCH_ONLY` / `agent_sizing_required`。止损、止盈和最大持仓时间也不再有固定默认值，只有 `agent_trade_thesis` 明确给出 `invalidation_price` / `take_profit_price` / `max_holding_minutes` 时才进入 paper ledger。
+`auto soft-layer --json` 也会暴露 `role_profiles[].id=discretionary_futures_trader`；它是可配置的 paper-only 交易员提示词。TradeCat 默认不设 paper margin budget/cap、固定保证金、名义价值或杠杆上限；缺少 Agent sizing 必须变成 `WATCH_ONLY` / `agent_sizing_required`。止损、止盈和最大持仓时间也不再有固定默认值，只有 `agent_trade_thesis` 明确给出 `invalidation_price` / `take_profit_price` / `max_holding_minutes`，或本地 operator 提供 `paper_autonomy_profile.v1` 生成 paper-only sizing/exits 时才进入 paper ledger。若 thesis/profile 明确设置 `allow_agent_direction_override=true`，Agent 只可覆盖 `direction_conflict` 这类软方向冲突，不能覆盖低分、kill switch、组合风控或真实交易边界；该 profile 仍必须保持 `real_orders=false`、`signed_requests=false`、`reads_api_keys=false`。
 
 ## 纸面生产运行态与审计报告
 
 持续 paper/watch 服务的默认运行态目录是 `project/.runtime/auto-paper/`，包含 `service_state.json`、`paper_ledger.json`、`cycles.jsonl`、`paper_audit.sqlite3`、`paper-run-loop.log` 和 PID/heartbeat 文件；这些都是本地运行态，已被 `.gitignore` 隔离，不得提交。先用 status 检查，再启动或停止：
 
 ```bash
+bash project/scripts/start-auto-paper.sh ops-check --json
 bash project/scripts/start-auto-paper.sh status --json
 bash project/scripts/start-auto-paper.sh start --json
+bash project/scripts/start-auto-paper.sh heal --json
 bash project/scripts/start-auto-paper.sh stop --json
+bash project/scripts/monitor-auto-paper.sh --interval 5
 ```
+
+连续 paper 服务默认不会自动启动；只有 operator 明确要求本地运行态时才执行
+`start` 或 `run-loop --once`。`service_state.json.seen_event_ids` 是去重边界，
+同一个 `event_id` 第二次进入服务时只做既有 paper position mark-to-market，不会重复开仓。
+observe-only `research-cycle --output-dir` 草案应写入独立目录，不得写入
+`project/.runtime/auto-paper/`，避免和 paper ledger/archive/journal 混写。
 
 运行态报告统一保持 public/read-only + paper/watch：
 
@@ -105,7 +114,7 @@ bash scripts/run-tradecat.sh auto alert-payload --kind daily --json
 
 这些命令只读取本地 paper ledger、cycle archive、SQLite audit journal 和 heartbeat；不会读取 Binance key、不会签名、不会查真实账户/订单、不会真实下单。`audit-journal` 输出 `tradecat_auto.audit_journal_summary.v1`，`health-report` 输出 `tradecat_auto.production_health.v1`，`daily-report` 输出 `tradecat_auto.daily_paper_report.v1`，`alert-payload` 输出 `tradecat_auto.telegram_alerts.v1`。
 
-只有明确需要本地运行态时，才执行会写 `.runtime/` 或 `.tradecat/` 的命令，例如 `sync`、`run-loop --once`、`start-auto-paper.sh start`。执行后台服务前先查状态，停止时用匹配的 stop 命令。
+只有明确需要本地运行态时，才执行会写 `.runtime/` 或 `.tradecat/` 的命令，例如 `sync`、`run-loop --once`、`start-auto-paper.sh start`。当目标是 autonomous paper/watch trader 时，`auto-paper` 应由 Hermes/operator 常驻看护，`not_running` 或 `heartbeat_stale` 是运行阻塞而不是正常完成态。执行后台服务前先跑 `ops-check`，再查状态；需要自愈时用 `heal`，停止时用匹配的 stop 命令。外接 HDMI/终端窗口可运行 `monitor-auto-paper.sh` 作为只读观察屏。完整运维依赖链见 `references/autonomous-paper-ops.md`。
 
 ## Agent-supplied market context 输入契约
 
@@ -113,12 +122,22 @@ TradeCat 不要求自己内置抓取所有 Binance 数据。Hermes/Agent 可以�
 
 输入文件必须使用：
 
+- 可选顶层研究循环：`schema=tradecat_auto.agent_research_cycle.v1`，schema 文件为 `project/contracts/tradecat-auto-agent-research-cycle.schema.json`；它只描述信号、public/read-only 工具计划/结果、上下文、thesis、风险备注和下一步动作，不是真实订单。
+- 可选纸面仓位管理 thesis：`schema=tradecat_auto.position_management_thesis.v1`，schema 文件为 `project/contracts/tradecat-auto-position-management-thesis.schema.json`；默认应为 `hold`/`noop`，只有 Agent 明确给出 reason、provenance 和 paper-only intent 时才允许表达 close、adjust_exit、add 或 reduce。
+- 可选组合风控 policy：`schema=tradecat_auto.portfolio_risk_policy.v1`，schema 文件为 `project/contracts/tradecat-auto-portfolio-risk-policy.schema.json`；它只能表达拒绝限制和暂停条件，不能提供订单金额、杠杆、止损、止盈或持仓时间默认值。
 - `schema=tradecat_auto.agent_market_context.v1`
 - `schema_version=1.0.0`
 - `mode` 只能是 `public_readonly`、`paper` 或 `watch`
 - `provenance.source_manifest` 指向本仓自包含来源清单
 - `market_data[]` 每项必须是 `GET`、非签名、非账户、非订单接口
 - 禁止出现 API key、secret、signature、listen key、私钥或任何真实账户材料
+
+已有本地 paper 仓位时，Agent 应先读取 `auto paper-report --json` 的
+`paper_account_state`，再用 `position_management_thesis.v1` 表达 `hold`、
+`close` 或 `adjust_exit`。应用入口是
+`bash scripts/run-tradecat.sh auto position-manage --thesis-path <thesis.json> --json`；
+当前 `add/reduce` 只作为显式 intent 契约保留，应用层会 fail-closed，直到有
+单独 partial-fill / add-position paper contract。
 
 最小示例：
 
@@ -165,6 +184,11 @@ TradeCat 不要求自己内置抓取所有 Binance 数据。Hermes/Agent 可以�
 - 不把 `.runtime/`、`.tradecat/`、`.venv/`、`.hermes/` 或私密 `.env` 提交到 Git。
 
 如果 Agent 提供了签名字段、账户接口、订单接口或凭证样式字段，`context-audit` 必须拒绝，`run-context` 不得继续进入 paper pipeline。
+本地 paper 新开仓可用 `--paper-kill-switch-path <local-file>` 或
+`TRADECAT_AUTO_PAPER_KILL_SWITCH_PATH` 暂停；文件存在时只拒绝 paper/watch
+新仓，不会触达 Binance 账户或订单接口。`portfolio_risk_policy.v1` 中的
+`abnormal_move_halt_bps`、`new_entries_enabled=false` 和 `kill_switch.active=true`
+同样只影响本地 paper/watch 风控拒绝。
 
 ## 文档入口分工
 

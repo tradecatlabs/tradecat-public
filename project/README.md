@@ -444,8 +444,12 @@ tradecat auto run-loop --mode paper --agent-margin-usdt <agent_margin_usdt> --pa
 
 # Operator-only legacy 持续纸面测试服务：循环用 public-readonly 网络探测跑 run-loop --once，写入 ledger/archive/journal/log
 scripts/start-auto-paper.sh status --json
+scripts/start-auto-paper.sh ops-check --json
 scripts/start-auto-paper.sh start --json
+scripts/start-auto-paper.sh heal --json
 scripts/start-auto-paper.sh stop --json
+scripts/monitor-auto-paper.sh --interval 5
+python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765
 
 # 后台 watcher 生命周期状态；--json 给 Agent / 自动化使用
 bash scripts/start.sh status
@@ -596,6 +600,8 @@ Agent-supplied market context 必须先通过 `context-audit` 的 family/endpoin
 allowlist，再用 `run-context` 进入同一套 paper/watch 风控闭环；`paper-report` 中的
 `paper_account_state` 只从本地 paper ledger 派生，不读取 Binance 账户/订单状态；`replay-report` 只读取本地
 JSONL cycle archive 和 paper ledger，生成可复现纸面回放/回测摘要。持续 paper/watch 服务默认把运行态写入 `project/.runtime/auto-paper/`：`service_state.json`、`paper_ledger.json`、`cycles.jsonl`、`paper_audit.sqlite3`、PID、heartbeat 和 log 都是本地运行态，已加入 `.gitignore`，不得提交；`audit-journal`、`health-report`、`daily-report` 和 `alert-payload` 只读取这些本地文件生成审计与告警 payload，不触发真实交易。
+连续 paper 服务默认不在安装时偷偷启动；但当运行目标是 autonomous paper/watch trader 时，它必须作为常驻运行态交付，由 operator/Hermes 先执行 `scripts/start-auto-paper.sh ops-check --json`，再执行 `scripts/start-auto-paper.sh start --json`、`heal --json` 或 systemd timer 等价 keepalive，并用 `status --json` / `health-report --json` 确认 `running=true` 且 heartbeat 未 stale。HDMI 或外接终端可运行 `scripts/monitor-auto-paper.sh --interval 5`，持续观察 service/status/health/ledger/archive/audit/log；需要浏览器页面时运行 `python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765`，只读查看同一批本地运行态。服务用 `service_state.json.seen_event_ids` 去重，同一个 `event_id` 第二轮只监控既有 paper 仓位，不重复开仓；observe-only 草案输出必须使用独立目录，不能写进 `.runtime/auto-paper/`。
+如果 operator 明确授权 AI/Agent 纸面自治，可把 `tradecat_auto.paper_autonomy_profile.v1` 放在 `project/.runtime/auto-paper/`，并设置 `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH` 后重启服务。该 profile 只能补齐 paper/watch sizing、exit plan、同币种 paper 多仓授权，以及显式允许时的 paper-only `direction_conflict` 覆盖；它不是 Binance 订单，不允许 key、签名、账户读取或真实下单字段。
 
 ### Snapshot tap
 
@@ -726,7 +732,7 @@ tradecat config unset default_lang
 | `TRADECAT_INSTALL_BRANCH` | 空 | 覆盖为分支通道安装，常用 `develop`；设置后 launcher 按该分支自动更新 |
 | `TRADECAT_INSTALL_SKIP_SYNC` | 空 | 设为 `1` 时一键安装只初始化缓存目录，跳过安装阶段首次远端同步；用于 CI、弱网或离线安装 |
 | `TRADECAT_INSTALL_SKIP_PATH_WRITE` | 空 | 设为 `1` 时一键安装不写用户 PATH / shell profile；用于 CI 或临时安装测试 |
-| `TRADECAT_REQUEST_REGISTRY_URL` | GitHub develop registry | 一次性请求脚本读取的 dataset registry JSON |
+| `TRADECAT_REQUEST_REGISTRY_URL` | 仓库内 `project/src/tradecat_terminal/dataset_registry.json`；零安装脚本找不到本地 registry 时 fallback GitHub develop | 一次性请求脚本读取的 dataset registry JSON |
 | `TRADECAT_TERMINAL_RUNTIME_DIR` | `~/.tradecat-terminal/run` | 后台 watch pid/log 目录 |
 | `TRADECAT_TERMINAL_WATCH_INTERVAL` | `60` | 后台 watch 间隔秒数 |
 | `TRADECAT_TERMINAL_WATCH_DATASET` | 空 | 为空 watch 全部 active dataset |

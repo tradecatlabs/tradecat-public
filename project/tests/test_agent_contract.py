@@ -63,16 +63,25 @@ RESOURCE_SCHEMA_FILES = {
 AUTO_SCHEMA_FILES = {
     "tradecat-auto-agent-market-context.schema.json": "tradecat_auto.agent_market_context.v1",
     "tradecat-auto-agent-market-context-audit.schema.json": "tradecat_auto.agent_market_context_audit.v1",
+    "tradecat-auto-agent-research-cycle.schema.json": "tradecat_auto.agent_research_cycle.v1",
     "tradecat-auto-agent-soft-layer.schema.json": "tradecat_auto.agent_soft_layer.v1",
     "tradecat-auto-agent-trade-thesis.schema.json": "tradecat_auto.agent_trade_thesis.v1",
+    "tradecat-auto-audited-intent-handoff.schema.json": "tradecat_auto.audited_intent_handoff.v1",
     "tradecat-auto-audit-journal-summary.schema.json": "tradecat_auto.audit_journal_summary.v1",
     "tradecat-auto-audit-journal-write.schema.json": "tradecat_auto.audit_journal_write.v1",
     "tradecat-auto-daily-paper-report.schema.json": "tradecat_auto.daily_paper_report.v1",
+    "tradecat-auto-decision-quality-report.schema.json": "tradecat_auto.decision_quality_report.v1",
+    "tradecat-auto-decision-trace-report.schema.json": "tradecat_auto.decision_trace_report.v1",
     "tradecat-auto-market-universe.schema.json": "tradecat_auto.market_universe.v1",
     "tradecat-auto-paper-account-state.schema.json": "tradecat_auto.paper_account_state.v1",
     "tradecat-auto-paper-backtest-report.schema.json": "tradecat_auto.paper_backtest_report.v1",
+    "tradecat-auto-paper-autonomy-profile.schema.json": "tradecat_auto.paper_autonomy_profile.v1",
+    "tradecat-auto-paper-ops-report.schema.json": "tradecat_auto.paper_ops_report.v1",
     "tradecat-auto-paper-report.schema.json": "tradecat_auto.paper_report.v1",
     "tradecat-auto-paper-service-status.schema.json": "tradecat_auto.paper_service_status.v1",
+    "tradecat-auto-position-management-action-report.schema.json": "tradecat_auto.position_management_action_report.v1",
+    "tradecat-auto-position-management-thesis.schema.json": "tradecat_auto.position_management_thesis.v1",
+    "tradecat-auto-portfolio-risk-policy.schema.json": "tradecat_auto.portfolio_risk_policy.v1",
     "tradecat-auto-production-health.schema.json": "tradecat_auto.production_health.v1",
     "tradecat-auto-public-probe.schema.json": "tradecat_auto.public_probe.v1",
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
@@ -232,6 +241,7 @@ def test_manifest_advertises_tradecat_auto_lifecycle_entrypoints():
     assert "bash scripts/run-tradecat.sh auto daily-report --json" in commands
     assert "bash scripts/run-tradecat.sh auto alert-payload --kind daily --json" in commands
     assert "bash project/scripts/start-auto-paper.sh status --json" in commands
+    assert "bash project/scripts/start-auto-paper.sh ops-check --json" in commands
     assert entrypoints["bash scripts/run-tradecat.sh auto soft-layer --json"]["agent_default"] is True
     assert (
         entrypoints["bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json"]["contract_role"]
@@ -278,14 +288,18 @@ def test_manifest_advertises_tradecat_auto_contracts_and_safety_boundaries():
         "tradecat_auto.run_once_report.v1",
         "tradecat_auto.service_cycle.v1",
         "tradecat_auto.paper_service_status.v1",
+        "tradecat_auto.paper_ops_report.v1",
         "tradecat_auto.agent_market_context_audit.v1",
         "tradecat_auto.agent_soft_layer.v1",
         "tradecat_auto.agent_trade_thesis.v1",
         "tradecat_auto.paper_account_state.v1",
+        "tradecat_auto.position_management_action_report.v1",
         "tradecat_auto.paper_backtest_report.v1",
         "tradecat_auto.replay_report.v1",
         "tradecat_auto.audit_journal_summary.v1",
         "tradecat_auto.audit_journal_write.v1",
+        "tradecat_auto.decision_quality_report.v1",
+        "tradecat_auto.decision_trace_report.v1",
         "tradecat_auto.production_health.v1",
         "tradecat_auto.daily_paper_report.v1",
         "tradecat_auto.telegram_alerts.v1",
@@ -344,13 +358,16 @@ def test_agent_contract_reference_is_indexed():
     assert "skill-package-governance.md" in index
     assert "hermes-agent-guide.md" in index
     assert "agent-soft-decision-layer.md" in index
+    assert "private-executor-boundary.md" in index
     assert "references/skill-package-governance.md" in manifest["human_docs"]
     assert "references/skill-package-governance.md" in manifest["agent_docs"]
     assert "references/hermes-agent-guide.md" in manifest["human_docs"]
     assert "references/hermes-agent-guide.md" in manifest["agent_docs"]
     assert "references/agent-soft-decision-layer.md" in manifest["agent_docs"]
+    assert "references/private-executor-boundary.md" in manifest["agent_docs"]
     assert manifest["important_paths"]["skill_package_governance_reference"] == "references/skill-package-governance.md"
     assert manifest["important_paths"]["hermes_agent_guide"] == "references/hermes-agent-guide.md"
+    assert manifest["important_paths"]["private_executor_boundary_reference"] == "references/private-executor-boundary.md"
     assert manifest["important_paths"]["agent_soft_layer_resources"] == "project/resources/agent_soft_layer"
     assert manifest["important_paths"]["agent_soft_layer_trader_profile"] == "project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md"
     assert "Agent Fast Path" in contract

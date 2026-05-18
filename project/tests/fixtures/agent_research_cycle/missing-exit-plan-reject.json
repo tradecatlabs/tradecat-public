@@ -1,0 +1,73 @@
+{
+  "schema": "tradecat_auto.agent_research_cycle.v1",
+  "schema_version": "1.0.0",
+  "ok": false,
+  "run_id": "research-cycle-missing-exit-plan",
+  "generated_at": "2026-05-18T00:00:00Z",
+  "mode": "paper",
+  "symbol": "IRYSUSDT",
+  "error_code": "agent_exit_plan_required",
+  "source_signal": {
+    "kind": "tradecat_sheet_event",
+    "event_id": "evt-irys-003",
+    "symbol": "IRYSUSDT",
+    "provenance": {"source": "tradecat_public_sheet_fixture"}
+  },
+  "requested_market_data": [
+    {
+      "family": "book_ticker",
+      "endpoint": "/fapi/v1/ticker/bookTicker",
+      "method": "GET",
+      "required": true,
+      "reason": "确认盘口可交易性"
+    }
+  ],
+  "tool_calls": [
+    {
+      "family": "book_ticker",
+      "endpoint": "/fapi/v1/ticker/bookTicker",
+      "method": "GET",
+      "ok": true,
+      "requires_signature": false,
+      "signed": false,
+      "reads_api_keys": false,
+      "real_orders": false,
+      "provenance": {"source": "binance_usdm_public", "endpoint": "/fapi/v1/ticker/bookTicker"},
+      "data": {"bidPrice": "0.0619", "askPrice": "0.0621"}
+    }
+  ],
+  "agent_trade_thesis": {
+    "schema": "tradecat_auto.agent_trade_thesis.v1",
+    "schema_version": "1.0.0",
+    "ok": true,
+    "symbol": "IRYSUSDT",
+    "mode": "paper_research",
+    "direction": "LONG",
+    "confidence": 0.6,
+    "rationale": "Sizing exists but exit plan is intentionally absent.",
+    "paper_intent": {
+      "allow_tradecat_paper_gate_to_decide": true,
+      "requested_margin_usdt": 7.5,
+      "paper_leverage": 2.0,
+      "real_order": false
+    },
+    "limitations": ["paper/watch only; no Binance credentials; no real order"]
+  },
+  "risk_notes": ["No invalidation, take-profit, or max holding time supplied."],
+  "next_action": {
+    "action": "reject",
+    "reason": "paper execution requires an explicit Agent exit plan",
+    "required_inputs": ["invalidation_price or take_profit_price or max_holding_minutes"],
+    "writes_paper_ledger": false
+  },
+  "provenance": {"source": "tradecat_agent_research_cycle_fixture"},
+  "safety": {
+    "public_readonly_market_data": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "limitations": ["paper/watch only", "no Binance key", "no signed requests", "no real order"]
+}

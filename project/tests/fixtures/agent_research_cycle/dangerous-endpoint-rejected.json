@@ -1,0 +1,43 @@
+{
+  "schema": "tradecat_auto.agent_research_cycle.v1",
+  "schema_version": "1.0.0",
+  "ok": false,
+  "run_id": "research-cycle-dangerous-endpoint",
+  "generated_at": "2026-05-18T00:00:00Z",
+  "mode": "observe_only",
+  "symbol": "IRYSUSDT",
+  "error_code": "public_readonly_endpoint_rejected",
+  "source_signal": {
+    "kind": "tradecat_sheet_event",
+    "event_id": "evt-irys-005",
+    "symbol": "IRYSUSDT",
+    "provenance": {"source": "tradecat_public_sheet_fixture"}
+  },
+  "requested_market_data": [
+    {
+      "family": "24h_ticker",
+      "endpoint": "/fapi/v1/order",
+      "method": "GET",
+      "required": false,
+      "reason": "synthetic negative fixture; order endpoint must be rejected"
+    }
+  ],
+  "tool_calls": [],
+  "risk_notes": ["Synthetic endpoint rejection fixture; contains no credentials."],
+  "next_action": {
+    "action": "reject",
+    "reason": "private/order endpoint is outside public-readonly market data",
+    "required_inputs": [],
+    "writes_paper_ledger": false
+  },
+  "provenance": {"source": "tradecat_agent_research_cycle_fixture"},
+  "safety": {
+    "public_readonly_market_data": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "limitations": ["paper/watch only", "no Binance key", "no signed requests", "no real order"]
+}

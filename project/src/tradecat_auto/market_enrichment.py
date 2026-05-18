@@ -34,7 +34,7 @@ def build_market_enrichment(anomaly_symbol: dict[str, Any], market_bundle: dict[
         "ok": bool(market_bundle.get("ok") and symbol and not missing_required),
         "symbol": symbol,
         "raw_symbol": anomaly_symbol.get("raw_symbol"),
-        "source_layers": ["tradecat_anomaly_panel", "binance_public_market"],
+        "source_layers": [_sheet_source_layer(anomaly_symbol), "binance_public_market"],
         "source_values": source_values,
         "metrics": metrics,
         "errors": errors,
@@ -43,6 +43,13 @@ def build_market_enrichment(anomaly_symbol: dict[str, Any], market_bundle: dict[
             "not investment advice and not an execution instruction",
         ],
     }
+
+
+def _sheet_source_layer(source_item: dict[str, Any]) -> str:
+    dataset_key = str(source_item.get("source_dataset_key") or "").strip()
+    if dataset_key == "signal_flow":
+        return "tradecat_signal_flow"
+    return "tradecat_anomaly_panel"
 
 
 def _sheet_metrics(source_values: dict[str, Any]) -> dict[str, float | None]:

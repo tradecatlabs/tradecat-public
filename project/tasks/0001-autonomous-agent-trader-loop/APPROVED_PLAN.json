@@ -1,0 +1,747 @@
+{
+  "schema_version": "1.0.0",
+  "task": {
+    "objective": "将 TradeCat 从 Agent-supplied paper/watch 契约层推进为 Hermes/Codex 协作的自主研究与纸面交易员闭环，保持 public-read-only、paper/watch 和真实交易私有层隔离。",
+    "overall_status": "Not Started",
+    "in_scope": [
+      "收口当前未提交的 Agent trade thesis / paper pipeline 补丁为可验证基线。",
+      "定义 Agent autonomous research loop 的机器契约、fixture、校验和文档。",
+      "实现 observe-only Agent loop，只生成研究上下文和 thesis，不写 ledger、不开仓。",
+      "在 audit 通过后把 Agent thesis 接入 paper/watch 执行、ledger、audit journal 和 health report。",
+      "设计并落地持续 paper 仓位管理、replay 复盘和 portfolio 级 paper 风控。",
+      "只设计私有实盘 executor 边界，不把真实 key、签名、账户或订单能力放入本公开仓库。"
+    ],
+    "out_of_scope": [
+      "在 tradecat-public 中读取 Binance key、secret、listen key 或任何真实凭证。",
+      "调用签名接口、账户接口、订单接口、改杠杆或改保证金端点。",
+      "真实下单、撤单、实盘仓位管理或真实资金风控实现。",
+      "把根 Skill 外壳改成 Python 项目根，或在根目录创建 assets/src/tests/pyproject/Makefile。",
+      "未经过 schema 和 provenance 的自由文本交易执行。"
+    ],
+    "task_level_acceptance": [
+      "所有新增 I/O 都有 schema、schema_version、error_code、provenance 和 safety 字段。",
+      "Agent 缺 sizing、leverage、exit plan 或明确授权时必须 fail-closed，不得由 TradeCat 发明默认交易参数。",
+      "observe-only loop 不写 paper ledger、不启动长期后台服务、不产生 paper order/fill。",
+      "paper execution loop 只能在 context-audit 通过且 thesis 明确时写本地 gitignored runtime。",
+      "真实交易执行只形成私有 executor 设计文档和边界测试，不在 public repo 实现。"
+    ],
+    "validation_plan": [
+      "每个阶段至少运行对应定向 pytest/contract fixture/schema validation。",
+      "影响核心项目时运行 cd project && bash scripts/verify.sh；影响 Skill shell 时运行 bash scripts/validate-skill.sh --strict。",
+      "安全边界变化时运行 bash scripts/security-scan.sh 和 bash scripts/supply-chain-audit.sh。",
+      "每个执行波次结束运行 git diff --check，并记录 git status。"
+    ],
+    "acceptance_standards": [
+      " public-read-only + paper/watch 是公开仓库不可突破的硬边界。",
+      "机器契约优先，文档只能引用主契约，不制造第二真相源。",
+      "运行态只允许写入 gitignored .runtime/.tradecat 或任务明确指定的本地隔离目录。",
+      "所有任务可由 TP-XX 叶子节点追踪到验证证据和回滚边界。"
+    ]
+  },
+  "context_packet": {
+    "requirement_alignment": [
+      "用户最终目标是让在线表格信号作为输入，由 AI/Agent 自主分析、调用 Binance public/read-only 工具补全市场数据、生成交易 thesis，并驱动 paper/watch 交易与持续仓位管理。",
+      "当前仓库定位是 Hermes Skill/Agent 契约外壳加内部 Python 项目，适合承载公开安全的 research/paper/watch 契约层。",
+      "真实交易 executor 必须保留为未来私有层，不能混入 tradecat-public。"
+    ],
+    "repo_evidence": [
+      "git status 显示 develop ahead 13，且存在未提交的 project/src/tradecat_auto 与 project/tests 补丁，以及未跟踪 agent_trade_thesis.py。",
+      "AGENTS.md 明确根目录是 Skill 外壳，project/ 是唯一 Python 项目根，根目录禁止 assets/src/tests/pyproject/Makefile。",
+      "agents/manifest.json 已声明 agent_market_context、agent_trade_thesis、automation service、runtime paths 和错误码。",
+      "project/src/tradecat_auto 已有 context-audit/run-context、paper ledger、audit journal、health report 和 start-auto-paper。",
+      "health-report 显示 auto-paper 当前 heartbeat_stale，ledger 有历史 paper open positions，安全字段仍为 false。"
+    ],
+    "constraints": [
+      "不得读取任何 Binance credential，不得签名，不得真实下单。",
+      "不得把 root Skill shell 改成 Python 项目根。",
+      "任务文档落在 project/tasks/，避免违反根目录禁止 assets/ 的治理边界。",
+      "执行实现时必须保持最小改动，不混入无关重构。",
+      "任何后台 loop 启动必须由用户单独授权；本任务树本身只定义和规划。"
+    ],
+    "risks": [
+      "Agent loop 如果边界不清，会把 research/paper 和真实交易权限混在一起。",
+      "observe-only 与 paper execution 如果共用 runtime writer，可能产生重复下单或重复 ledger 写入。",
+      "没有 portfolio 风控前，Agent 自主 paper loop 容易不断开新仓或长期持有无 exit plan 仓位。",
+      "把任务目录放错 root assets/ 会破坏 Skill 包治理约束。"
+    ],
+    "assumptions": [
+      "当前任务只要求制作落地任务包，不要求本轮直接实现 P1-P7 代码。",
+      "project/tasks/ 是本仓适配 auto-tasks 的项目内任务目录。",
+      "Hermes 负责市场研究与工具调用，Codex loop 负责工程迭代与任务推进，不直接交易。",
+      "未来私有 executor 可消费 public repo 产出的 audited intent，但不会反向把凭证写回 public repo。"
+    ],
+    "change_boundary": [
+      "允许新增 project/tasks/0001-autonomous-agent-trader-loop/ 任务文档和机器任务包。",
+      "允许最小更新 project/AGENTS.md 记录 project/tasks/ 目录职责。",
+      "本轮不修改交易行为、不启动服务、不写 runtime、不提交、不 push。"
+    ],
+    "critical_ambiguities": [
+      "真钱 executor 的目标交易所权限、部署方式和人工审批策略尚未定义；因此 P7 只做边界设计。",
+      "Hermes loop 的具体工具调用运行时接口可能依赖本机 Hermes 能力；P2 先以 contract 和 observe-only CLI 固化，不绑定不可复现私有状态。"
+    ],
+    "blockers": [],
+    "debug_mode": "Optional"
+  },
+  "plan": {
+    "planning_summary": "按 P0-P7 串行推进主链路：先收口当前工程基线，再定义 autonomous research loop 契约，然后落 observe-only，再接入 paper execution，之后扩展持续仓位管理、replay 复盘、portfolio paper 风控，最后只设计私有实盘 executor 边界。",
+    "simplest_path": "先用机器契约和 observe-only loop 固定 Agent 自主研究输入输出，再让 paper execution 消费同一 thesis；避免一开始就实现实盘、复杂编排或后台多进程。",
+    "split_strategy": "顶层 TP 对应 P0-P7；每个顶层包下只保留能独立验证的叶子任务。P0-P3 是必经 MVP，P4-P6 是 paper 自主交易员成熟化，P7 是私有实盘边界设计。",
+    "lifecycle_gates": [
+      "不得跳过 gate：SPEC、PLAN、BUILD、TEST、REVIEW、SHIP 每一阶段都必须有可审计证据。",
+      "SPEC：每个新增契约先写 schema 和 fixture。",
+      "PLAN：每个实现阶段先明确写入边界和 fail-closed 行为。",
+      "BUILD：只实现当前 ready 叶子节点，不跨阶段偷跑。",
+      "TEST：定向测试先过，再跑项目/Skill/安全门禁。",
+      "REVIEW：检查真实交易边界、runtime 隔离和 provenance 完整性。",
+      "SHIP：每波结束提供 git status、验证命令和剩余风险。"
+    ],
+    "review_gate": [
+      "检查是否引入真实凭证读取、签名、account/order endpoint 或真实下单。",
+      "检查是否引入默认 sizing、默认杠杆、默认 TP/SL/time-stop。",
+      "检查新增路径是否仍在 project/ 内部项目边界或根 Skill 契约边界内。"
+    ],
+    "ship_readiness": [
+      "所有 ready 叶子任务完成并有验证证据。",
+      "git diff --check 通过。",
+      "相关 pytest/verify/validate-skill/security/supply-chain 按影响范围通过。",
+      "运行态只在 gitignored 目录，任务文档和 schema 不含凭证。"
+    ],
+    "steps": [
+      {
+        "key": "p0_stabilize_baseline",
+        "title": "P0 收口当前工程状态",
+        "objective": "把当前未提交的 Agent trade thesis / paper pipeline 补丁收敛成可验证、可继续开发的稳定基线。",
+        "priority": "P0",
+        "type": "package",
+        "parallelizable": false,
+        "verify": "git diff --check；cd project && PYTHONPATH=src python3 -m pytest tests/test_pipeline.py tests/test_paper_ledger.py tests/test_service.py；bash scripts/verify.sh",
+        "gate": "当前补丁可解释、验证通过、auto-paper 当前运行状态清楚，且未引入真实交易能力。",
+        "children": [
+          {
+            "key": "p0_01_preflight",
+            "title": "确认工作树与运行态",
+            "objective": "记录 git status、HEAD、未提交文件、auto-paper status、health-report 和当前 ledger 摘要。",
+            "priority": "P0",
+            "type": "action",
+            "parallelizable": false,
+            "outputs": [
+              "当前工程状态说明",
+              "运行态是否 active 的证据"
+            ],
+            "acceptance": [
+              "不启动服务，不写 runtime。",
+              "明确当前 dirty files 是否属于待收口补丁。"
+            ],
+            "verify": "git status --short --branch；bash project/scripts/start-auto-paper.sh status --json；cd project && PYTHONPATH=src python3 -m tradecat_auto.cli health-report --json",
+            "gate": "状态证据足够支持后续补丁或提交决策。"
+          },
+          {
+            "key": "p0_02_track_thesis_helper",
+            "title": "收口 agent_trade_thesis helper",
+            "objective": "把 agent_trade_thesis.py 纳入项目实现边界，并确认 CLI/service/pipeline 对 thesis 的读取、校验、sizing、exit plan 链路一致。",
+            "priority": "P0",
+            "type": "action",
+            "parallelizable": false,
+            "depends_on": [
+              "p0_01_preflight"
+            ],
+            "outputs": [
+              "可追踪的 agent_trade_thesis 实现",
+              "失败路径 agent_trade_thesis_load_failed"
+            ],
+            "acceptance": [
+              "缺文件、坏 JSON、坏 schema 时 fail-closed。",
+              "CLI override > thesis.paper_intent > missing 的优先级保持稳定。"
+            ],
+            "verify": "cd project && PYTHONPATH=src python3 -m pytest tests/test_pipeline.py tests/test_service.py",
+            "gate": "agent_trade_thesis 不再是漂移的未定义输入面。"
+          },
+          {
+            "key": "p0_03_validate_safety",
+            "title": "验证 paper/watch 安全边界",
+            "objective": "确认新增 thesis 路径不会读取 key、不会签名、不会调用真实账户/订单接口，不会发明默认 sizing/exits。",
+            "priority": "P0",
+            "type": "action",
+            "parallelizable": true,
+            "depends_on": [
+              "p0_02_track_thesis_helper"
+            ],
+            "outputs": [
+              "安全验证证据",
+              "fail-closed 测试覆盖"
+            ],
+            "acceptance": [
+              "real_orders/signed_requests/reads_api_keys 全部为 false。",
+              "无 thesis 或 thesis 缺 sizing 时继续 agent_sizing_required。"
+            ],
+            "verify": "cd project && PYTHONPATH=src python3 -m pytest tests/test_pipeline.py tests/test_paper_ledger.py tests/test_service.py",
+            "gate": "安全字段与拒绝行为符合公开仓库边界。"
+          },
+          {
+            "key": "p0_04_checkpoint_ready",
+            "title": "形成 P0 交付证据",
+            "objective": "整理 P0 改动、验证命令、剩余风险和是否需要本地 checkpoint commit 的判断。",
+            "priority": "P0",
+            "type": "action",
+            "parallelizable": false,
+            "depends_on": [
+              "p0_03_validate_safety"
+            ],
+            "outputs": [
+              "P0 closeout 摘要",
+              "可提交或可继续迭代的基线状态"
+            ],
+            "acceptance": [
+              "bash scripts/verify.sh 通过。",
+              "git status 中改动边界清楚。"
+            ],
+            "verify": "bash scripts/verify.sh && git diff --check && git status --short --branch",
+            "gate": "P0 可作为 P1 契约设计的稳定起点。"
+          }
+        ]
+      },
+      {
+        "key": "p1_research_loop_contract",
+        "title": "P1 定义 Autonomous Research Loop 契约",
+        "objective": "把 Agent 自主研究循环定义为机器契约、fixture、validator 和文档，而不是先实现复杂运行器。",
+        "priority": "P0",
+        "type": "package",
+        "parallelizable": false,
+        "depends_on": [
+          "p0_stabilize_baseline"
+        ],
+        "children": [
+          {
+            "key": "p1_01_schema",
+            "title": "设计 agent_research_cycle.v1 schema",
+            "objective": "定义信号输入、requested market data、tool call provenance、market context、trade thesis、risk notes 和 next action 的稳定 JSON Schema。",
+            "priority": "P0",
+            "type": "action",
+            "outputs": [
+              "project/contracts/tradecat-auto-agent-research-cycle.schema.json"
+            ],
+            "acceptance": [
+              "schema_version 固定 1.0.0。",
+              "包含 error_code、provenance、safety。",
+              "明确 observe_only、paper_candidate、reject 三类 next_action。"
+            ],
+            "verify": "schema fixture validation test",
+            "gate": "契约足以表达一轮 Agent 自主研究，不含真实交易执行字段。"
+          },
+          {
+            "key": "p1_02_fixtures",
+            "title": "补 research cycle fixtures",
+            "objective": "提供成功、缺 sizing、缺 exit plan、工具失败、危险 endpoint 被拒绝等 fixture。",
+            "priority": "P0",
+            "type": "action",
+            "depends_on": [
+              "p1_01_schema"
+            ],
+            "outputs": [
+              "project/tests/fixtures/agent_research_cycle/*.json"
+            ],
+            "acceptance": [
+              "每个 fixture 都可说明期望 error_code 或 next_action。",
+              "危险 fixture 不包含真实凭证值，只包含 synthetic credential-like 字段。"
+            ],
+            "verify": "pytest contract fixture tests",
+            "gate": "fixture 能覆盖后续 loop 的核心行为。"
+          },
+          {
+            "key": "p1_03_validator",
+            "title": "实现 research cycle validator",
+            "objective": "新增最小 validator，校验 schema、provenance、安全字段、public-readonly endpoint family 和 fail-closed 规则。",
+            "priority": "P0",
+            "type": "action",
+            "depends_on": [
+              "p1_02_fixtures"
+            ],
+            "outputs": [
+              "validator/helper",
+              "pytest 覆盖"
+            ],
+            "acceptance": [
+              "signed/account/order/private endpoint 必须拒绝。",
+              "缺 sizing/exits 时不得自动补默认值。"
+            ],
+            "verify": "cd project && PYTHONPATH=src python3 -m pytest tests/test_agent_research_cycle.py",
+            "gate": "research cycle 可作为 Agent loop 的单一输入输出契约。"
+          },
+          {
+            "key": "p1_04_docs_manifest",
+            "title": "更新 Agent 文档和 manifest 索引",
+            "objective": "把 research cycle 契约加入 agents/manifest.json、SKILL/references 指南和项目文档，文档只引用机器契约。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p1_03_validator"
+            ],
+            "outputs": [
+              "manifest important_paths/commands",
+              "Hermes Agent 使用说明"
+            ],
+            "acceptance": [
+              "不制造第二真相源。",
+              "明确 observe-only 是第一落地点。"
+            ],
+            "verify": "bash scripts/validate-skill.sh --strict",
+            "gate": "Agent/Hermes 能从 Skill 包理解 research loop 契约。"
+          }
+        ]
+      },
+      {
+        "key": "p2_observe_only_loop",
+        "title": "P2 实现 observe-only Agent loop",
+        "objective": "实现只观察和产出报告的 Agent 研究循环，不写 ledger、不启动 run-loop、不产生 paper order/fill。",
+        "priority": "P0",
+        "type": "package",
+        "parallelizable": false,
+        "depends_on": [
+          "p1_research_loop_contract"
+        ],
+        "children": [
+          {
+            "key": "p2_01_loop_cli",
+            "title": "新增 observe-only loop 入口",
+            "objective": "提供本地 CLI/脚本入口，读取最新信号并生成 research task skeleton。",
+            "priority": "P0",
+            "type": "action",
+            "outputs": [
+              "observe-only CLI",
+              "schema 化输出"
+            ],
+            "acceptance": [
+              "默认只读，不写 paper ledger。",
+              "输出包含 signal provenance 和 requested market data plan。"
+            ],
+            "verify": "定向 pytest + CLI smoke",
+            "gate": "可以稳定生成一轮研究任务。"
+          },
+          {
+            "key": "p2_02_tool_plan",
+            "title": "固化 Binance public-readonly 工具编排",
+            "objective": "定义从信号到 K 线、盘口、资金费率、OI、多空比等 public 数据请求的顺序、降级和错误码。",
+            "priority": "P0",
+            "type": "action",
+            "depends_on": [
+              "p2_01_loop_cli"
+            ],
+            "outputs": [
+              "tool orchestration policy",
+              "endpoint family mapping"
+            ],
+            "acceptance": [
+              "只允许 allowlist public/read-only GET market endpoints。",
+              "工具失败可降级为 WATCH_ONLY，不得硬开 paper。"
+            ],
+            "verify": "context-audit fixture tests",
+            "gate": "Agent 工具调用顺序可审计、可复现。"
+          },
+          {
+            "key": "p2_03_outputs",
+            "title": "生成 context/thesis 草案输出",
+            "objective": "observe-only loop 写出 agent_market_context 和 agent_trade_thesis 草案到隔离输出目录。",
+            "priority": "P0",
+            "type": "action",
+            "depends_on": [
+              "p2_02_tool_plan"
+            ],
+            "outputs": [
+              "agent_market_context.json",
+              "agent_trade_thesis.json",
+              "research_cycle.json"
+            ],
+            "acceptance": [
+              "输出目录不等于 auto-paper ledger runtime。",
+              "无 Agent 明确 sizing/exits 时 next_action 只能是 observe 或 reject。"
+            ],
+            "verify": "pytest + json schema validation",
+            "gate": "observe-only 产物可被 context-audit 消费。"
+          },
+          {
+            "key": "p2_04_audit_smoke",
+            "title": "串接 context-audit 但不执行 paper",
+            "objective": "在 observe-only loop 末尾运行 context-audit 或生成可运行命令，不进入 run-context。",
+            "priority": "P0",
+            "type": "action",
+            "depends_on": [
+              "p2_03_outputs"
+            ],
+            "outputs": [
+              "audit report",
+              "observe-only smoke evidence"
+            ],
+            "acceptance": [
+              "不调用 run-context，不写 paper order/fill。",
+              "audit 失败时输出结构化 error_code。"
+            ],
+            "verify": "bash scripts/agent-smoke.sh 或定向 observe smoke",
+            "gate": "observe-only loop 可以安全接入 Hermes。"
+          }
+        ]
+      },
+      {
+        "key": "p3_paper_execution_loop",
+        "title": "P3 接入 paper execution loop",
+        "objective": "让 audit 通过的 Agent thesis 驱动 paper/watch，而不是 CLI 默认参数驱动。",
+        "priority": "P0",
+        "type": "package",
+        "parallelizable": false,
+        "depends_on": [
+          "p2_observe_only_loop"
+        ],
+        "children": [
+          {
+            "key": "p3_01_audit_gate",
+            "title": "实现 audit -> paper gate",
+            "objective": "只有 context-audit ok 且 thesis 明确 sizing/leverage/exit plan 时，才允许进入 paper execution。",
+            "priority": "P0",
+            "type": "action",
+            "outputs": [
+              "audit gate",
+              "拒绝路径测试"
+            ],
+            "acceptance": [
+              "缺 sizing 返回 agent_sizing_required。",
+              "缺 exit plan 不应用默认 TP/SL/time-stop。"
+            ],
+            "verify": "pytest run-context failure paths",
+            "gate": "paper 开仓只能来自合格 Agent thesis。"
+          },
+          {
+            "key": "p3_02_thesis_execution",
+            "title": "执行 thesis-driven paper run",
+            "objective": "把 thesis.paper_intent、exit plan、并发持仓授权完整传递到 paper broker 和 ledger。",
+            "priority": "P0",
+            "type": "action",
+            "depends_on": [
+              "p3_01_audit_gate"
+            ],
+            "outputs": [
+              "paper execution report",
+              "paper ledger position fields"
+            ],
+            "acceptance": [
+              "sizing_source 标识 Agent thesis。",
+              "同币种多仓只有显式授权才允许。"
+            ],
+            "verify": "cd project && PYTHONPATH=src python3 -m pytest tests/test_pipeline.py tests/test_paper_ledger.py tests/test_service.py",
+            "gate": "paper execution 与 Agent thesis 字段一致。"
+          },
+          {
+            "key": "p3_03_journal_health",
+            "title": "接入 ledger/journal/health",
+            "objective": "确保 paper execution 写入 ledger、audit journal、cycle archive 后可由 health/daily/replay 读取。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p3_02_thesis_execution"
+            ],
+            "outputs": [
+              "audit journal record",
+              "health report",
+              "daily report"
+            ],
+            "acceptance": [
+              "所有记录可追溯到 research_cycle run_id。",
+              "安全字段保持 false。"
+            ],
+            "verify": "paper-report/health-report/audit-journal 定向测试",
+            "gate": "paper 运行结果可审计。"
+          },
+          {
+            "key": "p3_04_service_mode",
+            "title": "定义连续 paper 服务模式",
+            "objective": "明确 Hermes loop 如何触发 paper/watch，一次一轮还是后台 run-loop，并加入状态/锁/重复事件保护。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p3_03_journal_health"
+            ],
+            "outputs": [
+              "service mode contract",
+              "runtime lock policy"
+            ],
+            "acceptance": [
+              "默认不自动启动长期后台服务。",
+              "重复 event_id 不重复开仓。"
+            ],
+            "verify": "service tests + start-auto-paper status smoke",
+            "gate": "连续 paper 服务不会和 observe-only 输出互相踩写。"
+          }
+        ]
+      },
+      {
+        "key": "p4_position_management",
+        "title": "P4 持续仓位管理智能",
+        "objective": "让 Agent 每轮先读取本地 paper account state，再决定 hold/close/adjust/new thesis。",
+        "priority": "P1",
+        "type": "package",
+        "parallelizable": false,
+        "depends_on": [
+          "p3_paper_execution_loop"
+        ],
+        "children": [
+          {
+            "key": "p4_01_account_state",
+            "title": "标准化 paper account state 输入",
+            "objective": "把本地 paper ledger 派生状态作为 Agent 仓位管理输入，明确不是 Binance 账户状态。",
+            "priority": "P1",
+            "type": "action",
+            "outputs": [
+              "paper_account_state contract usage"
+            ],
+            "acceptance": [
+              "hard_boundaries 明确 real_orders/signed_requests/reads_api_keys/binance_account_state false。"
+            ],
+            "verify": "paper_account_state tests",
+            "gate": "Agent 不会误把本地 paper 状态当真实账户。"
+          },
+          {
+            "key": "p4_02_position_thesis_schema",
+            "title": "定义 position_management_thesis.v1",
+            "objective": "支持 hold、close intent、adjust exit、add/reduce paper intent 等仓位管理动作。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p4_01_account_state"
+            ],
+            "outputs": [
+              "position management schema",
+              "fixtures"
+            ],
+            "acceptance": [
+              "默认动作是 hold/noop。",
+              "close/adjust/add/reduce 必须显式、带 reason 和 provenance。"
+            ],
+            "verify": "schema validation tests",
+            "gate": "仓位管理 thesis 可被机器审计。"
+          },
+          {
+            "key": "p4_03_apply_position_actions",
+            "title": "实现 paper 仓位动作应用层",
+            "objective": "在 paper ledger 中应用明确授权的 close/adjust 操作，保持默认不改仓。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p4_02_position_thesis_schema"
+            ],
+            "outputs": [
+              "paper position action reports",
+              "ledger 更新"
+            ],
+            "acceptance": [
+              "无明确 action 不改仓。",
+              "所有 action 写 audit journal。"
+            ],
+            "verify": "paper ledger position management tests",
+            "gate": "持续仓位管理仍是 paper-only。"
+          }
+        ]
+      },
+      {
+        "key": "p5_replay_review",
+        "title": "P5 回测与复盘闭环",
+        "objective": "把每轮 context/thesis/execution/ledger 做成可重放 decision trace 和质量报告。",
+        "priority": "P1",
+        "type": "package",
+        "parallelizable": true,
+        "depends_on": [
+          "p3_paper_execution_loop"
+        ],
+        "children": [
+          {
+            "key": "p5_01_trace",
+            "title": "统一 decision trace",
+            "objective": "把 research_cycle、context audit、pipeline report、ledger delta、risk decision 串成同一 run_id trace。",
+            "priority": "P1",
+            "type": "action",
+            "outputs": [
+              "decision trace contract"
+            ],
+            "acceptance": [
+              "trace 可从 archive/journal 重建。",
+              "每条 trace 有 error_code 聚合。"
+            ],
+            "verify": "replay trace fixture tests",
+            "gate": "复盘可解释每次开仓或拒绝。"
+          },
+          {
+            "key": "p5_02_quality_report",
+            "title": "生成 decision quality report",
+            "objective": "按机会发现、拒绝原因、仓位结果、Agent 输入完整度统计质量指标。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p5_01_trace"
+            ],
+            "outputs": [
+              "decision quality report"
+            ],
+            "acceptance": [
+              "缺 sizing、缺 exit plan、audit reject、risk reject 可聚合。",
+              "报告不包含投资建议，只做 paper 复盘。"
+            ],
+            "verify": "quality report tests",
+            "gate": "Codex loop 可用报告推进工程迭代。"
+          },
+          {
+            "key": "p5_03_replay_determinism",
+            "title": "验证 replay 可复现",
+            "objective": "确保给定 archive/ledger/fixtures 可以重放出相同 decision trace。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p5_02_quality_report"
+            ],
+            "outputs": [
+              "replay determinism tests"
+            ],
+            "acceptance": [
+              "同输入重放得到稳定 schema/output。",
+              "非确定性时间字段被固定或隔离。"
+            ],
+            "verify": "pytest replay tests",
+            "gate": "审计与回测闭环可信。"
+          }
+        ]
+      },
+      {
+        "key": "p6_portfolio_risk",
+        "title": "P6 生产级 paper 风控",
+        "objective": "把 contract 风控升级为 portfolio 级 paper 风控，但仍不进入真实交易。",
+        "priority": "P1",
+        "type": "package",
+        "parallelizable": false,
+        "depends_on": [
+          "p4_position_management"
+        ],
+        "children": [
+          {
+            "key": "p6_01_risk_policy_schema",
+            "title": "定义 portfolio risk policy",
+            "objective": "新增最大日亏、最大回撤、最大持仓数、单币最大风险、冷却期、置信度门槛等 policy 字段。",
+            "priority": "P1",
+            "type": "action",
+            "outputs": [
+              "risk policy schema/contract"
+            ],
+            "acceptance": [
+              "默认保守且不发明交易参数。",
+              "每个拒绝 reason 稳定可测试。"
+            ],
+            "verify": "risk schema tests",
+            "gate": "policy 可由 Agent/operator 明确配置。"
+          },
+          {
+            "key": "p6_02_risk_engine",
+            "title": "实现 portfolio risk gate",
+            "objective": "按 policy 对新开仓、加仓、减仓、关闭和持仓维持进行 paper risk decision。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p6_01_risk_policy_schema"
+            ],
+            "outputs": [
+              "risk_decision.v1 reason coverage"
+            ],
+            "acceptance": [
+              "超过限制时 fail-closed。",
+              "risk_decision 包含 policy snapshot 和 reason。"
+            ],
+            "verify": "pytest risk tests",
+            "gate": "portfolio 风控可阻止 Agent 过度交易。"
+          },
+          {
+            "key": "p6_03_kill_switch",
+            "title": "实现 paper kill switch 和异常行情熔断",
+            "objective": "提供本地只读/配置型 kill switch、异常波动暂停和冷却期拒绝。",
+            "priority": "P1",
+            "type": "action",
+            "depends_on": [
+              "p6_02_risk_engine"
+            ],
+            "outputs": [
+              "kill switch policy",
+              "cooldown rejection"
+            ],
+            "acceptance": [
+              "kill switch 只影响 paper/watch。",
+              "触发后所有新仓拒绝并有 error_code。"
+            ],
+            "verify": "risk and service tests",
+            "gate": "paper loop 可被安全暂停。"
+          }
+        ]
+      },
+      {
+        "key": "p7_private_executor_design",
+        "title": "P7 私有实盘 executor 设计",
+        "objective": "只设计未来私有 executor 与 public TradeCat 的边界，不在 public repo 实现真实交易。",
+        "priority": "P2",
+        "type": "package",
+        "parallelizable": true,
+        "depends_on": [
+          "p6_portfolio_risk"
+        ],
+        "children": [
+          {
+            "key": "p7_01_boundary_doc",
+            "title": "定义 public/private 执行边界",
+            "objective": "写清 public repo 输出 audited intent，private executor 才能读取 key、签名和处理真实订单。",
+            "priority": "P2",
+            "type": "action",
+            "outputs": [
+              "executor boundary design"
+            ],
+            "acceptance": [
+              "public repo 不出现 key、secret、signed endpoint、real order 代码。",
+              "私有 executor 输入必须是 audited intent。"
+            ],
+            "verify": "docs review + security scan",
+            "gate": "边界不会误导 Agent 在 public repo 真实交易。"
+          },
+          {
+            "key": "p7_02_intent_handshake",
+            "title": "设计 audited intent handoff",
+            "objective": "定义 public paper/watch intent 如何被私有 executor 消费、审批、拒绝和回传执行摘要。",
+            "priority": "P2",
+            "type": "action",
+            "depends_on": [
+              "p7_01_boundary_doc"
+            ],
+            "outputs": [
+              "intent handoff schema draft"
+            ],
+            "acceptance": [
+              "handoff 不包含凭证。",
+              "私有执行结果回传必须脱敏。"
+            ],
+            "verify": "schema draft review",
+            "gate": "未来实盘层有清晰契约但不污染 public repo。"
+          },
+          {
+            "key": "p7_03_public_guardrails",
+            "title": "加固 public repo guardrails",
+            "objective": "添加或加强测试/扫描，确保 public repo 不会引入真实交易能力。",
+            "priority": "P2",
+            "type": "action",
+            "depends_on": [
+              "p7_02_intent_handshake"
+            ],
+            "outputs": [
+              "security guard tests",
+              "supply-chain scan coverage"
+            ],
+            "acceptance": [
+              "credential-like 字段和 signed/account/order endpoint 被拒绝。",
+              "CI/verify 可发现边界回归。"
+            ],
+            "verify": "bash scripts/security-scan.sh && bash scripts/supply-chain-audit.sh",
+            "gate": "public repo 可长期保持公开安全。"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -15,7 +15,7 @@ from referencing.jsonschema import DRAFT202012
 
 from tradecat_auto import cli as auto_cli
 from tradecat_auto.binance_market import BinanceMarketClient
-from tradecat_auto.paper_ledger import default_paper_ledger, save_paper_ledger
+from tradecat_auto.paper_ledger import apply_paper_execution, default_paper_ledger, save_paper_ledger
 from tradecat_terminal import cli
 from tradecat_terminal.cache import write_dataset_body
 from tradecat_terminal.dataset_contract import load_dataset_consumption_contract
@@ -30,6 +30,7 @@ WATCHDOG_SCRIPT = PROJECT_ROOT / "scripts" / "watchdog.sh"
 REQUEST_REGISTRY_URL = "https://example.local/tradecat-registry.json"
 SHEET_CSV = "https://dexscreener.com/example\n排名,交易对,价格\n1,BTCUSDT,100\n"
 EVENT_CSV = "time,content\n2026-05-10 10:00:00,hello\n"
+SIGNAL_CSV = "时间(北京),交易对,周期,类型,内容\n2026-05-10 10:00:00,BTCUSDT,5分钟,量比放大,hello\n"
 ANOMALY_CSV = "榜单,序号,交易对\n异动榜,1,BTCUSDT\n异动榜,2,ETHUSDT\n"
 STATS_CSV = "窗口,覆盖合约数,交易对口径\n24h,200,USDT perpetual\n"
 REQUEST_REGISTRY = {
@@ -47,6 +48,14 @@ REQUEST_REGISTRY = {
             "description": "test dataset",
             "data_mode": "stream",
             "active": True,
+        },
+        "signal_flow": {
+            "workbook_key": "main",
+            "tab_name": "信号流",
+            "gid": None,
+            "description": "test signal dataset",
+            "data_mode": "stream",
+            "active": True,
         }
     },
 }
@@ -60,23 +69,22 @@ def test_advertised_cli_payloads_validate_against_formal_schemas(tmp_path, capsy
     import tradecat_terminal.cache as cache_module
 
     monkeypatch.setattr(cache_module, "fetch_csv_body", _fake_sheet_fetch)
-    write_dataset_body(cache_dir, get_dataset("event_stream"), EVENT_CSV)
+    write_dataset_body(cache_dir, get_dataset("signal_flow"), SIGNAL_CSV)
     write_dataset_body(cache_dir, get_dataset("anomaly_panel"), ANOMALY_CSV)
-    write_dataset_body(cache_dir, get_dataset("market_stats"), STATS_CSV)
 
     payloads = [
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "init", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "status", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "doctor", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "path", "event_stream", "--json"]),
+        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "path", "signal_flow", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "datasets", "--json"]),
         _run_cli_json(capsys, ["config", "show", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "sync", "market_snapshot", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "sync-all", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "event_stream", "--no-write", "--json"]),
+        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "signal_flow", "--no-write", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "probe", "--no-write", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "prune", "--json"]),
-        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "export", "event_stream", "--format", "json"]),
+        _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "export", "signal_flow", "--format", "json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "analyze", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "features", "--json"]),
         _run_cli_json(capsys, ["--cache-dir", str(cache_dir), "doctor", "--bundle", "-"]),
@@ -98,7 +106,7 @@ def test_request_script_payloads_validate_against_formal_schemas(capsys, monkeyp
     result = _run_request_json(
         request_module,
         capsys,
-        ["event_stream", "--registry-url", REQUEST_REGISTRY_URL, "--format", "json", "--limit", "1"],
+        ["signal_flow", "--registry-url", REQUEST_REGISTRY_URL, "--format", "json", "--limit", "1"],
     )
 
     validate_payload(datasets)
@@ -207,6 +215,67 @@ def test_real_error_payloads_validate_against_formal_schemas(tmp_path, capsys, m
 def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path, monkeypatch):
     ledger_path = tmp_path / "paper_ledger.json"
     save_paper_ledger(ledger_path, default_paper_ledger(initial_balance_usdt=1000.0))
+    archive_path = tmp_path / "cycles.jsonl"
+    archive_path.write_text(
+        json.dumps(
+            {
+                "schema": "tradecat_auto.service_cycle.v1",
+                "action": "PROCESSED",
+                "ok": True,
+                "pipeline_report": {
+                    "selected_symbol": "IRYSUSDT",
+                    "risk_decision": {"decision": "ALLOW"},
+                    "paper_execution": {"status": "OPENED", "paper_execution_id": "exec-schema-replay"},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    managed_ledger_path = tmp_path / "managed_paper_ledger.json"
+    managed_ledger = apply_paper_execution(default_paper_ledger(initial_balance_usdt=1000.0), {
+        "ok": True,
+        "status": "OPENED",
+        "paper_execution_id": "exec-schema-position",
+        "symbol": "IRYSUSDT",
+        "side": "LONG",
+        "entry_price": 100.0,
+        "quantity": 0.2,
+        "notional_usdt": 20.0,
+        "requested_margin_usdt": 10.0,
+        "leverage": 2.0,
+        "stop_loss_price": 97.0,
+        "take_profit_price": 106.0,
+    }, now_iso="2026-05-18T00:00:00Z")
+    position_id = managed_ledger["open_positions"]["IRYSUSDT"]["position_id"]
+    save_paper_ledger(managed_ledger_path, managed_ledger)
+    position_thesis_path = tmp_path / "position_management_thesis.json"
+    position_thesis_path.write_text(
+        json.dumps(
+            {
+                "schema": "tradecat_auto.position_management_thesis.v1",
+                "schema_version": "1.0.0",
+                "ok": True,
+                "mode": "paper",
+                "action": "adjust_exit",
+                "symbol": "IRYSUSDT",
+                "position_ref": {"position_id": position_id, "symbol": "IRYSUSDT"},
+                "reason": "schema validation fixture adjusts local paper exits",
+                "exit_update": {"stop_loss_price": 98.0, "agent_authorized": True, "real_order": False},
+                "error_code": None,
+                "provenance": {"source": "test_payload_schema_validation", "research_cycle_run_id": "cycle-schema-position"},
+                "safety": _auto_safety(),
+                "hard_boundaries": {
+                    "real_orders": False,
+                    "signed_requests": False,
+                    "reads_api_keys": False,
+                    "binance_account_state": False,
+                },
+                "limitations": ["paper/watch only; no real Binance order"],
+            }
+        ),
+        encoding="utf-8",
+    )
     auto_args = SimpleNamespace(
         tradecat_public=str(tmp_path / "public"),
         base_url="https://example.test",
@@ -229,6 +298,8 @@ def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path
         initial_balance_usdt=1000.0,
         paper_fee_bps=2.0,
         paper_slippage_bps=0.5,
+        portfolio_risk_policy_path="",
+        paper_kill_switch_path="",
     )
     monkeypatch.setattr(auto_cli, "BinanceMarketClient", _FakeAutoClient)
     monkeypatch.setattr(auto_cli, "TradeCatPublicSource", _FakeAutoSource)
@@ -240,6 +311,18 @@ def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path
         auto_cli.run_once_public(auto_args, client=_FakeAutoClient(), source=_FakeAutoSource()),
         auto_cli.run_loop_public(auto_args, client=_FakeAutoClient(), source=_FakeAutoSource()),
         auto_cli.paper_report(SimpleNamespace(ledger_path=str(ledger_path), initial_balance_usdt=1000.0)),
+        auto_cli.replay_report(SimpleNamespace(archive_path=str(archive_path), ledger_path=str(ledger_path), journal_path="")),
+        auto_cli.position_manage_report(
+            SimpleNamespace(
+                thesis_path=str(position_thesis_path),
+                ledger_path=str(managed_ledger_path),
+                journal_path="",
+                initial_balance_usdt=1000.0,
+                paper_fee_bps=0.0,
+                paper_slippage_bps=0.0,
+                now="2026-05-18T00:10:00Z",
+            )
+        ),
     ]
 
     for payload in payloads:
@@ -327,7 +410,7 @@ def _fake_request_fetch(url: str, *, timeout: float) -> str:
     del timeout
     if url == REQUEST_REGISTRY_URL:
         return json.dumps(REQUEST_REGISTRY)
-    return EVENT_CSV
+    return SIGNAL_CSV
 
 
 class _FakeAutoClient:

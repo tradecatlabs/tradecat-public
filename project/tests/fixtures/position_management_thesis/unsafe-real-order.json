@@ -1,0 +1,40 @@
+{
+  "schema": "tradecat_auto.position_management_thesis.v1",
+  "schema_version": "1.0.0",
+  "ok": true,
+  "mode": "paper",
+  "action": "close",
+  "symbol": "IRYSUSDT",
+  "position_ref": {
+    "position_id": "paper-position-001",
+    "symbol": "IRYSUSDT"
+  },
+  "reason": "Unsafe fixture must be rejected.",
+  "close_intent": {
+    "close_fraction": 1,
+    "agent_authorized": true,
+    "real_order": true
+  },
+  "error_code": null,
+  "provenance": {
+    "source": "position_management_thesis_fixture"
+  },
+  "safety": {
+    "public_readonly_market_data": true,
+    "paper_or_watch_only": true,
+    "real_orders": true,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "hard_boundaries": {
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "limitations": [
+    "paper/watch reduce intent only",
+    "not a real Binance order"
+  ]
+}

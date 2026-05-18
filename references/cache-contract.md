@@ -15,10 +15,10 @@ datasets/<dataset_key>/
 `-- snapshots/
 ```
 
-`event_stream` also keeps:
+Stream datasets also keep:
 
 ```text
-datasets/event_stream/stream_events.json
+datasets/<stream_dataset_key>/stream_events.json
 ```
 
 ## Snapshot Rules
@@ -34,7 +34,7 @@ datasets/event_stream/stream_events.json
 
 ## Stream Rules
 
-- `event_stream` merges incrementally by `event_key` and `normalized_event_key`.
+- `signal_flow` and `event_stream` merge incrementally by `event_key` and `normalized_event_key`.
 - Repeated events update `seen_count` and `last_seen_at`.
 - Structured latest files are generated from the merged stream state.
 
@@ -70,7 +70,7 @@ datasets/event_stream/stream_events.json
 ## Migration Rules
 
 - Current cache metadata schema version is `1`.
-- Dataset manifests and `event_stream` state files must carry `schema_version`.
+- Dataset manifests and stream state files must carry `schema_version`.
 - Migrations are explicit, idempotent, and backed up under
   `migration_backups/<timestamp>/` before metadata is rewritten.
 - Failed migration must restore backed-up metadata before surfacing the error.

@@ -4,6 +4,7 @@ import csv
 from collections.abc import Sequence
 from io import StringIO
 from urllib.parse import urlparse
+from urllib.request import getproxies, proxy_bypass
 
 import urllib3
 from urllib3.exceptions import (
@@ -72,10 +73,14 @@ def fetch_csv_body(url: str, timeout: float = 30.0, *, attempts: int = DEFAULT_A
         respect_retry_after_header=True,
         raise_on_status=False,
     )
-    http = urllib3.PoolManager(
-        retries=retry,
-        timeout=urllib3.Timeout(connect=max(0.5, min(float(timeout), 5.0)), read=max(0.5, float(timeout))),
-        headers={"User-Agent": USER_AGENT},
+    manager_kwargs = {
+        "retries": retry,
+        "timeout": urllib3.Timeout(connect=max(0.5, min(float(timeout), 5.0)), read=max(0.5, float(timeout))),
+        "headers": {"User-Agent": USER_AGENT},
+    }
+    proxy_url = _proxy_url_for(url)
+    http = urllib3.ProxyManager(proxy_url, **manager_kwargs) if proxy_url else urllib3.PoolManager(
+        **manager_kwargs
     )
     try:
         response = http.request("GET", url)
@@ -107,6 +112,16 @@ def fetch_csv_body(url: str, timeout: float = 30.0, *, attempts: int = DEFAULT_A
         ) from exc
 
 
+def _proxy_url_for(url: str) -> str | None:
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if host and proxy_bypass(host):
+        return None
+    proxies = getproxies()
+    proxy = proxies.get(parsed.scheme.lower()) or proxies.get("all")
+    return str(proxy) if proxy else None
+
+
 def fetch_csv_rows(url: str, timeout: float = 30.0) -> list[dict[str, str]]:
     return parse_csv_rows(fetch_csv_body(url, timeout=timeout))
 
@@ -121,6 +136,8 @@ def parse_csv_rows(body: str) -> list[dict[str, str]]:
     if not rows:
         return []
     header_index = find_header_row_index(rows)
+    if header_index < len(rows) and is_section_header_row(rows[header_index]):
+        return sectioned_data_rows(rows, header_index)
     width = max((len(row) for row in rows[header_index:]), default=0)
     raw_headers = [*rows[header_index], *([""] * max(0, width - len(rows[header_index])))]
     headers = normalize_headers(raw_headers)
@@ -144,6 +161,35 @@ def find_header_row_index(rows: list[list[str]]) -> int:
 def is_public_top_row(row: Sequence[str]) -> bool:
     first = row[0].strip() if row else ""
     return first.startswith("https://") or first.startswith("http://") or first.startswith("数据源，") or first == "数据源"
+
+
+def is_section_header_row(row: Sequence[str]) -> bool:
+    cells = [str(cell).strip() for cell in row]
+    if not cells or not cells[0] or is_public_top_row(row):
+        return False
+    tail = [cell for cell in cells[1:] if cell]
+    return "序号" in tail and any(cell in {"交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"} for cell in tail)
+
+
+def sectioned_data_rows(matrix: list[list[str]], start_index: int) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    section_title = ""
+    section_headers: list[str] = []
+    for row_index, raw in enumerate(matrix[start_index:], start=start_index + 1):
+        if is_section_header_row(raw):
+            section_title = str(raw[0]).strip()
+            section_headers = normalize_headers([str(cell) for cell in raw[1:]])
+            continue
+        if not section_headers:
+            continue
+        section_values = [str(cell) for cell in raw[1:]]
+        if not any(cell.strip() for cell in section_values):
+            continue
+        padded = [*section_values, *([""] * max(0, len(section_headers) - len(section_values)))]
+        values = {"榜单": section_title, "榜单名": section_title, "源行号": str(row_index)}
+        values.update({section_headers[index]: padded[index] for index in range(len(section_headers))})
+        rows.append(values)
+    return rows
 
 
 def normalize_headers(headers: Sequence[str]) -> list[str]:

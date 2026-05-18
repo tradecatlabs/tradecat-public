@@ -11,6 +11,7 @@
     "README.md",
     "references/skill-package-governance.md",
     "references/hermes-agent-guide.md",
+    "references/private-executor-boundary.md",
     "project/README.md",
     "references/agent-soft-decision-layer.md"
   ],
@@ -20,7 +21,8 @@
     "references/skill-package-governance.md",
     "references/agent-contract.md",
     "references/hermes-agent-guide.md",
-    "references/agent-soft-decision-layer.md"
+    "references/agent-soft-decision-layer.md",
+    "references/private-executor-boundary.md"
   ],
   "agent_profiles": [
     {
@@ -120,7 +122,7 @@
       }
     },
     {
-      "command": "bash scripts/run-tradecat.sh path event_stream --json",
+      "command": "bash scripts/run-tradecat.sh path signal_flow --json",
       "risk_class": "local_readonly",
       "schema": "tradecat.path_map.v1",
       "exit_codes": {
@@ -149,7 +151,7 @@
       }
     },
     {
-      "command": "bash scripts/run-tradecat.sh probe event_stream --json --no-write",
+      "command": "bash scripts/run-tradecat.sh probe signal_flow --json --no-write",
       "risk_class": "local_readonly",
       "schema": "tradecat.probe_result.v1",
       "exit_codes": {
@@ -182,7 +184,7 @@
       }
     },
     {
-      "command": "python3 project/scripts/request.py event_stream --format json --limit 5",
+      "command": "python3 project/scripts/request.py signal_flow --format json --limit 5",
       "risk_class": "network_readonly",
       "schema": "tradecat.request_result.v1",
       "exit_codes": {
@@ -199,7 +201,7 @@
       "schema": "tradecat.init.v1"
     },
     {
-      "command": "bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
+      "command": "bash scripts/run-tradecat.sh sync signal_flow --json --timeout 10",
       "risk_class": "local_cache_write",
       "schema": "tradecat.sync_result.v1"
     },
@@ -236,12 +238,12 @@
   ],
   "network_entrypoints": [
     {
-      "command": "python3 project/scripts/request.py event_stream --format json --limit 5",
+      "command": "python3 project/scripts/request.py signal_flow --format json --limit 5",
       "mode": "zero-install fallback",
       "writes": false
     },
     {
-      "command": "bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
+      "command": "bash scripts/run-tradecat.sh sync signal_flow --json --timeout 10",
       "mode": "production cache writer",
       "writes": true
     },
@@ -253,10 +255,10 @@
   ],
   "interactive_entrypoints": [
     {
-      "command": "bash scripts/run-tradecat.sh tui event_stream",
+      "command": "bash scripts/run-tradecat.sh tui signal_flow",
       "risk_class": "background_long_running",
       "agent_default": false,
-      "non_interactive_alternative": "bash scripts/run-tradecat.sh tui event_stream --plain --limit 10"
+      "non_interactive_alternative": "bash scripts/run-tradecat.sh tui signal_flow --plain --limit 10"
     }
   ],
   "json_outputs": [
@@ -276,7 +278,7 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "bash scripts/run-tradecat.sh path event_stream --json",
+      "command": "bash scripts/run-tradecat.sh path signal_flow --json",
       "schema": "tradecat.path_map.v1",
       "schema_version": "1.0.0"
     },
@@ -296,7 +298,7 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "bash scripts/run-tradecat.sh sync event_stream --json",
+      "command": "bash scripts/run-tradecat.sh sync signal_flow --json",
       "schema": "tradecat.sync_result.v1",
       "schema_version": "1.0.0"
     },
@@ -306,7 +308,7 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "bash scripts/run-tradecat.sh probe event_stream --json --no-write",
+      "command": "bash scripts/run-tradecat.sh probe signal_flow --json --no-write",
       "schema": "tradecat.probe_result.v1",
       "schema_version": "1.0.0"
     },
@@ -331,7 +333,7 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "python3 project/scripts/request.py event_stream --format json --limit 5",
+      "command": "python3 project/scripts/request.py signal_flow --format json --limit 5",
       "schema": "tradecat.request_result.v1",
       "schema_version": "1.0.0"
     },
@@ -341,7 +343,7 @@
       "schema_version": "1.0.0"
     },
     {
-      "command": "bash scripts/run-tradecat.sh export event_stream --format json --limit 5",
+      "command": "bash scripts/run-tradecat.sh export signal_flow --format json --limit 5",
       "schema": "tradecat.dataset_view.v1",
       "schema_version": "1.0.0"
     },
@@ -438,6 +440,7 @@
     "project_source_terminal": "project/src/tradecat_terminal",
     "automation_source": "project/src/tradecat_auto",
     "automation_service_script": "project/scripts/start-auto-paper.sh",
+    "automation_monitor_script": "project/scripts/monitor-auto-paper.sh",
     "automation_runtime": "project/.runtime/auto-paper",
     "agent_market_context_resources": "project/resources/agent_market_context/binance",
     "agent_market_context_provenance": "project/resources/agent_market_context/binance/provenance.manifest.json",
@@ -446,22 +449,40 @@
     "agent_market_context_audit_schema": "project/contracts/tradecat-auto-agent-market-context-audit.schema.json",
     "paper_backtest_report_schema": "project/contracts/tradecat-auto-paper-backtest-report.schema.json",
     "replay_report_schema": "project/contracts/tradecat-auto-replay-report.schema.json",
+    "decision_trace_report_schema": "project/contracts/tradecat-auto-decision-trace-report.schema.json",
+    "decision_quality_report_schema": "project/contracts/tradecat-auto-decision-quality-report.schema.json",
+    "private_executor_boundary_reference": "references/private-executor-boundary.md",
     "agent_soft_layer_reference": "references/agent-soft-decision-layer.md",
     "agent_soft_layer_resources": "project/resources/agent_soft_layer",
     "agent_soft_layer_trader_profile": "project/resources/agent_soft_layer/profiles/discretionary-futures-trader.zh.md",
     "agent_soft_layer_schema": "project/contracts/tradecat-auto-agent-soft-layer.schema.json",
     "agent_trade_thesis_schema": "project/contracts/tradecat-auto-agent-trade-thesis.schema.json",
+    "paper_autonomy_profile_schema": "project/contracts/tradecat-auto-paper-autonomy-profile.schema.json",
     "paper_account_state_schema": "project/contracts/tradecat-auto-paper-account-state.schema.json",
     "automation_state_path": "project/.runtime/auto-paper/service_state.json",
     "automation_paper_ledger": "project/.runtime/auto-paper/paper_ledger.json",
     "automation_cycle_archive": "project/.runtime/auto-paper/cycles.jsonl",
     "automation_audit_journal": "project/.runtime/auto-paper/paper_audit.sqlite3",
-    "automation_run_loop_log": "project/.runtime/auto-paper/paper-run-loop.log"
+    "automation_run_loop_log": "project/.runtime/auto-paper/paper-run-loop.log",
+    "automation_paper_ops_schema": "project/contracts/tradecat-auto-paper-ops-report.schema.json",
+    "autonomous_paper_ops_reference": "references/autonomous-paper-ops.md",
+    "agent_research_cycle_schema": "project/contracts/tradecat-auto-agent-research-cycle.schema.json",
+    "agent_research_cycle_fixtures": "project/tests/fixtures/agent_research_cycle",
+    "agent_research_cycle_validator": "project/src/tradecat_auto/agent_research_cycle.py",
+    "position_management_thesis_schema": "project/contracts/tradecat-auto-position-management-thesis.schema.json",
+    "position_management_thesis_fixtures": "project/tests/fixtures/position_management_thesis",
+    "position_management_action_report_schema": "project/contracts/tradecat-auto-position-management-action-report.schema.json",
+    "portfolio_risk_policy_schema": "project/contracts/tradecat-auto-portfolio-risk-policy.schema.json",
+    "portfolio_risk_policy_fixtures": "project/tests/fixtures/portfolio_risk_policy",
+    "audited_intent_handoff_schema": "project/contracts/tradecat-auto-audited-intent-handoff.schema.json",
+    "audited_intent_handoff_fixtures": "project/tests/fixtures/audited_intent_handoff"
   },
   "references": [
     "references/skill-package-governance.md",
     "references/agent-contract.md",
     "references/hermes-agent-guide.md",
+    "references/autonomous-paper-ops.md",
+    "references/private-executor-boundary.md",
     "references/agent-contract-maturity-task-tree.md",
     "references/architecture.md",
     "references/cache-contract.md",
@@ -565,7 +586,7 @@
       "kind": "data_freshness",
       "meaning": "The latest public Sheet event is older than the configured max_event_age_seconds or cannot be parsed.",
       "retryable": true,
-      "repair": "Wait for a fresh event_stream row or raise --max-event-age-seconds for diagnostic paper tests only."
+      "repair": "Wait for a fresh signal_flow/anomaly_panel row or raise --max-event-age-seconds for diagnostic paper tests only."
     },
     {
       "code": "agent_market_context_load_failed",
@@ -616,7 +637,7 @@
     "when installed under ~/.hermes/skills/tradecat-public, load this repo as the Hermes skill and use agents/manifest.json as the machine entrypoint",
     "run bash scripts/run-tradecat.sh status --json",
     "run bash scripts/run-tradecat.sh datasets --json",
-    "run bash scripts/run-tradecat.sh path event_stream --json",
+    "run bash scripts/run-tradecat.sh path signal_flow --json",
     "for Agent soft decisions, load bash scripts/run-tradecat.sh auto soft-layer --json before composing market context or trade thesis prompts; use role_profiles[].id=discretionary_futures_trader when a paper-only trader persona is needed",
     "derive prompt-safe account/order context only from auto paper-report paper_account_state; never from Binance account/order endpoints",
     "run bash scripts/run-tradecat.sh auto daily-report --json or alert-payload --kind daily --json for reporting without trading side effects",
@@ -624,9 +645,9 @@
     "run bash scripts/run-tradecat.sh auto audit-journal --json to inspect local paper/watch audit-chain state",
     "run bash scripts/run-tradecat.sh analyze --json when local cache is already populated",
     "run bash scripts/run-tradecat.sh features --json when per-symbol fact bundles are needed",
-    "if only inspecting public data, prefer python3 project/scripts/request.py event_stream --format json --limit 5",
-    "only write local cache when needed with bash scripts/run-tradecat.sh sync event_stream --json --timeout 10",
-    "for operator-managed legacy paper testing, run bash project/scripts/start-auto-paper.sh status --json before starting a new service",
+    "if only inspecting public data, prefer python3 project/scripts/request.py signal_flow --format json --limit 5",
+    "only write local cache when needed with bash scripts/run-tradecat.sh sync signal_flow --json --timeout 10",
+    "for operator-managed legacy paper testing, run bash project/scripts/start-auto-paper.sh ops-check --json and status --json before starting a new service",
     "run bash scripts/run-tradecat.sh auto paper-report --json to inspect paper ledger state",
     "for Agent-supplied Binance market context, load bash scripts/run-tradecat.sh auto soft-layer --json, let Agent/Hermes gather only public/read-only data, write tradecat_auto.agent_market_context.v1, run bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json, then run run-context; this is the canonical paper/watch path",
     "treat auto market-universe/probe-public/run-once/run-loop/start-auto-paper as legacy/operator diagnostics unless a task explicitly asks for TradeCat's own public network probe; they are not the Agent market-context input surface",
@@ -702,6 +723,16 @@
       "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
     },
     {
+      "schema": "tradecat_auto.paper_ops_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Preflight long-running auto-paper operations dependencies, path isolation, OS limits, credential env names, and systemd hardening settings.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Local preflight only; reports credential-like environment variable names but never reads secret values or touches Binance private APIs."
+    },
+    {
       "schema": "tradecat_auto.agent_market_context_audit.v1",
       "schema_version": "1.0.0",
       "purpose": "Audit an Agent/Hermes-supplied market context JSON file against public/read-only allowlists, provenance, and credential/order prohibitions.",
@@ -732,6 +763,26 @@
       "safety_boundary": "Reads only local paper/watch archive and ledger files; no credentials, signed requests, or real orders."
     },
     {
+      "schema": "tradecat_auto.decision_trace_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Reconstruct per-cycle paper/watch decision traces and error-code aggregation from local service-cycle archive and optional audit journal metadata.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Reads only local paper/watch archive and optional audit journal summary; no network, credentials, signed requests, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.decision_quality_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Aggregate paper/watch decision quality metrics: Agent input completeness, error-code causes, paper outcomes, and non-advisory engineering notes.",
+      "writes": false,
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Local replay metrics only; not investment advice and never a real execution instruction."
+    },
+    {
       "schema": "tradecat_auto.agent_soft_layer.v1",
       "schema_version": "1.0.0",
       "purpose": "Return self-contained Agent/Hermes prompt templates, configurable role profiles, endpoint policy, and soft thesis contract resources for public-readonly paper research.",
@@ -760,6 +811,21 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Public/read-only plus paper/watch contract only; no Binance credentials, signed requests, real account reads, or real orders."
+    },
+    {
+      "schema": "tradecat_auto.position_management_action_report.v1",
+      "schema_version": "1.0.0",
+      "purpose": "Report the local paper ledger result of applying one explicit Agent position-management thesis.",
+      "writes": true,
+      "write_paths": [
+        "project/.runtime/auto-paper/paper_ledger.json",
+        "project/.runtime/auto-paper/paper_audit.sqlite3",
+        ".runtime/** when explicitly overridden"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Writes only local paper/watch ledger and audit-journal evidence; close/adjust are paper-only and add/reduce remain fail-closed until explicit partial-fill contracts exist."
     },
     {
       "schema": "tradecat_auto.audit_journal_summary.v1",
@@ -831,6 +897,27 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Local paper ledger reporting only; no Binance credentials, signed requests, or real orders."
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh auto position-manage --thesis-path /path/to/position-management-thesis.json --json",
+      "risk_class": "paper_runtime_write",
+      "schema": "tradecat_auto.position_management_action_report.v1",
+      "agent_default": true,
+      "contract_role": "canonical_paper_position_management",
+      "writes": true,
+      "write_paths": [
+        "project/.runtime/auto-paper/paper_ledger.json",
+        "project/.runtime/auto-paper/paper_audit.sqlite3",
+        ".runtime/** when explicitly overridden"
+      ],
+      "real_orders": false,
+      "exit_codes": {
+        "0": "position thesis applied or held safely",
+        "1": "position thesis rejected, unsupported, or local runtime failure"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Applies only explicit Agent paper/watch position-management thesis to local paper ledger; never signs, reads Binance account state, or sends real orders."
     },
     {
       "command": "bash scripts/run-tradecat.sh auto soft-layer --json",
@@ -932,6 +1019,22 @@
       "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
     },
     {
+      "command": "bash project/scripts/start-auto-paper.sh ops-check --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.paper_ops_report.v1",
+      "agent_default": false,
+      "contract_role": "operator_ops_preflight",
+      "writes": false,
+      "real_orders": false,
+      "exit_codes": {
+        "0": "long-running auto-paper dependencies and safety preflight passed",
+        "1": "one or more blocking ops checks failed"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Local operations preflight only; does not read credential values, sign requests, or place real orders."
+    },
+    {
       "command": "bash project/scripts/start-auto-paper.sh start --json",
       "risk_class": "background_long_running",
       "schema": "tradecat_auto.paper_service_status.v1",
@@ -948,6 +1051,25 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Manages only a local paper daemon PID/log/runtime directory; no real exchange execution."
+    },
+    {
+      "command": "bash project/scripts/start-auto-paper.sh heal --json",
+      "risk_class": "background_long_running",
+      "schema": "tradecat_auto.paper_service_status.v1",
+      "agent_default": false,
+      "contract_role": "operator_runtime_heal",
+      "writes": true,
+      "write_paths": [
+        "project/.runtime/auto-paper/**"
+      ],
+      "real_orders": false,
+      "exit_codes": {
+        "0": "auto paper service was healthy, restarted, or started",
+        "1": "auto paper service could not be healed"
+      },
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Starts or restarts only the local paper/watch loop; no real exchange execution."
     },
     {
       "command": "bash project/scripts/start-auto-paper.sh stop --json",
@@ -1099,6 +1221,21 @@
   ],
   "automation_input_contracts": [
     {
+      "schema": "tradecat_auto.agent_research_cycle.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "project/contracts/tradecat-auto-agent-research-cycle.schema.json",
+      "purpose": "Top-level Hermes/Agent autonomous research-loop envelope that links a TradeCat signal, public/read-only Binance tool plan/results, optional market context, optional trade thesis, risk notes, and next_action.",
+      "allowed_modes": [
+        "observe_only",
+        "paper",
+        "watch"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Research-cycle contract only; TradeCat still requires context-audit and explicit Agent thesis sizing/exits before any paper ledger mutation."
+    },
+    {
       "schema": "tradecat_auto.agent_market_context.v1",
       "schema_version": "1.0.0",
       "contract_schema": "project/contracts/tradecat-auto-agent-market-context.schema.json",
@@ -1125,6 +1262,61 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "Soft thesis only; deterministic TradeCat paper/risk gates decide all ledger mutations and reject real-order semantics."
+    },
+    {
+      "schema": "tradecat_auto.paper_autonomy_profile.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "project/contracts/tradecat-auto-paper-autonomy-profile.schema.json",
+      "purpose": "Local operator/Agent delegation profile that lets TradeCat synthesize missing paper/watch sizing and exit fields for autonomous paper research loops.",
+      "allowed_modes": [
+        "paper",
+        "watch"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Paper autonomy profile may only authorize local paper/watch ledger intents; it must not contain Binance keys, signed requests, account state reads, or real-order semantics."
+    },
+    {
+      "schema": "tradecat_auto.position_management_thesis.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "project/contracts/tradecat-auto-position-management-thesis.schema.json",
+      "purpose": "Agent/Hermes supplied paper/watch position-management thesis for local TradeCat paper ledger hold/noop, close, exit adjustment, add, or reduce intents.",
+      "allowed_modes": [
+        "paper",
+        "watch"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Position management thesis may update only the local paper/watch ledger after explicit Agent authorization; it is never a Binance order, account, leverage, or margin mutation request."
+    },
+    {
+      "schema": "tradecat_auto.portfolio_risk_policy.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "project/contracts/tradecat-auto-portfolio-risk-policy.schema.json",
+      "purpose": "Operator/Agent supplied paper/watch portfolio risk policy containing rejection limits only: drawdown, daily loss, exposure, cooldown, confidence, abnormal-move halt, and kill switch.",
+      "allowed_modes": [
+        "paper",
+        "watch"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Risk policy never supplies order sizing, leverage, stop loss, take profit, or real execution instructions; it only constrains local paper/watch decisions."
+    },
+    {
+      "schema": "tradecat_auto.audited_intent_handoff.v1",
+      "schema_version": "1.0.0",
+      "contract_schema": "project/contracts/tradecat-auto-audited-intent-handoff.schema.json",
+      "purpose": "Sanitized paper/watch candidate intent for a future private executor to review; not a real order and never credential-bearing.",
+      "allowed_modes": [
+        "paper_watch_candidate"
+      ],
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "Public handoff candidate only; private executor must re-check account state, risk, permissions, and operator approval outside this repository."
     }
   ]
 }

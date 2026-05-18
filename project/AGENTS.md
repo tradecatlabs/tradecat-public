@@ -51,11 +51,16 @@ tradecat-public/
 |   |-- resources/
 |   |   |-- agent_market_context/
 |   |   `-- agent_soft_layer/
+|   |-- tasks/
+|   |   |-- INDEX.md
+|   |   `-- 0001-autonomous-agent-trader-loop/
 |   |-- scripts/
 |   |   |-- guard_public_local_files.sh
 |   |   |-- request.py
 |   |   |-- start.sh
 |   |   |-- start-auto-paper.sh
+|   |   |-- serve-auto-paper-monitor.py
+|   |   |-- monitor-auto-paper.sh
 |   |   |-- validate_data_contract.py
 |   |   |-- validate_dataset_consumption_contract.py
 |   |   |-- verify.sh
@@ -153,6 +158,17 @@ Input(输入)：Agent/Hermes 需要 Binance skill/API 参考、endpoint 分类�
 -> Output(输出)：可审计的 Agent-supplied market context 契约或只读参考结论
 ```
 
+### Flow 1.9: 项目任务治理
+
+```text
+Input(输入)：用户确认的推进计划、当前仓库事实、auto-tasks 任务树契约
+-> 节点1：任务容器统一写入 `project/tasks/`，避免在根 Skill 外壳创建 `assets/`
+-> 节点2：`project/tasks/INDEX.md` 维护任务索引；具体任务目录维护 README/CONTEXT/ACCEPTANCE/PLAN/TODO/STATUS
+-> 节点3：`TREE_SPEC.json`、`TASK_PACKAGE_SET.json`、`ASSET_BUNDLE.json` 作为机器可消费任务树与执行波次来源
+-> 节点4：执行者只消费当前 ready 的 TP-XX 叶子节点，不跨阶段修改交易行为
+-> Output(输出)：可验证、可继续、可审计的项目任务包；不写 `.runtime/`，不读取凭证，不执行真实交易
+```
+
 ### Flow 2: 本地缓存到 TUI 展示
 
 ```text
@@ -246,7 +262,7 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `src/tradecat_auto/audit_journal.py`：本地 SQLite paper/watch 审计 journal；只写 `.runtime/` 等 gitignored 路径，记录 service cycle、paper fills、risk 决策和 checksum chain，不接入服务端数据库。
 - `src/tradecat_auto/production_control.py`：生产纸面运行态报告层；从 heartbeat、service state、ledger、archive 和 audit journal 生成 health/daily/alert payload，禁止交易副作用。
 - `src/tradecat_auto/pipeline.py` / `service.py` / `cli.py`：run-once、run-loop、paper-report、audit-journal、health/daily/alert 编排层；运行态只能写 `.runtime/` 等 gitignored 本地路径。
-- `scripts/start-auto-paper.sh`：自主持续纸面测试服务管理入口；循环调用 `tradecat_auto.cli run-loop --once --mode paper`，只写 `.runtime/auto-paper`，必须支持 `start|stop|restart|status --json`。
+- `scripts/start-auto-paper.sh`：自主持续纸面测试服务管理入口；循环调用 `tradecat_auto.cli run-loop --once --mode paper`，只写 `.runtime/auto-paper`，必须支持 `ops-check|start|stop|restart|heal|status --json`，并输出 systemd/timer、FD/task limit、credential-env-name 和 heartbeat 运维证据。
 - `resources/agent_market_context/binance/`：Binance skill/API 本地自包含参考快照；以 `provenance.manifest.json` 暴露来源、checksum、允许的数据族和禁止的 signed/account/order 边界。
 - `header_aliases.py`：字段别名元数据层；只进入 ViewModel 的 `column_meta.display_name`，禁止替代 TUI 表格物理列 A/B/C...
 - `i18n.py`：TUI/CLI 外壳文案的轻量多语言表；只处理中文、英文、韩语 UI 文案。
@@ -300,6 +316,8 @@ Input(输入)：`tradecat config ...` 或 `tradecat export <dataset_key>`
 - `tradecat auto replay-report` 只能读取本地 JSONL cycle archive 与 paper ledger 生成可复现报告，不得联网、不读密钥、不写运行态。
 - `tradecat auto audit-journal` / `health-report` / `daily-report` / `alert-payload` 只能读取本地 paper/watch 运行态与审计 journal，输出必须带 schema/version/safety，不得联网、不读密钥、不触发交易。
 - `tradecat auto run-loop` 的 state、ledger、archive、audit journal 默认/推荐写入 `.runtime/`；`.runtime/` 必须保持 gitignored，不能提交运行态、paper fills、JSONL archive、SQLite journal、PID、heartbeat 或 log。
+- 当用户目标是 autonomous paper/watch trader 或“纸面交易常驻”时，`auto-paper` 不是一次性验证项，而是运行交付项：`status --json` 返回 `not_running` 或 `health-report` 返回 `heartbeat_stale` 必须视为阻塞，除非用户明确要求只做代码验证；启动仍只能使用 public-readonly + paper/watch，且不得读取 Binance key、不得签名、不得真实下单。
+- 长期运行前必须先跑 `scripts/start-auto-paper.sh ops-check --json`；`paper_ops_report.v1` 的 `blocking_checks` 非空时不得启动常驻 loop。`heal --json` 只能启动或重启本地 paper/watch loop，不能绕过 context-audit、risk gate、Agent sizing/exits 或 kill switch。
 - export 的 `csv/jsonl` 必须保留原始字段；`table` 必须保持物理列 A/B/C... 与原始表头行，方便对照在线表格。
 - TUI 探针间隔必须支持 dataset 独立配置；`event_stream` 默认 3.0s，其它 tap 默认 10s。
 - 单 tap 环境变量 `TRADECAT_TERMINAL_<DATASET_KEY>_TUI_PROBE_INTERVAL` 优先于全局 `TRADECAT_TERMINAL_TUI_PROBE_INTERVAL`，命令行 `--probe-interval` 优先级最高。

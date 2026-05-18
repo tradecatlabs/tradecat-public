@@ -86,7 +86,7 @@ PY
 PYTHONPATH="$PROJECT_DIR/src" python3 project/scripts/validate_dataset_consumption_contract.py >/dev/null
 PYTHONPATH="$PROJECT_DIR/src" python3 project/scripts/validate_agent_market_context_resources.py >/dev/null
 
-bash scripts/run-tradecat.sh path event_stream --json >"$TMP_DIR/path.json"
+bash scripts/run-tradecat.sh path signal_flow --json >"$TMP_DIR/path.json"
 json_expect "$TMP_DIR/path.json" "tradecat.path_map.v1"
 
 bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" init --json >"$TMP_DIR/init.json"
@@ -147,6 +147,36 @@ context = {
         "normalized_symbol": "IRYSUSDT",
         "source_values": {"交易对": "IRYS", "5m量变化率": "1.2%", "5m额变化率": "3.4%"},
     },
+    "agent_trade_thesis": {
+        "schema": "tradecat_auto.agent_trade_thesis.v1",
+        "schema_version": "1.0.0",
+        "ok": True,
+        "symbol": "IRYSUSDT",
+        "mode": "paper_research",
+        "direction": "LONG",
+        "confidence": 0.72,
+        "holding_horizon": "intraday",
+        "entry_context": {
+            "reference_price": 0.062,
+            "price_source": "agent_supplied_mark_price",
+            "not_order_instruction": True,
+        },
+        "paper_intent": {
+            "allow_tradecat_paper_gate_to_decide": True,
+            "requested_margin_usdt": 7.5,
+            "paper_leverage": 3.0,
+            "real_order": False,
+        },
+        "invalidation_price": 0.058,
+        "take_profit_price": 0.068,
+        "max_holding_minutes": 120,
+        "exit_rationale": "Agent smoke fixture exit plan; paper/watch only.",
+        "rationale": "Synthetic public-readonly market context for local smoke validation.",
+        "risk_notes": ["synthetic fixture; not investment advice"],
+        "limitations": ["paper/watch only; no Binance key; no real order"],
+        "provenance": {"source": "agent-smoke synthetic fixture"},
+        "safety": {"real_orders": False, "signed_requests": False, "reads_api_keys": False},
+    },
     "market_data": [
         {"family": "24h_ticker", "endpoint": "/fapi/v1/ticker/24hr", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"symbol": "IRYSUSDT", "lastPrice": "0.062", "priceChangePercent": "24", "quoteVolume": "50000000"}},
         {"family": "order_book_depth", "endpoint": "/fapi/v1/depth", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"bids": [["0.06199", "100"]], "asks": [["0.06201", "120"]]}},
@@ -204,7 +234,7 @@ fi
 json_expect "$TMP_DIR/auto-paper-status.json" "tradecat_auto.paper_service_status.v1"
 json_expect_error_code "$TMP_DIR/auto-paper-status.json" "paper_service_not_running"
 
-bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe event_stream --json --no-write >"$TMP_DIR/probe.json"
+bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe signal_flow --json --no-write >"$TMP_DIR/probe.json"
 json_expect "$TMP_DIR/probe.json" "tradecat.probe_result.v1"
 
 bash scripts/run-tradecat.sh --cache-dir "$TMP_DIR/cache" probe --json --no-write >"$TMP_DIR/probe-all.json"

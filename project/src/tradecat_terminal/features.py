@@ -93,24 +93,26 @@ def _symbol_features(
     observations: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     evidence_ids = _strings(candidate.get("evidence_ids"))
-    features = [
-        {
-            "name": "anomaly_panel.presence",
-            "kind": "symbol_observation",
-            "value": True,
-            "value_type": "boolean",
-            "source_dataset_keys": ["anomaly_panel"],
-            "evidence_ids": evidence_ids,
-            "confidence": "observed",
-            "description": "Symbol appears in anomaly_panel explicit entity-key fields.",
-        }
-    ]
-    event_observation = observations.get("event_stream.activity")
-    if event_observation:
-        features.append(_context_feature("event_stream.activity_available", "event_stream", event_observation))
-    market_observation = observations.get("market_stats.context")
-    if market_observation:
-        features.append(_context_feature("market_stats.context_available", "market_stats", market_observation))
+    source_dataset_keys = _strings(candidate.get("source_dataset_keys"))
+    features: list[dict[str, Any]] = []
+    if "signal_flow" in source_dataset_keys:
+        features.append(
+            _symbol_presence_feature(
+                "signal_flow.presence",
+                "signal_flow",
+                _evidence_ids_for_dataset(evidence_ids, "signal_flow"),
+                "Symbol appears in signal_flow explicit entity-key fields.",
+            )
+        )
+    if "anomaly_panel" in source_dataset_keys:
+        features.append(
+            _symbol_presence_feature(
+                "anomaly_panel.presence",
+                "anomaly_panel",
+                _evidence_ids_for_dataset(evidence_ids, "anomaly_panel"),
+                "Symbol appears in anomaly_panel explicit entity-key fields.",
+            )
+        )
 
     return {
         "symbol": str(candidate.get("symbol") or "").strip(),
@@ -126,6 +128,19 @@ def _symbol_features(
         "confidence": str(candidate.get("confidence") or "observed"),
         "risk_flags": _symbol_risk_flags(),
         "limitations": _bundle_limitations(),
+    }
+
+
+def _symbol_presence_feature(name: str, dataset_key: str, evidence_ids: list[str], description: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "kind": "symbol_observation",
+        "value": True,
+        "value_type": "boolean",
+        "source_dataset_keys": [dataset_key],
+        "evidence_ids": evidence_ids,
+        "confidence": "observed",
+        "description": description,
     }
 
 
@@ -180,3 +195,8 @@ def _strings(value: Any) -> list[str]:
 
 def _dedupe(values: list[str]) -> list[str]:
     return list(OrderedDict((value, None) for value in values if value))
+
+
+def _evidence_ids_for_dataset(evidence_ids: list[str], dataset_key: str) -> list[str]:
+    prefix = f"{dataset_key}:"
+    return [evidence_id for evidence_id in evidence_ids if evidence_id.startswith(prefix)]

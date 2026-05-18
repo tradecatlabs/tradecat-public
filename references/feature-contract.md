@@ -53,12 +53,11 @@ bash scripts/run-tradecat.sh doctor --sync --timeout 10
 `feature_bundle.v1` reuses `analysis_report.v1` candidates and evidence. The
 current input datasets are therefore:
 
-- `event_stream`
+- `signal_flow`
 - `anomaly_panel`
-- `market_stats`
 
 The first version gets symbol identity from explicit entity-key fields in
-`anomaly_panel`. It does not infer symbols from free text.
+`signal_flow` and `anomaly_panel`. It does not infer symbols from free text.
 
 ## Output Shape
 

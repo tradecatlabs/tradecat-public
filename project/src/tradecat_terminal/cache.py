@@ -14,6 +14,7 @@ from tradecat_terminal.sheets import (
     RemoteCsvError,
     fetch_csv_body,
     find_header_row_index,
+    is_section_header_row,
     normalize_headers,
     parse_csv_matrix,
 )
@@ -395,13 +396,8 @@ def read_cached_view(
     if dataset.is_stream():
         matrix = _stream_display_matrix(cache_dir, dataset, matrix)
     header_index = find_header_row_index(matrix) if matrix else 0
-    table_columns = _table_columns(matrix, header_index)
-    table_rows = _matrix_to_table_rows(
-        dataset.key,
-        matrix[header_index + 1 :] if matrix else [],
-        table_columns,
-        start_row_index=header_index + 2,
-    )
+    table_columns = _logical_table_columns(matrix, header_index)
+    table_rows = _logical_table_rows(dataset.key, matrix, header_index)
     rows = _matrix_to_rows(dataset.key, matrix[1:], start_row_index=2)
     physical_columns = _matrix_columns(matrix)
     layout = _view_layout(matrix, header_index)
@@ -592,6 +588,55 @@ def _matrix_to_rows(dataset_key: str, matrix: list[list[str]], *, start_row_inde
     return rows
 
 
+def _logical_table_rows(dataset_key: str, matrix: list[list[str]], header_index: int) -> list[dict[str, Any]]:
+    if header_index < len(matrix) and is_section_header_row(matrix[header_index]):
+        return _sectioned_table_rows(dataset_key, matrix, start_index=header_index)
+    return _matrix_to_table_rows(
+        dataset_key,
+        matrix[header_index + 1 :] if matrix else [],
+        _table_columns(matrix, header_index),
+        start_row_index=header_index + 2,
+    )
+
+
+def _sectioned_table_rows(dataset_key: str, matrix: list[list[str]], *, start_index: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    section_title = ""
+    section_headers: list[str] = []
+    row_number = 0
+    for row_index, raw_row in enumerate(matrix[start_index:], start=start_index + 1):
+        if is_section_header_row(raw_row):
+            section_title = str(raw_row[0]).strip()
+            section_headers = normalize_headers([str(cell) for cell in raw_row[1:]])
+            continue
+        if not section_headers:
+            continue
+        section_values = [str(cell) for cell in raw_row[1:]]
+        if not any(cell.strip() for cell in section_values):
+            continue
+        padded = [*section_values, *([""] * max(0, len(section_headers) - len(section_values)))]
+        physical_width = max(len(raw_row), len(section_headers) + 1)
+        physical_values = {
+            _column_label(index): str(raw_row[index]) if index < len(raw_row) else ""
+            for index in range(physical_width)
+        }
+        raw_values = {"榜单": section_title, "榜单名": section_title, "源行号": str(row_index)}
+        raw_values.update({section_headers[index]: padded[index] for index in range(len(section_headers))})
+        row_number += 1
+        rows.append(
+            {
+                "source": dataset_key,
+                "row_index": row_index,
+                "row_number": row_number,
+                "values": physical_values,
+                "physical_values": physical_values,
+                "raw_values": raw_values,
+                "section": section_title,
+            }
+        )
+    return rows
+
+
 def _matrix_to_table_rows(
     dataset_key: str,
     matrix: list[list[str]],
@@ -623,6 +668,19 @@ def _matrix_to_table_rows(
 def _matrix_columns(matrix: list[list[str]]) -> list[str]:
     width = _matrix_width(matrix[1:] if len(matrix) > 1 else matrix)
     return [_column_label(index) for index in range(width)]
+
+
+def _logical_table_columns(matrix: list[list[str]], header_index: int) -> list[str]:
+    if header_index < len(matrix) and is_section_header_row(matrix[header_index]):
+        columns: list[str] = ["榜单", "榜单名", "源行号"]
+        for row in matrix[header_index:]:
+            if not is_section_header_row(row):
+                continue
+            for column in normalize_headers([str(cell) for cell in row[1:]]):
+                if column not in columns:
+                    columns.append(column)
+        return columns
+    return _table_columns(matrix, header_index)
 
 
 def _table_columns(matrix: list[list[str]], header_index: int) -> list[str]:

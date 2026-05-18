@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -10,6 +11,15 @@ import pytest
 from tradecat_terminal.sheets import RemoteCsvError, fetch_csv_body
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_request_module() -> object:
+    spec = importlib.util.spec_from_file_location("tradecat_request_script", PROJECT_ROOT / "scripts" / "request.py")
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 class _Response:
@@ -30,6 +40,7 @@ def test_transport_classifies_timeout(monkeypatch):
         request = staticmethod(fake_request)
 
     monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+    monkeypatch.setattr(sheets.urllib3, "ProxyManager", FakePool)
 
     with pytest.raises(RemoteCsvError) as error:
         fetch_csv_body("https://example.invalid/export.csv", timeout=1)
@@ -52,6 +63,7 @@ def test_transport_classifies_connect_failure(monkeypatch):
         request = staticmethod(fake_request)
 
     monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+    monkeypatch.setattr(sheets.urllib3, "ProxyManager", FakePool)
 
     with pytest.raises(RemoteCsvError) as error:
         fetch_csv_body("https://example.invalid/export.csv", timeout=1)
@@ -76,6 +88,7 @@ def test_transport_classifies_http_status(monkeypatch):
             return Response()
 
     monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+    monkeypatch.setattr(sheets.urllib3, "ProxyManager", FakePool)
 
     with pytest.raises(RemoteCsvError) as error:
         fetch_csv_body("https://example.invalid/export.csv", timeout=1)
@@ -101,6 +114,7 @@ def test_transport_classifies_non_retryable_http_status(monkeypatch):
             return Response()
 
     monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+    monkeypatch.setattr(sheets.urllib3, "ProxyManager", FakePool)
 
     with pytest.raises(RemoteCsvError) as error:
         fetch_csv_body("https://example.invalid/export.csv", timeout=1)
@@ -122,6 +136,7 @@ def test_transport_classifies_decode_error(monkeypatch):
             return _Response()
 
     monkeypatch.setattr(sheets.urllib3, "PoolManager", FakePool)
+    monkeypatch.setattr(sheets.urllib3, "ProxyManager", FakePool)
 
     with pytest.raises(RemoteCsvError) as error:
         fetch_csv_body("https://example.invalid/export.csv", timeout=1)
@@ -143,6 +158,29 @@ def test_parse_csv_rows_normalizes_blank_and_duplicate_headers():
             "column_3": "blank-header-value",
         }
     ]
+
+
+def test_request_parser_reads_sectioned_anomaly_panel_rows():
+    request = load_request_module()
+    matrix = request.parse_matrix(
+        '"https://dexscreener.com/x\\n数据源，异动面板",,,,,,\n'
+        "5m 异动榜,序号,交易对,5m量变化率,5m额变化率,现持仓额\n"
+        ",1,FF,-0.082%,4.866%,35965182.49\n"
+        "15m 异动榜,序号,交易对,15m量变化率,15m额变化率,现持仓额\n"
+        ",1,MORPHO,2.939%,0.854%,8882523.83\n"
+        "1h 异动榜,序号,交易对,1h量变化率,1h额变化率,现持仓额\n"
+        ",1,FIDA,7.918%,14.474%,9122768.65\n"
+    )
+    header_index = request.find_header_row_index(matrix)
+    headers = request.table_headers(matrix, header_index)
+    rows = request.data_rows(matrix, header_index, headers)
+
+    assert "15m量变化率" in headers
+    assert "1h额变化率" in headers
+    assert [row["榜单"] for row in rows] == ["5m 异动榜", "15m 异动榜", "1h 异动榜"]
+    assert rows[0]["交易对"] == "FF"
+    assert rows[1]["15m量变化率"] == "2.939%"
+    assert rows[2]["1h额变化率"] == "14.474%"
 
 
 def test_request_py_json_contract_uses_local_registry_file():
@@ -171,6 +209,34 @@ def test_request_py_json_contract_uses_local_registry_file():
         "market_snapshot",
         "anomaly_panel",
         "market_stats",
+        "signal_flow",
+        "event_stream",
+    }
+
+
+def test_request_py_defaults_to_repo_local_registry_file():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "request.py"),
+            "--datasets",
+            "--format",
+            "json",
+        ],
+        cwd=PROJECT_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["schema"] == "tradecat.request_dataset_list.v1"
+    assert {item["key"] for item in payload["datasets"]} == {
+        "market_snapshot",
+        "anomaly_panel",
+        "market_stats",
+        "signal_flow",
         "event_stream",
     }
 

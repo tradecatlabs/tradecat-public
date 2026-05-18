@@ -90,7 +90,7 @@ Blocking criteria:
 - Any advertised JSON schema or real payload validation fails.
 - Any non-interactive failure command loses its non-zero exit code.
 - Secret scan or supply-chain audit reports an unresolved finding.
-- Published install smoke cannot warm the default `event_stream` cache.
+- Published install smoke cannot warm the default `signal_flow` cache.
 
 ## Regression Checklist
 
@@ -118,4 +118,3 @@ Blocking criteria:
 | Expected | Contracted behavior |
 | Initial Cause | Product bug / test bug / environment / data drift |
 | Regression | Tests or smoke checks to rerun |
-

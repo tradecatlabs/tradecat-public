@@ -5,7 +5,7 @@ The TUI is a cache-first terminal browser over local JSON cache files.
 ## Startup
 
 - `tradecat` without arguments opens TUI.
-- Default dataset is `event_stream`.
+- Default dataset is `signal_flow`.
 - Startup must not block on remote CSV fetching.
 - Plain mode and fallback render from cache only.
 
@@ -23,8 +23,8 @@ The TUI is a cache-first terminal browser over local JSON cache files.
 - Header aliases only enter metadata, not the visible top-level table columns.
 - No frozen columns and no right-side horizontal table scrolling.
 - Width is based on real content display width; terminal viewport crops visible output.
-- `event_stream` uses a lightweight two-column path.
-- `event_stream` foreground live probing defaults to a 3 second interval and a 3 second fetch timeout, so first-run WSL or weak-network sessions do not immediately render an empty cache after a transient Google Sheets timeout.
+- `signal_flow` and `event_stream` use the lightweight stream rendering path.
+- `signal_flow` foreground live probing defaults to a 3 second interval and a 3 second fetch timeout, so first-run WSL or weak-network sessions do not immediately render an empty cache after a transient Google Sheets timeout.
 - Empty cache must be diagnosed as cold start instead of presented as a silent
   blank state: status bar uses `cold-start=warming`, `cold-start=sync-needed`,
   or `cold-start=probe-failed`.

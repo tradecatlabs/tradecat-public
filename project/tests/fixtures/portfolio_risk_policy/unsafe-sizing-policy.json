@@ -1,0 +1,33 @@
+{
+  "schema": "tradecat_auto.portfolio_risk_policy.v1",
+  "schema_version": "1.0.0",
+  "mode": "paper",
+  "enabled": true,
+  "new_entries_enabled": true,
+  "requested_margin_usdt": 10,
+  "limits": {
+    "max_daily_loss_usdt": 25
+  },
+  "provenance": {
+    "source": "portfolio_risk_policy_fixture"
+  },
+  "safety": {
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "hard_boundaries": {
+    "does_not_set_order_size": false,
+    "does_not_set_leverage": true,
+    "does_not_set_exit_plan": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false
+  },
+  "limitations": [
+    "paper/watch risk rejection policy only",
+    "no real exchange order is authorized"
+  ]
+}

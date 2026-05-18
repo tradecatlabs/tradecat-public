@@ -40,7 +40,7 @@ DEFAULT_LIVE_PROBE_INTERVAL_SECONDS = 10.0
 DEFAULT_LIVE_FETCH_TIMEOUT_SECONDS = 2.0
 DEFAULT_BACKGROUND_PROBE_INTERVAL_SECONDS = 60.0
 DEFAULT_BACKGROUND_STREAM_PROBE_INTERVAL_SECONDS = 10.0
-DEFAULT_TUI_DATASET_KEY = "event_stream"
+DEFAULT_TUI_DATASET_KEY = "signal_flow"
 TUI_DEFAULT_DATASET_ENV = "TRADECAT_TERMINAL_TUI_DEFAULT_DATASET"
 TUI_PROBE_INTERVAL_ENV = "TRADECAT_TERMINAL_TUI_PROBE_INTERVAL"
 TUI_FETCH_TIMEOUT_ENV = "TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT"
@@ -642,7 +642,7 @@ def _help_lines(*, lang: str, cache_dir: Path) -> list[str]:
         return [
             "Help",
             "←/→ or a/d/Tab: switch tap",
-            "↑/↓: switch snapshot batch for snapshot taps; scroll event_stream rows",
+            "↑/↓: switch snapshot batch for snapshot taps; scroll signal_flow rows",
             "PgUp/PgDn/Space: page rows; g/G: top/end",
             "/: search visible rows; x: clear search",
             "n/p: select row; Enter/o: open URL or Binance Futures symbol link",
@@ -654,7 +654,7 @@ def _help_lines(*, lang: str, cache_dir: Path) -> list[str]:
         return [
             "도움말",
             "←/→ 또는 a/d/Tab: 탭 전환",
-            "↑/↓: 스냅샷 탭은 배치 전환, event_stream은 행 스크롤",
+            "↑/↓: 스냅샷 탭은 배치 전환, signal_flow는 행 스크롤",
             "PgUp/PgDn/Space: 페이지 이동; g/G: 처음/끝",
             "/: 검색; x: 검색 해제",
             "n/p: 행 선택; Enter/o: URL 또는 Binance Futures 거래쌍 열기",
@@ -665,7 +665,7 @@ def _help_lines(*, lang: str, cache_dir: Path) -> list[str]:
     return [
         "帮助",
         "←/→ 或 a/d/Tab：切换 tap",
-        "↑/↓：snapshot tap 切换快照批次；event_stream 滚动事件",
+        "↑/↓：snapshot tap 切换快照批次；signal_flow 滚动信号",
         "PgUp/PgDn/Space：翻行；g/G：首尾跳转",
         "/：搜索当前表；x：清除搜索",
         "n/p：选择可见行；Enter/o：打开 URL 或交易对 Binance Futures 链接",
@@ -1128,7 +1128,7 @@ def _dataset_background_probe_interval_env_value(dataset_key: str | None) -> str
 
 
 def _default_background_probe_interval(dataset_key: str) -> float:
-    if dataset_key == "event_stream":
+    if dataset_key in {"signal_flow", "event_stream"}:
         return DEFAULT_BACKGROUND_STREAM_PROBE_INTERVAL_SECONDS
     return DEFAULT_BACKGROUND_PROBE_INTERVAL_SECONDS
 

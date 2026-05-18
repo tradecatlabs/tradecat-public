@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-audited-intent-handoff.schema.json",
+  "title": "TradeCat Auto Audited Intent Handoff",
+  "description": "Sanitized paper/watch candidate intent that a future private executor may review. This public payload is not a real order.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "mode",
+    "intent_status",
+    "audited_intent",
+    "executor_requirements",
+    "provenance",
+    "safety",
+    "hard_boundaries"
+  ],
+  "properties": {
+    "schema": {"const": "tradecat_auto.audited_intent_handoff.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "mode": {"const": "paper_watch_candidate"},
+    "intent_status": {"enum": ["CANDIDATE", "REJECTED", "WATCH_ONLY"]},
+    "audited_intent": {
+      "type": "object",
+      "required": ["source_schema", "symbol", "action", "risk_decision", "decision_trace_id"],
+      "properties": {
+        "source_schema": {"type": "string", "minLength": 1},
+        "decision_trace_id": {"type": "string", "minLength": 1},
+        "research_cycle_run_id": {"type": "string"},
+        "symbol": {"type": "string", "minLength": 1},
+        "action": {"enum": ["paper_open_candidate", "paper_close_candidate", "paper_adjust_exit_candidate", "watch_only", "rejected"]},
+        "side": {"enum": ["LONG", "SHORT", "WATCH_ONLY"]},
+        "paper_intent": {"type": "object", "additionalProperties": true},
+        "risk_decision": {"type": "object", "additionalProperties": true},
+        "error_code": {"type": ["string", "null"]},
+        "error_codes": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    },
+    "executor_requirements": {
+      "type": "object",
+      "required": ["private_executor_must_recheck_account_state", "private_executor_must_recheck_risk", "operator_approval_required"],
+      "properties": {
+        "private_executor_must_recheck_account_state": {"const": true},
+        "private_executor_must_recheck_risk": {"const": true},
+        "operator_approval_required": {"const": true},
+        "private_executor_repo_required": {"const": true}
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "safety": {
+      "type": "object",
+      "required": ["sanitized", "paper_or_watch_only", "real_orders", "signed_requests", "reads_api_keys", "contains_credentials"],
+      "properties": {
+        "sanitized": {"const": true},
+        "paper_or_watch_only": {"const": true},
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false},
+        "contains_credentials": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "hard_boundaries": {
+      "type": "object",
+      "required": ["not_a_real_order", "no_credentials", "no_signed_request", "no_account_state"],
+      "properties": {
+        "not_a_real_order": {"const": true},
+        "no_credentials": {"const": true},
+        "no_signed_request": {"const": true},
+        "no_account_state": {"const": true}
+      },
+      "additionalProperties": true
+    }
+  },
+  "not": {
+    "anyOf": [
+      {"required": ["api_key"]},
+      {"required": ["secret_key"]},
+      {"required": ["signature"]},
+      {"required": ["listen_key"]},
+      {"required": ["exchange_order_id"]},
+      {"required": ["real_order"]}
+    ]
+  },
+  "additionalProperties": true
+}

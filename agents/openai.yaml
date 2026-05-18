@@ -14,7 +14,7 @@ fast_path:
   - read agents/manifest.json
   - bash scripts/run-tradecat.sh status --json
   - bash scripts/run-tradecat.sh datasets --json
-  - bash scripts/run-tradecat.sh path event_stream --json
+  - bash scripts/run-tradecat.sh path signal_flow --json
   - bash scripts/run-tradecat.sh analyze --json
   - bash scripts/run-tradecat.sh features --json
 notes:

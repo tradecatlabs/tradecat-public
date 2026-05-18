@@ -22,6 +22,8 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 16. Stability hardening backlog and execution waves: `stability-hardening-task-tree.md`.
 17. Agent/Hermes readiness remediation backlog and execution waves: `agent-readiness-remediation-task-tree.md`.
 18. Post-signoff Agent contract maturity hardening: `agent-contract-maturity-task-tree.md`.
+19. Future real-money execution boundary: `private-executor-boundary.md`.
+20. Autonomous paper/watch operations dependency chain: `autonomous-paper-ops.md`.
 
 ## Reference Map
 
@@ -41,6 +43,8 @@ Start from `SKILL.md`. Load these references only when the task needs their cont
 - `feature-contract.md`: per-symbol feature facts contract and explicit boundary against signal, score, strategy, or execution semantics.
 - `test-strategy.md`: QA entrypoint covering product understanding, module risk matrix, automation layers, release gate, regression checklist, and defect template.
 - `quality-gate.md`: pre-delivery checklist, validation commands, root/project boundary audit, and release evidence.
+- `private-executor-boundary.md`: public TradeCat paper/watch output versus future private real-money executor responsibilities.
+- `autonomous-paper-ops.md`: long-running auto-paper dependency chain, preflight, lifecycle, health, logging, limits, recovery, and safety boundaries.
 - `release.md`: public release notes, CI evidence, fixed-ref install commands, known limits, and rollback.
 - `stability-hardening-task-tree.md`: current TP-XX stability and robustness hardening backlog, execution waves, ready leaves, gates, and validation plan.
 - `stability-hardening-task-tree.json`: machine-readable current hardening task tree spec.

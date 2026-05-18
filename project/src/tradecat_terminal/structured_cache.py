@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tradecat_terminal.registry import DatasetSpec, list_datasets
-from tradecat_terminal.sheets import find_header_row_index, normalize_headers
+from tradecat_terminal.sheets import find_header_row_index, is_section_header_row, normalize_headers
 from tradecat_terminal.state import atomic_write_json, locked_path, read_json_file
 
 DATASET_SCHEMA = "tradecat.dataset.v1"
@@ -116,9 +116,7 @@ def _structured_dataset_payload(
 ) -> dict[str, Any]:
     layout = _structured_layout(matrix)
     header_index = int(layout["physical_rows"]["header_row"]) - 1
-    raw_header = matrix[header_index] if 0 <= header_index < len(matrix) else []
-    width = max(_matrix_width(matrix[header_index:]), len(raw_header))
-    header = normalize_headers([*raw_header, *([""] * max(0, width - len(raw_header)))])
+    header = _logical_header(matrix, header_index)
     primary_key = _primary_key_for_dataset(dataset, header)
     columns = _structured_columns(header, dataset, primary_key)
     rows = _structured_rows(dataset, matrix, header, header_index=header_index, primary_key=primary_key)
@@ -269,6 +267,8 @@ def _structured_rows(
     header_index: int,
     primary_key: str | None,
 ) -> list[dict[str, Any]]:
+    if header_index < len(matrix) and is_section_header_row(matrix[header_index]):
+        return _sectioned_structured_rows(dataset, matrix, header_index=header_index, primary_key=primary_key)
     rows: list[dict[str, Any]] = []
     for raw_index, raw_row in enumerate(matrix[header_index + 1 :], start=header_index + 2):
         if not any(str(cell).strip() for cell in raw_row):
@@ -284,6 +284,62 @@ def _structured_rows(
             "values": values,
             "typed_values": typed_values,
             "links": _row_links(values),
+        }
+        event_time = _event_time(dataset, values)
+        if event_time:
+            row["event_time"] = event_time
+        rows.append(row)
+    return rows
+
+
+def _logical_header(matrix: list[list[str]], header_index: int) -> list[str]:
+    if header_index < len(matrix) and is_section_header_row(matrix[header_index]):
+        header: list[str] = ["榜单", "榜单名", "源行号"]
+        for row in matrix[header_index:]:
+            if not is_section_header_row(row):
+                continue
+            for column in normalize_headers([str(cell) for cell in row[1:]]):
+                if column not in header:
+                    header.append(column)
+        return header
+    raw_header = matrix[header_index] if 0 <= header_index < len(matrix) else []
+    width = max(_matrix_width(matrix[header_index:]), len(raw_header))
+    return normalize_headers([*raw_header, *([""] * max(0, width - len(raw_header)))])
+
+
+def _sectioned_structured_rows(
+    dataset: DatasetSpec,
+    matrix: list[list[str]],
+    *,
+    header_index: int,
+    primary_key: str | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    section_title = ""
+    section_headers: list[str] = []
+    for raw_index, raw_row in enumerate(matrix[header_index:], start=header_index + 1):
+        if is_section_header_row(raw_row):
+            section_title = str(raw_row[0]).strip()
+            section_headers = normalize_headers([str(cell) for cell in raw_row[1:]])
+            continue
+        if not section_headers:
+            continue
+        section_values = [str(cell) for cell in raw_row[1:]]
+        if not any(cell.strip() for cell in section_values):
+            continue
+        padded = [*section_values, *([""] * max(0, len(section_headers) - len(section_values)))]
+        values = {"榜单": section_title, "榜单名": section_title, "源行号": str(raw_index)}
+        values.update({section_headers[index]: padded[index] for index in range(len(section_headers))})
+        typed_values = {name: _typed_value(name, value) for name, value in values.items()}
+        key = _row_key(dataset, values, primary_key)
+        row = {
+            "row_index": raw_index,
+            "row_number": len(rows) + 1,
+            "key": key,
+            "values": values,
+            "typed_values": typed_values,
+            "links": _row_links(values),
+            "section": section_title,
         }
         event_time = _event_time(dataset, values)
         if event_time:

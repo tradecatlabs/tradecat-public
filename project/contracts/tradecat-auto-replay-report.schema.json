@@ -4,7 +4,7 @@
   "title": "TradeCat Auto Replay Report",
   "description": "Reproducible replay/backtest report from local service-cycle JSONL archive and optional paper ledger.",
   "type": "object",
-  "required": ["schema", "schema_version", "ok", "archive", "paper_backtest", "safety", "limitations"],
+  "required": ["schema", "schema_version", "ok", "archive", "decision_trace", "decision_quality", "paper_backtest", "safety", "limitations"],
   "properties": {
     "schema": {"const": "tradecat_auto.replay_report.v1"},
     "schema_version": {"const": "1.0.0"},
@@ -31,6 +31,12 @@
     },
     "paper_backtest": {
       "$ref": "tradecat-auto-paper-backtest-report.schema.json"
+    },
+    "decision_trace": {
+      "$ref": "tradecat-auto-decision-trace-report.schema.json"
+    },
+    "decision_quality": {
+      "$ref": "tradecat-auto-decision-quality-report.schema.json"
     },
     "safety": {
       "type": "object",

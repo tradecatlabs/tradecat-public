@@ -272,6 +272,49 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertIn("agent_sizing_required", report["risk_decision"]["reasons"])
         self.assertEqual(report["paper_execution"]["status"], "REJECTED")
 
+    def test_context_with_sizing_but_missing_agent_exit_plan_is_rejected_before_paper_open(self) -> None:
+        context = sample_context()
+        context["market_data"][1]["data"] = {"bids": [["0.06190", "100"]], "asks": [["0.06195", "120"]]}
+        report = build_paper_report_from_agent_market_context(
+            context,
+            mode="paper",
+            requested_margin_usdt=7.5,
+            paper_leverage=1.0,
+        )
+
+        self.assertEqual(report["error_code"], "agent_exit_plan_required")
+        self.assertIn("agent_exit_plan_required", report["risk_decision"]["reasons"])
+        self.assertEqual(report["paper_execution"]["status"], "REJECTED")
+        self.assertEqual(report["strategy_intent"]["exit_plan_source"], "agent_required_missing")
+        self.assertFalse(report["real_orders"])
+
+    def test_context_embedded_agent_trade_thesis_opens_paper_with_sizing_and_exit_plan(self) -> None:
+        context = sample_context()
+        context["market_data"][1]["data"] = {"bids": [["0.06190", "100"]], "asks": [["0.06195", "120"]]}
+        context["agent_trade_thesis"] = {
+            "schema": "tradecat_auto.agent_trade_thesis.v1",
+            "schema_version": "1.0.0",
+            "paper_intent": {
+                "requested_margin_usdt": 7.5,
+                "paper_leverage": 2.0,
+            },
+            "invalidation_price": 0.055,
+            "take_profit_price": 0.08,
+            "max_holding_minutes": 45,
+            "exit_rationale": "agent supplied invalidation and target",
+        }
+
+        report = build_paper_report_from_agent_market_context(context, mode="paper")
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["paper_sizing"]["source"], "agent_trade_thesis.paper_intent")
+        self.assertEqual(report["paper_execution"]["status"], "OPENED")
+        self.assertEqual(report["paper_execution"]["sizing_source"], "agent_trade_thesis.paper_intent")
+        self.assertEqual(report["paper_execution"]["stop_loss_price"], 0.055)
+        self.assertEqual(report["paper_execution"]["take_profit_price"], 0.08)
+        self.assertEqual(report["paper_execution"]["max_holding_minutes"], 45.0)
+        self.assertEqual(report["paper_execution"]["exit_plan_source"], "agent_trade_thesis")
+
     def test_context_audit_cli_reads_json_file_and_returns_audit_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "context.json"

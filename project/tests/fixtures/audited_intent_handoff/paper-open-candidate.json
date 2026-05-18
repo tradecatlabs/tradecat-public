@@ -1,0 +1,52 @@
+{
+  "schema": "tradecat_auto.audited_intent_handoff.v1",
+  "schema_version": "1.0.0",
+  "mode": "paper_watch_candidate",
+  "intent_status": "CANDIDATE",
+  "audited_intent": {
+    "source_schema": "tradecat_auto.run_once_report.v1",
+    "decision_trace_id": "trace-001",
+    "research_cycle_run_id": "cycle-001",
+    "symbol": "IRYSUSDT",
+    "action": "paper_open_candidate",
+    "side": "LONG",
+    "paper_intent": {
+      "requested_margin_usdt": 10,
+      "paper_leverage": 2,
+      "real_order": false
+    },
+    "risk_decision": {
+      "schema": "tradecat_auto.risk_decision.v1",
+      "decision": "ALLOW",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false
+    },
+    "error_code": null,
+    "error_codes": []
+  },
+  "executor_requirements": {
+    "private_executor_must_recheck_account_state": true,
+    "private_executor_must_recheck_risk": true,
+    "operator_approval_required": true,
+    "private_executor_repo_required": true
+  },
+  "provenance": {
+    "source": "audited_intent_handoff_fixture",
+    "generated_at": "2026-05-18T00:00:00Z"
+  },
+  "safety": {
+    "sanitized": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "contains_credentials": false
+  },
+  "hard_boundaries": {
+    "not_a_real_order": true,
+    "no_credentials": true,
+    "no_signed_request": true,
+    "no_account_state": true
+  }
+}

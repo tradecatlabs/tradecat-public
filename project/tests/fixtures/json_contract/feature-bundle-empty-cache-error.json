@@ -8,11 +8,11 @@
     "requested": "24h",
     "mode": "latest_cached",
     "source_schema": "tradecat.analysis_report.v1",
-    "dataset_keys": ["event_stream", "anomaly_panel", "market_stats"]
+    "dataset_keys": ["signal_flow", "anomaly_panel"]
   },
   "dataset_freshness": [
     {
-      "dataset_key": "event_stream",
+      "dataset_key": "signal_flow",
       "ok": false,
       "cache_state": "empty",
       "row_count": 0

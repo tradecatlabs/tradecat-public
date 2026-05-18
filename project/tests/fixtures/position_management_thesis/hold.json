@@ -1,0 +1,34 @@
+{
+  "schema": "tradecat_auto.position_management_thesis.v1",
+  "schema_version": "1.0.0",
+  "ok": true,
+  "mode": "paper",
+  "action": "hold",
+  "symbol": "IRYSUSDT",
+  "reason": "Agent sees no explicit reason to change the local paper position.",
+  "error_code": null,
+  "provenance": {
+    "source": "position_management_thesis_fixture",
+    "research_cycle_run_id": "cycle-001",
+    "agent": "hermes",
+    "generated_at": "2026-05-18T00:00:00Z"
+  },
+  "safety": {
+    "public_readonly_market_data": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "hard_boundaries": {
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "limitations": [
+    "paper/watch position management only",
+    "not a Binance account, order, leverage, or margin mutation instruction"
+  ]
+}

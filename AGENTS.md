@@ -54,6 +54,7 @@ tradecat-public/
 |   |-- constraints.txt
 |   |-- contracts/
 |   |-- resources/
+|   |-- tasks/
 |   |-- scripts/
 |   |-- src/
 |   |   |-- tradecat_terminal/
@@ -97,6 +98,7 @@ tradecat-public/
 - `pyproject.toml` / `constraints.txt` / `Makefile`：Python 项目元数据、依赖锁定口径与开发入口。
 - `contracts/`：公开 JSON Schema 草案文件，用于外部工具校验 Agent/CLI 契约。
 - `resources/`：项目内自包含参考资源；当前包含 Binance Agent market context 的只读 skill/API 快照与 provenance manifest。
+- `tasks/`：项目内任务治理目录；用于承载 auto-tasks 生成的长期任务容器、任务树、执行波次与验收证据，不属于运行态。
 - `install.*` / `uninstall.*`：用户安装与卸载入口。
 - `scripts/`：项目级脚本，包含 registry/CSV 与 dataset consumption contract 校验入口。
 - `src/tradecat_terminal/`：TradeCat CLI / TUI / analysis / feature facts 源码，以及 dataset registry 与 dataset consumption contract 机器资源。

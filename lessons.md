@@ -39,3 +39,11 @@
 - 规则：远端错误必须 typed；本地写入必须 filelock + atomic replace；用户配置必须 `.bak`；metadata schema 必须有 migrations；doctor 必须能产出 public-safe support bundle。
 - 防复发：新增运行态模块时先判断是否属于状态边界；属于则复用 `state.py`、`diagnostics.py`、`migrations.py`，禁止复制私有锁和私有错误格式。
 - 验证：每次改 cache/settings/sync/doctor，必须覆盖 typed error、corrupt file、migration status、support bundle 和 root verify。
+
+## 2026-05-18 Autonomous Paper Trader Must Be Resident When Requested
+
+- 现象：自主纸面交易任务完成后只做了实现和验证，`auto-paper` 服务没有常驻运行，状态为 `not_running`。
+- 本质：工程交付和运行交付是两件事；如果用户目标是 autonomous trader，纸面 run-loop 停止就等于目标未进入运行态。
+- 规则：当任务目标明确包含“持续纸面交易 / autonomous paper trader / 常驻 loop”时，`paper_service_not_running` 必须作为阻塞状态处理，不能在汇报中当作普通信息略过。
+- 防复发：交付前必须检查 `bash project/scripts/start-auto-paper.sh status --json` 和 `tradecat auto health-report --json`；若需要常驻，应由 operator/Hermes 明确执行 `start` 或 systemd/timer keepalive，并持续检查 heartbeat。
+- 验证：常驻目标的验收必须包含 `running=true`、heartbeat 未 stale、`real_orders=false`、`signed_requests=false`、`reads_api_keys=false`，且所有运行态只在 gitignored `.runtime/auto-paper/`。

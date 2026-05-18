@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-position-management-thesis.schema.json",
+  "title": "TradeCat Auto Position Management Thesis",
+  "description": "Agent/Hermes supplied paper/watch position management intent. It can only manage the local TradeCat paper ledger and must never express real exchange orders.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "mode",
+    "action",
+    "reason",
+    "error_code",
+    "provenance",
+    "safety",
+    "hard_boundaries",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {"const": "tradecat_auto.position_management_thesis.v1"},
+    "schema_version": {"const": "1.0.0"},
+    "ok": {"type": "boolean"},
+    "mode": {"enum": ["paper", "watch"]},
+    "action": {"enum": ["hold", "noop", "close", "adjust_exit", "add", "reduce"]},
+    "symbol": {"type": "string", "minLength": 1},
+    "position_ref": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "position_id": {"type": "string", "minLength": 1},
+        "execution_id": {"type": "string", "minLength": 1},
+        "symbol": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "reason": {"type": "string", "minLength": 1},
+    "rationale": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "close_intent": {
+      "type": "object",
+      "required": ["close_fraction"],
+      "properties": {
+        "close_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "mark_price": {"type": "number", "exclusiveMinimum": 0},
+        "mark_price_source": {"type": "string"},
+        "agent_authorized": {"const": true},
+        "real_order": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "exit_update": {
+      "type": "object",
+      "properties": {
+        "stop_loss_price": {"type": "number", "exclusiveMinimum": 0},
+        "take_profit_price": {"type": "number", "exclusiveMinimum": 0},
+        "max_holding_minutes": {"type": "number", "exclusiveMinimum": 0},
+        "exit_rationale": {"type": "string"},
+        "agent_authorized": {"const": true},
+        "real_order": {"const": false}
+      },
+      "additionalProperties": true,
+      "anyOf": [
+        {"required": ["stop_loss_price"]},
+        {"required": ["take_profit_price"]},
+        {"required": ["max_holding_minutes"]}
+      ]
+    },
+    "paper_intent": {
+      "type": "object",
+      "properties": {
+        "side": {"enum": ["LONG", "SHORT"]},
+        "requested_margin_usdt": {"type": "number", "exclusiveMinimum": 0},
+        "requested_notional_usdt": {"type": "number", "exclusiveMinimum": 0},
+        "paper_leverage": {"type": "number", "exclusiveMinimum": 0},
+        "requested_leverage": {"type": "number", "exclusiveMinimum": 0},
+        "leverage": {"type": "number", "exclusiveMinimum": 0},
+        "reduce_fraction": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "reduce_notional_usdt": {"type": "number", "exclusiveMinimum": 0},
+        "reduce_quantity": {"type": "number", "exclusiveMinimum": 0},
+        "agent_authorized": {"const": true},
+        "real_order": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "risk_notes": {"type": "array", "items": {"type": "string"}},
+    "next_action": {"type": "string"},
+    "error_code": {"type": ["string", "null"]},
+    "provenance": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "research_cycle_run_id": {"type": "string"},
+        "agent": {"type": "string"},
+        "generated_at": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "public_readonly_market_data",
+        "paper_or_watch_only",
+        "real_orders",
+        "signed_requests",
+        "reads_api_keys",
+        "binance_account_state"
+      ],
+      "properties": {
+        "public_readonly_market_data": {"const": true},
+        "paper_or_watch_only": {"const": true},
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false},
+        "binance_account_state": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "hard_boundaries": {
+      "type": "object",
+      "required": ["real_orders", "signed_requests", "reads_api_keys", "binance_account_state"],
+      "properties": {
+        "real_orders": {"const": false},
+        "signed_requests": {"const": false},
+        "reads_api_keys": {"const": false},
+        "binance_account_state": {"const": false}
+      },
+      "additionalProperties": true
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string"},
+      "contains": {"type": "string", "pattern": "paper|watch|no real|no Binance"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"action": {"const": "close"}}, "required": ["action"]},
+      "then": {"required": ["position_ref", "close_intent"]}
+    },
+    {
+      "if": {"properties": {"action": {"const": "adjust_exit"}}, "required": ["action"]},
+      "then": {"required": ["position_ref", "exit_update"]}
+    },
+    {
+      "if": {"properties": {"action": {"const": "add"}}, "required": ["action"]},
+      "then": {
+        "required": ["symbol", "paper_intent"],
+        "properties": {
+          "paper_intent": {
+            "required": ["side", "agent_authorized", "real_order"],
+            "anyOf": [
+              {"required": ["requested_margin_usdt", "paper_leverage"]},
+              {"required": ["requested_margin_usdt", "requested_leverage"]},
+              {"required": ["requested_margin_usdt", "leverage"]},
+              {"required": ["requested_notional_usdt", "paper_leverage"]},
+              {"required": ["requested_notional_usdt", "requested_leverage"]},
+              {"required": ["requested_notional_usdt", "leverage"]}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"action": {"const": "reduce"}}, "required": ["action"]},
+      "then": {
+        "required": ["position_ref", "paper_intent"],
+        "properties": {
+          "paper_intent": {
+            "required": ["agent_authorized", "real_order"],
+            "anyOf": [
+              {"required": ["reduce_fraction"]},
+              {"required": ["reduce_notional_usdt"]},
+              {"required": ["reduce_quantity"]}
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

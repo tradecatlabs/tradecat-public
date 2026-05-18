@@ -64,19 +64,20 @@ def validate_registry_file() -> list[str]:
             continue
         workbook_key = raw.get("workbook_key")
         gid = raw.get("gid")
+        tab_name = raw.get("tab_name")
         if workbook_key not in payload.get("workbooks", {}):
             errors.append(f"dataset {key} references unknown workbook: {workbook_key}")
-        if raw.get("active", True) and not gid:
-            errors.append(f"active dataset {key} must define gid")
+        if raw.get("active", True) and not gid and not tab_name:
+            errors.append(f"active dataset {key} must define gid or tab_name")
         if raw.get("data_mode") not in ("snapshot", "stream"):
             errors.append(f"dataset {key} data_mode must be snapshot or stream")
         display_names = raw.get("display_names")
         if not isinstance(display_names, dict) or not REQUIRED_LANGS.issubset(display_names):
             errors.append(f"dataset {key} display_names must include zh/en/ko")
-        if gid:
-            export_key = (str(workbook_key), str(gid))
+        if gid or tab_name:
+            export_key = (str(workbook_key), str(gid or f"sheet:{tab_name}"))
             if export_key in seen_export_keys:
-                errors.append(f"dataset {key} duplicates workbook/gid: {workbook_key}/{gid}")
+                errors.append(f"dataset {key} duplicates workbook export key: {workbook_key}/{export_key[1]}")
             seen_export_keys.add(export_key)
     return errors
 

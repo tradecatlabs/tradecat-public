@@ -15,6 +15,8 @@ def open_paper_position(
     paper_leverage: float | None = None,
     sizing_source: str = "agent_supplied_or_explicit",
     strategy_intent: dict[str, Any] | None = None,
+    allow_multiple_open_positions_per_symbol: bool = False,
+    max_concurrent_positions_per_symbol: int | None = None,
 ) -> dict[str, Any]:
     if risk_decision.get("decision") != "ALLOW":
         return _rejected(signal, risk_decision, ["risk_decision_not_allow"])
@@ -41,10 +43,15 @@ def open_paper_position(
     exit_plan = _exit_plan_from_strategy_intent(strategy_intent)
     opened_at = _now_iso()
     symbol = str(signal.get("symbol") or enrichment.get("symbol") or "")
+    max_concurrent = _positive_int(max_concurrent_positions_per_symbol)
+    allow_multiple = bool(allow_multiple_open_positions_per_symbol or (max_concurrent is not None and max_concurrent > 1))
     return {
         "schema": "tradecat_auto.paper_execution_report.v1",
         "schema_version": "1.0.0",
         "ok": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
         "status": "OPENED",
         "paper_execution_id": _execution_id(symbol, side, opened_at, entry_price, quantity, notional),
         "mode": "paper",
@@ -66,7 +73,10 @@ def open_paper_position(
         "exit_management": exit_plan["exit_management"],
         "exit_plan_source": exit_plan["exit_plan_source"],
         "exit_rationale": exit_plan["exit_rationale"],
+        "allow_multiple_open_positions_per_symbol": allow_multiple,
+        "max_concurrent_positions_per_symbol": max_concurrent,
         "risk_decision": risk_decision,
+        "safety": _safety_boundary(),
         "limitations": ["paper simulation only; no exchange order was placed"],
     }
 
@@ -100,12 +110,16 @@ def _rejected(signal: dict[str, Any], risk_decision: dict[str, Any], reasons: li
         "schema": "tradecat_auto.paper_execution_report.v1",
         "schema_version": "1.0.0",
         "ok": False,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
         "status": "REJECTED",
         "mode": risk_decision.get("mode", "paper"),
         "symbol": str(signal.get("symbol") or ""),
         "side": signal.get("direction", "WATCH_ONLY"),
         "reasons": reasons,
         "risk_decision": risk_decision,
+        "safety": _safety_boundary(),
         "limitations": ["paper simulation only; no exchange order was placed"],
     }
 
@@ -142,9 +156,30 @@ def _positive_float(value: Any) -> float | None:
     return numeric if numeric is not None and numeric > 0 else None
 
 
+def _positive_int(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if numeric > 0 else None
+
+
 def _execution_id(symbol: str, side: str, opened_at: str, entry_price: float, quantity: float, notional: float) -> str:
     material = f"{symbol}\n{side}\n{opened_at}\n{entry_price:.12f}\n{quantity:.12f}\n{notional:.12f}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    }
 
 
 def _now_iso() -> str:

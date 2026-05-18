@@ -47,9 +47,8 @@ bash scripts/run-tradecat.sh doctor --sync --timeout 10
 
 `analysis_report.v1` reads only the latest local cache projections for:
 
-- `event_stream`
+- `signal_flow`
 - `anomaly_panel`
-- `market_stats`
 
 It does not fetch public network data. If fresher data is required, the caller
 must explicitly run `sync`, `sync-all`, or `doctor --sync` first.
@@ -69,8 +68,8 @@ The report exposes:
 - `limitations`: human-readable boundaries.
 
 Candidate symbols are observations, not recommendations. v1 only extracts them
-from explicit entity-key fields in `anomaly_panel`; it does not guess symbols
-from free text.
+from explicit entity-key fields in `signal_flow` and `anomaly_panel`; it does
+not guess symbols from free text.
 
 ## Boundaries
 

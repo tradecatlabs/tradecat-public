@@ -7,12 +7,12 @@
   "analysis_window": {
     "requested": "24h",
     "mode": "latest_cached",
-    "dataset_keys": ["event_stream", "anomaly_panel", "market_stats"],
+    "dataset_keys": ["signal_flow", "anomaly_panel"],
     "note": "analysis_report.v1 reads only the latest local cache projections; it does not fetch network data."
   },
   "dataset_freshness": [
     {
-      "dataset_key": "event_stream",
+      "dataset_key": "signal_flow",
       "ok": false,
       "cache_state": "empty",
       "row_count": 0,
@@ -32,17 +32,6 @@
       "data_mode": "snapshot",
       "quality_tier": "public_sheet_best_effort",
       "time_grain": "latest_snapshot"
-    },
-    {
-      "dataset_key": "market_stats",
-      "ok": false,
-      "cache_state": "empty",
-      "row_count": 0,
-      "fetched_at": "",
-      "content_hash": "",
-      "data_mode": "snapshot",
-      "quality_tier": "public_sheet_best_effort",
-      "time_grain": "aggregated_window"
     }
   ],
   "observations": [],

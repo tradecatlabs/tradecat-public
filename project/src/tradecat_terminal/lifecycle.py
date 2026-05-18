@@ -64,7 +64,7 @@ def doctor_local_store(
     if payload.get("missing_dataset_count"):
         if payload.get("ready_dataset_count") == 0:
             warnings.insert(0, "首次缓存为空；TUI 会先显示 empty-cache，并在后台继续探测远端")
-            repair_hints.append("弱网可执行 tradecat config set tui_fetch_timeout.event_stream 3")
+            repair_hints.append("弱网可执行 tradecat config set tui_fetch_timeout.signal_flow 3")
         repair_hints.append("执行 tradecat sync-all 拉取全部 active dataset")
     failed_syncs = [result for result in sync_results if not result.get("ok")]
     if failed_syncs:

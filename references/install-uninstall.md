@@ -21,13 +21,13 @@ The bundled project keeps installer logic in `project/install.sh` and `project/i
   in place; installer must not follow old symlink targets.
 - Run `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`.
 - Run initial `tradecat sync-all` best-effort unless skipped.
-- If initial `sync-all` fails, fall back to `tradecat sync event_stream`
+- If initial `sync-all` fails, fall back to `tradecat sync signal_flow`
   so the default no-argument TUI has a useful first cache whenever the default
   dataset can be fetched.
 - CI validates both local checkout installers and published
   `raw.githubusercontent.com/.../v0.1.3/...` installers. Published installer
   smoke must not set `TRADECAT_INSTALL_SKIP_SYNC`; it must assert that
-  `event_stream` is ready after install or explicit `doctor --sync` repair.
+  `signal_flow` is ready after install or explicit `doctor --sync` repair.
 - Published installer smoke keeps retry logs, status JSON, and support bundle
   artifacts so live Google Sheets/network failures can be diagnosed separately
   from code regressions.

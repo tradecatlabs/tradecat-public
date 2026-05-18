@@ -40,7 +40,7 @@
             "type": "string"
           },
           "gid": {
-            "type": ["string", "integer"]
+            "type": ["string", "integer", "null"]
           },
           "consumption_contract": {
             "type": "object",

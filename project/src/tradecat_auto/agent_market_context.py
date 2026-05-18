@@ -32,6 +32,8 @@ ALLOWED_ENDPOINTS_BY_FAMILY: dict[str, set[str]] = {
     "taker_buy_sell_volume": {"/futures/data/takerlongshortRatio"},
 }
 FORBIDDEN_ENDPOINTS = {
+    "/api/v3/account",
+    "/api/v3/order",
     "/fapi/v1/accountConfig",
     "/fapi/v1/adlQuantile",
     "/fapi/v1/algoOrder",
@@ -68,8 +70,10 @@ FORBIDDEN_ENDPOINTS = {
     "/fapi/v3/account",
     "/fapi/v3/balance",
     "/fapi/v3/positionRisk",
+    "/sapi/",
 }
 FORBIDDEN_ENDPOINT_MARKERS = (
+    "/sapi/",
     "/account",
     "/balance",
     "/order",

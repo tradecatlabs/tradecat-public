@@ -13,7 +13,7 @@ Current development happens in `/home/lenovo/.projects/cat/tradecat-public`. Loc
 
 Trigger when any of these applies:
 - The user asks to run, install, debug, validate, or modify TradeCat public terminal behavior.
-- The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `event_stream`, CLI/TUI, installer, uninstall, one-shot request script, Binance public market context, replay report, audit journal, production paper health/daily report, or `tradecat auto context-audit/run-context`.
+- The task mentions TradeCat cache, dataset registry, Google Sheets CSV, `signal_flow`, `event_stream`, CLI/TUI, installer, uninstall, one-shot request script, Binance public market context, replay report, audit journal, production paper health/daily report, or `tradecat auto context-audit/run-context`.
 - The task needs the project contracts for cache-first TUI, local JSON snapshots, structured `latest.*` files, or zero-install public requests.
 - The task asks to reorganize, audit, or optimize the Skill wrapper, root files, references, `AGENTS.md`, or the `project/` project boundary.
 
@@ -48,7 +48,7 @@ hermes -s tradecat-public
 python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
-bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh path signal_flow --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
 ```
@@ -106,14 +106,14 @@ PYTHONPATH=src python3 -m tradecat_auto.cli paper-report --json
 
 ```bash
 python3 project/scripts/request.py --datasets
-python3 project/scripts/request.py event_stream --format jsonl --limit 5
+python3 project/scripts/request.py signal_flow --format jsonl --limit 5
 ```
 
 ### Inspect Cache Paths
 
 ```bash
 cd project
-PYTHONPATH=src python3 -m tradecat_terminal path event_stream --json
+PYTHONPATH=src python3 -m tradecat_terminal path signal_flow --json
 ```
 
 ### Audit The Root Boundary
@@ -247,9 +247,9 @@ tradecat-public/
 
 ### Example 2: Inspect Local Cache Paths
 
-- Input: "Show me where event_stream cache files live."
+- Input: "Show me where signal_flow cache files live."
 - Steps:
-  1. Run `bash scripts/run-tradecat.sh path event_stream --json`.
+  1. Run `bash scripts/run-tradecat.sh path signal_flow --json`.
   2. Read `latest_json`, `latest_jsonl`, `latest_csv`, and `stream_events`.
 - Expected output / acceptance: paths point under `project/.tradecat/cache` unless `TRADECAT_CACHE_DIR` overrides them.
 
@@ -268,9 +268,10 @@ tradecat-public/
 - Input: "Use the Binance context file from an Agent and run a paper report."
 - Steps:
   1. Read `references/hermes-agent-guide.md` and `references/agent-contract.md`.
-  2. Run `bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json`.
+  2. If the Agent is running an autonomous research loop, produce or inspect `tradecat_auto.agent_research_cycle.v1` using `project/contracts/tradecat-auto-agent-research-cycle.schema.json`; this envelope is research/paper intent only, not a real order.
+  3. Run `bash scripts/run-tradecat.sh auto context-audit --input /path/to/agent-market-context.json --json`.
 Only if audit `ok=true` and Agent sizing is explicit, run `bash scripts/run-tradecat.sh auto run-context --input /path/to/agent-market-context.json --mode paper --agent-margin-usdt <agent_margin_usdt> --paper-leverage <agent_leverage> --json`; without sizing, expect `agent_sizing_required` instead of a paper open. TradeCat does not set a default sizing cap; `--paper-margin-budget-usdt` is optional only when an operator explicitly wants an extra paper cap.
-  4. For replay, run `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
+  5. For replay, run `bash scripts/run-tradecat.sh auto replay-report --archive-path .runtime/cycles.jsonl --ledger-path .runtime/paper_ledger.json --json`.
 - Expected output / acceptance: input stays public/read-only, credentials/signatures/account/order endpoints are rejected, and output remains paper/watch with no real orders.
 
 ### Example 5: Optimize The Skill Wrapper

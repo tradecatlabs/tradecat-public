@@ -6,14 +6,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from tradecat_auto.paper_ledger import (
     apply_paper_execution,
+    apply_position_management_thesis,
     default_paper_ledger,
     load_paper_ledger,
     mark_to_market,
     paper_account_state,
+    paper_ledger_summary,
     save_paper_ledger,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 OPEN_LONG = {
     "schema": "tradecat_auto.paper_execution_report.v1",
@@ -31,6 +37,33 @@ OPEN_LONG = {
     "sizing_source": "agent_supplied_test_fixture",
     "stop_loss_price": 97.0,
     "take_profit_price": 106.0,
+    }
+
+
+POSITION_THESIS_BASE = {
+    "schema": "tradecat_auto.position_management_thesis.v1",
+    "schema_version": "1.0.0",
+    "ok": True,
+    "mode": "paper",
+    "symbol": "IRYSUSDT",
+    "reason": "Agent supplied explicit local paper position management.",
+    "error_code": None,
+    "provenance": {"source": "test_position_management", "research_cycle_run_id": "cycle-paper-1"},
+    "safety": {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    },
+    "hard_boundaries": {
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    },
+    "limitations": ["paper/watch only; no real Binance order"],
 }
 
 
@@ -212,6 +245,94 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(updated["last_rejected_execution"]["reason"], "position_already_open_for_symbol")
         self.assertIn("exec-2", updated["ignored_execution_ids"])
 
+    def test_apply_open_execution_allows_same_symbol_multi_position_only_with_agent_authorization(self) -> None:
+        ledger = apply_paper_execution(
+            default_paper_ledger(initial_balance_usdt=1000.0),
+            OPEN_LONG,
+            fee_bps=0.0,
+            now_iso="2026-05-14T00:00:00Z",
+        )
+        second = {
+            **copy.deepcopy(OPEN_LONG),
+            "paper_execution_id": "exec-2",
+            "entry_price": 101.0,
+            "allow_multiple_open_positions_per_symbol": True,
+            "max_concurrent_positions_per_symbol": 2,
+        }
+
+        multi = apply_paper_execution(ledger, second, fee_bps=0.0, now_iso="2026-05-14T00:00:01Z")
+
+        self.assertIn("IRYSUSDT", multi["open_positions"])
+        self.assertEqual(len(multi["open_positions"]), 2)
+        self.assertEqual([position["symbol"] for position in multi["open_positions"].values()].count("IRYSUSDT"), 2)
+        self.assertEqual(paper_ledger_summary(multi)["open_positions_count"], 2)
+        self.assertEqual(len(paper_account_state(multi)["open_positions"]), 2)
+
+        third = {
+            **copy.deepcopy(OPEN_LONG),
+            "paper_execution_id": "exec-3",
+            "entry_price": 102.0,
+            "allow_multiple_open_positions_per_symbol": True,
+            "max_concurrent_positions_per_symbol": 2,
+        }
+        rejected = apply_paper_execution(multi, third, fee_bps=0.0, now_iso="2026-05-14T00:00:02Z")
+        self.assertEqual(len(rejected["open_positions"]), 2)
+        self.assertEqual(rejected["last_rejected_execution"]["reason"], "max_concurrent_positions_per_symbol_reached")
+        self.assertIn("exec-3", rejected["ignored_execution_ids"])
+
+        closed = mark_to_market(rejected, {"IRYSUSDT": 107.0}, fee_bps=0.0, now_iso="2026-05-14T00:05:00Z")
+        self.assertEqual(closed["open_positions"], {})
+        self.assertEqual(len(closed["closed_positions"]), 2)
+        self.assertEqual(len(closed["fills"]), 4)
+        self.assertEqual({position["close_reason"] for position in closed["closed_positions"]}, {"take_profit"})
+        self.assertEqual([position["symbol"] for position in closed["closed_positions"]].count("IRYSUSDT"), 2)
+
+    def test_position_management_with_position_id_does_not_update_other_same_symbol_positions(self) -> None:
+        first = {
+            **copy.deepcopy(OPEN_LONG),
+            "paper_execution_id": "exec-1",
+            "allow_multiple_open_positions_per_symbol": True,
+            "max_concurrent_positions_per_symbol": 2,
+        }
+        second = {
+            **copy.deepcopy(OPEN_LONG),
+            "paper_execution_id": "exec-2",
+            "entry_price": 101.0,
+            "allow_multiple_open_positions_per_symbol": True,
+            "max_concurrent_positions_per_symbol": 2,
+        }
+        ledger = apply_paper_execution(default_paper_ledger(), first, fee_bps=0.0, now_iso="2026-05-14T00:00:00Z")
+        ledger = apply_paper_execution(ledger, second, fee_bps=0.0, now_iso="2026-05-14T00:00:01Z")
+        positions = list(ledger["open_positions"].values())
+        target = positions[1]
+
+        report = apply_position_management_thesis(
+            ledger,
+            {
+                **copy.deepcopy(POSITION_THESIS_BASE),
+                "action": "adjust_exit",
+                "position_ref": {"position_id": target["position_id"], "symbol": target["symbol"]},
+                "exit_update": {
+                    "stop_loss_price": 98.0,
+                    "take_profit_price": 109.0,
+                    "max_holding_minutes": 30,
+                    "agent_authorized": True,
+                    "real_order": False,
+                },
+            },
+            now_iso="2026-05-14T00:00:02Z",
+        )
+
+        updated = report["_ledger"]
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["position_id"], target["position_id"])
+        changed = [
+            position for position in updated["open_positions"].values()
+            if position.get("stop_loss_price") == 98.0 and position.get("take_profit_price") == 109.0
+        ]
+        self.assertEqual(len(changed), 1)
+        self.assertEqual(changed[0]["position_id"], target["position_id"])
+
     def test_paper_account_state_is_derived_from_local_ledger_only(self) -> None:
         ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
 
@@ -219,6 +340,11 @@ class PaperLedgerTests(unittest.TestCase):
 
         self.assertEqual(state["schema"], "tradecat_auto.paper_account_state.v1")
         self.assertEqual(state["source"], "local_tradecat_paper_ledger")
+        self.assertEqual(state["provenance"]["source"], "local_tradecat_paper_ledger")
+        self.assertFalse(state["safety"]["real_orders"])
+        self.assertFalse(state["safety"]["signed_requests"])
+        self.assertFalse(state["safety"]["reads_api_keys"])
+        self.assertFalse(state["safety"]["binance_account_state"])
         self.assertFalse(state["hard_boundaries"]["real_orders"])
         self.assertFalse(state["hard_boundaries"]["signed_requests"])
         self.assertFalse(state["hard_boundaries"]["reads_api_keys"])
@@ -226,6 +352,93 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(state["recent_paper_orders"][0]["schema"], "tradecat_auto.paper_order.v1")
         self.assertFalse(state["recent_paper_orders"][0]["real_order"])
         self.assertIn("not Binance account", state["limitations"][1])
+        schema = json.loads((PROJECT_ROOT / "contracts" / "tradecat-auto-paper-account-state.schema.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(Draft202012Validator(schema).iter_errors(state)), [])
+
+    def test_position_management_hold_noop_does_not_mutate_ledger(self) -> None:
+        ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
+        thesis = {**copy.deepcopy(POSITION_THESIS_BASE), "action": "hold"}
+
+        report = apply_position_management_thesis(ledger, thesis, now_iso="2026-05-14T00:10:00Z")
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["status"], "HELD")
+        self.assertFalse(report["ledger_mutated"])
+        self.assertEqual(report["_ledger"]["open_positions"], ledger["open_positions"])
+        self.assertNotIn("position_management_actions", report["_ledger"])
+
+    def test_position_management_adjust_exit_updates_only_explicit_paper_exit_fields(self) -> None:
+        ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
+        position_id = ledger["open_positions"]["IRYSUSDT"]["position_id"]
+        thesis = {
+            **copy.deepcopy(POSITION_THESIS_BASE),
+            "action": "adjust_exit",
+            "position_ref": {"position_id": position_id, "symbol": "IRYSUSDT"},
+            "exit_update": {
+                "stop_loss_price": 98.5,
+                "take_profit_price": 109.0,
+                "max_holding_minutes": 45,
+                "exit_rationale": "Agent tightened paper exits.",
+                "agent_authorized": True,
+                "real_order": False,
+            },
+        }
+
+        report = apply_position_management_thesis(ledger, thesis, now_iso="2026-05-14T00:10:00Z")
+        position = report["_ledger"]["open_positions"]["IRYSUSDT"]
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["status"], "APPLIED")
+        self.assertTrue(report["ledger_mutated"])
+        self.assertEqual(position["stop_loss_price"], 98.5)
+        self.assertEqual(position["take_profit_price"], 109.0)
+        self.assertEqual(position["max_holding_minutes"], 45)
+        self.assertEqual(position["exit_plan_source"], "position_management_thesis")
+        self.assertEqual(report["_ledger"]["position_management_actions"][-1]["schema"], "tradecat_auto.position_management_action_report.v1")
+
+    def test_position_management_close_requires_explicit_agent_mark_price_and_closes_paper_position(self) -> None:
+        ledger = apply_paper_execution(default_paper_ledger(initial_balance_usdt=1000.0), OPEN_LONG, fee_bps=0.0, now_iso="2026-05-14T00:00:00Z")
+        position_id = ledger["open_positions"]["IRYSUSDT"]["position_id"]
+        thesis = {
+            **copy.deepcopy(POSITION_THESIS_BASE),
+            "action": "close",
+            "position_ref": {"position_id": position_id, "symbol": "IRYSUSDT"},
+            "close_intent": {
+                "close_fraction": 1,
+                "mark_price": 104.0,
+                "mark_price_source": "agent_supplied_public_mark",
+                "agent_authorized": True,
+                "real_order": False,
+            },
+        }
+
+        report = apply_position_management_thesis(ledger, thesis, fee_bps=0.0, now_iso="2026-05-14T00:15:00Z")
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["status"], "APPLIED")
+        self.assertEqual(report["_ledger"]["open_positions"], {})
+        self.assertEqual(report["_ledger"]["closed_positions"][0]["close_reason"], "agent_position_management_close")
+        self.assertEqual(report["_ledger"]["closed_positions"][0]["position_management_action_id"], report["action_id"])
+        self.assertEqual(report["_ledger"]["fills"][-1]["action"], "CLOSE")
+        self.assertEqual(report["_ledger"]["fills"][-1]["research_cycle_run_id"], "cycle-paper-1")
+
+    def test_position_management_rejects_real_order_and_unsupported_add_reduce(self) -> None:
+        ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
+        unsafe = {**copy.deepcopy(POSITION_THESIS_BASE), "action": "close", "safety": {**POSITION_THESIS_BASE["safety"], "real_orders": True}}
+        rejected = apply_position_management_thesis(ledger, unsafe, now_iso="2026-05-14T00:10:00Z")
+        self.assertFalse(rejected["ok"])
+        self.assertEqual(rejected["error_code"], "position_management_safety_violation")
+        self.assertFalse(rejected["ledger_mutated"])
+
+        add = {
+            **copy.deepcopy(POSITION_THESIS_BASE),
+            "action": "add",
+            "paper_intent": {"side": "LONG", "requested_margin_usdt": 10, "paper_leverage": 2, "agent_authorized": True, "real_order": False},
+        }
+        unsupported = apply_position_management_thesis(ledger, add, now_iso="2026-05-14T00:10:00Z")
+        self.assertFalse(unsupported["ok"])
+        self.assertEqual(unsupported["status"], "UNSUPPORTED")
+        self.assertEqual(unsupported["error_code"], "position_management_action_not_supported")
 
 
 if __name__ == "__main__":

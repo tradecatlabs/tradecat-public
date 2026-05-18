@@ -17,14 +17,12 @@ def test_analysis_report_builds_observation_payload_from_local_cache(tmp_path):
     assert payload["ok"] is True
     assert payload["analysis_window"]["mode"] == "latest_cached"
     assert {item["dataset_key"] for item in payload["dataset_freshness"]} == {
-        "event_stream",
+        "signal_flow",
         "anomaly_panel",
-        "market_stats",
     }
     assert {item["id"] for item in payload["observations"]} == {
-        "event_stream.activity",
+        "signal_flow.activity",
         "anomaly_panel.candidates",
-        "market_stats.context",
     }
     assert payload["candidate_symbols"][0]["symbol"] == "BTCUSDT"
     assert payload["candidate_symbols"][0]["confidence"] == "observed"
@@ -56,12 +54,28 @@ def test_analysis_report_limits_and_deduplicates_candidate_symbols(tmp_path):
     assert payload["candidate_symbols"][0]["evidence_ids"] == ["anomaly_panel:row:2", "anomaly_panel:row:3"]
 
 
-def test_analysis_report_does_not_infer_symbols_from_event_text(tmp_path):
+def test_analysis_report_uses_signal_flow_symbol_columns(tmp_path):
     cache_dir = tmp_path / "cache"
     write_dataset_body(
         cache_dir,
-        get_dataset("event_stream"),
-        "时间(北京),内容\n2026-05-11 09:00:00,BTCUSDT 出现公开事件\n",
+        get_dataset("signal_flow"),
+        "时间(北京),交易对,周期,类型,内容\n2026-05-11 09:00:00,XRP,5分钟,主动买盘占优,方向=买入\n",
+    )
+
+    payload = build_analysis_report(cache_dir)
+
+    assert payload["ok"] is True
+    assert payload["candidate_symbols"][0]["symbol"] == "XRP"
+    assert payload["candidate_symbols"][0]["source_dataset_keys"] == ["signal_flow"]
+    assert payload["candidate_symbols"][0]["reasons"] == ["present_in_signal_flow"]
+
+
+def test_analysis_report_does_not_infer_symbols_from_signal_text(tmp_path):
+    cache_dir = tmp_path / "cache"
+    write_dataset_body(
+        cache_dir,
+        get_dataset("signal_flow"),
+        "时间(北京),内容\n2026-05-11 09:00:00,BTCUSDT 出现公开信号\n",
     )
 
     payload = build_analysis_report(cache_dir)
@@ -96,16 +110,11 @@ def test_analyze_cli_invalid_request_has_stable_error(tmp_path, capsys):
 def _seed_analysis_cache(cache_dir):
     write_dataset_body(
         cache_dir,
-        get_dataset("event_stream"),
-        "数据源,alternative\n时间(北京),内容\n2026-05-11 09:00:00,资金费率事件\n",
+        get_dataset("signal_flow"),
+        "数据源,alternative\n时间(北京),交易对,周期,类型,内容\n2026-05-11 09:00:00,BTCUSDT,5分钟,量比放大,资金费率信号\n",
     )
     write_dataset_body(
         cache_dir,
         get_dataset("anomaly_panel"),
         "数据源,market\n榜单,序号,交易对\n异动榜,1,BTCUSDT\n异动榜,2,ETHUSDT\n",
-    )
-    write_dataset_body(
-        cache_dir,
-        get_dataset("market_stats"),
-        "数据源,market\n窗口,覆盖合约数,交易对口径\n24h,200,USDT perpetual\n",
     )

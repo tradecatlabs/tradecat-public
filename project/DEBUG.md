@@ -12,6 +12,35 @@
 - Agent/Hermes 机器入口是根目录 `agents/manifest.json`；项目 JSON 输出必须带
   `schema/schema_version`，失败 payload 的 `error` 必须是对象。
 
+## 2026-05-18 auto-paper 常驻但不新增纸面交易
+
+### 现象
+
+- auto-paper loop 常驻运行，paper ledger 持续 mark-to-market，已有 3 个 open paper positions。
+- 新增 paper trade 停止，health 降级为 `last_error=remote_http_status`。
+- Web 监控显示 Agent thesis/sizing/exits 未配置，信号源为 `source_http_status=404`。
+
+### 根因
+
+- 在线表格 `event_stream` 当前返回 HTTP 404，导致无新信号进入后续链路。
+- `.runtime`/`.tradecat` 内没有 Agent 生成的 `agent_trade_thesis` 或 market context JSON。
+- 常驻 `start-auto-paper.sh` 之前没有把 Agent thesis 文件路径传入 `run-loop`，即使外部 Agent 写出 thesis 也无法被常驻 loop 消费。
+
+### 修复
+
+- `start-auto-paper.sh` 新增 `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH`，只在显式配置时传入 `--agent-trade-thesis-path`。
+- `tradecat_source`/`service` 保留上游结构化错误码，`SKIPPED_NO_EVENT` 时仍刷新已有 paper positions。
+- Web 监控读取最新 cycle archive，显示 `source_http_status`、Agent thesis path 和回撤/告警。
+- 保持 fail-closed：没有 Agent sizing/exits 时不发明默认金额、杠杆、止损、止盈。
+
+### 回归
+
+- `PYTHONPATH=src .venv/bin/python -m pytest tests/test_auto_service_script.py tests/test_tradecat_source.py tests/test_service.py`
+- `bash scripts/verify.sh`
+- `bash scripts/validate-skill.sh --strict`
+- `bash scripts/security-scan.sh`
+- `bash scripts/supply-chain-audit.sh`
+
 ## 2026-05-08 Agent/Hermes Readiness Contract
 
 ### 现象

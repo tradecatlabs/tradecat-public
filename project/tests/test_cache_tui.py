@@ -100,10 +100,11 @@ def test_init_cache_does_not_write_registry_projection(tmp_path):
         "market_snapshot",
         "anomaly_panel",
         "market_stats",
+        "signal_flow",
         "event_stream",
     ]
     assert status["ready_dataset_count"] == 0
-    assert status["missing_dataset_count"] == 4
+    assert status["missing_dataset_count"] == 5
     assert status["datasets"][0]["cache_state"] == "initialized"
     assert status["datasets"][0]["latest_json_exists"] is False
 
@@ -120,7 +121,7 @@ def test_status_cache_reports_ready_datasets_and_cache_size(tmp_path):
     event_stream = next(item for item in status["datasets"] if item["dataset_key"] == "event_stream")
 
     assert status["ready_dataset_count"] == 1
-    assert status["missing_dataset_count"] == 3
+    assert status["missing_dataset_count"] == 4
     assert status["cache_bytes"] > 0
     assert event_stream["cache_state"] == "ready"
     assert event_stream["latest_json_exists"] is True
@@ -137,10 +138,10 @@ def test_doctor_warns_for_initialized_but_unsynced_cache(tmp_path):
 
     assert payload["ok"] is True
     assert payload["errors"] == []
-    assert len(payload["warnings"]) == 5
+    assert len(payload["warnings"]) == 6
     assert "首次缓存为空" in payload["warnings"][0]
-    assert "tradecat sync event_stream" in payload["warnings"][-1]
-    assert "tui_fetch_timeout.event_stream" in payload["repair_hints"][-2]
+    assert any("tradecat sync signal_flow" in warning for warning in payload["warnings"])
+    assert "tui_fetch_timeout.signal_flow" in payload["repair_hints"][-2]
     assert "tradecat sync-all" in payload["repair_hints"][-1]
     assert payload["fixes"] == []
 
@@ -166,14 +167,14 @@ def test_doctor_sync_explicitly_fills_cache_with_timeout(tmp_path, monkeypatch):
         calls.append((target_cache_dir, fetch_timeout))
         write_dataset_body(
             target_cache_dir,
-            get_dataset("event_stream"),
-            "时间(北京),内容\n2026-05-08 10:00:00,hello\n",
+            get_dataset("signal_flow"),
+            "时间(北京),交易对,周期,类型,内容\n2026-05-08 10:00:00,BTCUSDT,5分钟,量比放大,hello\n",
         )
         return [
             {
                 "ok": True,
-                "dataset_key": "event_stream",
-                "tab_name": "事件流",
+                "dataset_key": "signal_flow",
+                "tab_name": "信号流",
                 "data_mode": "stream",
                 "status": "written",
                 "changed": True,
@@ -192,7 +193,7 @@ def test_doctor_sync_explicitly_fills_cache_with_timeout(tmp_path, monkeypatch):
     assert payload["ok"] is True
     assert payload["ready_dataset_count"] == 1
     assert "已尝试同步全部 active dataset" in payload["fixes"]
-    assert payload["sync_results"][0]["dataset_key"] == "event_stream"
+    assert payload["sync_results"][0]["dataset_key"] == "signal_flow"
 
 
 def test_cli_doctor_prints_repair_hints(tmp_path, capsys):
@@ -202,7 +203,7 @@ def test_cli_doctor_prints_repair_hints(tmp_path, capsys):
     assert cli.main(["--cache-dir", str(cache_dir), "doctor"]) == 0
     captured = capsys.readouterr()
 
-    assert "summary: datasets=4 ready=0 missing=4" in captured.out
+    assert "summary: datasets=5 ready=0 missing=5" in captured.out
     assert "warning: 首次缓存为空" in captured.err
     assert "hint: 执行 tradecat sync-all 拉取全部 active dataset" in captured.err
 
@@ -360,15 +361,15 @@ def test_cli_status_prints_summary_and_dataset_state(tmp_path, capsys):
     cache_dir = tmp_path / "cache"
     write_dataset_body(
         cache_dir,
-        get_dataset("event_stream"),
-        "时间(北京),内容\n2026-05-07 10:00:00,hello\n",
+        get_dataset("signal_flow"),
+        "时间(北京),交易对,周期,类型,内容\n2026-05-07 10:00:00,BTCUSDT,5分钟,量比放大,hello\n",
     )
 
     assert cli.main(["--cache-dir", str(cache_dir), "status"]) == 0
     output = capsys.readouterr().out
 
-    assert "summary: datasets=4 ready=1 missing=3" in output
-    assert "dataset: event_stream" in output
+    assert "summary: datasets=5 ready=1 missing=4" in output
+    assert "dataset: signal_flow" in output
     assert "state=ready latest=True" in output
 
 
@@ -384,17 +385,17 @@ def test_default_cache_dir_is_app_root_dot_tradecat_cache(tmp_path, monkeypatch)
 def test_registry_has_no_freeze_columns_contract():
     keys = [dataset.key for dataset in list_active_datasets()]
     snapshot = dataset_to_dict(get_dataset("market_snapshot"))
-    event_stream = dataset_to_dict(get_dataset("event_stream"))
+    signal_flow = dataset_to_dict(get_dataset("signal_flow"))
 
-    assert keys == ["market_snapshot", "anomaly_panel", "market_stats", "event_stream"]
+    assert keys == ["market_snapshot", "anomaly_panel", "market_stats", "signal_flow", "event_stream"]
     assert snapshot["data_mode"] == "snapshot"
     assert "freeze_columns" not in snapshot
-    assert event_stream["data_mode"] == "stream"
-    assert "freeze_columns" not in event_stream
+    assert signal_flow["data_mode"] == "stream"
+    assert "freeze_columns" not in signal_flow
     assert snapshot["display_names"]["en"] == "Market Snapshot"
-    assert get_dataset("event_stream").display_name("ko") == "이벤트 스트림"
-    assert event_stream["tui_probe_interval_seconds"] == 3.0
-    assert event_stream["tui_fetch_timeout_seconds"] == 3.0
+    assert get_dataset("signal_flow").display_name("ko") == "신호 스트림"
+    assert signal_flow["tui_probe_interval_seconds"] == 3.0
+    assert signal_flow["tui_fetch_timeout_seconds"] == 3.0
 
 
 def test_request_script_uses_shared_dataset_registry_contract():
@@ -406,7 +407,13 @@ def test_request_script_uses_shared_dataset_registry_contract():
     assert "dataset_registry.json" in request_py
     assert "WORKBOOKS =" not in request_py
     assert "DATASETS =" not in request_py
-    assert sorted(registry_json["datasets"]) == ["anomaly_panel", "event_stream", "market_snapshot", "market_stats"]
+    assert sorted(registry_json["datasets"]) == [
+        "anomaly_panel",
+        "event_stream",
+        "market_snapshot",
+        "market_stats",
+        "signal_flow",
+    ]
 
 
 def test_i18n_resolves_aliases_and_cycles_language(monkeypatch):
@@ -444,7 +451,7 @@ def test_install_launchers_separate_stable_and_branch_channels():
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_sh
     assert "run_update_blocking >/dev/null 2>&1 || true) &" in install_sh
     assert 'TRADECAT_NO_AUTO_UPDATE=1 "$BIN_DIR/tradecat" init' in install_sh
-    assert 'sync event_stream' in install_sh
+    assert 'sync signal_flow' in install_sh
     assert "TRADECAT_INSTALL_SKIP_SYNC" in install_sh
     assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_sh
     assert "TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP" in install_sh
@@ -462,7 +469,7 @@ def test_install_launchers_separate_stable_and_branch_channels():
     assert "TRADECAT_UPDATE_INTERVAL_SECONDS" in install_ps1
     assert "Start-Process -FilePath \"powershell\"" in install_ps1
     assert "$env:TRADECAT_NO_AUTO_UPDATE = \"1\"" in install_ps1
-    assert "sync event_stream" in install_ps1
+    assert "sync signal_flow" in install_ps1
     assert "TRADECAT_INSTALL_SKIP_SYNC" in install_ps1
     assert "TRADECAT_INSTALL_SKIP_PATH_WRITE" in install_ps1
     assert "TRADECAT_INSTALL_ALLOW_UV_BOOTSTRAP" in install_ps1
@@ -545,6 +552,24 @@ def test_parse_csv_rows_skips_public_top_row():
     assert find_header_row_index([["https://dexscreener.com/x", ""], ["时间(北京)", "内容"]]) == 1
 
 
+def test_parse_csv_rows_reads_all_anomaly_panel_boards():
+    rows = parse_csv_rows(
+        '"https://dexscreener.com/x\\n数据源，异动面板",,,,,,\n'
+        "5m 异动榜,序号,交易对,5m量变化率,5m额变化率,现持仓额\n"
+        ",1,FF,-0.082%,4.866%,35965182.49\n"
+        "15m 异动榜,序号,交易对,15m量变化率,15m额变化率,现持仓额\n"
+        ",1,MORPHO,2.939%,0.854%,8882523.83\n"
+        "多窗口持仓量榜,序号,交易对,5分钟量变化率,15分钟量变化率,现持仓额\n"
+        ",1,FIDA,2.724%,6.95%,9122768.65\n"
+    )
+
+    assert [row["榜单"] for row in rows] == ["5m 异动榜", "15m 异动榜", "多窗口持仓量榜"]
+    assert rows[0]["交易对"] == "FF"
+    assert rows[1]["15m量变化率"] == "2.939%"
+    assert rows[2]["5分钟量变化率"] == "2.724%"
+    assert rows[2]["源行号"] == "7"
+
+
 def test_sync_dataset_writes_snapshot_files(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
 
@@ -569,6 +594,34 @@ def test_sync_dataset_writes_snapshot_files(tmp_path, monkeypatch):
     assert view["rows"][0]["values"]["A"] == "数据源"
     assert view["rows"][2]["values"]["B"] == "BTCUSDT"
     assert len(view["columns"]) == 3
+
+
+def test_anomaly_panel_cached_view_preserves_each_board_header(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+
+    import tradecat_terminal.cache as cache_module
+
+    monkeypatch.setattr(
+        cache_module,
+        "fetch_csv_body",
+        lambda url, timeout=30.0: (
+            '"https://dexscreener.com/x\\n数据源，异动面板",,,,,,\n'
+            "5m 异动榜,序号,交易对,5m量变化率,5m额变化率,现持仓额\n"
+            ",1,FF,-0.082%,4.866%,35965182.49\n"
+            "15m 异动榜,序号,交易对,15m量变化率,15m额变化率,现持仓额\n"
+            ",1,MORPHO,2.939%,0.854%,8882523.83\n"
+            "多窗口持仓量榜,序号,交易对,5分钟量变化率,15分钟量变化率,现持仓额\n"
+            ",1,FIDA,2.724%,6.95%,9122768.65\n"
+        ),
+    )
+
+    sync_dataset(cache_dir, "anomaly_panel")
+    view = build_dataset_view(cache_dir, "anomaly_panel")
+
+    assert [row["raw_values"]["榜单"] for row in view["rows"]] == ["5m 异动榜", "15m 异动榜", "多窗口持仓量榜"]
+    assert view["rows"][1]["raw_values"]["交易对"] == "MORPHO"
+    assert view["rows"][1]["raw_values"]["15m量变化率"] == "2.939%"
+    assert view["rows"][2]["raw_values"]["5分钟量变化率"] == "2.724%"
 
 
 def test_sync_dataset_writes_structured_latest_files(tmp_path, monkeypatch):
@@ -1254,10 +1307,10 @@ def test_empty_cache_guidance_is_actionable_for_plain_and_curses():
         interactive=True,
     )
 
-    assert "tradecat sync event_stream" in plain_lines[0]
+    assert "tradecat sync signal_flow" in plain_lines[0]
     assert any("tradecat sync-all" in line for line in plain_lines)
     assert any("首次拉取失败" in line for line in curses_lines)
-    assert any("tui_fetch_timeout.event_stream" in line for line in curses_lines)
+    assert any("tui_fetch_timeout.signal_flow" in line for line in curses_lines)
 
 
 def test_tui_render_view_cache_reuses_rendered_viewport(monkeypatch):
@@ -1340,7 +1393,7 @@ def test_tui_display_slice_is_terminal_width_aware_for_cjk():
 def test_tui_left_right_switch_tap_resets_view_state():
     state = {
         "datasets": [
-            {"dataset_key": "event_stream"},
+            {"dataset_key": "signal_flow"},
             {"dataset_key": "market_snapshot"},
         ],
         "dataset_index": 0,
@@ -1555,37 +1608,37 @@ def test_tui_sgr_left_click_opens_symbol(monkeypatch):
 
 def test_tui_fetch_timeout_defaults_to_short_live_timeout(monkeypatch):
     monkeypatch.delenv("TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT", raising=False)
-    monkeypatch.delenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_FETCH_TIMEOUT", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_SIGNAL_FLOW_TUI_FETCH_TIMEOUT", raising=False)
 
     assert _resolve_fetch_timeout(None) == 2.0
-    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 3.0
+    assert _resolve_fetch_timeout(None, "signal_flow", 3.0) == 3.0
     assert _resolve_fetch_timeout(None, "market_snapshot", 10.0) == 2.0
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT", "0.1")
-    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 0.5
+    assert _resolve_fetch_timeout(None, "signal_flow", 3.0) == 0.5
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_FETCH_TIMEOUT", "3.5")
-    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 3.0
+    assert _resolve_fetch_timeout(None, "signal_flow", 3.0) == 3.0
 
-    monkeypatch.setenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_FETCH_TIMEOUT", "0.8")
-    assert _resolve_fetch_timeout(None, "event_stream", 3.0) == 0.8
-    assert _resolve_fetch_timeout(4.0, "event_stream", 3.0) == 3.0
+    monkeypatch.setenv("TRADECAT_TERMINAL_SIGNAL_FLOW_TUI_FETCH_TIMEOUT", "0.8")
+    assert _resolve_fetch_timeout(None, "signal_flow", 3.0) == 0.8
+    assert _resolve_fetch_timeout(4.0, "signal_flow", 3.0) == 3.0
 
 
 def test_tui_probe_interval_is_dataset_specific(monkeypatch):
     monkeypatch.delenv("TRADECAT_TERMINAL_TUI_PROBE_INTERVAL", raising=False)
-    monkeypatch.delenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_SIGNAL_FLOW_TUI_PROBE_INTERVAL", raising=False)
 
-    assert _resolve_probe_interval(None, "event_stream") == 3.0
+    assert _resolve_probe_interval(None, "signal_flow") == 3.0
     assert _resolve_probe_interval(None, "market_snapshot") == 10.0
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_PROBE_INTERVAL", "3")
-    assert _resolve_probe_interval(None, "event_stream") == 3.0
+    assert _resolve_probe_interval(None, "signal_flow") == 3.0
 
-    monkeypatch.setenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_PROBE_INTERVAL", "2")
-    assert _resolve_probe_interval(None, "event_stream") == 2.0
+    monkeypatch.setenv("TRADECAT_TERMINAL_SIGNAL_FLOW_TUI_PROBE_INTERVAL", "2")
+    assert _resolve_probe_interval(None, "signal_flow") == 2.0
 
-    assert _resolve_probe_interval(4, "event_stream") == 4.0
+    assert _resolve_probe_interval(4, "signal_flow") == 4.0
 
 
 def test_tui_probe_backoff_and_state_label_for_high_frequency_stream():
@@ -1707,17 +1760,17 @@ def test_tui_background_probe_keeps_non_focused_taps_fresh(monkeypatch, tmp_path
 
 def test_tui_background_probe_interval_is_dataset_specific(monkeypatch):
     monkeypatch.delenv("TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL", raising=False)
-    monkeypatch.delenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_BACKGROUND_PROBE_INTERVAL", raising=False)
+    monkeypatch.delenv("TRADECAT_TERMINAL_SIGNAL_FLOW_TUI_BACKGROUND_PROBE_INTERVAL", raising=False)
 
-    assert _background_probe_interval("event_stream") == 10.0
+    assert _background_probe_interval("signal_flow") == 10.0
     assert _background_probe_interval("market_snapshot") == 60.0
-    assert _background_probe_interval("event_stream", consecutive_failures=1) == 10.0
+    assert _background_probe_interval("signal_flow", consecutive_failures=1) == 10.0
 
     monkeypatch.setenv("TRADECAT_TERMINAL_TUI_BACKGROUND_PROBE_INTERVAL", "30")
     assert _background_probe_interval("market_snapshot") == 30.0
 
-    monkeypatch.setenv("TRADECAT_TERMINAL_EVENT_STREAM_TUI_BACKGROUND_PROBE_INTERVAL", "5")
-    assert _background_probe_interval("event_stream") == 5.0
+    monkeypatch.setenv("TRADECAT_TERMINAL_SIGNAL_FLOW_TUI_BACKGROUND_PROBE_INTERVAL", "5")
+    assert _background_probe_interval("signal_flow") == 5.0
 
 
 def test_tui_ignores_background_probe_result_from_previous_generation():
@@ -1898,4 +1951,4 @@ def test_tui_live_startup_is_cache_first_without_blocking_probe(monkeypatch, tmp
 
     assert output is None
     assert calls == []
-    assert _resolve_startup_dataset_key(cache_dir, None) == "event_stream"
+    assert _resolve_startup_dataset_key(cache_dir, None) == "signal_flow"

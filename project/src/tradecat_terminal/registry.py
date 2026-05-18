@@ -46,11 +46,12 @@ class DatasetSpec:
             raise ValueError(f"dataset {self.key} 引用了未知 workbook: {self.workbook_key}") from exc
 
     def export_url(self) -> str:
-        if not self.gid:
-            raise ValueError(f"dataset {self.key} 缺少 gid；请更新内置 dataset registry")
         workbook = self.workbook()
-        query = urlencode({"format": "csv", "gid": self.gid})
-        return f"https://docs.google.com/spreadsheets/d/{workbook.spreadsheet_id}/export?{query}"
+        if self.gid:
+            query = urlencode({"format": "csv", "gid": self.gid})
+            return f"https://docs.google.com/spreadsheets/d/{workbook.spreadsheet_id}/export?{query}"
+        query = urlencode({"tqx": "out:csv", "sheet": self.tab_name})
+        return f"https://docs.google.com/spreadsheets/d/{workbook.spreadsheet_id}/gviz/tq?{query}"
 
     def is_snapshot(self) -> bool:
         return self.data_mode == "snapshot"

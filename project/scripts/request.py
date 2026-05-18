@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 from io import StringIO
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -25,14 +26,14 @@ REGISTRY_URL_ENV = "TRADECAT_REQUEST_REGISTRY_URL"
 def main(argv: list[str] | None = None) -> int:
     configure_stdio()
     parser = argparse.ArgumentParser(description="TradeCat 一次性公开数据请求；无需安装，无本地缓存。")
-    parser.add_argument("dataset_key", nargs="?", help="dataset_key，例如 event_stream")
+    parser.add_argument("dataset_key", nargs="?", help="dataset_key，例如 signal_flow")
     parser.add_argument("--format", choices=("table", "json", "jsonl", "csv", "raw"), default="table")
     parser.add_argument("--limit", type=int, default=50, help="最多输出业务数据行；0 表示不限制")
     parser.add_argument("--timeout", type=float, default=8.0, help="网络请求超时秒数")
     parser.add_argument(
         "--registry-url",
-        default=os.environ.get(REGISTRY_URL_ENV, DEFAULT_REGISTRY_URL),
-        help=f"dataset registry JSON URL；默认读取 {REGISTRY_URL_ENV} 或 GitHub develop",
+        default=default_registry_url(),
+        help=f"dataset registry JSON URL；默认读取 {REGISTRY_URL_ENV}、本仓 dataset_registry.json 或 GitHub develop",
     )
     parser.add_argument("--meta", action="store_true", help="只输出顶部元信息")
     parser.add_argument("--headers", action="store_true", help="只输出表头")
@@ -88,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         matrix = parse_matrix(body)
         meta = top_lines(matrix)
         header_index = find_header_row_index(matrix)
-        headers = normalize_headers(matrix[header_index] if header_index < len(matrix) else [])
+        headers = table_headers(matrix, header_index)
         rows = data_rows(matrix, header_index, headers)
     except Exception as exc:
         return emit_error(
@@ -156,6 +157,16 @@ def load_registry(url: str, *, timeout: float) -> dict[str, dict]:
     return {"workbooks": payload["workbooks"], "datasets": payload["datasets"]}
 
 
+def default_registry_url() -> str:
+    explicit = os.environ.get(REGISTRY_URL_ENV)
+    if explicit:
+        return explicit
+    local_registry = Path(__file__).resolve().parents[1] / "src" / "tradecat_terminal" / "dataset_registry.json"
+    if local_registry.exists():
+        return local_registry.as_uri()
+    return DEFAULT_REGISTRY_URL
+
+
 def dataset_url(registry: dict[str, dict], dataset_key: str) -> str:
     try:
         spec = registry["datasets"][dataset_key]
@@ -170,8 +181,12 @@ def dataset_url(registry: dict[str, dict], dataset_key: str) -> str:
     except KeyError as exc:
         raise ValueError(f"dataset {dataset_key} 引用了未知 workbook: {workbook_key}") from exc
     spreadsheet_id = str(workbook["spreadsheet_id"])
-    query = urlencode({"format": "csv", "gid": str(spec["gid"])})
-    return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?{query}"
+    gid = spec.get("gid")
+    if gid:
+        query = urlencode({"format": "csv", "gid": str(gid)})
+        return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?{query}"
+    query = urlencode({"tqx": "out:csv", "sheet": str(spec["tab_name"])})
+    return f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/gviz/tq?{query}"
 
 
 def fetch_body(url: str, *, timeout: float) -> str:
@@ -290,13 +305,57 @@ def normalize_headers(headers: list[str]) -> list[str]:
     return result
 
 
+def table_headers(matrix: list[list[str]], header_index: int) -> list[str]:
+    if header_index < len(matrix) and is_section_header_row(matrix[header_index]):
+        columns: list[str] = ["榜单", "榜单名", "源行号"]
+        for raw in matrix[header_index:]:
+            if not is_section_header_row(raw):
+                continue
+            for column in normalize_headers([str(cell) for cell in raw[1:]]):
+                if column not in columns:
+                    columns.append(column)
+        return columns
+    return normalize_headers(matrix[header_index] if header_index < len(matrix) else [])
+
+
 def data_rows(matrix: list[list[str]], header_index: int, headers: list[str]) -> list[dict[str, str]]:
+    if header_index < len(matrix) and is_section_header_row(matrix[header_index]):
+        return sectioned_data_rows(matrix, header_index)
     rows: list[dict[str, str]] = []
     for raw in matrix[header_index + 1 :]:
         if not any(cell.strip() for cell in raw):
             continue
         padded = [*raw, *([""] * max(0, len(headers) - len(raw)))]
         rows.append({headers[index]: padded[index] for index in range(len(headers))})
+    return rows
+
+
+def is_section_header_row(row: list[str]) -> bool:
+    cells = [str(cell).strip() for cell in row]
+    if not cells or not cells[0] or is_top_row(row):
+        return False
+    tail = [cell for cell in cells[1:] if cell]
+    return "序号" in tail and any(cell in {"交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"} for cell in tail)
+
+
+def sectioned_data_rows(matrix: list[list[str]], start_index: int) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    section_title = ""
+    section_headers: list[str] = []
+    for row_index, raw in enumerate(matrix[start_index:], start=start_index + 1):
+        if is_section_header_row(raw):
+            section_title = str(raw[0]).strip()
+            section_headers = normalize_headers([str(cell) for cell in raw[1:]])
+            continue
+        if not section_headers:
+            continue
+        section_values = [str(cell) for cell in raw[1:]]
+        if not any(cell.strip() for cell in section_values):
+            continue
+        padded = [*section_values, *([""] * max(0, len(section_headers) - len(section_values)))]
+        values = {"榜单": section_title, "榜单名": section_title, "源行号": str(row_index)}
+        values.update({section_headers[index]: padded[index] for index in range(len(section_headers))})
+        rows.append(values)
     return rows
 
 

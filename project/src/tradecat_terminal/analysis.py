@@ -10,7 +10,7 @@ from tradecat_terminal.contracts import make_error
 from tradecat_terminal.dataset_contract import dataset_consumption_contract_summary, load_dataset_consumption_contract
 from tradecat_terminal.view_model import build_dataset_view
 
-ANALYSIS_DATASETS = ("event_stream", "anomaly_panel", "market_stats")
+ANALYSIS_DATASETS = ("signal_flow", "anomaly_panel")
 DEFAULT_CANDIDATE_LIMIT = 20
 _WINDOW_PATTERN = re.compile(r"^(latest|[1-9][0-9]*[hdw])$")
 
@@ -95,8 +95,8 @@ def _build_observations(
     evidence: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     observations: list[dict[str, Any]] = []
-    if "event_stream" in views:
-        observations.append(_event_stream_observation(views["event_stream"], dataset_contracts, evidence))
+    if "signal_flow" in views:
+        observations.append(_signal_flow_observation(views["signal_flow"], dataset_contracts, evidence))
     if "anomaly_panel" in views:
         observations.append(_anomaly_panel_observation(views["anomaly_panel"], dataset_contracts, evidence))
     if "market_stats" in views:
@@ -104,23 +104,23 @@ def _build_observations(
     return observations
 
 
-def _event_stream_observation(
+def _signal_flow_observation(
     view: dict[str, Any],
     dataset_contracts: dict[str, Any],
     evidence: list[dict[str, Any]],
 ) -> dict[str, Any]:
     rows = _rows(view)
-    contract = _contract_for(dataset_contracts, "event_stream")
+    contract = _contract_for(dataset_contracts, "signal_flow")
     time_column = str((contract.get("time_semantics") or {}).get("event_time_column") or "")
     non_empty_times = [_value(row, [time_column]) for row in rows if time_column and _value(row, [time_column])]
-    row_evidence = [_row_evidence("event_stream", row, contract, view, kind="event") for row in rows[:5]]
+    row_evidence = [_row_evidence("signal_flow", row, contract, view, kind="signal") for row in rows[:10]]
     evidence.extend(row_evidence)
     return {
-        "id": "event_stream.activity",
-        "dataset_key": "event_stream",
-        "kind": "stream_activity",
+        "id": "signal_flow.activity",
+        "dataset_key": "signal_flow",
+        "kind": "signal_stream_activity",
         "severity": "info",
-        "summary": f"event_stream 本地缓存包含 {len(rows)} 条事件观察。",
+        "summary": f"signal_flow 本地缓存包含 {len(rows)} 条在线信号观察。",
         "metrics": {
             "row_count": len(rows),
             "sampled_evidence_count": len(row_evidence),
@@ -195,34 +195,44 @@ def _build_candidate_symbols(
     *,
     limit: int,
 ) -> list[dict[str, Any]]:
-    if "anomaly_panel" not in views:
-        return []
-    contract = _contract_for(dataset_contracts, "anomaly_panel")
     evidence_by_id = {item["id"]: item for item in evidence}
     candidates: OrderedDict[str, dict[str, Any]] = OrderedDict()
-    for row in _rows(views["anomaly_panel"]):
-        symbol = _symbol_from_row(row, contract)
-        if not symbol:
+    for dataset_key, evidence_kind, reason in (
+        ("signal_flow", "signal", "present_in_signal_flow"),
+        ("anomaly_panel", "anomaly", "present_in_anomaly_panel"),
+    ):
+        if dataset_key not in views:
             continue
-        evidence_id = _evidence_id("anomaly_panel", row)
-        if evidence_id not in evidence_by_id:
-            item = _row_evidence("anomaly_panel", row, contract, views["anomaly_panel"], kind="anomaly")
-            evidence.append(item)
-            evidence_by_id[item["id"]] = item
-        candidate = candidates.setdefault(
-            symbol,
-            {
-                "symbol": symbol,
-                "rank": len(candidates) + 1,
-                "source_dataset_keys": ["anomaly_panel"],
-                "reasons": ["present_in_anomaly_panel"],
-                "confidence": "observed",
-                "evidence_ids": [],
-                "notes": ["候选仅表示在异动面板中被观察到，不代表交易方向或建议。"],
-            },
-        )
-        if evidence_id not in candidate["evidence_ids"]:
-            candidate["evidence_ids"].append(evidence_id)
+        contract = _contract_for(dataset_contracts, dataset_key)
+        for row in _rows(views[dataset_key]):
+            symbol = _symbol_from_row(row, contract)
+            if not symbol:
+                continue
+            evidence_id = _evidence_id(dataset_key, row)
+            if evidence_id not in evidence_by_id:
+                item = _row_evidence(dataset_key, row, contract, views[dataset_key], kind=evidence_kind)
+                evidence.append(item)
+                evidence_by_id[item["id"]] = item
+            candidate = candidates.setdefault(
+                symbol,
+                {
+                    "symbol": symbol,
+                    "rank": len(candidates) + 1,
+                    "source_dataset_keys": [],
+                    "reasons": [],
+                    "confidence": "observed",
+                    "evidence_ids": [],
+                    "notes": ["候选仅表示在信号流或异动面板中被观察到，不代表交易方向或建议。"],
+                },
+            )
+            if dataset_key not in candidate["source_dataset_keys"]:
+                candidate["source_dataset_keys"].append(dataset_key)
+            if reason not in candidate["reasons"]:
+                candidate["reasons"].append(reason)
+            if evidence_id not in candidate["evidence_ids"]:
+                candidate["evidence_ids"].append(evidence_id)
+            if len(candidates) >= limit:
+                break
         if len(candidates) >= limit:
             break
     return list(candidates.values())
@@ -379,7 +389,7 @@ def _cache_risk_flags(freshness: list[dict[str, Any]], candidates: list[dict[str
 def _base_limitations() -> list[str]:
     return [
         "只读取本地最新缓存，不联网同步；如需新数据，先显式执行 sync 或 doctor --sync。",
-        "第一版只归纳 event_stream、anomaly_panel、market_stats 三个数据集。",
+        "当前信号输入只归纳 signal_flow 与 anomaly_panel 两个在线表格 tap。",
         "候选标的来自显式字段语义，不从自由文本中猜测交易对。",
         "报告不包含策略评分、回测、收益预测、买卖建议或自动交易执行语义。",
     ]

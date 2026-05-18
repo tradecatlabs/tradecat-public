@@ -1,14 +1,26 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from tradecat_auto.audit_journal import append_audit_record
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path("scripts/start-auto-paper.sh")
+WEB_MONITOR_SCRIPT = Path("scripts/serve-auto-paper-monitor.py")
+
+
+def load_web_monitor_module() -> object:
+    spec = importlib.util.spec_from_file_location("tradecat_auto_web_monitor", PROJECT_ROOT / WEB_MONITOR_SCRIPT)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_service_script(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -60,6 +72,10 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["agent_margin_usdt"] is None
     assert payload["notional_usdt"] is None
     assert payload["paper_leverage"] is None
+    assert payload["agent_trade_thesis_path"] == ""
+    assert payload["agent_trade_thesis_configured"] is False
+    assert payload["paper_autonomy_profile_path"] == ""
+    assert payload["paper_autonomy_profile_configured"] is False
     assert payload["effective_notional_usdt"] is None
     assert payload["agent_sizing_required"] is True
     assert payload["paper_sizing"]["source"] == "agent_required_missing"
@@ -70,12 +86,345 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert str(tmp_path / "run") in payload["runtime_dir"]
 
 
+def test_auto_paper_ops_check_reports_long_running_dependency_chain(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "run"
+    env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir)}
+
+    proc = run_service_script(["ops-check", "--json"], env=env)
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    checks = {item["id"]: item for item in payload["checks"]}
+    assert payload["schema"] == "tradecat_auto.paper_ops_report.v1"
+    assert payload["schema_version"] == "1.0.0"
+    assert payload["ok"] is True
+    assert payload["blocking_checks"] == []
+    assert "auto-paper run-loop" in payload["dependency_chain"]
+    assert payload["runtime"]["ledger_path"] == str(runtime_dir / "paper_ledger.json")
+    assert payload["systemd"]["start_limit_burst"] == 5
+    assert payload["systemd"]["limit_nofile"] == 4096
+    assert checks["no_binance_credential_env_names"]["ok"] is True
+    assert checks["identity_detected"]["run_as_root"] in {True, False}
+    assert payload["operations"]["health"].startswith("health-report detects")
+    assert payload["safety"]["real_orders"] is False
+    assert payload["safety"]["signed_requests"] is False
+    assert payload["safety"]["reads_api_keys"] is False
+
+
+def test_auto_paper_web_monitor_is_local_readonly_entrypoint() -> None:
+    proc = subprocess.run(
+        [sys.executable, str(WEB_MONITOR_SCRIPT), "--help"],
+        cwd=PROJECT_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "--host" in proc.stdout
+    assert "--port" in proc.stdout
+
+    source = (PROJECT_ROOT / WEB_MONITOR_SCRIPT).read_text(encoding="utf-8")
+    assert 'default="127.0.0.1"' in source
+    assert "def do_GET" in source
+    assert "def do_POST" not in source
+    assert "dependency_health" in source
+    assert "risk_state" in source
+    assert "decision_text" in source
+    assert "latest_cycle" in source
+    assert "source_http_status" in source
+    assert "thesis_path" in source
+    assert "依赖链健康" in source
+    assert "回撤/告警" in source
+    assert "AI 文本决策" in source
+    assert '"real_orders": False' in source
+    assert '"signed_requests": False' in source
+    assert '"reads_api_keys": False' in source
+
+
+def test_auto_paper_web_monitor_extracts_auditable_decision_text() -> None:
+    monitor = load_web_monitor_module()
+    decision = monitor.build_decision_text(
+        {
+            "schema": "tradecat_auto.service_cycle.v1",
+            "generated_at": "2026-05-18T00:00:00Z",
+            "latest_event": {
+                "event_id": "event-1",
+                "source_dataset_key": "event_stream",
+                "source_time_bj": "2026-05-18 08:00:00",
+                "content": "这是一条新闻，不应作为输入信号 <script>",
+            },
+            "pipeline_report": {
+                "schema": "tradecat_auto.run_once_report.v1",
+                "selected_symbol": "IRYSUSDT",
+                "enrichment": {
+                    "schema": "tradecat_auto.market_enrichment.v1",
+                    "symbol": "IRYSUSDT",
+                    "raw_symbol": "IRYS",
+                    "source_values": {
+                        "交易对": "IRYS",
+                        "5m量变化率": "-1.84%",
+                        "5m额变化率": "3.40%",
+                    },
+                },
+                "safety": {
+                    "public_readonly_market_data": True,
+                    "paper_or_watch_only": True,
+                    "real_orders": False,
+                    "signed_requests": False,
+                    "reads_api_keys": False,
+                    "binance_account_state": False,
+                },
+                "agent_trade_thesis": {
+                    "schema": "tradecat_auto.agent_trade_thesis.v1",
+                    "schema_version": "1.0.0",
+                    "symbol": "IRYSUSDT",
+                    "direction": "LONG",
+                    "confidence": 0.72,
+                    "rationale": "Agent sees public-market momentum with controlled paper risk.",
+                    "risk_notes": ["Fixture only; not investment advice."],
+                    "limitations": ["paper/watch only; no real order"],
+                    "provenance": {"source": "fixture-agent"},
+                },
+                "signal": {
+                    "symbol": "IRYSUSDT",
+                    "direction": "LONG",
+                    "score": 73,
+                    "tradable_candidate": True,
+                    "positive_factors": ["sheet_anomaly_present"],
+                    "negative_factors": [],
+                    "do_not_trade_reasons": [],
+                    "metrics_used": {"quote_volume_24h": 50000000},
+                },
+                "strategy_intent": {
+                    "action": "ENTER",
+                    "entry_type": "MARKET_PAPER",
+                    "entry_price": 0.062,
+                    "invalidation_price": 0.055,
+                    "take_profit_price": 0.08,
+                    "max_holding_minutes": 45,
+                    "exit_plan_source": "agent_trade_thesis",
+                    "exit_rationale": "agent supplied invalidation and target",
+                },
+                "risk_decision": {
+                    "decision": "ALLOW",
+                    "reasons": [],
+                    "paper_leverage": 2,
+                    "constraints": ["paper_only"],
+                    "policy": {"sizing_source": "agent_trade_thesis.paper_intent", "requested_margin_usdt": 7.5},
+                },
+                "paper_execution": {
+                    "status": "OPENED",
+                    "side": "LONG",
+                    "notional_usdt": 15,
+                    "margin_usdt": 7.5,
+                    "quantity": 241.9,
+                    "paper_execution_id": "exec-1",
+                },
+            },
+        }
+    )
+
+    assert decision["schema"] == "tradecat_auto.paper_web_monitor_decision_text.v1"
+    assert decision["ok"] is True
+    assert decision["symbol"] == "IRYSUSDT"
+    assert decision["decision"] == "ALLOW"
+    assert decision["paper_execution_status"] == "OPENED"
+    assert "Agent sees public-market momentum" in decision["text"]
+    assert "IRYSUSDT 异动面板信号" in decision["text"]
+    assert "5m量变化率=-1.84%" in decision["text"]
+    assert "这是一条新闻" not in decision["text"]
+
+
+def test_auto_paper_web_monitor_shows_full_signal_flow_input_fields() -> None:
+    monitor = load_web_monitor_module()
+    decision = monitor.build_decision_text(
+        {
+            "schema": "tradecat_auto.service_cycle.v1",
+            "generated_at": "2026-05-18T00:00:00Z",
+            "latest_event": {
+                "event_id": "signal-1",
+                "source_dataset_key": "signal_flow",
+                "source_dataset_keys": ["signal_flow", "anomaly_panel"],
+                "source_time_bj": "2026-05-18 17:40:48",
+                "symbol": "FORMUSDT",
+                "period": "5分钟",
+                "signal_type": "成交额暴增",
+                "content": "FORMUSDT 信号流: 周期=5分钟; 类型=成交额暴增; 内容=成交额暴增",
+                "source_values": {
+                    "时间(北京)": "2026-05-18 17:40:48",
+                    "交易对": "FORM",
+                    "周期": "5分钟",
+                    "类型": "成交额暴增",
+                    "内容": "成交额暴增；方向=提醒，强度=70",
+                },
+                "related_anomaly_panel": {
+                    "row_index": 3,
+                    "normalized_symbol": "FORMUSDT",
+                    "source_values": {
+                        "交易对": "FORM",
+                        "5m量变化率": "0.909%",
+                        "5m额变化率": "-3.657%",
+                        "量额背离": "-4.565%",
+                        "现持仓额": "5667814.63",
+                    },
+                },
+            },
+            "pipeline_report": {
+                "schema": "tradecat_auto.run_once_report.v1",
+                "selected_symbol": "FORMUSDT",
+                "signal_flow_events": {
+                    "count": 2,
+                    "duplicate_count": 1,
+                    "first_10": [
+                        {
+                            "source_dataset_key": "signal_flow",
+                            "source_time_bj": "2026-05-18 17:40:48",
+                            "symbol": "FORMUSDT",
+                            "period": "5分钟",
+                            "signal_type": "成交额暴增",
+                            "content": "FORMUSDT 信号流: 成交额暴增",
+                            "source_values": {"交易对": "FORM", "周期": "5分钟", "类型": "成交额暴增"},
+                        },
+                        {
+                            "source_dataset_key": "signal_flow",
+                            "source_time_bj": "2026-05-18 17:41:12",
+                            "symbol": "FIDAUSDT",
+                            "period": "15分钟",
+                            "signal_type": "MACD金叉",
+                            "content": "FIDAUSDT 信号流: MACD金叉",
+                            "source_values": {"交易对": "FIDA", "周期": "15分钟", "类型": "MACD金叉"},
+                        },
+                    ],
+                },
+                "anomaly_symbols": {
+                    "count": 2,
+                    "first_10": [
+                        {
+                            "row_index": 8,
+                            "raw_symbol": "FF",
+                            "normalized_symbol": "FFUSDT",
+                            "source_values": {
+                                "交易对": "FF",
+                                "5m量变化率": "-0.082%",
+                                "5m额变化率": "4.866%",
+                                "现持仓额": "35965182.49",
+                            },
+                        },
+                        {
+                            "row_index": 9,
+                            "raw_symbol": "FIDA",
+                            "normalized_symbol": "FIDAUSDT",
+                            "source_values": {
+                                "交易对": "FIDA",
+                                "5m量变化率": "2.724%",
+                                "5m额变化率": "4.388%",
+                                "现持仓额": "9122768.65",
+                            },
+                        },
+                    ],
+                },
+                "signal": {"symbol": "FORMUSDT", "direction": "LONG"},
+                "risk_decision": {"decision": "REJECT", "reasons": ["agent_sizing_required"]},
+                "paper_execution": {"status": "REJECTED"},
+                "safety": {
+                    "public_readonly_market_data": True,
+                    "paper_or_watch_only": True,
+                    "real_orders": False,
+                    "signed_requests": False,
+                    "reads_api_keys": False,
+                    "binance_account_state": False,
+                },
+            },
+        }
+    )
+
+    assert decision["ok"] is True
+    input_section = next(item for item in decision["sections"] if item["title"] == "输入信号")
+    assert "来源: signal_flow" in input_section["text"]
+    assert "周期: 5分钟" in input_section["text"]
+    assert "类型: 成交额暴增" in input_section["text"]
+    assert "原始字段: 时间(北京)=2026-05-18 17:40:48" in input_section["text"]
+    assert "关联异动面板: row=3; symbol=FORMUSDT" in input_section["text"]
+    assert "现持仓额=5667814.63" in input_section["text"]
+    candidates_section = next(item for item in decision["sections"] if item["title"] == "本轮输入候选")
+    assert "信号流抓取数: 2" in candidates_section["text"]
+    assert "信号流去重丢弃数: 1" in candidates_section["text"]
+    assert "FIDAUSDT 信号流: MACD金叉" in candidates_section["text"]
+    assert "异动面板抓取数: 2" in candidates_section["text"]
+    assert "FFUSDT" in candidates_section["text"]
+    assert "现持仓额=9122768.65" in candidates_section["text"]
+    assert decision["safety"]["real_orders"] is False
+    assert decision["safety"]["signed_requests"] is False
+    assert decision["safety"]["reads_api_keys"] is False
+
+
+def test_auto_paper_web_monitor_uses_latest_cycle_with_pipeline_for_decision_text(tmp_path: Path) -> None:
+    monitor = load_web_monitor_module()
+    archive_path = tmp_path / "cycles.jsonl"
+    archive_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "action": "PROCESSED",
+                        "pipeline_report": {"schema": "tradecat_auto.run_once_report.v1", "selected_symbol": "IRYSUSDT"},
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "action": "SKIPPED_DUPLICATE_EVENT",
+                        "latest_event": {
+                            "schema": "tradecat_auto.anomaly_signal_event.v1",
+                            "source_dataset_key": "anomaly_panel",
+                            "symbol": "IRYSUSDT",
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    latest = monitor.read_latest_jsonl(archive_path)
+    latest_decision = monitor.read_latest_decision_jsonl(archive_path)
+
+    assert latest["action"] == "SKIPPED_DUPLICATE_EVENT"
+    assert latest_decision["action"] == "PROCESSED"
+    assert latest_decision["pipeline_report"]["selected_symbol"] == "IRYSUSDT"
+
+
+def test_auto_paper_ops_check_rejects_binance_credential_env_names(tmp_path: Path) -> None:
+    env = {
+        "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(tmp_path / "run"),
+        "BINANCE_API_KEY": "synthetic-placeholder",
+    }
+
+    proc = run_service_script(["ops-check", "--json"], env=env)
+
+    assert proc.returncode == 1
+    payload = json.loads(proc.stdout)
+    checks = {item["id"]: item for item in payload["checks"]}
+    assert payload["schema"] == "tradecat_auto.paper_ops_report.v1"
+    assert payload["ok"] is False
+    assert "no_binance_credential_env_names" in payload["blocking_checks"]
+    assert checks["no_binance_credential_env_names"]["env_names"] == ["BINANCE_API_KEY"]
+    assert payload["error"]["code"] == "paper_ops_preflight_failed"
+
+
 def test_auto_paper_running_status_reads_effective_sizing_from_process_env(tmp_path: Path) -> None:
     fake_python = tmp_path / "fake-python"
     fake_python.write_text(
         "#!/usr/bin/env python3\n"
-        "import json\n"
-        "print(json.dumps({'schema': 'fake.cycle', 'ok': True}))\n",
+        "import json, sys\n"
+        "if len(sys.argv) > 1 and sys.argv[1] == '-':\n"
+        "    exec(sys.stdin.read())\n"
+        "else:\n"
+        "    print(json.dumps({'schema': 'fake.cycle', 'ok': True}))\n",
         encoding="utf-8",
     )
     fake_python.chmod(0o755)
@@ -86,6 +435,8 @@ def test_auto_paper_running_status_reads_effective_sizing_from_process_env(tmp_p
         "TRADECAT_AUTO_PAPER_INTERVAL_SECONDS": "999",
         "TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT": "7.5",
         "TRADECAT_AUTO_PAPER_LEVERAGE": "3",
+        "TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH": str(tmp_path / "agent-thesis.json"),
+        "TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH": str(tmp_path / "paper-autonomy.json"),
     }
     status_env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir)}
 
@@ -96,14 +447,51 @@ def test_auto_paper_running_status_reads_effective_sizing_from_process_env(tmp_p
         assert status_proc.returncode == 0, status_proc.stderr
         payload = json.loads(status_proc.stdout)
         assert payload["running"] is True
+        if hasattr(os, "getsid"):
+            assert os.getsid(payload["pid"]) != os.getsid(0)
         assert payload["agent_margin_usdt"] == 7.5
         assert payload["paper_margin_budget_usdt"] is None
         assert payload["paper_leverage"] == 3.0
+        assert payload["agent_trade_thesis_path"] == str(tmp_path / "agent-thesis.json")
+        assert payload["agent_trade_thesis_configured"] is True
+        assert payload["paper_autonomy_profile_path"] == str(tmp_path / "paper-autonomy.json")
+        assert payload["paper_autonomy_profile_configured"] is True
         assert payload["effective_notional_usdt"] == 22.5
         assert payload["agent_sizing_required"] is False
         assert payload["paper_sizing"]["source"] == "service_environment"
     finally:
         run_service_script(["stop", "--json"], env=status_env)
+
+
+def test_auto_paper_heal_starts_when_process_is_missing(tmp_path: Path) -> None:
+    fake_python = tmp_path / "fake-python"
+    fake_python.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "if len(sys.argv) > 1 and sys.argv[1] == '-':\n"
+        "    exec(sys.stdin.read())\n"
+        "else:\n"
+        "    print(json.dumps({'schema': 'fake.cycle', 'ok': True}))\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    runtime_dir = tmp_path / "run"
+    env = {
+        "PYTHON_BIN": str(fake_python),
+        "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir),
+        "TRADECAT_AUTO_PAPER_INTERVAL_SECONDS": "999",
+    }
+
+    proc = run_service_script(["heal", "--json"], env=env)
+    try:
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
+        assert payload["schema"] == "tradecat_auto.paper_service_status.v1"
+        assert payload["action"] == "heal"
+        assert payload["running"] is True
+        assert payload["safety"]["real_orders"] is False
+    finally:
+        run_service_script(["stop", "--json"], env={"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir)})
 
 
 def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path) -> None:
@@ -116,6 +504,8 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
         "TRADECAT_AUTO_PAPER_SYSTEMCTL_BIN": str(fake_systemctl),
         "FAKE_SYSTEMCTL_LOG": str(systemctl_log),
         "TRADECAT_AUTO_PAPER_INTERVAL_SECONDS": "17",
+        "HTTPS_PROXY": "http://127.0.0.1:7890",
+        "NO_PROXY": "localhost,127.0.0.1,::1",
     }
 
     proc = run_service_script(["systemd-install", "--json"], env=env)
@@ -141,14 +531,31 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert f"WorkingDirectory={PROJECT_ROOT}" in service_text
     assert f"ExecStart={PROJECT_ROOT}/scripts/start-auto-paper.sh _cycle" in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_RUNTIME_DIR={runtime_dir}" in service_text
+    assert "Environment=HTTPS_PROXY=http://127.0.0.1:7890" in service_text
+    assert "Environment=NO_PROXY=localhost,127.0.0.1,::1" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_LEVERAGE=" not in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH=" not in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES=0" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_NOTIONAL_USDT=" not in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH={runtime_dir / 'paper_audit.sqlite3'}" in service_text
+    assert "StartLimitIntervalSec=600" in service_text
+    assert "StartLimitBurst=5" in service_text
+    assert "Restart=on-failure" in service_text
+    assert "RestartSec=30s" in service_text
+    assert "TimeoutStartSec=120" in service_text
+    assert "StandardOutput=append:" in service_text
+    assert "StandardError=append:" in service_text
+    assert "UMask=0077" in service_text
+    assert "LimitNOFILE=4096" in service_text
+    assert "TasksMax=64" in service_text
     assert "NoNewPrivileges=true" in service_text
+    assert "PrivateDevices=true" in service_text
+    assert "LockPersonality=true" in service_text
+    assert "RestrictSUIDSGID=true" in service_text
     assert "OnBootSec=30s" in timer_text
     assert "OnUnitActiveSec=17s" in timer_text
     assert "Unit=tradecat-auto-paper.service" in timer_text
@@ -175,6 +582,8 @@ def test_auto_paper_cycle_omits_margin_budget_arg_when_unset(tmp_path: Path) -> 
         "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(tmp_path / "run"),
         "TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT": "7.5",
         "TRADECAT_AUTO_PAPER_LEVERAGE": "3",
+        "TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH": str(tmp_path / "agent-thesis.json"),
+        "TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH": str(tmp_path / "paper-autonomy.json"),
     }
 
     proc = run_service_script(["_cycle"], env=env)
@@ -183,6 +592,10 @@ def test_auto_paper_cycle_omits_margin_budget_arg_when_unset(tmp_path: Path) -> 
     argv = json.loads(argv_path.read_text(encoding="utf-8"))
     assert "--agent-margin-usdt" in argv
     assert "--paper-leverage" in argv
+    assert "--agent-trade-thesis-path" in argv
+    assert str(tmp_path / "agent-thesis.json") in argv
+    assert "--paper-autonomy-profile-path" in argv
+    assert str(tmp_path / "paper-autonomy.json") in argv
     assert "--paper-margin-budget-usdt" not in argv
 
 

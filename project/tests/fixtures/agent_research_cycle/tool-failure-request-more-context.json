@@ -1,0 +1,56 @@
+{
+  "schema": "tradecat_auto.agent_research_cycle.v1",
+  "schema_version": "1.0.0",
+  "ok": false,
+  "run_id": "research-cycle-tool-failure",
+  "generated_at": "2026-05-18T00:00:00Z",
+  "mode": "observe_only",
+  "symbol": "IRYSUSDT",
+  "error_code": "market_context_incomplete",
+  "source_signal": {
+    "kind": "tradecat_sheet_event",
+    "event_id": "evt-irys-004",
+    "symbol": "IRYSUSDT",
+    "provenance": {"source": "tradecat_public_sheet_fixture"}
+  },
+  "requested_market_data": [
+    {
+      "family": "open_interest_history",
+      "endpoint": "/futures/data/openInterestHist",
+      "method": "GET",
+      "required": true,
+      "reason": "需要历史 OI 判断异动是否可持续"
+    }
+  ],
+  "tool_calls": [
+    {
+      "family": "open_interest_history",
+      "endpoint": "/futures/data/openInterestHist",
+      "method": "GET",
+      "ok": false,
+      "requires_signature": false,
+      "signed": false,
+      "reads_api_keys": false,
+      "real_orders": false,
+      "provenance": {"source": "binance_usdm_public", "endpoint": "/futures/data/openInterestHist"},
+      "error": {"code": "public_market_data_unavailable", "message": "fixture failure"}
+    }
+  ],
+  "risk_notes": ["Required market context is incomplete."],
+  "next_action": {
+    "action": "request_more_context",
+    "reason": "required public market context was unavailable",
+    "required_inputs": ["open_interest_history"],
+    "writes_paper_ledger": false
+  },
+  "provenance": {"source": "tradecat_agent_research_cycle_fixture"},
+  "safety": {
+    "public_readonly_market_data": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "limitations": ["paper/watch only", "no Binance key", "no signed requests", "no real order"]
+}

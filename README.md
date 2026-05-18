@@ -33,7 +33,7 @@ hermes -s tradecat-public
 python3 -m json.tool agents/manifest.json >/dev/null
 bash scripts/run-tradecat.sh status --json
 bash scripts/run-tradecat.sh datasets --json
-bash scripts/run-tradecat.sh path event_stream --json
+bash scripts/run-tradecat.sh path signal_flow --json
 bash scripts/run-tradecat.sh analyze --json
 bash scripts/run-tradecat.sh features --json
 bash scripts/run-tradecat.sh auto paper-report --json
@@ -45,7 +45,7 @@ bash scripts/run-tradecat.sh auto audit-journal --json
 bash scripts/run-tradecat.sh auto health-report --json
 bash scripts/run-tradecat.sh auto daily-report --json
 bash scripts/run-tradecat.sh auto alert-payload --kind daily --json
-python3 project/scripts/request.py event_stream --format json --limit 5
+python3 project/scripts/request.py signal_flow --format json --limit 5
 ```
 
 `datasets --json` 同时携带 dataset consumption contract；字段语义、缺失值、

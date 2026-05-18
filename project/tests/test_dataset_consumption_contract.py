@@ -30,9 +30,9 @@ def test_dataset_consumption_contract_covers_registry():
     assert validator.validate_dataset_consumption_contract(include_inactive=True) == []
 
 
-def test_event_stream_consumption_semantics_are_machine_readable():
-    contract = dataset_consumption_contract("event_stream")
-    dataset = get_dataset("event_stream")
+def test_signal_flow_consumption_semantics_are_machine_readable():
+    contract = dataset_consumption_contract("signal_flow")
+    dataset = get_dataset("signal_flow")
     covered_columns = {
         column
         for field in contract["fields"]
@@ -41,6 +41,7 @@ def test_event_stream_consumption_semantics_are_machine_readable():
 
     assert contract["data_mode"] == "stream"
     assert contract["time_semantics"]["event_time_column"] == "时间(北京)"
+    assert any(field["canonical_name"] == "symbol" for field in contract["fields"])
     assert set(dataset.event_key_columns).issubset(covered_columns)
     assert contract["missing_value_policy"] == "empty_string_is_missing"
     assert contract["quality_tier"] == "public_sheet_best_effort"
@@ -49,12 +50,12 @@ def test_event_stream_consumption_semantics_are_machine_readable():
 def test_datasets_json_exposes_consumption_contract(capsys):
     assert cli.main(["datasets", "--json"]) == 0
     payload = _last_json(capsys.readouterr().out)
-    event_stream = next(dataset for dataset in payload["datasets"] if dataset["key"] == "event_stream")
-    contract = event_stream["consumption_contract"]
+    signal_flow = next(dataset for dataset in payload["datasets"] if dataset["key"] == "signal_flow")
+    contract = signal_flow["consumption_contract"]
 
     assert contract["schema"] == DATASET_CONSUMPTION_SCHEMA
-    assert contract["dataset_key"] == "event_stream"
-    assert contract["primary_entity"] == "event"
+    assert contract["dataset_key"] == "signal_flow"
+    assert contract["primary_entity"] == "contract_symbol_signal"
     assert contract["required_column_groups"][0]["name"] == "event_time"
 
 

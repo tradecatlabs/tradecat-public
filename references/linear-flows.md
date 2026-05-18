@@ -20,7 +20,7 @@ Input: public Google Sheets CSV, dataset registry, local cache_dir
 -> Node 4: `sheets.py` fetches read-only CSV with bounded retry/backoff/jitter and typed remote errors
 -> Node 5: `migrations.py` checks cache metadata schema and backs up before local migration when needed
 -> Node 6: `cache.py` writes a snapshot file under `state.py` locks only when the full matrix hash changes
--> Node 7: `cache.py` merges `event_stream` by event_key and normalized_event_key into `stream_events.json`
+-> Node 7: `cache.py` merges stream datasets by event_key and normalized_event_key into `stream_events.json`
 -> Node 8: `structured_cache.py` writes `latest.json`, `latest.jsonl`, `latest.csv`, and root manifest atomically
 -> Output: local structured snapshot cache for TUI, CLI export, request consumers, and agents
 ```
@@ -62,7 +62,7 @@ Input: `curl .../project/install.sh | sh` or `irm .../project/install.ps1 | iex`
 -> Node 4: installer locates `project/`, creates `.venv`, and performs editable install through `constraints.txt`
 -> Node 5: installer writes `tradecat` and `tcat` launchers; stable/pinned installs skip auto-update, while explicit branch-channel installs use throttled background update and force-update support
 -> Node 6: installer writes `tradecat-uninstall` and `tcat-uninstall` launchers
--> Node 7: installer runs `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`, best-effort `tradecat sync-all` unless skipped, and falls back to `tradecat sync event_stream` if the full sync fails
+-> Node 7: installer runs `tradecat init` with `TRADECAT_NO_AUTO_UPDATE=1`, best-effort `tradecat sync-all` unless skipped, and falls back to `tradecat sync signal_flow` if the full sync fails
 -> Output: user can run `tradecat`, `tcat`, `tradecat-uninstall`, and `tcat-uninstall` from the configured bin dir
 ```
 
@@ -104,7 +104,7 @@ Input: `tradecat doctor`, `tradecat doctor --repair`, `tradecat doctor --verbose
 ```text
 Input: `tradecat analyze --json`, local cache, dataset consumption contract
 -> Node 1: `cli.py` parses window and candidate limit without triggering network fetch
--> Node 2: `analysis.py` reads the latest local views for `event_stream`, `anomaly_panel`, and `market_stats`
+-> Node 2: `analysis.py` reads the latest local views for `signal_flow` and `anomaly_panel`
 -> Node 3: `dataset_contract.py` supplies field roles, time grain, missing-value policy, and quality tier
 -> Node 4: `analysis.py` emits observations, candidate symbols from explicit entity fields, row evidence, risk flags, and limitations
 -> Node 5: `contracts.py` wraps the payload as `tradecat.analysis_report.v1` or returns `empty_analysis_cache`

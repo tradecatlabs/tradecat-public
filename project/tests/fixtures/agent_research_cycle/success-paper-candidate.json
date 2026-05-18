@@ -1,0 +1,107 @@
+{
+  "schema": "tradecat_auto.agent_research_cycle.v1",
+  "schema_version": "1.0.0",
+  "ok": true,
+  "run_id": "research-cycle-success-paper-candidate",
+  "generated_at": "2026-05-18T00:00:00Z",
+  "mode": "paper",
+  "symbol": "IRYSUSDT",
+  "error_code": null,
+  "source_signal": {
+    "kind": "tradecat_sheet_event",
+    "event_id": "evt-irys-001",
+    "symbol": "IRYSUSDT",
+    "raw": {"content": "IRYS 异动"},
+    "provenance": {"source": "tradecat_public_sheet_fixture"}
+  },
+  "requested_market_data": [
+    {
+      "family": "klines",
+      "endpoint": "/fapi/v1/klines",
+      "method": "GET",
+      "required": true,
+      "reason": "确认信号后的短周期价格结构"
+    },
+    {
+      "family": "open_interest",
+      "endpoint": "/fapi/v1/openInterest",
+      "method": "GET",
+      "required": true,
+      "reason": "确认异动是否伴随合约持仓变化"
+    }
+  ],
+  "tool_calls": [
+    {
+      "family": "klines",
+      "endpoint": "/fapi/v1/klines",
+      "method": "GET",
+      "ok": true,
+      "fetched_at": "2026-05-18T00:00:01Z",
+      "requires_signature": false,
+      "signed": false,
+      "reads_api_keys": false,
+      "real_orders": false,
+      "provenance": {"source": "binance_usdm_public", "endpoint": "/fapi/v1/klines"},
+      "data": []
+    },
+    {
+      "family": "open_interest",
+      "endpoint": "/fapi/v1/openInterest",
+      "method": "GET",
+      "ok": true,
+      "fetched_at": "2026-05-18T00:00:02Z",
+      "requires_signature": false,
+      "signed": false,
+      "reads_api_keys": false,
+      "real_orders": false,
+      "provenance": {"source": "binance_usdm_public", "endpoint": "/fapi/v1/openInterest"},
+      "data": {"openInterest": "1000000"}
+    }
+  ],
+  "agent_market_context": {
+    "schema": "tradecat_auto.agent_market_context.v1",
+    "schema_version": "1.0.0",
+    "symbol": "IRYSUSDT"
+  },
+  "agent_trade_thesis": {
+    "schema": "tradecat_auto.agent_trade_thesis.v1",
+    "schema_version": "1.0.0",
+    "ok": true,
+    "symbol": "IRYSUSDT",
+    "mode": "paper_research",
+    "direction": "LONG",
+    "confidence": 0.62,
+    "rationale": "Fixture thesis with explicit paper sizing and exit plan.",
+    "invalidation_price": 0.055,
+    "take_profit_price": 0.08,
+    "max_holding_minutes": 45,
+    "paper_intent": {
+      "allow_tradecat_paper_gate_to_decide": true,
+      "requested_margin_usdt": 7.5,
+      "paper_leverage": 2.0,
+      "real_order": false
+    },
+    "limitations": ["paper/watch only; no Binance credentials; no real order"]
+  },
+  "risk_notes": ["Fixture only; not investment advice."],
+  "next_action": {
+    "action": "run_context_paper",
+    "reason": "audit can continue only because sizing and exit plan are explicit",
+    "required_inputs": [],
+    "tradecat_command_hint": "bash scripts/run-tradecat.sh auto context-audit --input <context.json> --json",
+    "writes_paper_ledger": true
+  },
+  "provenance": {
+    "source": "tradecat_agent_research_cycle_fixture",
+    "agent": "fixture"
+  },
+  "safety": {
+    "public_readonly_market_data": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "limitations": ["paper/watch only", "no Binance key", "no signed requests", "no real order"]
+}
