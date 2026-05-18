@@ -94,17 +94,15 @@ def anomaly_signal_events_payload(anomaly_symbols: dict[str, Any], *, selected_s
         and (not selected or str(item.get("normalized_symbol") or "").upper().strip() == selected)
     ]
     if selected and not events:
-        events = [
-            anomaly_signal_event_for(item)
-            for item in rows[:1]
-            if isinstance(item, dict)
-        ]
+        events = [anomaly_signal_event_for(item) for item in rows[:1] if isinstance(item, dict)]
     return {
         "schema": "tradecat_auto.anomaly_signal_events.v1",
         "schema_version": "1.0.0",
         "ok": bool(events),
         "source_schema": anomaly_symbols.get("schema") if isinstance(anomaly_symbols, dict) else None,
-        "source_dataset_key": anomaly_symbols.get("source_dataset_key", "anomaly_panel") if isinstance(anomaly_symbols, dict) else "anomaly_panel",
+        "source_dataset_key": anomaly_symbols.get("source_dataset_key", "anomaly_panel")
+        if isinstance(anomaly_symbols, dict)
+        else "anomaly_panel",
         "events": events,
         "error_code": None if events else _source_error_code(anomaly_symbols) or "no_anomaly_signal_available",
         "error": anomaly_symbols.get("error") if isinstance(anomaly_symbols, dict) else None,
@@ -187,12 +185,15 @@ def signal_events_payload(
 ) -> dict[str, Any]:
     selected = str(selected_symbol or "").upper().strip()
     source_events = signal_flow_events.get("events") if isinstance(signal_flow_events, dict) else []
-    signal_events = [
-        _attach_related_anomaly_panel(item, anomaly_symbols)
-        for item in source_events
-        if isinstance(item, dict)
-        and (not selected or str(item.get("symbol") or "").upper().strip() == selected)
-    ] if isinstance(source_events, list) else []
+    signal_events = (
+        [
+            _attach_related_anomaly_panel(item, anomaly_symbols)
+            for item in source_events
+            if isinstance(item, dict) and (not selected or str(item.get("symbol") or "").upper().strip() == selected)
+        ]
+        if isinstance(source_events, list)
+        else []
+    )
     if signal_events:
         return {
             "schema": "tradecat_auto.signal_events.v1",
@@ -208,13 +209,19 @@ def signal_events_payload(
                 "signal_flow": {
                     "ok": bool(signal_flow_events.get("ok")) if isinstance(signal_flow_events, dict) else False,
                     "count": len(source_events) if isinstance(source_events, list) else 0,
-                    "rejected_count": len(signal_flow_events.get("rejected") or []) if isinstance(signal_flow_events, dict) else 0,
-                    "duplicate_count": _duplicate_count(signal_flow_events) if isinstance(signal_flow_events, dict) else 0,
+                    "rejected_count": len(signal_flow_events.get("rejected") or [])
+                    if isinstance(signal_flow_events, dict)
+                    else 0,
+                    "duplicate_count": _duplicate_count(signal_flow_events)
+                    if isinstance(signal_flow_events, dict)
+                    else 0,
                 },
                 "anomaly_panel": {
                     "ok": bool(anomaly_symbols.get("ok")) if isinstance(anomaly_symbols, dict) else False,
                     "count": len(anomaly_symbols.get("symbols") or []) if isinstance(anomaly_symbols, dict) else 0,
-                    "rejected_count": len(anomaly_symbols.get("rejected") or []) if isinstance(anomaly_symbols, dict) else 0,
+                    "rejected_count": len(anomaly_symbols.get("rejected") or [])
+                    if isinstance(anomaly_symbols, dict)
+                    else 0,
                 },
             },
             "error_code": None,
@@ -225,7 +232,9 @@ def signal_events_payload(
 
 def parse_event_stream_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("ok") is False:
-        return _dataset_error_payload(payload, dataset_key="event_stream", schema="tradecat_auto.sheet_events.v1", events_key="events")
+        return _dataset_error_payload(
+            payload, dataset_key="event_stream", schema="tradecat_auto.sheet_events.v1", events_key="events"
+        )
     rows = payload.get("rows") if isinstance(payload, dict) else []
     events: list[dict[str, Any]] = []
     if isinstance(rows, list):
@@ -257,7 +266,9 @@ def parse_event_stream_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def parse_anomaly_symbols(payload: dict[str, Any], *, tradable_symbols: set[str] | list[str] | tuple[str, ...]) -> dict[str, Any]:
+def parse_anomaly_symbols(
+    payload: dict[str, Any], *, tradable_symbols: set[str] | list[str] | tuple[str, ...]
+) -> dict[str, Any]:
     if payload.get("ok") is False:
         result = _dataset_error_payload(
             payload,
@@ -317,7 +328,9 @@ def parse_anomaly_symbols(payload: dict[str, Any], *, tradable_symbols: set[str]
     }
 
 
-def _dataset_error_payload(payload: dict[str, Any], *, dataset_key: str, schema: str, events_key: str) -> dict[str, Any]:
+def _dataset_error_payload(
+    payload: dict[str, Any], *, dataset_key: str, schema: str, events_key: str
+) -> dict[str, Any]:
     error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
     code = str(error.get("code") or payload.get("error_code") or "source_unavailable")
     return {
@@ -424,7 +437,9 @@ def _attach_related_anomaly_panel(event: dict[str, Any], anomaly_symbols: dict[s
         "source_values": source_values,
         "content": _anomaly_content(symbol, source_values),
     }
-    updated["content"] = f"{str(event.get('content') or '').strip()} | 关联异动面板: {_format_source_values(source_values)}"
+    updated["content"] = (
+        f"{str(event.get('content') or '').strip()} | 关联异动面板: {_format_source_values(source_values)}"
+    )
     return updated
 
 

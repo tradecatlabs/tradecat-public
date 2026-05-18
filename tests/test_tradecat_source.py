@@ -33,7 +33,9 @@ class TradeCatSourceTests(unittest.TestCase):
         }
 
         first = signal_flow_event_id_for(row, row_index=1, normalized_symbol="FORMUSDT")
-        second = signal_flow_event_id_for({**row, "交易对": "FORMUSDT", "源行号": 99}, row_index=99, normalized_symbol="FORMUSDT")
+        second = signal_flow_event_id_for(
+            {**row, "交易对": "FORMUSDT", "源行号": 99}, row_index=99, normalized_symbol="FORMUSDT"
+        )
 
         self.assertEqual(first, second)
 
@@ -118,7 +120,9 @@ class TradeCatSourceTests(unittest.TestCase):
         result = parse_anomaly_symbols(payload, tradable_symbols={"FFUSDT", "MORPHOUSDT", "FIDAUSDT"})
 
         self.assertEqual(result["ok"], True)
-        self.assertEqual([item["normalized_symbol"] for item in result["symbols"]], ["FFUSDT", "MORPHOUSDT", "FIDAUSDT"])
+        self.assertEqual(
+            [item["normalized_symbol"] for item in result["symbols"]], ["FFUSDT", "MORPHOUSDT", "FIDAUSDT"]
+        )
         self.assertEqual([item["section"] for item in result["rows"]], ["5m 异动榜", "15m 异动榜", "1h 异动榜"])
         self.assertEqual(result["rows"][1]["first_row_index"], 16)
         self.assertEqual(result["rows"][2]["source_values"]["1h量变化率"], "7.918%")
@@ -266,8 +270,7 @@ class TradeCatSourceTests(unittest.TestCase):
             returncode = 1
             stderr = ""
             stdout = (
-                '{"schema":"tradecat.request_result.v1","ok":false,'
-                '"error":{"code":"remote_http_status","status":404}}'
+                '{"schema":"tradecat.request_result.v1","ok":false,"error":{"code":"remote_http_status","status":404}}'
             )
 
         with patch("tradecat_auto.tradecat_source.subprocess.run", return_value=Proc()):

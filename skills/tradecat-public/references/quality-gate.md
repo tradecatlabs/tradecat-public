@@ -8,6 +8,8 @@ bash scripts/verify.sh
 bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
+python3 scripts/validate_dependency_policy.py
+ruff format --check src tests scripts
 git diff --check
 ```
 
@@ -21,6 +23,7 @@ git diff --check
 - No root install/uninstall scripts.
 - No old `scripts/start.sh` or `scripts/watchdog.sh`.
 - No tracked `.runtime/`, `.tradecat/`, `.venv/`, `.hermes/`, `.tools/`, credentials, caches, paper ledgers, or audit journals.
+- `CONTRIBUTING.md`, `CHANGELOG.md`, `LICENSE`, `.github/pull_request_template.md`, `.github/CODEOWNERS`, `.github/dependabot.yml`, `.editorconfig`, `.env.example`, and `docs/` stay present as repository governance entrypoints.
 
 Use:
 
@@ -35,6 +38,7 @@ bash scripts/guard_public_local_files.sh
 - Safety fields remain false for `real_orders`, `signed_requests`, and `reads_api_keys`.
 - Binance resources remain self-contained under `resources/agent_market_context/binance/`.
 - Docs reference manifest as the only machine contract.
+- CI and local verify run lint, format check, dependency policy, tests, schema validators, secret scan, and supply-chain audit.
 
 ## Runtime Safety Audit
 

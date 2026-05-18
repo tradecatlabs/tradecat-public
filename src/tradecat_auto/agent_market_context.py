@@ -205,7 +205,11 @@ def load_agent_market_context(path: Path | str) -> dict[str, Any]:
                 "retryable": False,
             },
         }
-    return payload if isinstance(payload, dict) else {"schema": CONTEXT_SCHEMA, "schema_version": SCHEMA_VERSION, "ok": False}
+    return (
+        payload
+        if isinstance(payload, dict)
+        else {"schema": CONTEXT_SCHEMA, "schema_version": SCHEMA_VERSION, "ok": False}
+    )
 
 
 def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
@@ -234,7 +238,9 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
     if not top_provenance:
         errors.append(_error("missing_provenance", "top-level provenance is required"))
     elif not top_provenance.get("source_manifest"):
-        errors.append(_error("missing_source_manifest", "provenance.source_manifest is required for reproducible audits"))
+        errors.append(
+            _error("missing_source_manifest", "provenance.source_manifest is required for reproducible audits")
+        )
 
     credential_hits = _credential_key_hits(context)
     for hit in credential_hits:
@@ -242,7 +248,12 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
 
     signed_timestamp_hits = _signed_timestamp_hits(context)
     for hit in signed_timestamp_hits:
-        errors.append(_error("signed_timestamp_forbidden", f"timestamp is not allowed inside a signed/request-signature context: {hit}"))
+        errors.append(
+            _error(
+                "signed_timestamp_forbidden",
+                f"timestamp is not allowed inside a signed/request-signature context: {hit}",
+            )
+        )
 
     forbidden_state_hits = _forbidden_state_key_hits(context)
     for hit in forbidden_state_hits:
@@ -272,7 +283,9 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
 
         if family not in ALLOWED_ENDPOINTS_BY_FAMILY:
             rejected_families.append(family)
-            errors.append(_error("unsupported_family", f"market_data[{index}].family is not allowlisted: {family!r}", index=index))
+            errors.append(
+                _error("unsupported_family", f"market_data[{index}].family is not allowlisted: {family!r}", index=index)
+            )
             continue
         if method != "GET":
             errors.append(_error("forbidden_method", f"market_data[{index}].method must be GET", index=index))
@@ -286,13 +299,29 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
                 )
             )
         elif endpoint not in ALLOWED_ENDPOINTS_BY_FAMILY[family]:
-            errors.append(_error("endpoint_not_allowlisted", f"endpoint {endpoint!r} is not allowed for family {family!r}", index=index))
+            errors.append(
+                _error(
+                    "endpoint_not_allowlisted",
+                    f"endpoint {endpoint!r} is not allowed for family {family!r}",
+                    index=index,
+                )
+            )
         if item.get("requires_signature") is True or item.get("signed") is True:
-            errors.append(_error("signed_request_forbidden", f"market_data[{index}] is marked as signed/requires_signature", index=index))
+            errors.append(
+                _error(
+                    "signed_request_forbidden",
+                    f"market_data[{index}] is marked as signed/requires_signature",
+                    index=index,
+                )
+            )
         if not item_provenance:
-            errors.append(_error("missing_item_provenance", f"market_data[{index}].provenance is required", index=index))
+            errors.append(
+                _error("missing_item_provenance", f"market_data[{index}].provenance is required", index=index)
+            )
         if item.get("ok") is False:
-            warnings.append(_warning("market_data_item_not_ok", f"market_data[{index}] was supplied as ok=false", index=index))
+            warnings.append(
+                _warning("market_data_item_not_ok", f"market_data[{index}] was supplied as ok=false", index=index)
+            )
 
         if not any(error.get("index") == index for error in errors):
             accepted_families.append(family)
@@ -403,9 +432,13 @@ def build_paper_report_from_agent_market_context(
         }
     selected_symbol = str(context.get("symbol") or audit.get("symbol") or "").upper().strip()
     agent_sizing = _agent_paper_sizing(context)
-    resolved_requested_margin = requested_margin_usdt if requested_margin_usdt is not None else agent_sizing.get("requested_margin_usdt")
+    resolved_requested_margin = (
+        requested_margin_usdt if requested_margin_usdt is not None else agent_sizing.get("requested_margin_usdt")
+    )
     resolved_paper_leverage = paper_leverage if paper_leverage is not None else agent_sizing.get("paper_leverage")
-    resolved_requested_notional = requested_notional_usdt if requested_notional_usdt is not None else agent_sizing.get("requested_notional_usdt")
+    resolved_requested_notional = (
+        requested_notional_usdt if requested_notional_usdt is not None else agent_sizing.get("requested_notional_usdt")
+    )
     sizing_source = str(agent_sizing.get("source") or "agent_market_context_missing_sizing")
     if requested_margin_usdt is not None or requested_notional_usdt is not None or paper_leverage is not None:
         sizing_source = "explicit_cli_override"
@@ -426,13 +459,17 @@ def build_paper_report_from_agent_market_context(
         paper_leverage=resolved_paper_leverage,
         margin_budget_usdt=margin_budget_usdt,
         sizing_source=sizing_source,
-        agent_trade_thesis=context.get("agent_trade_thesis") if isinstance(context.get("agent_trade_thesis"), dict) else None,
+        agent_trade_thesis=context.get("agent_trade_thesis")
+        if isinstance(context.get("agent_trade_thesis"), dict)
+        else None,
         risk_policy=risk_policy,
     )
     report["schema_version"] = SCHEMA_VERSION
     report["agent_market_context_audit"] = audit
     report["agent_paper_sizing_input"] = agent_sizing
-    report["market_context_provenance"] = copy.deepcopy(context.get("provenance") if isinstance(context.get("provenance"), dict) else {})
+    report["market_context_provenance"] = copy.deepcopy(
+        context.get("provenance") if isinstance(context.get("provenance"), dict) else {}
+    )
     report["provenance"] = {
         **(report.get("provenance") if isinstance(report.get("provenance"), dict) else {}),
         "agent_market_context": _top_provenance(context),
@@ -463,7 +500,9 @@ def _agent_paper_sizing(context: dict[str, Any]) -> dict[str, Any]:
         else paper_intent.get("paper_leverage", paper_intent.get("leverage"))
     )
     requested_notional = _positive_number(paper_intent.get("requested_notional_usdt"))
-    ok = (requested_margin is not None and leverage is not None) or (requested_notional is not None and leverage is not None)
+    ok = (requested_margin is not None and leverage is not None) or (
+        requested_notional is not None and leverage is not None
+    )
     return {
         "schema": "tradecat_auto.agent_paper_sizing_input.v1",
         "schema_version": "1.0.0",
@@ -579,7 +618,11 @@ def _signed_timestamp_hits(value: Any, *, prefix: str = "", signed_context: bool
             hits.extend(_signed_timestamp_hits(child, prefix=path, signed_context=current_signed_context))
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            hits.extend(_signed_timestamp_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]", signed_context=signed_context))
+            hits.extend(
+                _signed_timestamp_hits(
+                    child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]", signed_context=signed_context
+                )
+            )
     return hits
 
 
@@ -595,7 +638,10 @@ def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
                 fragment in compact for fragment in CREDENTIAL_KEY_COMPACT_FRAGMENTS
             ):
                 # Schema/safety flags are allowed only as explicit false.
-                if normalized in {"requires_signature", "signed", "signed_requests", "reads_api_keys", "read_api_keys"} and child is False:
+                if (
+                    normalized in {"requires_signature", "signed", "signed_requests", "reads_api_keys", "read_api_keys"}
+                    and child is False
+                ):
                     pass
                 else:
                     hits.append(path)

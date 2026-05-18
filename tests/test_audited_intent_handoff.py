@@ -48,7 +48,12 @@ class AuditedIntentHandoffSchemaTests(unittest.TestCase):
         self.assertInvalid(load_fixture("unsafe-credential-handoff.json"))
 
         payload = load_fixture("paper-open-candidate.json")
-        for field, value in (("signature", "abc"), ("listen_key", "listen"), ("real_order", True), ("exchange_order_id", "123")):
+        for field, value in (
+            ("signature", "abc"),
+            ("listen_key", "listen"),
+            ("real_order", True),
+            ("exchange_order_id", "123"),
+        ):
             with self.subTest(field=field):
                 mutated = copy.deepcopy(payload)
                 mutated[field] = value

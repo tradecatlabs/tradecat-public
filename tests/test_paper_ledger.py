@@ -37,7 +37,7 @@ OPEN_LONG = {
     "sizing_source": "agent_supplied_test_fixture",
     "stop_loss_price": 97.0,
     "take_profit_price": 106.0,
-    }
+}
 
 
 POSITION_THESIS_BASE = {
@@ -71,7 +71,9 @@ class PaperLedgerTests(unittest.TestCase):
     def test_apply_open_execution_records_position_fill_fee_and_equity(self) -> None:
         ledger = default_paper_ledger(initial_balance_usdt=1000.0)
 
-        updated = apply_paper_execution(ledger, OPEN_LONG, fee_bps=4.0, slippage_bps=5.0, now_iso="2026-05-14T00:00:00Z")
+        updated = apply_paper_execution(
+            ledger, OPEN_LONG, fee_bps=4.0, slippage_bps=5.0, now_iso="2026-05-14T00:00:00Z"
+        )
 
         self.assertEqual(updated["schema"], "tradecat_auto.paper_ledger.v1")
         self.assertEqual(updated["schema_version"], "1.0.0")
@@ -90,13 +92,49 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertAlmostEqual(updated["cash_balance_usdt"], 999.991996)
         self.assertAlmostEqual(updated["equity_usdt"], 999.991996)
 
+    def test_apply_open_execution_uses_per_execution_public_taker_cost_model(self) -> None:
+        ledger = default_paper_ledger(initial_balance_usdt=1000.0)
+        execution = {
+            **OPEN_LONG,
+            "entry_price": 101.0,
+            "raw_entry_price": 100.0,
+            "entry_price_includes_slippage": True,
+            "paper_fee_bps": 4.0,
+            "paper_fee_model": "binance_usdm_public_docs_vip0_taker_fallback",
+            "liquidity_role": "taker",
+            "execution_cost_model": {
+                "schema": "tradecat_auto.paper_execution_cost_model.v1",
+                "schema_version": "1.0.0",
+                "ok": True,
+                "fee_bps": 4.0,
+                "estimated_fill_price": 101.0,
+                "fill_price_includes_slippage": True,
+                "price_source": "binance_usdm_public_order_book_depth",
+            },
+        }
+
+        updated = apply_paper_execution(
+            ledger, execution, fee_bps=2.0, slippage_bps=50.0, now_iso="2026-05-14T00:00:00Z"
+        )
+
+        position = updated["open_positions"]["IRYSUSDT"]
+        self.assertAlmostEqual(position["entry_price"], 101.0)
+        self.assertAlmostEqual(position["raw_entry_price"], 100.0)
+        self.assertEqual(position["fee_bps"], 4.0)
+        self.assertEqual(position["paper_fee_model"], "binance_usdm_public_docs_vip0_taker_fallback")
+        self.assertEqual(position["liquidity_role"], "taker")
+        self.assertEqual(position["execution_cost_model"]["price_source"], "binance_usdm_public_order_book_depth")
+        self.assertAlmostEqual(updated["fills"][0]["fee_usdt"], 0.00808)
+
     def test_apply_open_execution_rejects_missing_agent_sizing(self) -> None:
         execution = copy.deepcopy(OPEN_LONG)
         execution.pop("leverage", None)
         execution.pop("requested_margin_usdt", None)
         execution.pop("requested_notional_usdt", None)
 
-        updated = apply_paper_execution(default_paper_ledger(initial_balance_usdt=1000.0), execution, now_iso="2026-05-14T00:00:00Z")
+        updated = apply_paper_execution(
+            default_paper_ledger(initial_balance_usdt=1000.0), execution, now_iso="2026-05-14T00:00:00Z"
+        )
 
         self.assertEqual(updated["open_positions"], {})
         self.assertEqual(updated["last_rejected_execution"]["reason"], "agent_sizing_required")
@@ -327,7 +365,8 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertTrue(report["ok"])
         self.assertEqual(report["position_id"], target["position_id"])
         changed = [
-            position for position in updated["open_positions"].values()
+            position
+            for position in updated["open_positions"].values()
             if position.get("stop_loss_price") == 98.0 and position.get("take_profit_price") == 109.0
         ]
         self.assertEqual(len(changed), 1)
@@ -352,7 +391,9 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(state["recent_paper_orders"][0]["schema"], "tradecat_auto.paper_order.v1")
         self.assertFalse(state["recent_paper_orders"][0]["real_order"])
         self.assertIn("not Binance account", state["limitations"][1])
-        schema = json.loads((PROJECT_ROOT / "contracts" / "tradecat-auto-paper-account-state.schema.json").read_text(encoding="utf-8"))
+        schema = json.loads(
+            (PROJECT_ROOT / "contracts" / "tradecat-auto-paper-account-state.schema.json").read_text(encoding="utf-8")
+        )
         self.assertEqual(list(Draft202012Validator(schema).iter_errors(state)), [])
 
     def test_position_management_hold_noop_does_not_mutate_ledger(self) -> None:
@@ -394,10 +435,15 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(position["take_profit_price"], 109.0)
         self.assertEqual(position["max_holding_minutes"], 45)
         self.assertEqual(position["exit_plan_source"], "position_management_thesis")
-        self.assertEqual(report["_ledger"]["position_management_actions"][-1]["schema"], "tradecat_auto.position_management_action_report.v1")
+        self.assertEqual(
+            report["_ledger"]["position_management_actions"][-1]["schema"],
+            "tradecat_auto.position_management_action_report.v1",
+        )
 
     def test_position_management_close_requires_explicit_agent_mark_price_and_closes_paper_position(self) -> None:
-        ledger = apply_paper_execution(default_paper_ledger(initial_balance_usdt=1000.0), OPEN_LONG, fee_bps=0.0, now_iso="2026-05-14T00:00:00Z")
+        ledger = apply_paper_execution(
+            default_paper_ledger(initial_balance_usdt=1000.0), OPEN_LONG, fee_bps=0.0, now_iso="2026-05-14T00:00:00Z"
+        )
         position_id = ledger["open_positions"]["IRYSUSDT"]["position_id"]
         thesis = {
             **copy.deepcopy(POSITION_THESIS_BASE),
@@ -424,7 +470,11 @@ class PaperLedgerTests(unittest.TestCase):
 
     def test_position_management_rejects_real_order_and_unsupported_add_reduce(self) -> None:
         ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
-        unsafe = {**copy.deepcopy(POSITION_THESIS_BASE), "action": "close", "safety": {**POSITION_THESIS_BASE["safety"], "real_orders": True}}
+        unsafe = {
+            **copy.deepcopy(POSITION_THESIS_BASE),
+            "action": "close",
+            "safety": {**POSITION_THESIS_BASE["safety"], "real_orders": True},
+        }
         rejected = apply_position_management_thesis(ledger, unsafe, now_iso="2026-05-14T00:10:00Z")
         self.assertFalse(rejected["ok"])
         self.assertEqual(rejected["error_code"], "position_management_safety_violation")
@@ -433,7 +483,13 @@ class PaperLedgerTests(unittest.TestCase):
         add = {
             **copy.deepcopy(POSITION_THESIS_BASE),
             "action": "add",
-            "paper_intent": {"side": "LONG", "requested_margin_usdt": 10, "paper_leverage": 2, "agent_authorized": True, "real_order": False},
+            "paper_intent": {
+                "side": "LONG",
+                "requested_margin_usdt": 10,
+                "paper_leverage": 2,
+                "agent_authorized": True,
+                "real_order": False,
+            },
         }
         unsupported = apply_position_management_thesis(ledger, add, now_iso="2026-05-14T00:10:00Z")
         self.assertFalse(unsupported["ok"])

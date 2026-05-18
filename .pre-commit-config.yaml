@@ -16,6 +16,16 @@ repos:
         entry: bash -n scripts/validate-skill.sh scripts/verify.sh scripts/verify-project.sh scripts/run-tradecat.sh scripts/agent-smoke.sh scripts/security-scan.sh scripts/bootstrap-dev.sh scripts/supply-chain-audit.sh scripts/install-security-tools.sh scripts/clean-local-runtime.sh scripts/start-auto-paper.sh scripts/monitor-auto-paper.sh scripts/guard_public_local_files.sh skills/tradecat-public/scripts/run-tradecat.sh skills/tradecat-public/scripts/validate-skill.sh
         language: system
         pass_filenames: false
+      - id: tradecat-dependency-policy
+        name: TradeCat dependency policy
+        entry: python3 scripts/validate_dependency_policy.py
+        language: system
+        pass_filenames: false
+      - id: tradecat-ruff-format
+        name: TradeCat Ruff format check
+        entry: ruff format --check src tests scripts
+        language: system
+        pass_filenames: false
       - id: tradecat-agent-smoke
         name: TradeCat agent readiness smoke
         entry: bash scripts/agent-smoke.sh

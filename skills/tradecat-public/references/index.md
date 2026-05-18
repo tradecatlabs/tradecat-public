@@ -13,6 +13,7 @@ Start from `SKILL.md`. Load only the reference needed for the current task.
 7. QA strategy, risk model, test layers, and delivery gate: `test-strategy.md`.
 8. Future real-money execution boundary: `private-executor-boundary.md`.
 9. Autonomous paper/watch operations dependency chain: `autonomous-paper-ops.md`.
+10. Repository collaboration, release, deployment, and configuration: root `CONTRIBUTING.md`, `CHANGELOG.md`, `docs/ARCHITECTURE.md`, `docs/configuration.md`, `docs/deployment.md`, and `docs/release.md`.
 
 ## Reference Map
 
@@ -27,6 +28,7 @@ Start from `SKILL.md`. Load only the reference needed for the current task.
 - `quality-gate.md`: pre-delivery checklist, validation commands, boundary audit, and safety evidence.
 - `private-executor-boundary.md`: public TradeCat paper/watch output versus future private real-money executor responsibilities.
 - `autonomous-paper-ops.md`: long-running auto-paper dependency chain, preflight, lifecycle, health, logging, limits, recovery, and safety boundaries.
+- Root collaboration docs: `CONTRIBUTING.md`, `CHANGELOG.md`, `docs/ARCHITECTURE.md`, `docs/configuration.md`, `docs/deployment.md`, and `docs/release.md` are human workflow docs; they must not override the Agent manifest or JSON schemas.
 - `archive/`: historical repair/task references only; not current implementation guidance.
 
 ## Source Rule

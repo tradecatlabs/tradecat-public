@@ -43,8 +43,12 @@ jobs:
         run: python -m pip install -c constraints.txt -e ".[dev]"
       - name: Guard public boundary
         run: bash scripts/guard_public_local_files.sh
+      - name: Dependency policy
+        run: python scripts/validate_dependency_policy.py
       - name: Lint
         run: ruff check src tests
+      - name: Format
+        run: ruff format --check src tests scripts
       - name: Test
         run: PYTHONPATH=src pytest -q
       - name: Data contracts
@@ -75,6 +79,7 @@ jobs:
           python -m py_compile \
             scripts/request.py \
             scripts/serve-auto-paper-monitor.py \
+            scripts/validate_dependency_policy.py \
             scripts/validate_data_contract.py \
             scripts/validate_dataset_consumption_contract.py \
             scripts/validate_agent_market_context_resources.py

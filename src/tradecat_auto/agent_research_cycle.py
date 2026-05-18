@@ -69,20 +69,24 @@ def load_agent_research_cycle(path: Path | str) -> dict[str, Any]:
             "provenance": {"source": "tradecat_auto.agent_research_cycle.load_agent_research_cycle", "path": str(p)},
             "safety": _safety_boundary(),
         }
-    return data if isinstance(data, dict) else {
-        "schema": RESEARCH_CYCLE_SCHEMA,
-        "schema_version": SCHEMA_VERSION,
-        "ok": False,
-        "error_code": "agent_research_cycle_load_failed",
-        "error": {
-            "code": "agent_research_cycle_load_failed",
-            "kind": "input_validation",
-            "message": "agent research cycle root must be a JSON object",
-            "retryable": False,
-        },
-        "provenance": {"source": "tradecat_auto.agent_research_cycle.load_agent_research_cycle", "path": str(p)},
-        "safety": _safety_boundary(),
-    }
+    return (
+        data
+        if isinstance(data, dict)
+        else {
+            "schema": RESEARCH_CYCLE_SCHEMA,
+            "schema_version": SCHEMA_VERSION,
+            "ok": False,
+            "error_code": "agent_research_cycle_load_failed",
+            "error": {
+                "code": "agent_research_cycle_load_failed",
+                "kind": "input_validation",
+                "message": "agent research cycle root must be a JSON object",
+                "retryable": False,
+            },
+            "provenance": {"source": "tradecat_auto.agent_research_cycle.load_agent_research_cycle", "path": str(p)},
+            "safety": _safety_boundary(),
+        }
+    )
 
 
 def audit_agent_research_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
@@ -133,23 +137,51 @@ def audit_agent_research_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
             method = str(item.get("method") or "GET").upper().strip()
             forbidden_reason = _forbidden_endpoint_reason(endpoint)
             if family not in ALLOWED_ENDPOINTS_BY_FAMILY:
-                errors.append(_error("unsupported_family", f"{section}[{index}].family is not allowlisted: {family!r}", index=index))
+                errors.append(
+                    _error(
+                        "unsupported_family", f"{section}[{index}].family is not allowlisted: {family!r}", index=index
+                    )
+                )
                 rejected_endpoints.append(endpoint)
                 continue
             if method != "GET":
                 errors.append(_error("forbidden_method", f"{section}[{index}].method must be GET", index=index))
             if forbidden_reason:
-                errors.append(_error("forbidden_endpoint", f"{section}[{index}].endpoint is forbidden: {endpoint} ({forbidden_reason})", index=index))
+                errors.append(
+                    _error(
+                        "forbidden_endpoint",
+                        f"{section}[{index}].endpoint is forbidden: {endpoint} ({forbidden_reason})",
+                        index=index,
+                    )
+                )
                 rejected_endpoints.append(endpoint)
             elif endpoint not in ALLOWED_ENDPOINTS_BY_FAMILY[family]:
-                errors.append(_error("endpoint_not_allowlisted", f"endpoint {endpoint!r} is not allowed for family {family!r}", index=index))
+                errors.append(
+                    _error(
+                        "endpoint_not_allowlisted",
+                        f"endpoint {endpoint!r} is not allowed for family {family!r}",
+                        index=index,
+                    )
+                )
                 rejected_endpoints.append(endpoint)
             else:
                 accepted_endpoints.append(endpoint)
             if item.get("requires_signature") is True or item.get("signed") is True:
-                errors.append(_error("signed_request_forbidden", f"{section}[{index}] is marked as signed/requires_signature", index=index))
+                errors.append(
+                    _error(
+                        "signed_request_forbidden",
+                        f"{section}[{index}] is marked as signed/requires_signature",
+                        index=index,
+                    )
+                )
             if item.get("reads_api_keys") is True or item.get("real_orders") is True:
-                errors.append(_error("safety_boundary_violation", f"{section}[{index}] violates public paper/watch safety flags", index=index))
+                errors.append(
+                    _error(
+                        "safety_boundary_violation",
+                        f"{section}[{index}] violates public paper/watch safety flags",
+                        index=index,
+                    )
+                )
             if section == "tool_calls" and item.get("ok") is False:
                 warnings.append(_warning("tool_call_not_ok", f"tool_calls[{index}] returned ok=false", index=index))
 
@@ -165,7 +197,9 @@ def audit_agent_research_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
         if not _has_exit_plan(thesis):
             errors.append(_error("agent_exit_plan_required", "run_context_paper requires explicit Agent exit plan"))
         if any(warning.get("code") == "tool_call_not_ok" for warning in warnings):
-            errors.append(_error("market_context_incomplete", "run_context_paper requires successful required market context"))
+            errors.append(
+                _error("market_context_incomplete", "run_context_paper requires successful required market context")
+            )
 
     ok = not errors
     return {
@@ -395,7 +429,9 @@ def _reject_forbidden_output_dir(output_dir: Path) -> None:
     parts = resolved.parts
     for index, part in enumerate(parts[:-1]):
         if part == ".runtime" and parts[index + 1] == "auto-paper":
-            raise ValueError("observe_only_output_dir_forbidden: do not write observe-only drafts into .runtime/auto-paper")
+            raise ValueError(
+                "observe_only_output_dir_forbidden: do not write observe-only drafts into .runtime/auto-paper"
+            )
 
 
 def _audit_safety(value: Any, errors: list[dict[str, Any]]) -> None:
@@ -542,7 +578,9 @@ def _research_run_id(event: dict[str, Any] | None, symbol: str, generated_at: st
 
 def _paper_sizing_error(thesis: dict[str, Any]) -> str | None:
     paper_intent = thesis.get("paper_intent") if isinstance(thesis.get("paper_intent"), dict) else {}
-    leverage = _positive_float(paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage"))
+    leverage = _positive_float(
+        paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage")
+    )
     margin = _positive_float(paper_intent.get("requested_margin_usdt"))
     notional = _positive_float(paper_intent.get("requested_notional_usdt"))
     return None if leverage is not None and (margin is not None or notional is not None) else "agent_sizing_required"
@@ -585,8 +623,13 @@ def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
             path = f"{prefix}.{key_text}" if prefix else key_text
             compact = key_text.lower().replace("-", "_").replace("_", "")
             normalized = key_text.lower().replace("-", "_")
-            if any(marker in normalized for marker in CREDENTIAL_KEY_MARKERS) or any(marker in compact for marker in CREDENTIAL_KEY_MARKERS):
-                if normalized in {"requires_signature", "signed", "signed_requests", "reads_api_keys"} and child is False:
+            if any(marker in normalized for marker in CREDENTIAL_KEY_MARKERS) or any(
+                marker in compact for marker in CREDENTIAL_KEY_MARKERS
+            ):
+                if (
+                    normalized in {"requires_signature", "signed", "signed_requests", "reads_api_keys"}
+                    and child is False
+                ):
                     pass
                 else:
                     hits.append(path)

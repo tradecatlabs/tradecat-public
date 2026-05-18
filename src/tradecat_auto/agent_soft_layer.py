@@ -14,9 +14,7 @@ PROMPT_TEMPLATE_FILES = (
     "prompts/context-request.zh.md",
     "prompts/trade-thesis.zh.md",
 )
-ROLE_PROFILE_FILES = (
-    "profiles/discretionary-futures-trader.zh.md",
-)
+ROLE_PROFILE_FILES = ("profiles/discretionary-futures-trader.zh.md",)
 
 
 def build_agent_soft_layer_bundle(*, include_prompt_text: bool = True) -> dict[str, Any]:

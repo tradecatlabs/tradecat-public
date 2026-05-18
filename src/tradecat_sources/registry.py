@@ -110,17 +110,13 @@ def _load_datasets(payload: dict[str, object]) -> dict[str, DatasetSpec]:
             data_mode=data_mode,  # type: ignore[arg-type]
             index_columns=tuple(str(item) for item in raw.get("index_columns") or []),
             event_key_columns=tuple(str(item) for item in raw.get("event_key_columns") or []),
-            display_names={
-                str(lang): str(name) for lang, name in (raw.get("display_names") or {}).items()
-            }
+            display_names={str(lang): str(name) for lang, name in (raw.get("display_names") or {}).items()}
             if isinstance(raw.get("display_names"), dict)
             else {},
             history_policy=str(raw.get("history_policy") or "permanent"),
             source_poll_interval_seconds=_optional_float(raw.get("source_poll_interval_seconds")),
             source_fetch_timeout_seconds=_optional_float(raw.get("source_fetch_timeout_seconds")),
-            table_region_policy={
-                str(name): value for name, value in (raw.get("table_region_policy") or {}).items()
-            }
+            table_region_policy={str(name): value for name, value in (raw.get("table_region_policy") or {}).items()}
             if isinstance(raw.get("table_region_policy"), dict)
             else {},
             active=bool(raw.get("active", True)),

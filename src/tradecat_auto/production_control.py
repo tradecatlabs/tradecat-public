@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,20 @@ from tradecat_auto.audit_journal import journal_summary
 from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, paper_ledger_summary
 
 SCHEMA_VERSION = "1.0.0"
-BENIGN_LAST_ERRORS = {"no_events_available"}
+BENIGN_LAST_ERROR_CODES = {
+    "agent_sizing_required",
+    "agent_exit_plan_required",
+    "no_events_available",
+    "no_anomaly_signal_available",
+    "signal_not_tradable",
+    "position_already_open_for_symbol",
+    "max_concurrent_positions_per_symbol_reached",
+}
+DEFAULT_AUTO_PAPER_RUNTIME_DIR = Path(".runtime/auto-paper")
+DEFAULT_AUTO_PAPER_STATE_PATH = DEFAULT_AUTO_PAPER_RUNTIME_DIR / "service_state.json"
+DEFAULT_AUTO_PAPER_LEDGER_PATH = DEFAULT_AUTO_PAPER_RUNTIME_DIR / "paper_ledger.json"
+DEFAULT_AUTO_PAPER_ARCHIVE_PATH = DEFAULT_AUTO_PAPER_RUNTIME_DIR / "cycles.jsonl"
+DEFAULT_AUTO_PAPER_JOURNAL_PATH = DEFAULT_AUTO_PAPER_RUNTIME_DIR / "paper_audit.sqlite3"
 
 
 def build_health_report(
@@ -37,7 +51,7 @@ def build_health_report(
     if heartbeat.get("stale"):
         alerts.append("heartbeat_stale")
     last_error = state.get("last_error")
-    if last_error and str(last_error) not in BENIGN_LAST_ERRORS:
+    if _last_error_is_alertable(last_error):
         alerts.append("last_error_present")
     if not ledger.get("ok"):
         alerts.append(str(ledger.get("alert") or "paper_ledger_unhealthy"))
@@ -65,15 +79,140 @@ def build_health_report(
             "cycles_processed": int(state.get("cycles_processed") or 0),
             "last_attempt_at": state.get("last_attempt_at"),
             "last_success_at": state.get("last_success_at"),
+            "last_full_cycle_at": state.get("last_full_cycle_at"),
+            "last_input_changed_at": state.get("last_input_changed_at"),
+            "last_trigger_reason": state.get("last_trigger_reason"),
             "last_processed_event_id": state.get("last_processed_event_id"),
             "last_selected_symbol": state.get("last_selected_symbol"),
             "last_error": state.get("last_error"),
+            "last_error_code": _last_error_code(state.get("last_error")),
         },
         "ledger": ledger,
         "archive": archive,
         "audit_journal": audit,
         "alerts": alerts,
         "safety": _safety_boundary(),
+    }
+
+
+def build_latest_cycle_report(*, archive_path: Path | str) -> dict[str, Any]:
+    cycle = _read_latest_jsonl(Path(archive_path))
+    ok = bool(cycle)
+    return {
+        "schema": "tradecat_auto.latest_cycle_report.v1",
+        "schema_version": SCHEMA_VERSION,
+        "ok": ok,
+        "error_code": None if ok else "latest_cycle_unavailable",
+        "archive_path": str(archive_path),
+        "cycle": cycle,
+        "summary": _cycle_summary(cycle),
+        "provenance": {"source": "local_tradecat_cycle_archive", "archive_path": str(archive_path)},
+        "safety": _safety_boundary(),
+    }
+
+
+def build_latest_decision_report(*, archive_path: Path | str) -> dict[str, Any]:
+    cycle = _read_latest_jsonl(Path(archive_path), predicate=lambda item: isinstance(item.get("pipeline_report"), dict))
+    pipeline = cycle.get("pipeline_report") if isinstance(cycle.get("pipeline_report"), dict) else {}
+    if not pipeline:
+        return {
+            "schema": "tradecat_auto.latest_decision_report.v1",
+            "schema_version": SCHEMA_VERSION,
+            "ok": False,
+            "error_code": "latest_decision_unavailable",
+            "archive_path": str(archive_path),
+            "text": "当前还没有可展示的 Agent/TradeCat 决策产物；等待 auto-paper 写入包含 pipeline_report 的 cycle。",
+            "cycle": {},
+            "provenance": {"source": "local_tradecat_cycle_archive", "archive_path": str(archive_path)},
+            "safety": _safety_boundary(),
+            "limitations": ["auditable decision summary only; not hidden model chain-of-thought"],
+        }
+    event = _as_dict(cycle.get("latest_event") or pipeline.get("latest_event"))
+    thesis = _as_dict(pipeline.get("agent_trade_thesis"))
+    signal = _as_dict(pipeline.get("signal"))
+    strategy = _as_dict(pipeline.get("strategy_intent"))
+    risk = _as_dict(pipeline.get("risk_decision"))
+    execution = _as_dict(pipeline.get("paper_execution"))
+    sizing = _as_dict(pipeline.get("paper_sizing"))
+    sections = [
+        _text_section(
+            "输入信号",
+            [
+                ("来源", event.get("source_dataset_key")),
+                ("时间", event.get("source_time_bj") or pipeline.get("generated_at")),
+                ("事件 ID", event.get("event_id")),
+                ("币种", event.get("symbol") or pipeline.get("selected_symbol")),
+                ("类型", event.get("signal_type")),
+                ("内容", event.get("content")),
+            ],
+        ),
+        _text_section(
+            "Agent thesis",
+            [
+                ("来源", _decision_thesis_source(thesis)),
+                ("方向", thesis.get("direction") or strategy.get("direction") or signal.get("direction")),
+                ("信心", thesis.get("confidence")),
+                ("理由", thesis.get("rationale")),
+                ("风险备注", _join_text_list(thesis.get("risk_notes"))),
+            ],
+        ),
+        _text_section(
+            "策略与退出计划",
+            [
+                ("动作", strategy.get("action")),
+                ("入场价", strategy.get("entry_price")),
+                ("止损/失效价", strategy.get("invalidation_price")),
+                ("止盈价", strategy.get("take_profit_price")),
+                ("最长持仓分钟", strategy.get("max_holding_minutes")),
+                ("退出来源", strategy.get("exit_plan_source")),
+            ],
+        ),
+        _text_section(
+            "风控与 sizing",
+            [
+                ("决定", risk.get("decision")),
+                ("原因", _join_text_list(risk.get("reasons"))),
+                ("sizing 来源", sizing.get("source")),
+                ("请求保证金 USDT", sizing.get("requested_margin_usdt")),
+                ("纸面杠杆", sizing.get("paper_leverage")),
+                ("有效名义金额 USDT", sizing.get("effective_notional_usdt")),
+            ],
+        ),
+        _text_section(
+            "纸面执行",
+            [
+                ("状态", execution.get("status")),
+                ("方向", execution.get("side")),
+                ("名义金额 USDT", execution.get("notional_usdt")),
+                ("保证金 USDT", execution.get("margin_usdt")),
+                ("数量", execution.get("quantity")),
+                ("拒绝原因", _join_text_list(execution.get("reasons"))),
+            ],
+        ),
+    ]
+    text = "\n\n".join(section["text"] for section in sections if section["text"])
+    return {
+        "schema": "tradecat_auto.latest_decision_report.v1",
+        "schema_version": SCHEMA_VERSION,
+        "ok": True,
+        "error_code": None,
+        "archive_path": str(archive_path),
+        "symbol": thesis.get("symbol") or pipeline.get("selected_symbol") or signal.get("symbol"),
+        "direction": thesis.get("direction") or strategy.get("direction") or signal.get("direction"),
+        "risk_decision": risk.get("decision"),
+        "paper_execution_status": execution.get("status"),
+        "text": text,
+        "sections": sections,
+        "cycle_summary": _cycle_summary(cycle),
+        "provenance": {
+            "source": "local_tradecat_cycle_archive",
+            "archive_path": str(archive_path),
+            "cycle_schema": str(cycle.get("schema") or ""),
+            "pipeline_schema": str(pipeline.get("schema") or ""),
+            "event_id": str(event.get("event_id") or ""),
+        },
+        "safety": {**_safety_boundary(), **_as_dict(pipeline.get("safety"))},
+        "limitations": ["auditable decision summary only; not hidden model chain-of-thought"],
     }
 
 
@@ -102,9 +241,9 @@ def build_daily_report(*, ledger_path: Path | str, archive_path: Path | str, dat
         "cycle_count": int(archive.get("cycle_count") or 0),
         "trades": trades,
         "fills": fills,
-        "alerts": [] if ledger_health.get("ok") and archive.get("ok") else [
-            item for item in [ledger_health.get("alert"), archive.get("alert")] if item
-        ],
+        "alerts": []
+        if ledger_health.get("ok") and archive.get("ok")
+        else [item for item in [ledger_health.get("alert"), archive.get("alert")] if item],
         "safety": _safety_boundary(),
     }
 
@@ -154,8 +293,10 @@ def _heartbeat(state: dict[str, Any], now_iso: str, *, max_heartbeat_age_seconds
     last_attempt = str(state.get("last_attempt_at") or "").strip()
     age = _age_seconds(last_attempt, now_iso)
     stale = age is None or age > float(max_heartbeat_age_seconds)
+    status = "missing" if age is None else "stale" if stale else "fresh"
     return {
         "ok": not stale,
+        "status": status,
         "last_attempt_at": last_attempt or None,
         "age_seconds": age,
         "max_age_seconds": float(max_heartbeat_age_seconds),
@@ -198,7 +339,14 @@ def _archive_health(path: Path) -> dict[str, Any]:
                 action_counts[str(payload.get("action") or "UNKNOWN")] += 1
                 last_cycle = payload
     except OSError as exc:
-        return {"ok": False, "path": str(path), "alert": "cycle_archive_load_failed", "error": str(exc), "cycle_count": cycle_count, "action_counts": dict(action_counts)}
+        return {
+            "ok": False,
+            "path": str(path),
+            "alert": "cycle_archive_load_failed",
+            "error": str(exc),
+            "cycle_count": cycle_count,
+            "action_counts": dict(action_counts),
+        }
     return {
         "ok": malformed == 0,
         "path": str(path),
@@ -208,6 +356,90 @@ def _archive_health(path: Path) -> dict[str, Any]:
         "last_action": last_cycle.get("action"),
         "alert": "cycle_archive_malformed" if malformed else None,
     }
+
+
+def _read_latest_jsonl(path: Path, *, predicate: Callable[[dict[str, Any]], bool] | None = None) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - 1048576), 0)
+            text = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return {}
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and (predicate is None or predicate(payload)):
+            return payload
+    return {}
+
+
+def _cycle_summary(cycle: dict[str, Any]) -> dict[str, Any]:
+    pipeline = cycle.get("pipeline_report") if isinstance(cycle.get("pipeline_report"), dict) else {}
+    execution = pipeline.get("paper_execution") if isinstance(pipeline.get("paper_execution"), dict) else {}
+    event = cycle.get("latest_event") if isinstance(cycle.get("latest_event"), dict) else {}
+    return {
+        "action": cycle.get("action"),
+        "ok": cycle.get("ok"),
+        "error_code": cycle.get("error_code") or pipeline.get("error_code"),
+        "reason": cycle.get("reason"),
+        "selected_symbol": pipeline.get("selected_symbol") or event.get("symbol"),
+        "event_id": event.get("event_id"),
+        "source_dataset_key": event.get("source_dataset_key"),
+        "source_time_bj": event.get("source_time_bj"),
+        "risk_decision": _as_dict(pipeline.get("risk_decision")).get("decision"),
+        "paper_execution_status": execution.get("status"),
+    }
+
+
+def _last_error_code(value: Any) -> str | None:
+    if isinstance(value, dict):
+        return str(value.get("code") or value.get("error_code") or "").strip() or None
+    text = str(value or "").strip()
+    return text or None
+
+
+def _last_error_is_alertable(value: Any) -> bool:
+    code = _last_error_code(value)
+    if not code:
+        return False
+    if code in BENIGN_LAST_ERROR_CODES:
+        return False
+    if isinstance(value, dict) and str(value.get("kind") or "") == "risk_reject" and not value.get("retryable"):
+        return False
+    return True
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _join_text_list(value: Any) -> str:
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value if str(item))
+    return str(value) if value not in (None, "") else ""
+
+
+def _decision_thesis_source(thesis: dict[str, Any]) -> str:
+    provenance = _as_dict(thesis.get("provenance"))
+    if provenance.get("paper_autonomy_profile"):
+        return "paper_autonomy_profile 合成的 paper-only Agent thesis"
+    if thesis:
+        return "外部 Agent/Hermes thesis"
+    return "未提供 thesis"
+
+
+def _text_section(title: str, pairs: list[tuple[str, Any]]) -> dict[str, str]:
+    lines = [f"{label}: {value}" for label, value in pairs if value not in (None, "", [])]
+    return {"title": title, "text": "\n".join(lines)}
 
 
 def _closed_positions_for_date(ledger: dict[str, Any], report_date: str) -> list[dict[str, Any]]:

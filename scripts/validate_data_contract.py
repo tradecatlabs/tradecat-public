@@ -40,10 +40,14 @@ def main(argv: list[str] | None = None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate TradeCat public dataset registry and CSV contracts.")
-    parser.add_argument("--remote", action="store_true", help="Fetch public Google Sheets CSV endpoints and validate shape.")
+    parser.add_argument(
+        "--remote", action="store_true", help="Fetch public Google Sheets CSV endpoints and validate shape."
+    )
     parser.add_argument("--timeout", type=float, default=10.0, help="Remote CSV fetch timeout in seconds.")
     parser.add_argument("--dataset", action="append", help="Dataset key to validate; can be repeated.")
-    parser.add_argument("--include-inactive", action="store_true", help="Include inactive datasets in registry validation.")
+    parser.add_argument(
+        "--include-inactive", action="store_true", help="Include inactive datasets in registry validation."
+    )
     return parser
 
 

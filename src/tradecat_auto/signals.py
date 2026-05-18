@@ -134,7 +134,9 @@ def _payload(
         "symbol": symbol,
         "score": score,
         "direction": direction,
-        "tradable_candidate": bool(direction in {"LONG", "SHORT"} and score >= MIN_TRADABLE_SCORE and not do_not_trade_reasons),
+        "tradable_candidate": bool(
+            direction in {"LONG", "SHORT"} and score >= MIN_TRADABLE_SCORE and not do_not_trade_reasons
+        ),
         "positive_factors": positive_factors,
         "negative_factors": negative_factors,
         "do_not_trade_reasons": do_not_trade_reasons,

@@ -26,7 +26,9 @@ ALLOW_DECISION = {
 
 class PaperBrokerTests(unittest.TestCase):
     def test_open_paper_position_uses_risk_capped_notional_and_entry_price(self) -> None:
-        report = open_paper_position(SIGNAL, ALLOW_DECISION, ENRICHMENT, requested_notional_usdt=50.0, paper_leverage=2.0)
+        report = open_paper_position(
+            SIGNAL, ALLOW_DECISION, ENRICHMENT, requested_notional_usdt=50.0, paper_leverage=2.0
+        )
 
         self.assertEqual(report["schema"], "tradecat_auto.paper_execution_report.v1")
         self.assertEqual(report["status"], "OPENED")
@@ -43,7 +45,9 @@ class PaperBrokerTests(unittest.TestCase):
     def test_open_paper_position_does_not_clip_agent_notional_without_explicit_cap(self) -> None:
         decision = {"decision": "ALLOW", "mode": "paper", "max_notional_usdt": None}
 
-        report = open_paper_position(SIGNAL, decision, ENRICHMENT, requested_notional_usdt=50_000_000.0, paper_leverage=125.0)
+        report = open_paper_position(
+            SIGNAL, decision, ENRICHMENT, requested_notional_usdt=50_000_000.0, paper_leverage=125.0
+        )
 
         self.assertEqual(report["status"], "OPENED")
         self.assertEqual(report["notional_usdt"], 50_000_000.0)
@@ -99,7 +103,9 @@ class PaperBrokerTests(unittest.TestCase):
         self.assertEqual(report["side"], "WATCH_ONLY")
 
     def test_close_paper_position_calculates_long_pnl(self) -> None:
-        opened = open_paper_position(SIGNAL, ALLOW_DECISION, ENRICHMENT, requested_notional_usdt=10.0, paper_leverage=2.0)
+        opened = open_paper_position(
+            SIGNAL, ALLOW_DECISION, ENRICHMENT, requested_notional_usdt=10.0, paper_leverage=2.0
+        )
 
         closed = close_paper_position(opened, exit_price=0.068)
 

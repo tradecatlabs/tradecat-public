@@ -150,8 +150,10 @@ def configure_stdio() -> None:
 
 def load_registry(url: str, *, timeout: float) -> dict[str, dict]:
     payload = json.loads(fetch_body(url, timeout=timeout))
-    if not isinstance(payload, dict) or not isinstance(payload.get("workbooks"), dict) or not isinstance(
-        payload.get("datasets"), dict
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("workbooks"), dict)
+        or not isinstance(payload.get("datasets"), dict)
     ):
         raise ValueError("dataset registry 格式错误")
     return {"workbooks": payload["workbooks"], "datasets": payload["datasets"]}
@@ -261,7 +263,7 @@ def classify_request_error(exc: Exception) -> dict:
     return {
         "code": "request_failed",
         "kind": "runtime",
-            "hint": "执行 --datasets 确认入口可用；检查代理、公开表格权限或 registry URL。",
+        "hint": "执行 --datasets 确认入口可用；检查代理、公开表格权限或 registry URL。",
         "retryable": False,
     }
 
@@ -335,7 +337,9 @@ def is_section_header_row(row: list[str]) -> bool:
     if not cells or not cells[0] or is_top_row(row):
         return False
     tail = [cell for cell in cells[1:] if cell]
-    return "序号" in tail and any(cell in {"交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"} for cell in tail)
+    return "序号" in tail and any(
+        cell in {"交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"} for cell in tail
+    )
 
 
 def sectioned_data_rows(matrix: list[list[str]], start_index: int) -> list[dict[str, str]]:
@@ -370,7 +374,11 @@ def render_table(rows: list[dict[str, str]], *, headers: list[str]) -> str:
     header_line = "|" + "|".join(f" {header:<{widths[index]}} " for index, header in enumerate(headers)) + "|"
     lines = [border, header_line, border]
     for row in rows:
-        lines.append("|" + "|".join(f" {str(row.get(header, '')):<{widths[index]}} " for index, header in enumerate(headers)) + "|")
+        lines.append(
+            "|"
+            + "|".join(f" {str(row.get(header, '')):<{widths[index]}} " for index, header in enumerate(headers))
+            + "|"
+        )
     lines.append(border)
     return "\n".join(lines)
 

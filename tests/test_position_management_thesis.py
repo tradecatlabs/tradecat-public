@@ -69,11 +69,20 @@ class PositionManagementThesisSchemaTests(unittest.TestCase):
 
     def test_adjust_exit_and_add_reduce_are_fail_closed_without_explicit_intent(self) -> None:
         adjust = load_fixture("adjust-exit.json")
-        adjust["exit_update"] = {"exit_rationale": "missing explicit price/time update", "agent_authorized": True, "real_order": False}
+        adjust["exit_update"] = {
+            "exit_rationale": "missing explicit price/time update",
+            "agent_authorized": True,
+            "real_order": False,
+        }
         self.assertInvalid(adjust)
 
         add = load_fixture("add.json")
-        add["paper_intent"] = {"side": "LONG", "requested_margin_usdt": 12, "agent_authorized": True, "real_order": False}
+        add["paper_intent"] = {
+            "side": "LONG",
+            "requested_margin_usdt": 12,
+            "agent_authorized": True,
+            "real_order": False,
+        }
         self.assertInvalid(add)
 
         reduce = load_fixture("reduce.json")

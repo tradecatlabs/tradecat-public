@@ -14,7 +14,8 @@ Hermes/operator supervisor
 -> public online sheet signal source
 -> Agent/Hermes Binance public-readonly market context
 -> context-audit
--> agent_trade_thesis.v1 or local paper_autonomy_profile.v1 with explicit paper sizing and exits
+-> agent_trade_thesis.v1 with explicit paper sizing and exits
+-> optional user-supplied paper_autonomy_profile.v1 / portfolio policy constraints
 -> portfolio_risk_policy / paper kill switch
 -> auto-paper run-loop
 -> paper ledger / cycle archive / SQLite audit journal
@@ -54,17 +55,24 @@ bash scripts/start-auto-paper.sh heal --json
 bash scripts/start-auto-paper.sh status --json
 ```
 
-若 operator 明确要求“让 Agent/AI 在纸面环境内自主开仓”，不要改代码里的默认金额；
-应在 gitignored `.runtime/auto-paper/` 下放一个 `paper_autonomy_profile.v1`，并通过
-`TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH` 注入。该 profile 只能给 paper/watch
-提供 `requested_margin_usdt` / `paper_leverage` / exit bps / 最大持仓时间 /
-同币种多仓授权；如显式设置 `allow_agent_direction_override=true`，还可只在
-`direction_conflict` 这类软方向冲突上授权 Agent/纸面 profile 覆盖方向，不能覆盖
-低分、kill switch 或组合风控拒绝；`real_orders`、`signed_requests`、`reads_api_keys` 和
-`binance_account_state` 必须为 `false`。
+默认自治模式会在 gitignored `.runtime/auto-paper/paper_autonomy_profile.json`
+生成 paper-only runtime profile，并注入 run-loop，避免常驻纸面交易卡在
+`agent_sizing_required`。显式 Agent thesis 仍最高优先级；若要只等待外部 Agent/Hermes
+写入 thesis，设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0`。用户后续若要增加约束，可显式传入
+`paper_autonomy_profile.v1` 或 portfolio risk policy；`real_orders`、`signed_requests`、
+`reads_api_keys` 和 `binance_account_state` 必须为 `false`。
 
 ```bash
-TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH=.runtime/auto-paper/paper_autonomy_profile.json \
+TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH=.runtime/auto-paper/agent_trade_thesis.json \
+  bash scripts/start-auto-paper.sh restart --json
+```
+
+调整默认 runtime profile：
+
+```bash
+TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT=10 \
+TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE=1 \
+TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY=sheet_signal_or_taker_flow \
   bash scripts/start-auto-paper.sh restart --json
 ```
 
@@ -102,6 +110,6 @@ bash scripts/start-auto-paper.sh stop --json
 
 - `ops-check` 可以报告 credential-like 环境变量名，但不得读取变量值。
 - `auto-paper` 只运行 public-readonly + paper/watch。
-- 缺 Agent thesis 或本地 paper autonomy profile 明确 sizing 和 exit plan 时继续 fail-closed。
+- 显式关闭 runtime autonomy 或 profile 校验失败时，缺 Agent thesis 明确 sizing 和 exit plan 继续 fail-closed。
 - 所有运行态必须停留在 gitignored `.runtime/auto-paper/`。
 - private executor、真实 key、签名、账户、订单和真钱风控不属于 `tradecat-public`。

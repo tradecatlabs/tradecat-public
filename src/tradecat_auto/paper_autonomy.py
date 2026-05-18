@@ -57,14 +57,23 @@ def normalize_paper_autonomy_profile(value: Any) -> dict[str, Any] | None:
         if key in safety and safety.get(key) is not expected:
             raise ValueError(f"paper_autonomy_profile_load_failed: safety.{key} must be {expected!r}")
     paper_intent = _paper_intent(value)
-    leverage = _positive_float(paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage"))
+    leverage = _positive_float(
+        paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage")
+    )
     margin = _positive_float(paper_intent.get("requested_margin_usdt"))
     notional = _positive_float(paper_intent.get("requested_notional_usdt"))
     if leverage is None or (margin is None and notional is None):
-        raise ValueError("paper_autonomy_profile_load_failed: paper_intent requires paper_leverage plus requested_margin_usdt or requested_notional_usdt")
+        raise ValueError(
+            "paper_autonomy_profile_load_failed: paper_intent requires paper_leverage plus requested_margin_usdt or requested_notional_usdt"
+        )
     exit_plan = value.get("exit_plan") if isinstance(value.get("exit_plan"), dict) else {}
-    if not any(_positive_float(exit_plan.get(key)) is not None for key in ("stop_loss_bps", "take_profit_bps", "max_holding_minutes")):
-        raise ValueError("paper_autonomy_profile_load_failed: exit_plan requires stop_loss_bps, take_profit_bps, or max_holding_minutes")
+    if not any(
+        _positive_float(exit_plan.get(key)) is not None
+        for key in ("stop_loss_bps", "take_profit_bps", "max_holding_minutes")
+    ):
+        raise ValueError(
+            "paper_autonomy_profile_load_failed: exit_plan requires stop_loss_bps, take_profit_bps, or max_holding_minutes"
+        )
     return {
         **value,
         "schema": PAPER_AUTONOMY_PROFILE_SCHEMA,
@@ -83,7 +92,11 @@ def synthesize_agent_trade_thesis(
     enrichment: dict[str, Any],
     events: dict[str, Any],
 ) -> dict[str, Any] | None:
-    profile = paper_autonomy_profile if isinstance(paper_autonomy_profile, dict) and paper_autonomy_profile.get("enabled") is not False else None
+    profile = (
+        paper_autonomy_profile
+        if isinstance(paper_autonomy_profile, dict) and paper_autonomy_profile.get("enabled") is not False
+        else None
+    )
     thesis = dict(agent_trade_thesis) if isinstance(agent_trade_thesis, dict) else {}
     if profile is None:
         return thesis or None
@@ -96,15 +109,23 @@ def synthesize_agent_trade_thesis(
     thesis.setdefault("direction", str(signal.get("direction") or "WATCH_ONLY").upper().strip())
     thesis.setdefault("confidence", _confidence(signal))
     thesis.setdefault("holding_horizon", str(profile.get("holding_horizon") or "intraday"))
-    thesis.setdefault("rationale", "operator-delegated paper autonomy profile supplied sizing/exits for Agent paper research.")
+    thesis.setdefault(
+        "rationale", "operator-delegated paper autonomy profile supplied sizing/exits for Agent paper research."
+    )
     thesis.setdefault("risk_notes", [])
     thesis.setdefault("limitations", ["paper/watch only; no Binance key; no signed requests; no real order"])
 
     existing_paper_intent = thesis.get("paper_intent") if isinstance(thesis.get("paper_intent"), dict) else {}
     if not _paper_intent_complete(existing_paper_intent):
-        thesis["paper_intent"] = _profile_paper_intent({**profile, "paper_intent": {**_profile_paper_intent(profile), **existing_paper_intent}})
+        thesis["paper_intent"] = _profile_paper_intent(
+            {**profile, "paper_intent": {**_profile_paper_intent(profile), **existing_paper_intent}}
+        )
     profile_direction = _profile_direction(profile, signal=signal, enrichment=enrichment)
-    if profile_direction and str(thesis.get("direction") or "").upper().strip() in {"", "WATCH_ONLY"}:
+    paper_intent = _paper_intent(profile)
+    current_direction = str(thesis.get("direction") or "").upper().strip()
+    if profile_direction and (
+        current_direction in {"", "WATCH_ONLY"} or paper_intent.get("allow_signal_reject_override") is True
+    ):
         thesis["direction"] = profile_direction
         thesis["direction_policy"] = _direction_policy(profile)
 
@@ -133,7 +154,9 @@ def synthesize_agent_trade_thesis(
 
 def _profile_paper_intent(profile: dict[str, Any]) -> dict[str, Any]:
     paper_intent = dict(_paper_intent(profile))
-    leverage = paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage")
+    leverage = (
+        paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage")
+    )
     paper_intent["paper_leverage"] = leverage
     paper_intent.setdefault("allow_tradecat_paper_gate_to_decide", True)
     paper_intent["real_order"] = False
@@ -143,7 +166,9 @@ def _profile_paper_intent(profile: dict[str, Any]) -> dict[str, Any]:
 def _paper_intent_complete(paper_intent: Any) -> bool:
     if not isinstance(paper_intent, dict):
         return False
-    leverage = _positive_float(paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage"))
+    leverage = _positive_float(
+        paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage")
+    )
     margin = _positive_float(paper_intent.get("requested_margin_usdt"))
     notional = _positive_float(paper_intent.get("requested_notional_usdt"))
     return leverage is not None and (margin is not None or notional is not None)
@@ -151,22 +176,31 @@ def _paper_intent_complete(paper_intent: Any) -> bool:
 
 def _profile_direction(profile: dict[str, Any], *, signal: dict[str, Any], enrichment: dict[str, Any]) -> str:
     paper_intent = _paper_intent(profile)
-    if paper_intent.get("allow_agent_direction_override") is not True and profile.get("allow_agent_direction_override") is not True:
+    if (
+        paper_intent.get("allow_agent_direction_override") is not True
+        and profile.get("allow_agent_direction_override") is not True
+    ):
         return ""
     min_score = _positive_float(paper_intent.get("min_signal_score") or profile.get("min_signal_score"))
     score = _positive_float(signal.get("score")) or 0.0
     if min_score is not None and score < min_score:
         return ""
-    explicit = _direction(paper_intent.get("paper_direction") or paper_intent.get("direction") or profile.get("direction"))
+    explicit = _direction(
+        paper_intent.get("paper_direction") or paper_intent.get("direction") or profile.get("direction")
+    )
     if explicit:
         return explicit
     metrics = enrichment.get("metrics") if isinstance(enrichment.get("metrics"), dict) else {}
     policy = _direction_policy(profile)
+    if policy in {"sheet_signal", "sheet_signal_or_taker_flow", "source_signal"}:
+        sheet_direction = _sheet_signal_direction(enrichment)
+        if sheet_direction:
+            return sheet_direction
     if policy in {"price_momentum", "price_momentum_on_conflict"}:
         price_change = parse_float(metrics.get("price_change_24h_pct"))
         if price_change is not None:
             return "LONG" if price_change >= 0 else "SHORT"
-    if policy == "taker_flow":
+    if policy in {"taker_flow", "sheet_signal_or_taker_flow"}:
         taker = parse_float(metrics.get("taker_buy_sell_ratio"))
         if taker is not None and taker >= 1.05:
             return "LONG"
@@ -183,6 +217,23 @@ def _direction_policy(profile: dict[str, Any]) -> str:
 def _direction(value: Any) -> str:
     text = str(value or "").upper().strip()
     return text if text in {"LONG", "SHORT"} else ""
+
+
+def _sheet_signal_direction(enrichment: dict[str, Any]) -> str:
+    values = enrichment.get("source_values") if isinstance(enrichment.get("source_values"), dict) else {}
+    raw_parts = [str(values.get(key) or "") for key in ("方向", "类型", "内容", "signal_type")]
+    text = " ".join(part for part in raw_parts if part)
+    if not text:
+        return ""
+    long_markers = ("方向=买入", "买入", "看多", "转多", "多头", "主动买盘", "金叉")
+    short_markers = ("方向=卖出", "卖出", "看空", "转空", "空头", "主动卖盘", "死叉")
+    long_hit = any(marker in text for marker in long_markers)
+    short_hit = any(marker in text for marker in short_markers)
+    if long_hit and not short_hit:
+        return "LONG"
+    if short_hit and not long_hit:
+        return "SHORT"
+    return ""
 
 
 def _paper_intent(profile: dict[str, Any]) -> dict[str, Any]:
@@ -207,9 +258,13 @@ def _exit_plan_from_profile(
     take_profit = None
     if entry_price is not None and entry_price > 0 and direction in {"LONG", "SHORT"}:
         if stop_bps is not None:
-            invalidation = entry_price * (1 - stop_bps / 10_000) if direction == "LONG" else entry_price * (1 + stop_bps / 10_000)
+            invalidation = (
+                entry_price * (1 - stop_bps / 10_000) if direction == "LONG" else entry_price * (1 + stop_bps / 10_000)
+            )
         if take_bps is not None:
-            take_profit = entry_price * (1 + take_bps / 10_000) if direction == "LONG" else entry_price * (1 - take_bps / 10_000)
+            take_profit = (
+                entry_price * (1 + take_bps / 10_000) if direction == "LONG" else entry_price * (1 - take_bps / 10_000)
+            )
     max_holding = _positive_float(exit_plan.get("max_holding_minutes"))
     return {
         "invalidation_price": invalidation,
@@ -229,9 +284,9 @@ def _forbidden_hits(value: Any, *, prefix: str = "") -> list[str]:
             compact = normalized.replace("_", "")
             if child is True and normalized in FORBIDDEN_TRUE_KEYS:
                 hits.append(path)
-            elif (
-                not (path == "safety.reads_api_keys" and child is False)
-                and (any(marker in normalized for marker in CREDENTIAL_KEY_MARKERS) or any(marker in compact for marker in CREDENTIAL_KEY_MARKERS))
+            elif not (path == "safety.reads_api_keys" and child is False) and (
+                any(marker in normalized for marker in CREDENTIAL_KEY_MARKERS)
+                or any(marker in compact for marker in CREDENTIAL_KEY_MARKERS)
             ):
                 hits.append(path)
             hits.extend(_forbidden_hits(child, prefix=path))

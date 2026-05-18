@@ -108,6 +108,12 @@
       "schema_version": "1.0.0"
     },
     {
+      "command": "bash scripts/binance-public-snapshot.sh --symbols BTCUSDT,ETHUSDT --json",
+      "risk_class": "network_readonly",
+      "schema": "tradecat_auto.public_market_snapshot.v1",
+      "schema_version": "1.0.0"
+    },
+    {
       "command": "bash scripts/run-tradecat.sh soft-layer --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.agent_soft_layer.v1",
@@ -123,6 +129,18 @@
       "command": "bash scripts/run-tradecat.sh paper-report --json",
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.paper_report.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh latest-cycle --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.latest_cycle_report.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh latest-decision --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.latest_decision_report.v1",
       "schema_version": "1.0.0"
     },
     {
@@ -149,7 +167,7 @@
       "reads_api_keys": false
     },
     {
-      "command": "bash scripts/run-tradecat.sh run-loop --mode paper --paper-autonomy-profile-path .runtime/auto-paper/paper_autonomy_profile.json --once --json",
+      "command": "bash scripts/run-tradecat.sh run-loop --mode paper --agent-trade-thesis-path /path/to/agent_trade_thesis.json --once --json",
       "risk_class": "paper_runtime_write",
       "schema": "tradecat_auto.service_cycle.v1",
       "schema_version": "1.0.0",
@@ -290,6 +308,24 @@
       "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
     },
     {
+      "schema": "tradecat_auto.latest_cycle_report.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-latest-cycle-report.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.latest_decision_report.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-latest-decision-report.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
       "schema": "tradecat_auto.decision_quality_report.v1",
       "schema_version": "1.0.0",
       "schema_file": "contracts/tradecat-auto-decision-quality-report.schema.json",
@@ -311,6 +347,15 @@
       "schema": "tradecat_auto.market_universe.v1",
       "schema_version": "1.0.0",
       "schema_file": "contracts/tradecat-auto-market-universe.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.public_market_snapshot.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-public-market-snapshot.schema.json",
       "real_orders": false,
       "signed_requests": false,
       "reads_api_keys": false,
@@ -535,6 +580,24 @@
       "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
     },
     {
+      "schema": "tradecat_auto.latest_cycle_report.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-latest-cycle-report.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.latest_decision_report.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-latest-decision-report.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
       "schema": "tradecat_auto.decision_quality_report.v1",
       "schema_version": "1.0.0",
       "schema_file": "contracts/tradecat-auto-decision-quality-report.schema.json",
@@ -556,6 +619,15 @@
       "schema": "tradecat_auto.market_universe.v1",
       "schema_version": "1.0.0",
       "schema_file": "contracts/tradecat-auto-market-universe.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.public_market_snapshot.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-public-market-snapshot.schema.json",
       "real_orders": false,
       "signed_requests": false,
       "reads_api_keys": false,
@@ -831,6 +903,14 @@
       "risk_class": "security_or_supply_chain"
     },
     {
+      "command": "python3 scripts/validate_dependency_policy.py",
+      "risk_class": "security_or_supply_chain"
+    },
+    {
+      "command": "ruff format --check src tests scripts",
+      "risk_class": "local_readonly"
+    },
+    {
       "command": "git diff --check",
       "risk_class": "local_readonly"
     }
@@ -850,6 +930,16 @@
     "agent_manifest": "skills/tradecat-public/agents/manifest.json",
     "project_readme": "README.md",
     "project_agents": "AGENTS.md",
+    "contributing": "CONTRIBUTING.md",
+    "changelog": "CHANGELOG.md",
+    "license": "LICENSE",
+    "architecture_doc": "docs/ARCHITECTURE.md",
+    "deployment_doc": "docs/deployment.md",
+    "configuration_doc": "docs/configuration.md",
+    "release_doc": "docs/release.md",
+    "pr_template": ".github/pull_request_template.md",
+    "codeowners": ".github/CODEOWNERS",
+    "dependabot": ".github/dependabot.yml",
     "formal_contract_schemas": "contracts",
     "project_source": "src",
     "source_adapter": "src/tradecat_sources",
@@ -860,6 +950,7 @@
     "agent_smoke": "scripts/agent-smoke.sh",
     "automation_service_script": "scripts/start-auto-paper.sh",
     "automation_monitor_script": "scripts/serve-auto-paper-monitor.py",
+    "dependency_policy_script": "scripts/validate_dependency_policy.py",
     "automation_runtime": ".runtime/auto-paper",
     "agent_market_context_resources": "resources/agent_market_context/binance",
     "agent_market_context_provenance": "resources/agent_market_context/binance/provenance.manifest.json",

@@ -35,21 +35,29 @@ def build_replay_report(
     archive_summary["sha256"] = _sha256_file(archive) if archive.exists() else ""
     archive_summary["load_errors"] = errors
 
-    paper_backtest = build_paper_backtest_report(ledger, generated_at=report_time) if ledger is not None else {
-        "schema": "tradecat_auto.paper_backtest_report.v1",
-        "schema_version": SCHEMA_VERSION,
-        "ok": False,
-        "error": {
-            "code": "paper_ledger_missing" if ledger_error is None else "paper_ledger_load_failed",
-            "kind": "local_state",
-            "message": ledger_error or "ledger_path was not provided",
-            "retryable": False,
-        },
-        "metrics": _empty_metrics(),
-    }
+    paper_backtest = (
+        build_paper_backtest_report(ledger, generated_at=report_time)
+        if ledger is not None
+        else {
+            "schema": "tradecat_auto.paper_backtest_report.v1",
+            "schema_version": SCHEMA_VERSION,
+            "ok": False,
+            "error": {
+                "code": "paper_ledger_missing" if ledger_error is None else "paper_ledger_load_failed",
+                "kind": "local_state",
+                "message": ledger_error or "ledger_path was not provided",
+                "retryable": False,
+            },
+            "metrics": _empty_metrics(),
+        }
+    )
 
-    decision_trace = build_decision_trace_report(archive_path=archive, journal_path=journal_path, generated_at=report_time)
-    decision_quality = build_decision_quality_report_from_reports(decision_trace, paper_backtest, generated_at=report_time)
+    decision_trace = build_decision_trace_report(
+        archive_path=archive, journal_path=journal_path, generated_at=report_time
+    )
+    decision_quality = build_decision_quality_report_from_reports(
+        decision_trace, paper_backtest, generated_at=report_time
+    )
     ok = not errors and bool(cycles) and paper_backtest.get("ok") is True
     return {
         "schema": "tradecat_auto.replay_report.v1",
@@ -90,13 +98,17 @@ def build_decision_quality_report(
             ledger = load_paper_ledger(Path(ledger_path))
         except (PaperLedgerError, OSError):
             ledger = None
-    paper_backtest = build_paper_backtest_report(ledger, generated_at=report_time) if ledger is not None else {
-        "schema": "tradecat_auto.paper_backtest_report.v1",
-        "schema_version": SCHEMA_VERSION,
-        "ok": False,
-        "metrics": _empty_metrics(),
-        "closed_positions_count": 0,
-    }
+    paper_backtest = (
+        build_paper_backtest_report(ledger, generated_at=report_time)
+        if ledger is not None
+        else {
+            "schema": "tradecat_auto.paper_backtest_report.v1",
+            "schema_version": SCHEMA_VERSION,
+            "ok": False,
+            "metrics": _empty_metrics(),
+            "closed_positions_count": 0,
+        }
+    )
     return build_decision_quality_report_from_reports(decision_trace, paper_backtest, generated_at=report_time)
 
 
@@ -247,7 +259,9 @@ def _decision_trace_from_cycle(cycle: dict[str, Any], index: int) -> dict[str, A
         "event_id": event_id,
         "research_cycle_run_id": _trace_research_cycle_run_id(pipeline, execution, ledger),
         "service_action": service_action,
-        "selected_symbol": str(pipeline.get("selected_symbol") or execution.get("symbol") or signal.get("symbol") or "").upper(),
+        "selected_symbol": str(
+            pipeline.get("selected_symbol") or execution.get("symbol") or signal.get("symbol") or ""
+        ).upper(),
         "decision": decision,
         "error_code": error_codes[0] if error_codes else None,
         "error_codes": error_codes,
@@ -286,7 +300,9 @@ def _load_jsonl(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         if isinstance(payload, dict):
             cycles.append(payload)
         else:
-            errors.append({"code": "invalid_cycle_payload", "line": line_number, "message": "cycle root is not an object"})
+            errors.append(
+                {"code": "invalid_cycle_payload", "line": line_number, "message": "cycle root is not an object"}
+            )
     return cycles, errors
 
 
@@ -350,7 +366,8 @@ def _context_audit_reject_count(error_counts: dict[str, int]) -> int:
         count
         for code, count in error_counts.items()
         if code.startswith("agent_market_context_")
-        or code in {
+        or code
+        in {
             "context_audit_failed",
             "signed_request_rejected",
             "credential_material_rejected",
@@ -517,7 +534,9 @@ def _fallback_position_pnl(position: dict[str, Any]) -> float:
 
 
 def _empty_metrics() -> dict[str, Any]:
-    return _metrics_from_series(pnl_values=[], equity_values=[], initial_balance=0.0, fills_count=0, open_positions_count=0)
+    return _metrics_from_series(
+        pnl_values=[], equity_values=[], initial_balance=0.0, fills_count=0, open_positions_count=0
+    )
 
 
 def _num(value: Any) -> float | None:

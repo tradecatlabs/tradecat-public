@@ -58,17 +58,40 @@ def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path
     save_paper_ledger(ledger_path, default_paper_ledger(initial_balance_usdt=1000.0))
     archive_path = tmp_path / "cycles.jsonl"
     archive_path.write_text(
-        json.dumps(
-            {
-                "schema": "tradecat_auto.service_cycle.v1",
-                "schema_version": "1.0.0",
-                "ok": False,
-                "action": "SKIPPED_NO_EVENT",
-                "reason": "no_signal_flow_available",
-                "error_code": "no_signal_flow_available",
-                "safety": {"real_orders": False, "signed_requests": False, "reads_api_keys": False},
-            },
-            ensure_ascii=False,
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "schema_version": "1.0.0",
+                        "ok": False,
+                        "action": "SKIPPED_NO_EVENT",
+                        "reason": "no_signal_flow_available",
+                        "error_code": "no_signal_flow_available",
+                        "safety": {"real_orders": False, "signed_requests": False, "reads_api_keys": False},
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "schema_version": "1.0.0",
+                        "ok": True,
+                        "action": "PROCESSED",
+                        "latest_event": {"event_id": "evt-1", "symbol": "BTCUSDT"},
+                        "pipeline_report": {
+                            "schema": "tradecat_auto.run_once_report.v1",
+                            "schema_version": "1.0.0",
+                            "ok": True,
+                            "selected_symbol": "BTCUSDT",
+                            "risk_decision": {"decision": "ALLOW", "reasons": []},
+                            "paper_execution": {"status": "OPENED", "side": "LONG"},
+                            "safety": {"real_orders": False, "signed_requests": False, "reads_api_keys": False},
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
         )
         + "\n",
         encoding="utf-8",
@@ -77,8 +100,23 @@ def test_advertised_automation_payloads_validate_against_formal_schemas(tmp_path
     payloads = [
         _run_auto_json(["soft-layer", "--json"]),
         _run_auto_json(["paper-report", "--ledger-path", str(ledger_path), "--json"]),
-        _run_auto_json(["replay-report", "--archive-path", str(archive_path), "--ledger-path", str(ledger_path), "--json"]),
-        _run_auto_json(["daily-report", "--archive-path", str(archive_path), "--ledger-path", str(ledger_path), "--date", "2026-05-10", "--json"]),
+        _run_auto_json(
+            ["replay-report", "--archive-path", str(archive_path), "--ledger-path", str(ledger_path), "--json"]
+        ),
+        _run_auto_json(["latest-cycle", "--archive-path", str(archive_path), "--json"]),
+        _run_auto_json(["latest-decision", "--archive-path", str(archive_path), "--json"]),
+        _run_auto_json(
+            [
+                "daily-report",
+                "--archive-path",
+                str(archive_path),
+                "--ledger-path",
+                str(ledger_path),
+                "--date",
+                "2026-05-10",
+                "--json",
+            ]
+        ),
     ]
 
     for payload in payloads:
@@ -108,6 +146,8 @@ def _schema_name_for(payload: dict[str, Any]) -> str:
         "tradecat_auto.paper_report.v1": "tradecat-auto-paper-report.schema.json",
         "tradecat_auto.replay_report.v1": "tradecat-auto-replay-report.schema.json",
         "tradecat_auto.daily_paper_report.v1": "tradecat-auto-daily-paper-report.schema.json",
+        "tradecat_auto.latest_cycle_report.v1": "tradecat-auto-latest-cycle-report.schema.json",
+        "tradecat_auto.latest_decision_report.v1": "tradecat-auto-latest-decision-report.schema.json",
     }
     return mapping[str(schema)]
 

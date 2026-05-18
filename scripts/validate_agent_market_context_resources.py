@@ -56,8 +56,14 @@ def validate() -> list[str]:
         return ["provenance root must be an object"]
 
     _expect(payload.get("schema") == EXPECTED_SCHEMA, f"schema must be {EXPECTED_SCHEMA}", errors)
-    _expect(payload.get("schema_version") == EXPECTED_SCHEMA_VERSION, f"schema_version must be {EXPECTED_SCHEMA_VERSION}", errors)
-    _expect(payload.get("destination_root") == "resources/agent_market_context/binance", "destination_root mismatch", errors)
+    _expect(
+        payload.get("schema_version") == EXPECTED_SCHEMA_VERSION,
+        f"schema_version must be {EXPECTED_SCHEMA_VERSION}",
+        errors,
+    )
+    _expect(
+        payload.get("destination_root") == "resources/agent_market_context/binance", "destination_root mismatch", errors
+    )
 
     raw_copy_policy = payload.get("copy_policy")
     copy_policy: dict[str, Any] = raw_copy_policy if isinstance(raw_copy_policy, dict) else {}
@@ -69,7 +75,11 @@ def validate() -> list[str]:
     raw_boundary = payload.get("tradecat_boundary")
     boundary: dict[str, Any] = raw_boundary if isinstance(raw_boundary, dict) else {}
     allowed_modes = set(boundary.get("allowed_modes") or [])
-    _expect({"public_readonly", "paper", "watch"}.issubset(allowed_modes), "allowed_modes must include public_readonly/paper/watch", errors)
+    _expect(
+        {"public_readonly", "paper", "watch"}.issubset(allowed_modes),
+        "allowed_modes must include public_readonly/paper/watch",
+        errors,
+    )
     forbidden = set(boundary.get("forbidden") or [])
     _expect(REQUIRED_FORBIDDEN.issubset(forbidden), "forbidden boundary list is incomplete", errors)
     families = set(boundary.get("allowed_market_context_families") or [])
@@ -84,15 +94,25 @@ def validate() -> list[str]:
             continue
         destination_text = str(source.get("destination_path") or "")
         destination_path = REPO_ROOT / destination_text
-        _expect(_is_inside(destination_path, RESOURCE_ROOT), f"source destination escapes resource root: {destination_text}", errors)
+        _expect(
+            _is_inside(destination_path, RESOURCE_ROOT),
+            f"source destination escapes resource root: {destination_text}",
+            errors,
+        )
         _expect(destination_path.exists(), f"source destination missing: {destination_text}", errors)
         if destination_path.is_file() and source.get("sha256"):
-            _expect(_sha256_file(destination_path) == source.get("sha256"), f"sha256 mismatch: {destination_text}", errors)
+            _expect(
+                _sha256_file(destination_path) == source.get("sha256"), f"sha256 mismatch: {destination_text}", errors
+            )
         if destination_path.is_dir() and source.get("source_sha256_manifest"):
             count, size, digest = _tree_manifest(destination_path, destination_path)
             _expect(count == source.get("file_count"), f"file_count mismatch: {destination_text}", errors)
             _expect(size == source.get("bytes"), f"bytes mismatch: {destination_text}", errors)
-            _expect(digest == source.get("source_sha256_manifest"), f"source_sha256_manifest mismatch: {destination_text}", errors)
+            _expect(
+                digest == source.get("source_sha256_manifest"),
+                f"source_sha256_manifest mismatch: {destination_text}",
+                errors,
+            )
 
     raw_copied_files = payload.get("copied_files")
     copied_files: dict[str, Any] = raw_copied_files if isinstance(raw_copied_files, dict) else {}
@@ -103,7 +123,11 @@ def validate() -> list[str]:
     _expect(digest == copied_files.get("sha256_manifest"), "copied_files.sha256_manifest mismatch", errors)
 
     for path in RESOURCE_ROOT.rglob("*"):
-        _expect(not path.is_symlink(), f"symlink is not allowed in resource snapshot: {path.relative_to(RESOURCE_ROOT)}", errors)
+        _expect(
+            not path.is_symlink(),
+            f"symlink is not allowed in resource snapshot: {path.relative_to(RESOURCE_ROOT)}",
+            errors,
+        )
     return errors
 
 

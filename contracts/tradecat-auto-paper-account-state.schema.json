@@ -48,7 +48,13 @@
           "schema_version": {"const": "1.0.0"},
           "order_id": {"type": "string"},
           "symbol": {"type": "string"},
-          "order_type": {"enum": ["PAPER_MARKET", "PAPER_POST_ONLY_MAKER_ASSUMPTION"]},
+          "order_type": {
+            "enum": [
+              "PAPER_MARKET",
+              "PAPER_POST_ONLY_MAKER_ASSUMPTION",
+              "PAPER_TAKER_PUBLIC_DEPTH_ESTIMATE"
+            ]
+          },
           "status": {"enum": ["FILLED", "REJECTED", "CANCELLED"]},
           "real_order": {"const": false},
           "exchange_order_id": {"type": ["null", "string"]}

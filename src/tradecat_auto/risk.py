@@ -54,7 +54,14 @@ def load_portfolio_risk_policy(path: Path | str | None) -> dict[str, Any] | None
         raise ValueError("portfolio_risk_policy_load_failed: invalid schema")
     if payload.get("schema_version") not in (None, "", "1.0.0"):
         raise ValueError("portfolio_risk_policy_load_failed: invalid schema_version")
-    for forbidden in ("requested_margin_usdt", "requested_notional_usdt", "paper_leverage", "stop_loss_price", "take_profit_price", "max_holding_minutes"):
+    for forbidden in (
+        "requested_margin_usdt",
+        "requested_notional_usdt",
+        "paper_leverage",
+        "stop_loss_price",
+        "take_profit_price",
+        "max_holding_minutes",
+    ):
         if forbidden in payload:
             raise ValueError(f"portfolio_risk_policy_load_failed: forbidden trade parameter {forbidden}")
     return payload
@@ -126,12 +133,21 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
     leverage = leverage_raw if leverage_raw is not None else 0.0
     requested_margin = _num(active_policy.get("requested_margin_usdt"))
     margin_budget = _num(active_policy.get("paper_margin_budget_usdt"))
-    if margin_budget is not None and margin_budget > 0 and requested_margin is not None and requested_margin > margin_budget:
+    if (
+        margin_budget is not None
+        and margin_budget > 0
+        and requested_margin is not None
+        and requested_margin > margin_budget
+    ):
         reasons.append("margin_budget_exceeded")
     requested_notional_raw = _num(active_policy.get("requested_notional_usdt"))
     requested_notional = requested_notional_raw if requested_notional_raw is not None else 0.0
     sizing_required = bool(active_policy.get("sizing_required", mode == "paper"))
-    if mode == "paper" and sizing_required and (requested_notional_raw is None or requested_notional <= 0 or leverage_raw is None):
+    if (
+        mode == "paper"
+        and sizing_required
+        and (requested_notional_raw is None or requested_notional <= 0 or leverage_raw is None)
+    ):
         reasons.append("agent_sizing_required")
     if leverage_raw is not None and leverage <= 0:
         reasons.append("invalid_leverage")
@@ -174,7 +190,11 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
 
     max_total_notional = _num(active_policy.get("max_total_notional_usdt")) or 0.0
     current_total_notional = _num(active_policy.get("current_total_notional_usdt")) or 0.0
-    if max_total_notional > 0 and requested_notional > 0 and current_total_notional + requested_notional > max_total_notional:
+    if (
+        max_total_notional > 0
+        and requested_notional > 0
+        and current_total_notional + requested_notional > max_total_notional
+    ):
         reasons.append("max_total_notional_reached")
 
     forced_reject_reasons = _as_reason_list(active_policy.get("force_reject_reasons"))
@@ -318,8 +338,12 @@ def _portfolio_policy_snapshot(portfolio_policy: dict[str, Any]) -> dict[str, An
         "enabled": bool(portfolio_policy.get("enabled", True)),
         "new_entries_enabled": portfolio_policy.get("new_entries_enabled"),
         "limits": dict(portfolio_policy.get("limits") if isinstance(portfolio_policy.get("limits"), dict) else {}),
-        "kill_switch": dict(portfolio_policy.get("kill_switch") if isinstance(portfolio_policy.get("kill_switch"), dict) else {}),
-        "provenance": dict(portfolio_policy.get("provenance") if isinstance(portfolio_policy.get("provenance"), dict) else {}),
+        "kill_switch": dict(
+            portfolio_policy.get("kill_switch") if isinstance(portfolio_policy.get("kill_switch"), dict) else {}
+        ),
+        "provenance": dict(
+            portfolio_policy.get("provenance") if isinstance(portfolio_policy.get("provenance"), dict) else {}
+        ),
     }
 
 

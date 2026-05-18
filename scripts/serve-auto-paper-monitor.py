@@ -27,11 +27,7 @@ def credential_env_names() -> list[str]:
 
 
 def command_env(runtime_dir: Path) -> dict[str, str]:
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if not CREDENTIAL_NAME_RE.search(key)
-    }
+    env = {key: value for key, value in os.environ.items() if not CREDENTIAL_NAME_RE.search(key)}
     env["TRADECAT_AUTO_PAPER_RUNTIME_DIR"] = str(runtime_dir)
     env.setdefault("PYTHONUNBUFFERED", "1")
     return env
@@ -164,10 +160,11 @@ def build_dependency_health(
     audit_journal = health.get("audit_journal") if isinstance(health.get("audit_journal"), dict) else audit
     safety = status.get("safety") if isinstance(status.get("safety"), dict) else {}
     runtime_ok = bool(status.get("running")) and bool(heartbeat.get("ok")) and not bool(heartbeat.get("stale"))
-    no_new_signal = service_state.get("last_error") == "no_events_available" or archive.get("last_action") == "SKIPPED_NO_EVENT"
+    no_new_signal = (
+        service_state.get("last_error") == "no_events_available" or archive.get("last_action") == "SKIPPED_NO_EVENT"
+    )
     thesis_path = str(status.get("agent_trade_thesis_path") or "")
-    autonomy_profile_path = str(status.get("paper_autonomy_profile_path") or "")
-    agent_sizing_required = bool(status.get("agent_sizing_required")) and not autonomy_profile_path
+    agent_sizing_required = bool(status.get("agent_sizing_required"))
     ops_ok = bool(ops.get("ok"))
     python_ok = _ops_check_ok(ops, "python_available") and _ops_check_ok(ops, "project_source_exists")
     runtime_paths_ok = all(
@@ -245,25 +242,37 @@ def build_dependency_health(
             "agent_market_context",
             "Agent-supplied Binance public market context",
             "warn" if agent_sizing_required else "ok",
-            "当前未观察到带 sizing/exits 的 Agent thesis；TradeCat 保持 fail-closed" if agent_sizing_required else f"Agent thesis/profile 已授权 paper sizing/exits; profile={'configured' if autonomy_profile_path else 'not_configured'}",
+            "等待 Agent/Hermes 输出 thesis；本地不套用默认金额、杠杆或退出参数"
+            if agent_sizing_required
+            else "Agent thesis 已进入 paper/watch 链路",
         ),
         _node(
             "context_audit",
             "context-audit 契约审计",
-            "warn" if agent_sizing_required else "ok",
-            "没有新 Agent market context 进入 paper 链路" if agent_sizing_required else "Agent context 已通过链路进入 paper",
+            "ok",
+            "契约审计可用；缺 Agent thesis 时只记录结构化等待/拒绝，不生成本地默认交易参数"
+            if agent_sizing_required
+            else "Agent context 已通过链路进入 paper",
         ),
         _node(
             "trade_thesis",
-            "Agent trade thesis / sizing / exits",
+            "Agent 自主 thesis / sizing / exits",
             "warn" if agent_sizing_required else "ok",
-            f"paper_sizing_source={(status.get('paper_sizing') or {}).get('source') if isinstance(status.get('paper_sizing'), dict) else '-'}; thesis_path={'configured' if thesis_path else 'not_configured'}; autonomy_profile={'configured' if autonomy_profile_path else 'not_configured'}",
+            "等待 Agent 显式给出 paper_intent、leverage 与 exit plan"
+            if agent_sizing_required
+            else f"paper_sizing_source={(status.get('paper_sizing') or {}).get('source') if isinstance(status.get('paper_sizing'), dict) else '-'}; thesis_path={'configured' if thesis_path else 'inline_or_runtime'}",
         ),
         _node(
             "risk_controls",
-            "组合风控 / kill switch",
-            "warn" if not portfolio_policy_path and not kill_switch_path else "ok",
-            f"portfolio_policy={'configured' if portfolio_policy_path else 'not_configured'}; kill_switch={'configured' if kill_switch_path else 'not_configured'}",
+            "可选本地组合约束 / kill switch",
+            "ok",
+            (
+                "用户显式约束已配置: "
+                f"portfolio_policy={'configured' if portfolio_policy_path else 'none'}; "
+                f"kill_switch={'configured' if kill_switch_path else 'none'}"
+            )
+            if portfolio_policy_path or kill_switch_path
+            else "默认不启用本地组合约束；Agent thesis 直接驱动 paper/watch，安全边界单独强制",
         ),
         _node(
             "auto_paper_loop",
@@ -362,7 +371,10 @@ def build_decision_text(latest_cycle: dict[str, Any]) -> dict[str, Any]:
             [
                 ("来源", event.get("source_dataset_key")),
                 ("来源集合", _join_text_list(event.get("source_dataset_keys"))),
-                ("时间", event.get("source_time_bj") or latest_cycle.get("generated_at") or pipeline.get("generated_at")),
+                (
+                    "时间",
+                    event.get("source_time_bj") or latest_cycle.get("generated_at") or pipeline.get("generated_at"),
+                ),
                 ("事件 ID", event.get("event_id")),
                 ("币种", event.get("symbol")),
                 ("周期", event.get("period")),
@@ -384,8 +396,14 @@ def build_decision_text(latest_cycle: dict[str, Any]) -> dict[str, Any]:
                 ("异动面板抓取数", _as_dict(pipeline.get("anomaly_symbols")).get("count")),
                 ("异动面板候选行数", _as_dict(pipeline.get("anomaly_symbols")).get("row_count")),
                 ("异动面板榜单", _format_sections(_as_dict(pipeline.get("anomaly_symbols")).get("sections"))),
-                ("异动面板前 10 行", _format_anomaly_rows(_as_dict(pipeline.get("anomaly_symbols")).get("first_10_rows"))),
-                ("异动面板去重前 10 币种", _format_anomaly_rows(_as_dict(pipeline.get("anomaly_symbols")).get("first_10"))),
+                (
+                    "异动面板前 10 行",
+                    _format_anomaly_rows(_as_dict(pipeline.get("anomaly_symbols")).get("first_10_rows")),
+                ),
+                (
+                    "异动面板去重前 10 币种",
+                    _format_anomaly_rows(_as_dict(pipeline.get("anomaly_symbols")).get("first_10")),
+                ),
             ],
         ),
         _decision_section(
@@ -431,7 +449,10 @@ def build_decision_text(latest_cycle: dict[str, Any]) -> dict[str, Any]:
                 ("决定", risk.get("decision")),
                 ("拒绝/提示原因", _join_text_list(risk.get("reasons"))),
                 ("仓位来源", _as_dict(risk.get("policy")).get("sizing_source") or sizing.get("source")),
-                ("请求保证金 USDT", _as_dict(risk.get("policy")).get("requested_margin_usdt") or sizing.get("requested_margin_usdt")),
+                (
+                    "请求保证金 USDT",
+                    _as_dict(risk.get("policy")).get("requested_margin_usdt") or sizing.get("requested_margin_usdt"),
+                ),
                 ("纸面杠杆", risk.get("paper_leverage") or sizing.get("paper_leverage")),
                 ("约束", _join_text_list(risk.get("constraints"))),
             ],
@@ -535,7 +556,9 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
         "latest_decision_cycle": latest_decision_cycle,
         "risk_state": build_risk_state(health),
         "decision_text": build_decision_text(latest_decision_cycle or latest_cycle),
-        "dependency_health": build_dependency_health(status=status, health=health, ops=ops, audit=audit, latest_cycle=latest_cycle),
+        "dependency_health": build_dependency_health(
+            status=status, health=health, ops=ops, audit=audit, latest_cycle=latest_cycle
+        ),
         "log_tail": read_tail(log_path),
         "monitor_environment": {
             "credential_env_names_present": credential_env_names(),
@@ -632,7 +655,17 @@ def _source_time_from_values(values: dict[str, Any]) -> str:
 def _format_anomaly_source_text(symbol: str, values: dict[str, Any]) -> str:
     if not values:
         return f"{symbol} 异动面板信号".strip()
-    priority = ("交易对", "合约代码", "币种符号", "5m量变化率", "5m额变化率", "量额背离", "量异常强度", "额异常强度", "现持仓额")
+    priority = (
+        "交易对",
+        "合约代码",
+        "币种符号",
+        "5m量变化率",
+        "5m额变化率",
+        "量额背离",
+        "量异常强度",
+        "额异常强度",
+        "现持仓额",
+    )
     pairs = []
     used = set()
     for key in priority:
@@ -878,7 +911,7 @@ const TEXT = {
   SKIPPED_STALE_EVENT: "信号过期，跳过",
   SKIPPED_DUPLICATE_EVENT: "重复信号，跳过",
   PROCESSED: "已处理",
-  agent_required_missing: "缺 Agent sizing，关闭开仓",
+  agent_required_missing: "等待 Agent thesis",
   service_environment: "服务环境显式提供",
   true: "是",
   false: "否"
@@ -932,7 +965,7 @@ async function refresh() {
   $("service").innerHTML = `<span class="${cls(status.running)}">${status.running ? TEXT.running : TEXT.stopped}</span>`;
   $("pid").textContent = `进程=${safe(status.pid)} 事件=${statusText(status.event)}`;
   $("health").innerHTML = `<span class="${cls(health.ok, heartbeat.stale)}">${statusText(health.status)}</span>`;
-  $("heartbeat").textContent = `心跳年龄=${fixed(heartbeat.age_seconds, 1)}秒 上限=${fixed(heartbeat.max_age_seconds, 1)}秒`;
+  $("heartbeat").textContent = `心跳=${statusText(heartbeat.status)} 年龄=${fixed(heartbeat.age_seconds, 1)}秒 上限=${fixed(heartbeat.max_age_seconds, 1)}秒`;
   $("open").textContent = safe(ledger.open_positions_count);
   $("equity").textContent = `权益=${fixed(ledger.equity_usdt)} 未实现=${fixed(ledger.unrealized_pnl_usdt)}`;
   $("cycles").textContent = safe(archive.cycle_count);
@@ -967,13 +1000,18 @@ async function refresh() {
     row("运行批次数", audit.run_count),
     row("最新记录 SHA256", audit.latest_record_sha256)
   ].join("");
-  $("ops").innerHTML = [
+  const opsRows = [
     row("预检通过", boolText(ops.ok)),
-    row("阻塞检查", (ops.blocking_checks || []).join(", ") || "-"),
-    row("需要 Agent 仓位参数", boolText(status.agent_sizing_required)),
-    row("纸面 sizing 来源", statusText(status.paper_sizing && status.paper_sizing.source)),
-    row("纸面自治配置", status.paper_autonomy_profile_configured ? "已配置" : "未配置")
-  ].join("");
+    row("阻塞检查", (ops.blocking_checks || []).join(", ") || "-")
+  ];
+  if (status.agent_trade_thesis_configured || (status.paper_sizing && status.paper_sizing.source && status.paper_sizing.source !== "agent_required_missing")) {
+    opsRows.push(row("Agent thesis", status.agent_trade_thesis_configured ? "已配置" : "运行内联"));
+    opsRows.push(row("纸面 sizing 来源", statusText(status.paper_sizing && status.paper_sizing.source)));
+  }
+  if (status.paper_autonomy_profile_configured) {
+    opsRows.push(row("用户显式本地约束", "paper autonomy profile"));
+  }
+  $("ops").innerHTML = opsRows.join("");
   $("dependencyHealth").innerHTML = (data.dependency_health || []).map(dependencyNode).join("") || row("状态", "无依赖链数据");
   $("decisionSummary").innerHTML = [
     row("状态", decision.ok ? "可展示" : "暂无决策文本"),
@@ -1028,18 +1066,28 @@ class MonitorHandler(BaseHTTPRequestHandler):
         print(f"{timestamp} {self.address_string()} {format % args}", flush=True)
 
     def send_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
-        self.send_bytes(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), content_type="application/json; charset=utf-8")
+        self.send_bytes(
+            status,
+            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            content_type="application/json; charset=utf-8",
+        )
 
     def send_bytes(self, status: HTTPStatus, payload: bytes, *, content_type: str) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(payload)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+            )
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

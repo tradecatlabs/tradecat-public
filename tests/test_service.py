@@ -61,7 +61,13 @@ class FakeSource:
         return {
             "ok": True,
             "symbols": [
-                {"raw_symbol": "IRYS", "normalized_symbol": "IRYSUSDT", "source_dataset_key": "anomaly_panel", "first_row_index": 1, "source_values": source_values}
+                {
+                    "raw_symbol": "IRYS",
+                    "normalized_symbol": "IRYSUSDT",
+                    "source_dataset_key": "anomaly_panel",
+                    "first_row_index": 1,
+                    "source_values": source_values,
+                }
             ],
             "rejected": [],
         }
@@ -147,8 +153,8 @@ def make_args(**overrides):
         "paper_leverage": None,
         "agent_trade_thesis_path": "",
         "paper_autonomy_profile_path": "",
-        "paper_fee_bps": 2.0,
-        "paper_slippage_bps": 0.5,
+        "paper_fee_bps": 4.0,
+        "paper_slippage_bps": 0.0,
         "archive_path": "",
         "journal_path": "",
     }
@@ -497,6 +503,149 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(updated["last_updated_at"], "2026-05-13T12:00:00Z")
             self.assertGreater(updated["unrealized_pnl_usdt"], 0.0)
 
+    def test_run_service_cycle_uses_lightweight_last_price_for_existing_positions(self) -> None:
+        class EmptySource:
+            def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
+                return {"ok": True, "symbols": [], "rejected": []}
+
+            def fetch_signal_flow_events(self, *, tradable_symbols, limit):
+                return {
+                    "schema": "tradecat_auto.signal_flow_events.v1",
+                    "schema_version": "1.0.0",
+                    "ok": False,
+                    "source_dataset_key": "signal_flow",
+                    "events": [],
+                    "rejected": [],
+                    "error_code": "no_signal_flow_available",
+                    "error": {"code": "no_signal_flow_available"},
+                }
+
+        class LightweightClient(FakeClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.price_calls = 0
+
+            def fetch_last_price(self, symbol):
+                self.price_calls += 1
+                return {
+                    "schema": "tradecat_auto.public_last_price.v1",
+                    "schema_version": "1.0.0",
+                    "ok": True,
+                    "symbol": symbol,
+                    "last_price": 0.062,
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "paper_ledger.json"
+            ledger = default_paper_ledger(initial_balance_usdt=1000.0)
+            ledger["open_positions"]["IRYSUSDT"] = {
+                "position_id": "pos-IRYSUSDT",
+                "symbol": "IRYSUSDT",
+                "side": "LONG",
+                "entry_price": 0.05,
+                "quantity": 100.0,
+                "notional_usdt": 5.0,
+                "status": "OPEN",
+                "exit_plan_source": "agent_required_missing",
+            }
+            save_paper_ledger(ledger_path, ledger)
+            client = LightweightClient()
+
+            report = run_service_cycle(
+                make_args(ledger_path=str(ledger_path)),
+                state_path=Path(tmp) / "service_state.json",
+                client=client,
+                source=EmptySource(),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "SKIPPED_NO_EVENT")
+            self.assertEqual(client.price_calls, 1)
+            self.assertEqual(client.bundle_calls, 0)
+            self.assertIn("paper_ledger", report)
+            updated = json.loads(ledger_path.read_text(encoding="utf-8"))
+            self.assertGreater(updated["unrealized_pnl_usdt"], 0.0)
+
+    def test_run_service_cycle_batches_last_prices_for_existing_positions(self) -> None:
+        class EmptySource:
+            def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
+                return {"ok": True, "symbols": [], "rejected": []}
+
+            def fetch_signal_flow_events(self, *, tradable_symbols, limit):
+                return {
+                    "schema": "tradecat_auto.signal_flow_events.v1",
+                    "schema_version": "1.0.0",
+                    "ok": False,
+                    "source_dataset_key": "signal_flow",
+                    "events": [],
+                    "rejected": [],
+                    "error_code": "no_signal_flow_available",
+                    "error": {"code": "no_signal_flow_available"},
+                }
+
+        class BatchPriceClient(FakeClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self.batch_price_calls = 0
+                self.single_price_calls = 0
+
+            def fetch_last_prices(self, symbols):
+                self.batch_price_calls += 1
+                return {
+                    "schema": "tradecat_auto.public_last_prices.v1",
+                    "schema_version": "1.0.0",
+                    "ok": True,
+                    "symbols": list(symbols),
+                    "prices": {"IRYSUSDT": 0.062, "BTCUSDT": 100.0},
+                    "missing_symbols": [],
+                }
+
+            def fetch_last_price(self, symbol):
+                self.single_price_calls += 1
+                return {"ok": False, "error": "single price should not be called"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "paper_ledger.json"
+            ledger = default_paper_ledger(initial_balance_usdt=1000.0)
+            ledger["open_positions"]["pos-IRYSUSDT"] = {
+                "position_id": "pos-IRYSUSDT",
+                "symbol": "IRYSUSDT",
+                "side": "LONG",
+                "entry_price": 0.05,
+                "quantity": 100.0,
+                "notional_usdt": 5.0,
+                "status": "OPEN",
+                "exit_plan_source": "agent_trade_thesis",
+            }
+            ledger["open_positions"]["pos-BTCUSDT"] = {
+                "position_id": "pos-BTCUSDT",
+                "symbol": "BTCUSDT",
+                "side": "LONG",
+                "entry_price": 90.0,
+                "quantity": 0.1,
+                "notional_usdt": 9.0,
+                "status": "OPEN",
+                "exit_plan_source": "agent_trade_thesis",
+            }
+            save_paper_ledger(ledger_path, ledger)
+            client = BatchPriceClient()
+
+            report = run_service_cycle(
+                make_args(ledger_path=str(ledger_path)),
+                state_path=Path(tmp) / "service_state.json",
+                client=client,
+                source=EmptySource(),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "SKIPPED_NO_EVENT")
+            self.assertEqual(client.batch_price_calls, 1)
+            self.assertEqual(client.single_price_calls, 0)
+            self.assertEqual(client.bundle_calls, 0)
+            updated = json.loads(ledger_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(updated["open_positions"]), 2)
+            self.assertGreater(updated["unrealized_pnl_usdt"], 0.0)
+
     def test_run_service_cycle_preserves_event_source_error_code(self) -> None:
         class BrokenSource:
             def fetch_events(self, *, limit):
@@ -583,7 +732,11 @@ class ServiceTests(unittest.TestCase):
                 self.anomaly_calls += 1
                 return {"ok": True, "symbols": [], "rejected": []}
 
-        event = {"event_id": "evt-no-anomaly-symbol", "source_time_bj": "2026-05-13 19:57:42", "content": "无可交易异动"}
+        event = {
+            "event_id": "evt-no-anomaly-symbol",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "无可交易异动",
+        }
         with tempfile.TemporaryDirectory() as tmp:
             client = FakeClient()
 
@@ -631,7 +784,14 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(len(ledger["fills"]), 1)
             self.assertEqual(ledger["open_positions"]["IRYSUSDT"]["leverage"], 1.0)
             self.assertEqual(ledger["open_positions"]["IRYSUSDT"]["sizing_source"], "agent_supplied_cli_margin")
-            self.assertAlmostEqual(ledger["open_positions"]["IRYSUSDT"]["notional_usdt"], 7.5 * 1.00005)
+            position = ledger["open_positions"]["IRYSUSDT"]
+            self.assertAlmostEqual(position["notional_usdt"], 7.5)
+            self.assertEqual(position["fee_bps"], 4.0)
+            self.assertEqual(
+                position["execution_cost_model"]["error_code"],
+                "paper_cost_depth_fallback_used",
+            )
+            self.assertEqual(position["execution_cost_model"]["fallback_slippage_bps"], 0.0)
 
     def test_run_service_cycle_uses_agent_trade_thesis_sizing_and_exit_plan(self) -> None:
         event = {
@@ -1028,9 +1188,13 @@ class ServiceTests(unittest.TestCase):
 
             self.assertTrue(report["ok"])
             self.assertEqual(report["pipeline_report"]["research_cycle_run_id"], research_cycle_run_id)
-            self.assertEqual(report["pipeline_report"]["paper_execution"]["research_cycle_run_id"], research_cycle_run_id)
+            self.assertEqual(
+                report["pipeline_report"]["paper_execution"]["research_cycle_run_id"], research_cycle_run_id
+            )
             self.assertEqual(report["paper_ledger"]["open_positions_count"], 1)
-            self.assertEqual(report["paper_ledger"]["recent_paper_orders"][-1]["research_cycle_run_id"], research_cycle_run_id)
+            self.assertEqual(
+                report["paper_ledger"]["recent_paper_orders"][-1]["research_cycle_run_id"], research_cycle_run_id
+            )
             self.assertEqual(report["paper_ledger"]["recent_fills"][-1]["research_cycle_run_id"], research_cycle_run_id)
             self.assertFalse(report["safety"]["real_orders"])
             self.assertFalse(report["safety"]["signed_requests"])
@@ -1044,7 +1208,9 @@ class ServiceTests(unittest.TestCase):
 
             archived = [json.loads(line) for line in archive_path.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(archived[0]["pipeline_report"]["research_cycle_run_id"], research_cycle_run_id)
-            self.assertEqual(archived[0]["paper_ledger"]["recent_fills"][-1]["research_cycle_run_id"], research_cycle_run_id)
+            self.assertEqual(
+                archived[0]["paper_ledger"]["recent_fills"][-1]["research_cycle_run_id"], research_cycle_run_id
+            )
 
             journal = journal_summary(journal_path)
             self.assertTrue(journal["ok"])
@@ -1099,8 +1265,12 @@ class ServiceTests(unittest.TestCase):
             source = FakeSource(event)
             now = datetime(2026, 5, 13, 12, 0, tzinfo=UTC)
 
-            first = run_service_cycle(make_args(ledger_path=str(ledger_path)), state_path=state_path, client=client, source=source, now=now)
-            second = run_service_cycle(make_args(ledger_path=str(ledger_path)), state_path=state_path, client=client, source=source, now=now)
+            first = run_service_cycle(
+                make_args(ledger_path=str(ledger_path)), state_path=state_path, client=client, source=source, now=now
+            )
+            second = run_service_cycle(
+                make_args(ledger_path=str(ledger_path)), state_path=state_path, client=client, source=source, now=now
+            )
 
             self.assertEqual(first["action"], "PROCESSED")
             self.assertEqual(second["action"], "SKIPPED_DUPLICATE_EVENT")

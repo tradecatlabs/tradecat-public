@@ -27,11 +27,7 @@ def test_dataset_consumption_contract_covers_registry():
 def test_signal_flow_consumption_semantics_are_machine_readable():
     contract = dataset_consumption_contract("signal_flow")
     dataset = get_dataset("signal_flow")
-    covered_columns = {
-        column
-        for field in contract["fields"]
-        for column in field["source_columns"]
-    }
+    covered_columns = {column for field in contract["fields"] for column in field["source_columns"]}
 
     assert contract["data_mode"] == "stream"
     assert contract["time_semantics"]["event_time_column"] == "时间(北京)"
@@ -39,6 +35,7 @@ def test_signal_flow_consumption_semantics_are_machine_readable():
     assert set(dataset.event_key_columns).issubset(covered_columns)
     assert contract["missing_value_policy"] == "empty_string_is_missing"
     assert contract["quality_tier"] == "public_sheet_best_effort"
+
 
 def _load_validator_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("tradecat_dataset_consumption_validator_test", VALIDATOR_SCRIPT)

@@ -15,9 +15,7 @@ from tradecat_sources.registry import DATASETS, REGISTRY_RESOURCE, list_datasets
 
 EXPECTED_CONTRACT_SCHEMA = "tradecat.dataset_consumption_contract.v1"
 REGISTRY_PATH = Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / REGISTRY_RESOURCE
-CONTRACT_PATH = (
-    Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / DATASET_CONSUMPTION_CONTRACT_RESOURCE
-)
+CONTRACT_PATH = Path(__file__).resolve().parents[1] / "src" / "tradecat_sources" / DATASET_CONSUMPTION_CONTRACT_RESOURCE
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,7 +32,9 @@ def main(argv: list[str] | None = None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Validate TradeCat dataset consumption semantics.")
-    parser.add_argument("--include-inactive", action="store_true", help="Require inactive datasets in the contract too.")
+    parser.add_argument(
+        "--include-inactive", action="store_true", help="Require inactive datasets in the contract too."
+    )
     return parser
 
 
@@ -73,7 +73,9 @@ def validate_dataset_consumption_contract(*, include_inactive: bool = False) -> 
     if unknown_keys:
         errors.append(f"{CONTRACT_PATH.name} has unknown dataset contracts: {unknown_keys}")
 
-    raw_registry_datasets = registry_payload.get("datasets") if isinstance(registry_payload.get("datasets"), dict) else {}
+    raw_registry_datasets = (
+        registry_payload.get("datasets") if isinstance(registry_payload.get("datasets"), dict) else {}
+    )
     for dataset_key in sorted(expected_keys & actual_keys):
         raw_registry = raw_registry_datasets.get(dataset_key)
         raw_contract = contract_datasets.get(dataset_key)
@@ -96,9 +98,13 @@ def _validate_dataset(
     if contract.get("dataset_key") != dataset_key:
         errors.append(f"dataset {dataset_key} contract dataset_key mismatch: {contract.get('dataset_key')}")
     if contract.get("data_mode") != registry.get("data_mode"):
-        errors.append(f"dataset {dataset_key} data_mode mismatch: {contract.get('data_mode')} != {registry.get('data_mode')}")
+        errors.append(
+            f"dataset {dataset_key} data_mode mismatch: {contract.get('data_mode')} != {registry.get('data_mode')}"
+        )
     if contract.get("missing_value_policy") not in policies:
-        errors.append(f"dataset {dataset_key} references unknown missing_value_policy: {contract.get('missing_value_policy')}")
+        errors.append(
+            f"dataset {dataset_key} references unknown missing_value_policy: {contract.get('missing_value_policy')}"
+        )
     if contract.get("quality_tier") not in quality_tiers:
         errors.append(f"dataset {dataset_key} references unknown quality_tier: {contract.get('quality_tier')}")
 
@@ -125,7 +131,9 @@ def _validate_dataset(
             continue
         uncovered = [str(column) for column in any_of if str(column) not in covered_columns]
         if uncovered:
-            errors.append(f"dataset {dataset_key} required group {group.get('name')} has uncovered columns: {uncovered}")
+            errors.append(
+                f"dataset {dataset_key} required group {group.get('name')} has uncovered columns: {uncovered}"
+            )
 
     time_semantics = contract.get("time_semantics")
     if not isinstance(time_semantics, dict):

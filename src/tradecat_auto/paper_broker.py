@@ -17,6 +17,7 @@ def open_paper_position(
     strategy_intent: dict[str, Any] | None = None,
     allow_multiple_open_positions_per_symbol: bool = False,
     max_concurrent_positions_per_symbol: int | None = None,
+    execution_cost_model: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if risk_decision.get("decision") != "ALLOW":
         return _rejected(signal, risk_decision, ["risk_decision_not_allow"])
@@ -26,7 +27,9 @@ def open_paper_position(
     if not signal.get("tradable_candidate") or side not in {"LONG", "SHORT"}:
         return _rejected(signal, risk_decision, ["signal_not_tradable"])
     metrics = enrichment.get("metrics") if isinstance(enrichment.get("metrics"), dict) else {}
-    entry_price = _num(metrics.get("last_price"))
+    raw_entry_price = _num(metrics.get("last_price"))
+    cost_model = execution_cost_model if isinstance(execution_cost_model, dict) else {}
+    entry_price = _num(cost_model.get("estimated_fill_price")) or raw_entry_price
     if not entry_price or entry_price <= 0:
         return _rejected(signal, risk_decision, ["missing_entry_price"])
     requested_notional = _num(requested_notional_usdt)
@@ -34,7 +37,9 @@ def open_paper_position(
     if requested_notional is None or requested_notional <= 0 or leverage is None:
         return _rejected(signal, risk_decision, ["agent_sizing_required"])
     max_notional = _num(risk_decision.get("max_notional_usdt"))
-    notional = min(requested_notional, max_notional) if max_notional is not None and max_notional > 0 else requested_notional
+    notional = (
+        min(requested_notional, max_notional) if max_notional is not None and max_notional > 0 else requested_notional
+    )
     if notional <= 0:
         return _rejected(signal, risk_decision, ["non_positive_notional"])
     requested_margin = _num(requested_margin_usdt)
@@ -44,7 +49,9 @@ def open_paper_position(
     opened_at = _now_iso()
     symbol = str(signal.get("symbol") or enrichment.get("symbol") or "")
     max_concurrent = _positive_int(max_concurrent_positions_per_symbol)
-    allow_multiple = bool(allow_multiple_open_positions_per_symbol or (max_concurrent is not None and max_concurrent > 1))
+    allow_multiple = bool(
+        allow_multiple_open_positions_per_symbol or (max_concurrent is not None and max_concurrent > 1)
+    )
     return {
         "schema": "tradecat_auto.paper_execution_report.v1",
         "schema_version": "1.0.0",
@@ -60,6 +67,7 @@ def open_paper_position(
         "side": side,
         "score": signal.get("score"),
         "entry_price": entry_price,
+        "raw_entry_price": raw_entry_price,
         "quantity": quantity,
         "notional_usdt": notional,
         "requested_notional_usdt": requested_notional,
@@ -75,6 +83,12 @@ def open_paper_position(
         "exit_rationale": exit_plan["exit_rationale"],
         "allow_multiple_open_positions_per_symbol": allow_multiple,
         "max_concurrent_positions_per_symbol": max_concurrent,
+        "execution_cost_model": cost_model,
+        "paper_fee_bps": _num(cost_model.get("fee_bps")),
+        "paper_fee_model": cost_model.get("fee_model"),
+        "liquidity_role": cost_model.get("liquidity_role"),
+        "entry_price_source": cost_model.get("price_source"),
+        "entry_price_includes_slippage": bool(cost_model.get("fill_price_includes_slippage")),
         "risk_decision": risk_decision,
         "safety": _safety_boundary(),
         "limitations": ["paper simulation only; no exchange order was placed"],
@@ -137,7 +151,9 @@ def _exit_plan_from_strategy_intent(strategy_intent: dict[str, Any] | None) -> d
         "take_profit_price": take_profit,
         "max_holding_minutes": max_holding,
         "exit_management": str(intent.get("exit_management") or "agent_supplied") if supplied else "agent_managed",
-        "exit_plan_source": str(intent.get("exit_plan_source") or "agent_trade_thesis") if supplied else "agent_required_missing",
+        "exit_plan_source": str(intent.get("exit_plan_source") or "agent_trade_thesis")
+        if supplied
+        else "agent_required_missing",
         "exit_rationale": intent.get("exit_rationale") if supplied else None,
     }
 

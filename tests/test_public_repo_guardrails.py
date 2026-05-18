@@ -109,6 +109,10 @@ def test_manifest_keeps_security_and_supply_chain_gates_declared():
 
     assert validation_commands["bash scripts/security-scan.sh"]["risk_class"] == "security_or_supply_chain"
     assert validation_commands["bash scripts/supply-chain-audit.sh"]["risk_class"] == "security_or_supply_chain"
+    assert (
+        validation_commands["python3 scripts/validate_dependency_policy.py"]["risk_class"] == "security_or_supply_chain"
+    )
+    assert validation_commands["ruff format --check src tests scripts"]["risk_class"] == "local_readonly"
     assert payload["important_paths"]["private_executor_boundary_reference"] == (
         "skills/tradecat-public/references/private-executor-boundary.md"
     )
@@ -133,5 +137,46 @@ def test_manifest_never_advertises_real_order_capability():
                 walk(child, f"{path}[{index}]")
 
     walk(payload, "manifest")
+
+    assert findings == []
+
+
+def test_large_project_governance_entrypoints_exist():
+    required_paths = [
+        "CONTRIBUTING.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        ".editorconfig",
+        ".env.example",
+        ".github/pull_request_template.md",
+        ".github/CODEOWNERS",
+        ".github/dependabot.yml",
+        "docs/ARCHITECTURE.md",
+        "docs/configuration.md",
+        "docs/deployment.md",
+        "docs/release.md",
+        "scripts/validate_dependency_policy.py",
+    ]
+
+    missing = [path for path in required_paths if not (REPO_ROOT / path).is_file()]
+
+    assert missing == []
+
+
+def test_ci_enforces_repository_governance_gates():
+    ci_text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    verify_text = (REPO_ROOT / "scripts" / "verify-project.sh").read_text(encoding="utf-8")
+
+    required_snippets = [
+        "python scripts/validate_dependency_policy.py",
+        "ruff format --check src tests scripts",
+        "bash scripts/guard_public_local_files.sh",
+        "bash scripts/supply-chain-audit.sh",
+    ]
+
+    findings = []
+    for snippet in required_snippets:
+        if snippet not in ci_text and snippet not in verify_text:
+            findings.append(snippet)
 
     assert findings == []

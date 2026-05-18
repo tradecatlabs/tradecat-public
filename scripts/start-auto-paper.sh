@@ -9,18 +9,34 @@ SYSTEMD_SERVICE_UNIT="tradecat-auto-paper.service"
 SYSTEMD_TIMER_UNIT="tradecat-auto-paper.timer"
 INTERVAL_SECONDS="${TRADECAT_AUTO_PAPER_INTERVAL_SECONDS:-60}"
 MAINTENANCE_INTERVAL_SECONDS="${TRADECAT_AUTO_PAPER_MAINTENANCE_INTERVAL_SECONDS:-300}"
+CYCLE_TIMEOUT_SECONDS="${TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS:-6000}"
 PAPER_MARGIN_BUDGET_USDT="${TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT:-}"
 AGENT_MARGIN_USDT="${TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT:-}"
 EFFECTIVE_NOTIONAL_USDT="${TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT:-}"
 PAPER_LEVERAGE="${TRADECAT_AUTO_PAPER_LEVERAGE:-}"
 AGENT_TRADE_THESIS_PATH="${TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH:-}"
 PAPER_AUTONOMY_PROFILE_PATH="${TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH:-}"
+PAPER_AUTONOMY_ENABLED="${TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED:-1}"
+PAPER_AUTONOMY_PROFILE_DEFAULTED=0
+if [[ -z "$AGENT_TRADE_THESIS_PATH" && -z "$PAPER_AUTONOMY_PROFILE_PATH" && "$PAPER_AUTONOMY_ENABLED" != "0" && "$PAPER_AUTONOMY_ENABLED" != "false" ]]; then
+  PAPER_AUTONOMY_PROFILE_PATH="$RUNTIME_DIR/paper_autonomy_profile.json"
+  PAPER_AUTONOMY_PROFILE_DEFAULTED=1
+fi
+PAPER_AUTONOMY_MARGIN_USDT="${TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT:-10}"
+PAPER_AUTONOMY_LEVERAGE="${TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE:-1}"
+PAPER_AUTONOMY_STOP_LOSS_BPS="${TRADECAT_AUTO_PAPER_AUTONOMY_STOP_LOSS_BPS:-150}"
+PAPER_AUTONOMY_TAKE_PROFIT_BPS="${TRADECAT_AUTO_PAPER_AUTONOMY_TAKE_PROFIT_BPS:-300}"
+PAPER_AUTONOMY_MAX_HOLDING_MINUTES="${TRADECAT_AUTO_PAPER_AUTONOMY_MAX_HOLDING_MINUTES:-90}"
+PAPER_AUTONOMY_DIRECTION_POLICY="${TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY:-sheet_signal_or_taker_flow}"
+PAPER_AUTONOMY_MIN_SIGNAL_SCORE="${TRADECAT_AUTO_PAPER_AUTONOMY_MIN_SIGNAL_SCORE:-0}"
+PAPER_AUTONOMY_ALLOW_MULTIPLE="${TRADECAT_AUTO_PAPER_AUTONOMY_ALLOW_MULTIPLE:-1}"
+PAPER_AUTONOMY_MAX_CONCURRENT_PER_SYMBOL="${TRADECAT_AUTO_PAPER_AUTONOMY_MAX_CONCURRENT_PER_SYMBOL:-}"
 INITIAL_BALANCE_USDT="${TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT:-1000}"
-PAPER_FEE_BPS="${TRADECAT_AUTO_PAPER_FEE_BPS:-2}"
-PAPER_SLIPPAGE_BPS="${TRADECAT_AUTO_PAPER_SLIPPAGE_BPS:-0.5}"
+PAPER_FEE_BPS="${TRADECAT_AUTO_PAPER_FEE_BPS:-4}"
+PAPER_SLIPPAGE_BPS="${TRADECAT_AUTO_PAPER_SLIPPAGE_BPS:-0}"
 PAPER_MAX_HOLDING_MINUTES="${TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES:-0}"
-MAX_EVENT_AGE_SECONDS="${TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS:-300}"
-EVENT_LIMIT="${TRADECAT_AUTO_PAPER_EVENT_LIMIT:-5}"
+MAX_EVENT_AGE_SECONDS="${TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS:-}"
+EVENT_LIMIT="${TRADECAT_AUTO_PAPER_EVENT_LIMIT:-0}"
 ANOMALY_LIMIT="${TRADECAT_AUTO_PAPER_ANOMALY_LIMIT:-0}"
 SYMBOL="${TRADECAT_AUTO_PAPER_SYMBOL:-auto}"
 BASE_URL="${TRADECAT_AUTO_PAPER_BASE_URL:-https://fapi.binance.com}"
@@ -104,6 +120,7 @@ load_running_env_config() {
   local value
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_INTERVAL_SECONDS")"; then INTERVAL_SECONDS="$value"; fi
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_MAINTENANCE_INTERVAL_SECONDS")"; then MAINTENANCE_INTERVAL_SECONDS="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS")"; then CYCLE_TIMEOUT_SECONDS="$value"; fi
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_MARGIN_BUDGET_USDT")"; then PAPER_MARGIN_BUDGET_USDT="$value"; fi
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_AGENT_MARGIN_USDT")"; then AGENT_MARGIN_USDT="$value"; fi
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT")"; then EFFECTIVE_NOTIONAL_USDT="$value"; fi
@@ -153,12 +170,17 @@ emit_json() {
   AUTO_JSON_SYSTEMD_TIMER_UNIT="$SYSTEMD_TIMER_UNIT" \
   AUTO_JSON_INTERVAL_SECONDS="$INTERVAL_SECONDS" \
   AUTO_JSON_MAINTENANCE_INTERVAL_SECONDS="$MAINTENANCE_INTERVAL_SECONDS" \
+  AUTO_JSON_CYCLE_TIMEOUT_SECONDS="$CYCLE_TIMEOUT_SECONDS" \
   AUTO_JSON_PAPER_MARGIN_BUDGET_USDT="$PAPER_MARGIN_BUDGET_USDT" \
   AUTO_JSON_AGENT_MARGIN_USDT="$AGENT_MARGIN_USDT" \
   AUTO_JSON_EFFECTIVE_NOTIONAL_USDT="$EFFECTIVE_NOTIONAL_USDT" \
   AUTO_JSON_PAPER_LEVERAGE="$PAPER_LEVERAGE" \
   AUTO_JSON_AGENT_TRADE_THESIS_PATH="$AGENT_TRADE_THESIS_PATH" \
   AUTO_JSON_PAPER_AUTONOMY_PROFILE_PATH="$PAPER_AUTONOMY_PROFILE_PATH" \
+  AUTO_JSON_PAPER_AUTONOMY_ENABLED="$PAPER_AUTONOMY_ENABLED" \
+  AUTO_JSON_PAPER_AUTONOMY_PROFILE_DEFAULTED="$PAPER_AUTONOMY_PROFILE_DEFAULTED" \
+  AUTO_JSON_PAPER_AUTONOMY_MARGIN_USDT="$PAPER_AUTONOMY_MARGIN_USDT" \
+  AUTO_JSON_PAPER_AUTONOMY_LEVERAGE="$PAPER_AUTONOMY_LEVERAGE" \
   AUTO_JSON_INITIAL_BALANCE_USDT="$INITIAL_BALANCE_USDT" \
   AUTO_JSON_PAPER_FEE_BPS="$PAPER_FEE_BPS" \
   AUTO_JSON_PAPER_SLIPPAGE_BPS="$PAPER_SLIPPAGE_BPS" \
@@ -202,12 +224,34 @@ paper_margin_budget_usdt = optional_float(os.environ["AUTO_JSON_PAPER_MARGIN_BUD
 agent_margin_usdt = optional_float(os.environ["AUTO_JSON_AGENT_MARGIN_USDT"])
 explicit_effective_notional_usdt = optional_float(os.environ["AUTO_JSON_EFFECTIVE_NOTIONAL_USDT"])
 paper_leverage = optional_float(os.environ["AUTO_JSON_PAPER_LEVERAGE"])
+agent_trade_thesis_path = os.environ["AUTO_JSON_AGENT_TRADE_THESIS_PATH"]
 paper_autonomy_profile_path = os.environ["AUTO_JSON_PAPER_AUTONOMY_PROFILE_PATH"]
+paper_autonomy_enabled = truthy(os.environ["AUTO_JSON_PAPER_AUTONOMY_ENABLED"])
+paper_autonomy_profile_defaulted = truthy(os.environ["AUTO_JSON_PAPER_AUTONOMY_PROFILE_DEFAULTED"])
+paper_autonomy_margin_usdt = optional_float(os.environ["AUTO_JSON_PAPER_AUTONOMY_MARGIN_USDT"])
+paper_autonomy_leverage = optional_float(os.environ["AUTO_JSON_PAPER_AUTONOMY_LEVERAGE"])
 effective_notional_usdt = (
     agent_margin_usdt * paper_leverage
     if isinstance(agent_margin_usdt, (int, float)) and isinstance(paper_leverage, (int, float))
     else explicit_effective_notional_usdt if isinstance(explicit_effective_notional_usdt, (int, float)) and isinstance(paper_leverage, (int, float))
+    else paper_autonomy_margin_usdt * paper_autonomy_leverage
+    if paper_autonomy_profile_defaulted and isinstance(paper_autonomy_margin_usdt, (int, float)) and isinstance(paper_autonomy_leverage, (int, float))
     else None
+)
+resolved_margin_usdt = agent_margin_usdt
+resolved_leverage = paper_leverage
+if paper_autonomy_profile_defaulted and resolved_margin_usdt is None:
+    resolved_margin_usdt = paper_autonomy_margin_usdt
+if paper_autonomy_profile_defaulted and resolved_leverage is None:
+    resolved_leverage = paper_autonomy_leverage
+sizing_source = (
+    "service_environment"
+    if isinstance(agent_margin_usdt, (int, float)) or isinstance(explicit_effective_notional_usdt, (int, float))
+    else "agent_trade_thesis"
+    if agent_trade_thesis_path
+    else "paper_autonomy_profile"
+    if paper_autonomy_profile_path
+    else "agent_required_missing"
 )
 payload = {
     "schema": "tradecat_auto.paper_service_status.v1",
@@ -234,30 +278,33 @@ payload = {
     "systemd_timer_unit": os.environ["AUTO_JSON_SYSTEMD_TIMER_UNIT"],
     "interval_seconds": optional_float(os.environ["AUTO_JSON_INTERVAL_SECONDS"]),
     "maintenance_interval_seconds": optional_float(os.environ["AUTO_JSON_MAINTENANCE_INTERVAL_SECONDS"]),
+    "cycle_timeout_seconds": optional_float(os.environ["AUTO_JSON_CYCLE_TIMEOUT_SECONDS"]),
     "paper_margin_budget_usdt": paper_margin_budget_usdt,
     "agent_margin_usdt": agent_margin_usdt,
     "notional_usdt": explicit_effective_notional_usdt,
     "notional_semantics": "deprecated explicit effective notional; no default paper order amount or budget cap",
     "paper_leverage": paper_leverage,
-    "agent_trade_thesis_path": os.environ["AUTO_JSON_AGENT_TRADE_THESIS_PATH"],
-    "agent_trade_thesis_configured": bool(os.environ["AUTO_JSON_AGENT_TRADE_THESIS_PATH"]),
+    "agent_trade_thesis_path": agent_trade_thesis_path,
+    "agent_trade_thesis_configured": bool(agent_trade_thesis_path),
     "paper_autonomy_profile_path": paper_autonomy_profile_path,
     "paper_autonomy_profile_configured": bool(paper_autonomy_profile_path),
+    "paper_autonomy_enabled": paper_autonomy_enabled,
+    "paper_autonomy_profile_defaulted": paper_autonomy_profile_defaulted,
     "effective_notional_usdt": effective_notional_usdt,
-    "agent_sizing_required": effective_notional_usdt is None and not paper_autonomy_profile_path,
+    "agent_sizing_required": effective_notional_usdt is None and not agent_trade_thesis_path and not paper_autonomy_profile_path,
     "paper_sizing": {
         "schema": "tradecat_auto.paper_sizing_decision.v1",
         "schema_version": "1.0.0",
-        "source": "service_environment" if effective_notional_usdt is not None else "paper_autonomy_profile" if paper_autonomy_profile_path else "agent_required_missing",
+        "source": sizing_source,
         "margin_budget_usdt": paper_margin_budget_usdt,
-        "requested_margin_usdt": agent_margin_usdt,
-        "paper_leverage": paper_leverage,
+        "requested_margin_usdt": resolved_margin_usdt,
+        "paper_leverage": resolved_leverage,
         "effective_notional_usdt": effective_notional_usdt,
         "notional_semantics": "effective_notional_usdt; no default paper order amount or budget cap",
     },
     "initial_balance_usdt": optional_float(os.environ["AUTO_JSON_INITIAL_BALANCE_USDT"]),
     "paper_fee_bps": optional_float(os.environ["AUTO_JSON_PAPER_FEE_BPS"]),
-    "paper_fee_model": "binance_usdm_vip0_maker_assumption",
+    "paper_fee_model": "binance_usdm_public_docs_vip0_taker_fallback",
     "paper_slippage_bps": optional_float(os.environ["AUTO_JSON_PAPER_SLIPPAGE_BPS"]),
     "paper_max_holding_minutes": optional_float(os.environ["AUTO_JSON_PAPER_MAX_HOLDING_MINUTES"]),
     "paper_max_holding_minutes_semantics": "legacy status/config field only; time stops require Agent strategy_intent/agent_trade_thesis max_holding_minutes on the paper position",
@@ -321,6 +368,98 @@ emit_text_or_json() {
   fi
 }
 
+ensure_paper_autonomy_profile() {
+  if [[ "$PAPER_AUTONOMY_PROFILE_DEFAULTED" != "1" || -z "$PAPER_AUTONOMY_PROFILE_PATH" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$PAPER_AUTONOMY_PROFILE_PATH")"
+  local py
+  py="$(python_bin)"
+  AUTO_PROFILE_PATH="$PAPER_AUTONOMY_PROFILE_PATH" \
+  AUTO_PROFILE_MARGIN_USDT="$PAPER_AUTONOMY_MARGIN_USDT" \
+  AUTO_PROFILE_LEVERAGE="$PAPER_AUTONOMY_LEVERAGE" \
+  AUTO_PROFILE_STOP_LOSS_BPS="$PAPER_AUTONOMY_STOP_LOSS_BPS" \
+  AUTO_PROFILE_TAKE_PROFIT_BPS="$PAPER_AUTONOMY_TAKE_PROFIT_BPS" \
+  AUTO_PROFILE_MAX_HOLDING_MINUTES="$PAPER_AUTONOMY_MAX_HOLDING_MINUTES" \
+  AUTO_PROFILE_DIRECTION_POLICY="$PAPER_AUTONOMY_DIRECTION_POLICY" \
+  AUTO_PROFILE_MIN_SIGNAL_SCORE="$PAPER_AUTONOMY_MIN_SIGNAL_SCORE" \
+  AUTO_PROFILE_ALLOW_MULTIPLE="$PAPER_AUTONOMY_ALLOW_MULTIPLE" \
+  AUTO_PROFILE_MAX_CONCURRENT_PER_SYMBOL="$PAPER_AUTONOMY_MAX_CONCURRENT_PER_SYMBOL" \
+  "$py" - <<'PY'
+import json
+import os
+from pathlib import Path
+
+
+def as_float(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        value = default
+    return value if value > 0 else default
+
+
+def truthy(value: str) -> bool:
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+path = Path(os.environ["AUTO_PROFILE_PATH"])
+profile = {
+    "schema": "tradecat_auto.paper_autonomy_profile.v1",
+    "schema_version": "1.0.0",
+    "ok": True,
+    "enabled": True,
+    "mode": "paper",
+    "holding_horizon": "intraday",
+    "paper_intent": {
+        "allow_tradecat_paper_gate_to_decide": True,
+        "requested_margin_usdt": as_float("AUTO_PROFILE_MARGIN_USDT", 10.0),
+        "paper_leverage": as_float("AUTO_PROFILE_LEVERAGE", 1.0),
+        "allow_agent_direction_override": True,
+        "allow_signal_reject_override": True,
+        "direction_policy": os.environ.get("AUTO_PROFILE_DIRECTION_POLICY") or "sheet_signal_or_taker_flow",
+        "min_signal_score": max(0.0, as_float("AUTO_PROFILE_MIN_SIGNAL_SCORE", 0.0)),
+        "allow_multiple_open_positions_per_symbol": truthy(os.environ.get("AUTO_PROFILE_ALLOW_MULTIPLE", "1")),
+        "real_order": False,
+    },
+    "exit_plan": {
+        "stop_loss_bps": as_float("AUTO_PROFILE_STOP_LOSS_BPS", 150.0),
+        "take_profit_bps": as_float("AUTO_PROFILE_TAKE_PROFIT_BPS", 300.0),
+        "max_holding_minutes": as_float("AUTO_PROFILE_MAX_HOLDING_MINUTES", 90.0),
+        "exit_rationale": "runtime paper-only autonomy bootstrap; operator may override with explicit Agent thesis/profile",
+    },
+    "provenance": {
+        "source": "scripts/start-auto-paper.sh",
+        "generated_by": "default_runtime_paper_autonomy_profile",
+        "runtime_file": True,
+    },
+    "safety": {
+        "public_readonly_market_data": True,
+        "paper_or_watch_only": True,
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "binance_account_state": False,
+    },
+    "limitations": [
+        "paper/watch only",
+        "bootstrap autonomy profile is local runtime config, not a real order instruction",
+        "no Binance credentials, signed requests, account reads, or real orders",
+    ],
+}
+max_concurrent = os.environ.get("AUTO_PROFILE_MAX_CONCURRENT_PER_SYMBOL", "").strip()
+if max_concurrent:
+    try:
+        parsed = int(max_concurrent)
+    except ValueError:
+        parsed = 0
+    if parsed > 0:
+        profile["paper_intent"]["max_concurrent_positions_per_symbol"] = parsed
+
+path.write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
 run_cycle() {
   local py
   py="$(python_bin)"
@@ -328,6 +467,7 @@ run_cycle() {
   export PYTHONPATH="$APP_DIR/src:${PYTHONPATH:-}"
   export PYTHONUNBUFFERED=1
   mkdir -p "$RUNTIME_DIR"
+  ensure_paper_autonomy_profile
   local -a sizing_args=()
   if [[ -n "$PAPER_MARGIN_BUDGET_USDT" ]]; then
     sizing_args+=(--paper-margin-budget-usdt "$PAPER_MARGIN_BUDGET_USDT")
@@ -354,6 +494,7 @@ run_cycle() {
     sizing_args+=(--paper-kill-switch-path "$PAPER_KILL_SWITCH_PATH")
   fi
   printf '{"event":"cycle_start","ts":"%s"}\n' "$(date -Iseconds)"
+  local -a command=(
   "$py" -m tradecat_auto.cli run-loop \
     --mode paper \
     "${sizing_args[@]}" \
@@ -367,13 +508,21 @@ run_cycle() {
     --paper-max-holding-minutes "$PAPER_MAX_HOLDING_MINUTES" \
     --interval-seconds "$INTERVAL_SECONDS" \
     --maintenance-interval-seconds "$MAINTENANCE_INTERVAL_SECONDS" \
-    --max-event-age-seconds "$MAX_EVENT_AGE_SECONDS" \
     --event-limit "$EVENT_LIMIT" \
     --anomaly-limit "$ANOMALY_LIMIT" \
     --symbol "$SYMBOL" \
     --base-url "$BASE_URL" \
     --once \
     --json
+  )
+  if [[ -n "$MAX_EVENT_AGE_SECONDS" ]]; then
+    command+=(--max-event-age-seconds "$MAX_EVENT_AGE_SECONDS")
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --kill-after=10s "$CYCLE_TIMEOUT_SECONDS" "${command[@]}"
+  else
+    "${command[@]}"
+  fi
 }
 
 run_forever() {
@@ -499,6 +648,7 @@ ops_check() {
   AUTO_OPS_SYSTEMD_USER_DIR="$SYSTEMD_USER_DIR" \
   AUTO_OPS_SYSTEMD_SERVICE_UNIT="$SYSTEMD_SERVICE_UNIT" \
   AUTO_OPS_SYSTEMD_TIMER_UNIT="$SYSTEMD_TIMER_UNIT" \
+  AUTO_OPS_CYCLE_TIMEOUT_SECONDS="$CYCLE_TIMEOUT_SECONDS" \
   AUTO_OPS_MIN_FREE_BYTES="$MIN_FREE_BYTES" \
   AUTO_OPS_MIN_NOFILE="$MIN_NOFILE" \
   AUTO_OPS_MIN_NPROC="$MIN_NPROC" \
@@ -638,11 +788,11 @@ payload = {
         "public online sheet signal source",
         "Agent-supplied Binance public-readonly market context",
         "context-audit",
-        "Agent trade thesis or paper autonomy profile with explicit paper sizing and exits",
+        "Agent trade thesis with explicit paper sizing and exits; optional user-supplied paper autonomy profile/policy",
         "portfolio risk policy / paper kill switch",
         "auto-paper run-loop",
         "paper ledger / cycle archive / audit journal",
-        "health-report / daily-report / alert-payload",
+        "latest-cycle / latest-decision / health-report / daily-report / alert-payload",
     ],
     "runtime": {
         "runtime_dir": str(runtime_dir),
@@ -657,6 +807,7 @@ payload = {
         "user_dir": os.environ["AUTO_OPS_SYSTEMD_USER_DIR"],
         "service_unit": os.environ["AUTO_OPS_SYSTEMD_SERVICE_UNIT"],
         "timer_unit": os.environ["AUTO_OPS_SYSTEMD_TIMER_UNIT"],
+        "cycle_timeout_seconds": as_int(os.environ["AUTO_OPS_CYCLE_TIMEOUT_SECONDS"], 6000),
         "start_limit_burst": as_int(os.environ["AUTO_OPS_START_LIMIT_BURST"], 5),
         "start_limit_interval_seconds": as_int(os.environ["AUTO_OPS_START_LIMIT_INTERVAL_SECONDS"], 600),
         "restart_sec": os.environ["AUTO_OPS_RESTART_SEC"],
@@ -671,7 +822,7 @@ payload = {
         "restart_storm": "systemd StartLimitBurst/StartLimitIntervalSec and RestartSec bound retry pressure",
         "identity": "uid/run_as_root is reported; public paper/watch does not require Binance credentials",
         "logging_audit": "log_file plus paper_audit.sqlite3 preserve service behavior and audit chain",
-        "health": "health-report detects heartbeat_stale, ledger/archive/audit failures, and process-alive-but-stale cases",
+        "health": "health-report detects heartbeat_stale, ledger/archive/audit failures, process-alive-but-stale cases, and bounded cycle timeouts",
         "dependencies": "ops-check validates Python, paths, disk, limits, systemctl availability, and credential env names",
         "rollback": "use git checkout/tag outside runtime; runtime ledger/archive remain isolated under .runtime",
     },
@@ -768,7 +919,20 @@ Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH=$JOURNAL_PATH
 Environment=TRADECAT_AUTO_PAPER_LOG_FILE=$LOG_FILE
 Environment=TRADECAT_AUTO_PAPER_INTERVAL_SECONDS=$INTERVAL_SECONDS
 Environment=TRADECAT_AUTO_PAPER_MAINTENANCE_INTERVAL_SECONDS=$MAINTENANCE_INTERVAL_SECONDS
+Environment=TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=$CYCLE_TIMEOUT_SECONDS
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=$PAPER_AUTONOMY_ENABLED
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT=$PAPER_AUTONOMY_MARGIN_USDT
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE=$PAPER_AUTONOMY_LEVERAGE
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_STOP_LOSS_BPS=$PAPER_AUTONOMY_STOP_LOSS_BPS
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_TAKE_PROFIT_BPS=$PAPER_AUTONOMY_TAKE_PROFIT_BPS
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_MAX_HOLDING_MINUTES=$PAPER_AUTONOMY_MAX_HOLDING_MINUTES
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY=$PAPER_AUTONOMY_DIRECTION_POLICY
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_MIN_SIGNAL_SCORE=$PAPER_AUTONOMY_MIN_SIGNAL_SCORE
+Environment=TRADECAT_AUTO_PAPER_AUTONOMY_ALLOW_MULTIPLE=$PAPER_AUTONOMY_ALLOW_MULTIPLE
 UNIT
+    if [[ -n "$PAPER_AUTONOMY_MAX_CONCURRENT_PER_SYMBOL" ]]; then
+      printf 'Environment=TRADECAT_AUTO_PAPER_AUTONOMY_MAX_CONCURRENT_PER_SYMBOL=%s\n' "$PAPER_AUTONOMY_MAX_CONCURRENT_PER_SYMBOL"
+    fi
     local proxy_key proxy_value
     for proxy_key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
       proxy_value="${!proxy_key:-}"
@@ -799,13 +963,17 @@ Environment=TRADECAT_AUTO_PAPER_INITIAL_BALANCE_USDT=$INITIAL_BALANCE_USDT
 Environment=TRADECAT_AUTO_PAPER_FEE_BPS=$PAPER_FEE_BPS
 Environment=TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=$PAPER_SLIPPAGE_BPS
 Environment=TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES=$PAPER_MAX_HOLDING_MINUTES
-Environment=TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS=$MAX_EVENT_AGE_SECONDS
 Environment=TRADECAT_AUTO_PAPER_EVENT_LIMIT=$EVENT_LIMIT
 Environment=TRADECAT_AUTO_PAPER_ANOMALY_LIMIT=$ANOMALY_LIMIT
 Environment=TRADECAT_AUTO_PAPER_SYMBOL=$SYMBOL
 Environment=TRADECAT_AUTO_PAPER_BASE_URL=$BASE_URL
 Environment=TRADECAT_AUTO_PAPER_PORTFOLIO_RISK_POLICY_PATH=$PORTFOLIO_RISK_POLICY_PATH
 Environment=TRADECAT_AUTO_PAPER_KILL_SWITCH_PATH=$PAPER_KILL_SWITCH_PATH
+UNIT
+    if [[ -n "$MAX_EVENT_AGE_SECONDS" ]]; then
+      printf 'Environment=TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS=%s\n' "$MAX_EVENT_AGE_SECONDS"
+    fi
+    cat <<UNIT
 ExecStart=$APP_DIR/scripts/start-auto-paper.sh _cycle
 StandardOutput=append:$LOG_FILE
 StandardError=append:$LOG_FILE

@@ -23,7 +23,17 @@
         "requested_leverage": {"type": "number", "exclusiveMinimum": 0},
         "leverage": {"type": "number", "exclusiveMinimum": 0},
         "allow_agent_direction_override": {"type": "boolean"},
-        "direction_policy": {"enum": ["price_momentum_on_conflict", "price_momentum", "taker_flow"]},
+        "direction_policy": {
+          "enum": [
+            "price_momentum_on_conflict",
+            "price_momentum",
+            "taker_flow",
+            "sheet_signal",
+            "sheet_signal_or_taker_flow",
+            "source_signal"
+          ]
+        },
+        "allow_signal_reject_override": {"type": "boolean"},
         "paper_direction": {"enum": ["LONG", "SHORT"]},
         "direction": {"enum": ["LONG", "SHORT"]},
         "min_signal_score": {"type": "number", "minimum": 0, "maximum": 100},

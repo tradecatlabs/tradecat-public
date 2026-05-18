@@ -21,6 +21,7 @@ class FakeTransport:
         self.calls.append(url)
         parsed = urlparse(url)
         query = parse_qs(parsed.query)
+        has_symbol = "symbol" in query
         symbol = query.get("symbol", ["BTCUSDT"])[0]
         if parsed.path == "/fapi/v1/exchangeInfo":
             return json.dumps(
@@ -28,28 +29,100 @@ class FakeTransport:
                     "symbols": [
                         {"symbol": "BTCUSDT", "status": "TRADING", "quoteAsset": "USDT", "contractType": "PERPETUAL"},
                         {"symbol": "ETHUSDT", "status": "TRADING", "quoteAsset": "USDT", "contractType": "PERPETUAL"},
-                        {"symbol": "BTCDOMUSDT", "status": "TRADING", "quoteAsset": "USDT", "contractType": "PERPETUAL"},
+                        {
+                            "symbol": "BTCDOMUSDT",
+                            "status": "TRADING",
+                            "quoteAsset": "USDT",
+                            "contractType": "PERPETUAL",
+                        },
                         {"symbol": "BTCUSDC", "status": "TRADING", "quoteAsset": "USDC", "contractType": "PERPETUAL"},
                         {"symbol": "OLDUSDT", "status": "BREAK", "quoteAsset": "USDT", "contractType": "PERPETUAL"},
-                        {"symbol": "BTCUSDT_260626", "status": "TRADING", "quoteAsset": "USDT", "contractType": "CURRENT_QUARTER"},
+                        {
+                            "symbol": "BTCUSDT_260626",
+                            "status": "TRADING",
+                            "quoteAsset": "USDT",
+                            "contractType": "CURRENT_QUARTER",
+                        },
                     ],
                     "rateLimits": [{"rateLimitType": "REQUEST_WEIGHT", "interval": "MINUTE", "limit": 2400}],
                 }
             ).encode()
         if parsed.path == "/fapi/v1/ticker/24hr":
+            if not has_symbol:
+                return json.dumps(
+                    [
+                        {"symbol": "BTCUSDT", "lastPrice": "100.0", "priceChangePercent": "1.23"},
+                        {"symbol": "ETHUSDT", "lastPrice": "3000.0", "priceChangePercent": "-0.50"},
+                    ]
+                ).encode()
             return json.dumps({"symbol": symbol, "lastPrice": "100.0", "priceChangePercent": "1.23"}).encode()
+        if parsed.path == "/fapi/v1/ticker/price":
+            if not has_symbol:
+                return json.dumps(
+                    [
+                        {"symbol": "BTCUSDT", "price": "100.0", "time": 1700000000000},
+                        {"symbol": "ETHUSDT", "price": "3000.0", "time": 1700000000000},
+                    ]
+                ).encode()
+            return json.dumps({"symbol": symbol, "price": "100.0", "time": 1700000000000}).encode()
         if parsed.path == "/fapi/v1/ticker/bookTicker":
-            return json.dumps({"symbol": symbol, "bidPrice": "99.9", "bidQty": "10", "askPrice": "100.1", "askQty": "11"}).encode()
+            if not has_symbol:
+                return json.dumps(
+                    [
+                        {
+                            "symbol": "BTCUSDT",
+                            "bidPrice": "99.9",
+                            "bidQty": "10",
+                            "askPrice": "100.1",
+                            "askQty": "11",
+                        },
+                        {
+                            "symbol": "ETHUSDT",
+                            "bidPrice": "2999.0",
+                            "bidQty": "5",
+                            "askPrice": "3001.0",
+                            "askQty": "6",
+                        },
+                    ]
+                ).encode()
+            return json.dumps(
+                {"symbol": symbol, "bidPrice": "99.9", "bidQty": "10", "askPrice": "100.1", "askQty": "11"}
+            ).encode()
         if parsed.path == "/fapi/v1/depth":
-            return json.dumps({"bids": [["99.9", "10"], ["99.8", "5"]], "asks": [["100.1", "8"], ["100.2", "6"]]}).encode()
+            return json.dumps(
+                {"bids": [["99.9", "10"], ["99.8", "5"]], "asks": [["100.1", "8"], ["100.2", "6"]]}
+            ).encode()
         if parsed.path == "/fapi/v1/openInterest":
             return json.dumps({"symbol": symbol, "openInterest": "12345.6", "time": 1700000000000}).encode()
         if parsed.path == "/futures/data/openInterestHist":
-            return json.dumps([{"symbol": symbol, "sumOpenInterest": "100", "sumOpenInterestValue": "10000", "timestamp": 1700000000000}]).encode()
+            return json.dumps(
+                [
+                    {
+                        "symbol": symbol,
+                        "sumOpenInterest": "100",
+                        "sumOpenInterestValue": "10000",
+                        "timestamp": 1700000000000,
+                    }
+                ]
+            ).encode()
         if parsed.path == "/fapi/v1/fundingRate":
             return json.dumps([{"symbol": symbol, "fundingRate": "0.0001", "fundingTime": 1700000000000}]).encode()
         if parsed.path == "/fapi/v1/premiumIndex":
-            return json.dumps({"symbol": symbol, "markPrice": "100", "indexPrice": "99.8", "lastFundingRate": "0.0001"}).encode()
+            if not has_symbol:
+                return json.dumps(
+                    [
+                        {"symbol": "BTCUSDT", "markPrice": "100", "indexPrice": "99.8", "lastFundingRate": "0.0001"},
+                        {
+                            "symbol": "ETHUSDT",
+                            "markPrice": "3000",
+                            "indexPrice": "2999",
+                            "lastFundingRate": "0.0002",
+                        },
+                    ]
+                ).encode()
+            return json.dumps(
+                {"symbol": symbol, "markPrice": "100", "indexPrice": "99.8", "lastFundingRate": "0.0001"}
+            ).encode()
         if parsed.path in {
             "/futures/data/topLongShortAccountRatio",
             "/futures/data/topLongShortPositionRatio",
@@ -103,6 +176,59 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(bundle["provenance"]["source"], "binance_usdm_public_market_bundle")
         self.assertFalse(bundle["safety"]["binance_account_state"])
         self.assertGreaterEqual(len(transport.calls), 10)
+
+    def test_client_fetches_lightweight_last_price_for_mark_to_market(self) -> None:
+        transport = FakeTransport()
+        client = BinanceMarketClient(base_url="https://example.test", transport=transport)
+
+        payload = client.fetch_last_price("BTCUSDT")
+
+        self.assertEqual(payload["schema"], "tradecat_auto.public_last_price.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["last_price"], 100.0)
+        self.assertFalse(payload["real_orders"])
+        self.assertFalse(payload["signed_requests"])
+        self.assertFalse(payload["reads_api_keys"])
+        self.assertEqual(urlparse(transport.calls[-1]).path, "/fapi/v1/ticker/price")
+
+    def test_client_fetches_batch_last_prices_with_one_public_request(self) -> None:
+        transport = FakeTransport()
+        client = BinanceMarketClient(base_url="https://example.test", transport=transport)
+
+        payload = client.fetch_last_prices(["BTCUSDT", "ETHUSDT"])
+
+        self.assertEqual(payload["schema"], "tradecat_auto.public_last_prices.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["prices"], {"BTCUSDT": 100.0, "ETHUSDT": 3000.0})
+        self.assertEqual(payload["missing_symbols"], [])
+        self.assertFalse(payload["real_orders"])
+        self.assertFalse(payload["signed_requests"])
+        self.assertFalse(payload["reads_api_keys"])
+        price_calls = [url for url in transport.calls if urlparse(url).path == "/fapi/v1/ticker/price"]
+        self.assertEqual(len(price_calls), 1)
+        self.assertNotIn("symbol=", price_calls[0])
+
+    def test_client_fetches_batch_market_snapshot_for_batchable_endpoint_families(self) -> None:
+        transport = FakeTransport()
+        client = BinanceMarketClient(base_url="https://example.test", transport=transport)
+
+        payload = client.fetch_public_market_snapshot(["BTCUSDT", "ETHUSDT"])
+
+        self.assertEqual(payload["schema"], "tradecat_auto.public_market_snapshot.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["symbols"], ["BTCUSDT", "ETHUSDT"])
+        self.assertEqual(payload["prices"]["ETHUSDT"], 3000.0)
+        self.assertEqual(payload["ticker24hr"]["BTCUSDT"]["lastPrice"], "100.0")
+        self.assertEqual(payload["bookTicker"]["ETHUSDT"]["askPrice"], "3001.0")
+        self.assertIn("open_interest", payload["per_symbol_endpoint_families"])
+        self.assertFalse(payload["real_orders"])
+        self.assertFalse(payload["signed_requests"])
+        self.assertFalse(payload["reads_api_keys"])
+        paths = [urlparse(url).path for url in transport.calls]
+        self.assertEqual(paths.count("/fapi/v1/ticker/price"), 1)
+        self.assertEqual(paths.count("/fapi/v1/ticker/24hr"), 1)
+        self.assertEqual(paths.count("/fapi/v1/ticker/bookTicker"), 1)
+        self.assertEqual(paths.count("/fapi/v1/premiumIndex"), 1)
 
     def test_market_universe_uses_ttl_cache_and_reports_usage(self) -> None:
         transport = FakeTransport()

@@ -40,7 +40,12 @@ def sample_context() -> dict:
                 "ok": True,
                 "fetched_at": "2026-05-15T10:00:01Z",
                 "provenance": {"source": "binance_public_rest"},
-                "data": {"symbol": "IRYSUSDT", "lastPrice": "0.062", "priceChangePercent": "24", "quoteVolume": "50000000"},
+                "data": {
+                    "symbol": "IRYSUSDT",
+                    "lastPrice": "0.062",
+                    "priceChangePercent": "24",
+                    "quoteVolume": "50000000",
+                },
             },
             {
                 "family": "order_book_depth",
@@ -255,7 +260,10 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertFalse(report["signed_requests"])
         self.assertFalse(report["reads_api_keys"])
         self.assertFalse(report["safety"]["binance_account_state"])
-        self.assertEqual(report["provenance"]["agent_market_context"]["source_manifest"], "resources/agent_market_context/binance/provenance.manifest.json")
+        self.assertEqual(
+            report["provenance"]["agent_market_context"]["source_manifest"],
+            "resources/agent_market_context/binance/provenance.manifest.json",
+        )
         self.assertEqual(report["agent_market_context_audit"]["schema"], "tradecat_auto.agent_market_context_audit.v1")
         self.assertTrue(report["agent_market_context_audit"]["ok"])
         self.assertEqual(report["selected_symbol"], "IRYSUSDT")

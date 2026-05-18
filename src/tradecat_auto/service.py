@@ -10,6 +10,7 @@ from tradecat_auto.agent_trade_thesis import load_agent_trade_thesis
 from tradecat_auto.audit_journal import record_service_cycle
 from tradecat_auto.binance_market import normalize_to_usdt_perp_symbol
 from tradecat_auto.paper_autonomy import load_paper_autonomy_profile
+from tradecat_auto.paper_costs import BINANCE_USDM_PUBLIC_TAKER_FEE_BPS, BINANCE_USDM_TAKER_FEE_MODEL
 from tradecat_auto.paper_ledger import (
     PaperLedgerError,
     apply_paper_execution,
@@ -100,7 +101,8 @@ def run_service_cycle(
         anomaly,
         signal_flow,
         seen_event_ids=_seen_event_ids(previous_state),
-        prefer_anomaly=bool(snapshot_delta.get("anomaly_panel_changed")) and not bool(snapshot_delta.get("new_signal_flow_event_id")),
+        prefer_anomaly=bool(snapshot_delta.get("anomaly_panel_changed"))
+        and not bool(snapshot_delta.get("new_signal_flow_event_id")),
     )
     events = signal_events_payload(signal_flow, anomaly, selected_symbol=selected_symbol)
     if selected_event_id:
@@ -139,7 +141,9 @@ def run_service_cycle(
     snapshot_changed = bool(snapshot_delta.get("source_snapshot_changed"))
     maintenance_due = _maintenance_due(args, previous_state, cycle_time)
     new_event = bool(event_id and event_id not in seen_event_ids)
-    trigger_reason = _trigger_reason(new_event=new_event, snapshot_delta=snapshot_delta, maintenance_due=maintenance_due)
+    trigger_reason = _trigger_reason(
+        new_event=new_event, snapshot_delta=snapshot_delta, maintenance_due=maintenance_due
+    )
     max_age = getattr(args, "max_event_age_seconds", None)
     if max_age is not None and event_age_seconds is not None and event_age_seconds > float(max_age):
         state["last_error"] = "stale_event"
@@ -179,7 +183,11 @@ def run_service_cycle(
             _cycle_payload(
                 action=action,
                 ok=not ledger_failed,
-                reason="paper_ledger_monitor_failed" if ledger_failed else "maintenance_due" if maintenance_due else "input_snapshot_unchanged",
+                reason="paper_ledger_monitor_failed"
+                if ledger_failed
+                else "maintenance_due"
+                if maintenance_due
+                else "input_snapshot_unchanged",
                 state=state,
                 events=events,
                 latest_event=latest_event,
@@ -188,7 +196,11 @@ def run_service_cycle(
                 signal_flow_events=_summarize_signal_flow_events(signal_flow),
                 anomaly_symbols=_summarize_anomaly_symbols(anomaly),
                 source_snapshot=source_snapshot,
-                input_change={**snapshot_delta, "maintenance_due": maintenance_due, "trigger_reason": "maintenance_due" if maintenance_due else "input_snapshot_unchanged"},
+                input_change={
+                    **snapshot_delta,
+                    "maintenance_due": maintenance_due,
+                    "trigger_reason": "maintenance_due" if maintenance_due else "input_snapshot_unchanged",
+                },
                 paper_ledger=paper_ledger,
             ),
         )
@@ -242,6 +254,8 @@ def run_service_cycle(
         agent_trade_thesis=agent_trade_thesis,
         paper_autonomy_profile=paper_autonomy_profile,
         risk_policy=risk_policy,
+        paper_fee_bps=_paper_fee_bps(args),
+        paper_slippage_bps=_paper_slippage_bps(args),
     )
     pipeline_report["universe"] = _summarize_universe(universe)
     pipeline_report["signal_flow_events"] = _summarize_signal_flow_events(signal_flow)
@@ -426,7 +440,13 @@ def _remember_event_id(state: dict[str, Any], event_id: str, *, max_ids: int = 5
 
 def _source_snapshot(signal_flow: dict[str, Any], anomaly: dict[str, Any]) -> dict[str, Any]:
     signal_events = signal_flow.get("events") if isinstance(signal_flow.get("events"), list) else []
-    anomaly_rows = anomaly.get("rows") if isinstance(anomaly.get("rows"), list) else anomaly.get("symbols") if isinstance(anomaly.get("symbols"), list) else []
+    anomaly_rows = (
+        anomaly.get("rows")
+        if isinstance(anomaly.get("rows"), list)
+        else anomaly.get("symbols")
+        if isinstance(anomaly.get("symbols"), list)
+        else []
+    )
     signal_material = [
         {
             "event_id": str(item.get("event_id") or ""),
@@ -458,7 +478,9 @@ def _source_snapshot(signal_flow: dict[str, Any], anomaly: dict[str, Any]) -> di
         "signal_flow_count": len(signal_material),
         "signal_flow_snapshot_hash": signal_hash,
         "anomaly_panel_row_count": len(anomaly_material),
-        "anomaly_panel_section_count": len(anomaly.get("sections") or []) if isinstance(anomaly.get("sections"), list) else 0,
+        "anomaly_panel_section_count": len(anomaly.get("sections") or [])
+        if isinstance(anomaly.get("sections"), list)
+        else 0,
         "anomaly_panel_snapshot_hash": anomaly_hash,
         "source_snapshot_hash": _stable_hash(
             {
@@ -552,7 +574,9 @@ def _stable_source_values(value: Any) -> dict[str, str]:
 
 
 def _stable_hash(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
+    ).hexdigest()
 
 
 def _fetch_signal_flow_events(source: Any, tradable: set[str], *, limit: int) -> dict[str, Any]:
@@ -571,7 +595,9 @@ def _fetch_signal_flow_events(source: Any, tradable: set[str], *, limit: int) ->
     return _safe_call(fetch, tradable_symbols=tradable, limit=limit)
 
 
-def _select_symbol(requested: str, tradable: set[str], anomaly: dict[str, Any], signal_flow: dict[str, Any] | None = None) -> str:
+def _select_symbol(
+    requested: str, tradable: set[str], anomaly: dict[str, Any], signal_flow: dict[str, Any] | None = None
+) -> str:
     selected, _ = _select_symbol_for_cycle(
         requested,
         tradable,
@@ -750,7 +776,9 @@ def _monitor_existing_paper_positions(args: Any, client: Any, cycle_time: dateti
     return summary
 
 
-def _risk_policy_from_runtime(args: Any, cycle_time: datetime | None = None, state: dict[str, Any] | None = None) -> dict[str, Any]:
+def _risk_policy_from_runtime(
+    args: Any, cycle_time: datetime | None = None, state: dict[str, Any] | None = None
+) -> dict[str, Any]:
     policy = _risk_policy_from_existing_ledger(args, cycle_time)
     policy.update(_portfolio_risk_policy_from_args(args))
     _apply_reject_cooldown(policy, state or {}, cycle_time)
@@ -915,7 +943,9 @@ def _ledger_error_summary(path: Path, exc: PaperLedgerError) -> dict[str, Any]:
     }
 
 
-def _prices_for_open_positions(ledger: dict[str, Any], client: Any, selected_market_bundle: dict[str, Any]) -> tuple[dict[str, float], list[Any]]:
+def _prices_for_open_positions(
+    ledger: dict[str, Any], client: Any, selected_market_bundle: dict[str, Any]
+) -> tuple[dict[str, float], list[Any]]:
     prices: dict[str, float] = {}
     errors: list[Any] = []
     open_positions = ledger.get("open_positions") if isinstance(ledger.get("open_positions"), dict) else {}
@@ -928,16 +958,61 @@ def _prices_for_open_positions(ledger: dict[str, Any], client: Any, selected_mar
             if _position_symbol(position, fallback=key)
         )
     )
+    fallback_symbols: list[str] = []
+    remaining_symbols: list[str] = []
     for normalized in symbols:
         if not normalized:
             continue
         if normalized == selected_symbol and selected_price is not None:
             prices[normalized] = selected_price
             continue
+        remaining_symbols.append(normalized)
+
+    fetch_last_prices = getattr(client, "fetch_last_prices", None)
+    if callable(fetch_last_prices) and remaining_symbols:
+        price_payload = _safe_call(fetch_last_prices, remaining_symbols)
+        price_map = price_payload.get("prices") if isinstance(price_payload.get("prices"), dict) else {}
+        for normalized in remaining_symbols:
+            price = _num(price_map.get(normalized))
+            if price is None:
+                fallback_symbols.append(normalized)
+            else:
+                prices[normalized] = price
+        if price_payload.get("ok") is False and not price_map:
+            errors.append(
+                {
+                    "symbols": remaining_symbols,
+                    "error": price_payload.get("error")
+                    or price_payload.get("errors")
+                    or "missing_batch_lightweight_mark_prices",
+                }
+            )
+    else:
+        fallback_symbols = remaining_symbols
+
+    for normalized in fallback_symbols:
+        fetch_last_price = getattr(client, "fetch_last_price", None)
+        if callable(fetch_last_price):
+            price_payload = _safe_call(fetch_last_price, normalized)
+            price = _last_price_from_bundle(price_payload)
+            if price is None:
+                errors.append(
+                    {
+                        "symbol": normalized,
+                        "error": price_payload.get("error")
+                        or price_payload.get("errors")
+                        or "missing_lightweight_mark_price",
+                    }
+                )
+            else:
+                prices[normalized] = price
+            continue
         bundle = _safe_call(client.fetch_public_market_bundle, normalized)
         price = _last_price_from_bundle(bundle)
         if price is None:
-            errors.append({"symbol": normalized, "error": bundle.get("error") or bundle.get("errors") or "missing_mark_price"})
+            errors.append(
+                {"symbol": normalized, "error": bundle.get("error") or bundle.get("errors") or "missing_mark_price"}
+            )
         else:
             prices[normalized] = price
     return prices, errors
@@ -953,7 +1028,7 @@ def _position_symbol(position: Any, *, fallback: Any = "") -> str:
 
 def _last_price_from_bundle(bundle: dict[str, Any]) -> float | None:
     ticker = bundle.get("ticker24hr") if isinstance(bundle.get("ticker24hr"), dict) else {}
-    value = ticker.get("lastPrice") or bundle.get("last_price")
+    value = ticker.get("lastPrice") or bundle.get("last_price") or bundle.get("price")
     return _num(value)
 
 
@@ -998,14 +1073,14 @@ def _journal_config_snapshot(args: Any) -> dict[str, Any]:
         "effective_notional_usdt": sizing["effective_notional_usdt"],
         "paper_sizing": sizing,
         "initial_balance_usdt": float(getattr(args, "initial_balance_usdt", 1000.0) or 0.0),
-        "paper_fee_bps": float(getattr(args, "paper_fee_bps", 2.0) or 0.0),
-        "paper_fee_model": "binance_usdm_vip0_maker_assumption",
-        "paper_slippage_bps": float(getattr(args, "paper_slippage_bps", 0.5) or 0.0),
+        "paper_fee_bps": float(getattr(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS) or 0.0),
+        "paper_fee_model": BINANCE_USDM_TAKER_FEE_MODEL,
+        "paper_slippage_bps": float(getattr(args, "paper_slippage_bps", 0.0) or 0.0),
         "paper_max_holding_minutes": float(getattr(args, "paper_max_holding_minutes", 0.0) or 0.0),
         "paper_max_holding_minutes_semantics": "legacy status/config field only; time stops require Agent strategy_intent/agent_trade_thesis max_holding_minutes on the paper position",
-        "event_limit": int(getattr(args, "event_limit", 5) or 0),
+        "event_limit": int(getattr(args, "event_limit", 0) or 0),
         "anomaly_limit": int(getattr(args, "anomaly_limit", 20) or 0),
-        "max_event_age_seconds": float(getattr(args, "max_event_age_seconds", 300.0) or 0.0),
+        "max_event_age_seconds": _optional_float(getattr(args, "max_event_age_seconds", None)),
         "interval_seconds": float(getattr(args, "interval_seconds", 60.0) or 0.0),
         "maintenance_interval_seconds": _maintenance_interval_seconds(args),
         "base_url": str(getattr(args, "base_url", "") or ""),
@@ -1071,11 +1146,11 @@ def _initial_balance(args: Any) -> float:
 
 
 def _paper_fee_bps(args: Any) -> float:
-    return float(getattr(args, "paper_fee_bps", 2.0) or 0.0)
+    return float(getattr(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS) or 0.0)
 
 
 def _paper_slippage_bps(args: Any) -> float:
-    return float(getattr(args, "paper_slippage_bps", 0.5) or 0.0)
+    return float(getattr(args, "paper_slippage_bps", 0.0) or 0.0)
 
 
 def _paper_sizing_from_args(args: Any) -> dict[str, Any]:
@@ -1112,6 +1187,11 @@ def _paper_leverage(args: Any) -> float:
 
 def _paper_max_holding_minutes(args: Any) -> float:
     return float(getattr(args, "paper_max_holding_minutes", 0.0) or 0.0)
+
+
+def _optional_float(value: Any) -> float | None:
+    parsed = _num(value)
+    return parsed if parsed is not None else None
 
 
 def _num(value: Any) -> float | None:

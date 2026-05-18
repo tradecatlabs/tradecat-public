@@ -25,6 +25,7 @@ from tradecat_auto.agent_trade_thesis import load_agent_trade_thesis
 from tradecat_auto.audit_journal import append_audit_record, journal_summary
 from tradecat_auto.binance_market import BinanceMarketClient, normalize_to_usdt_perp_symbol
 from tradecat_auto.paper_autonomy import load_paper_autonomy_profile
+from tradecat_auto.paper_costs import BINANCE_USDM_PUBLIC_TAKER_FEE_BPS, DEFAULT_PAPER_SLIPPAGE_BPS
 from tradecat_auto.paper_ledger import (
     PaperLedgerError,
     apply_position_management_thesis,
@@ -34,7 +35,17 @@ from tradecat_auto.paper_ledger import (
     save_paper_ledger,
 )
 from tradecat_auto.pipeline import build_paper_pipeline_report
-from tradecat_auto.production_control import build_daily_report, build_health_report, build_telegram_alerts
+from tradecat_auto.production_control import (
+    DEFAULT_AUTO_PAPER_ARCHIVE_PATH,
+    DEFAULT_AUTO_PAPER_JOURNAL_PATH,
+    DEFAULT_AUTO_PAPER_LEDGER_PATH,
+    DEFAULT_AUTO_PAPER_STATE_PATH,
+    build_daily_report,
+    build_health_report,
+    build_latest_cycle_report,
+    build_latest_decision_report,
+    build_telegram_alerts,
+)
 from tradecat_auto.replay import build_replay_report
 from tradecat_auto.risk import load_portfolio_risk_policy
 from tradecat_auto.service import DEFAULT_STATE_PATH, run_service_cycle
@@ -49,11 +60,23 @@ def build_parser() -> argparse.ArgumentParser:
     universe.add_argument("--base-url", default="https://fapi.binance.com")
     universe.add_argument("--json", action="store_true", help="Emit JSON")
 
+    snapshot = sub.add_parser(
+        "market-snapshot",
+        help="Fetch batchable Binance public market endpoints once and filter by optional symbols",
+    )
+    snapshot.add_argument("--base-url", default="https://fapi.binance.com")
+    snapshot.add_argument(
+        "--symbols",
+        default="",
+        help="Comma/space separated symbols to filter, e.g. BTCUSDT,ETHUSDT; empty returns all endpoint rows",
+    )
+    snapshot.add_argument("--json", action="store_true", help="Emit JSON")
+
     probe = sub.add_parser("probe-public", help="Probe TradeCat public sheets and Binance public market endpoints")
     probe.add_argument("--tradecat-public", default=str(DEFAULT_TRADECAT_PUBLIC))
     probe.add_argument("--base-url", default="https://fapi.binance.com")
     probe.add_argument("--symbol", default="auto", help="Symbol to probe, or auto to use first anomaly candidate")
-    probe.add_argument("--event-limit", type=int, default=5)
+    probe.add_argument("--event-limit", type=int, default=0, help="Signal-flow rows to read; 0 means no limit")
     probe.add_argument("--anomaly-limit", type=int, default=0)
     probe.add_argument("--json", action="store_true", help="Emit JSON")
 
@@ -62,15 +85,38 @@ def build_parser() -> argparse.ArgumentParser:
     run_once.add_argument("--base-url", default="https://fapi.binance.com")
     run_once.add_argument("--symbol", default="auto", help="Symbol to run, or auto to use first anomaly candidate")
     run_once.add_argument("--mode", choices=["paper", "watch", "mainnet"], default="paper")
-    run_once.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default")
-    run_once.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default")
+    run_once.add_argument(
+        "--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default"
+    )
+    run_once.add_argument(
+        "--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default"
+    )
     run_once.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage; no default")
-    run_once.add_argument("--paper-margin-budget-usdt", type=float, default=None, help="Optional paper margin cap; omitted means no cap and no default order amount")
-    run_once.add_argument("--agent-trade-thesis-path", default="", help="Optional Agent trade thesis JSON for paper/watch sizing and exits")
-    run_once.add_argument("--paper-autonomy-profile-path", default="", help="Optional local paper autonomy profile JSON for Agent-delegated paper sizing/exits")
-    run_once.add_argument("--portfolio-risk-policy-path", default="", help="Optional paper/watch portfolio risk policy JSON")
-    run_once.add_argument("--paper-kill-switch-path", default="", help="Optional local file path; if present, new paper entries are rejected")
-    run_once.add_argument("--event-limit", type=int, default=5)
+    run_once.add_argument(
+        "--paper-margin-budget-usdt",
+        type=float,
+        default=None,
+        help="Optional paper margin cap; omitted means no cap and no default order amount",
+    )
+    run_once.add_argument(
+        "--agent-trade-thesis-path",
+        default="",
+        help="Optional Agent trade thesis JSON for paper/watch sizing and exits",
+    )
+    run_once.add_argument(
+        "--paper-autonomy-profile-path",
+        default="",
+        help="Optional local paper autonomy profile JSON for Agent-delegated paper sizing/exits",
+    )
+    run_once.add_argument(
+        "--portfolio-risk-policy-path", default="", help="Optional paper/watch portfolio risk policy JSON"
+    )
+    run_once.add_argument(
+        "--paper-kill-switch-path",
+        default="",
+        help="Optional local file path; if present, new paper entries are rejected",
+    )
+    run_once.add_argument("--event-limit", type=int, default=0, help="Signal-flow rows to read; 0 means no limit")
     run_once.add_argument("--anomaly-limit", type=int, default=0)
     run_once.add_argument("--json", action="store_true", help="Emit JSON")
 
@@ -79,56 +125,114 @@ def build_parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--base-url", default="https://fapi.binance.com")
     run_loop.add_argument("--symbol", default="auto", help="Symbol to run, or auto to use first anomaly candidate")
     run_loop.add_argument("--mode", choices=["paper", "watch"], default="paper")
-    run_loop.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default")
-    run_loop.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default")
+    run_loop.add_argument(
+        "--notional-usdt", type=float, default=None, help="Explicit effective paper notional; no default"
+    )
+    run_loop.add_argument(
+        "--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin; no default"
+    )
     run_loop.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage; no default")
-    run_loop.add_argument("--paper-margin-budget-usdt", type=float, default=None, help="Optional paper margin cap; omitted means no cap and no default order amount")
-    run_loop.add_argument("--agent-trade-thesis-path", default="", help="Optional Agent trade thesis JSON for paper/watch sizing and exits")
-    run_loop.add_argument("--paper-autonomy-profile-path", default="", help="Optional local paper autonomy profile JSON for Agent-delegated paper sizing/exits")
-    run_loop.add_argument("--portfolio-risk-policy-path", default="", help="Optional paper/watch portfolio risk policy JSON")
-    run_loop.add_argument("--paper-kill-switch-path", default="", help="Optional local file path; if present, new paper entries are rejected")
-    run_loop.add_argument("--event-limit", type=int, default=5)
+    run_loop.add_argument(
+        "--paper-margin-budget-usdt",
+        type=float,
+        default=None,
+        help="Optional paper margin cap; omitted means no cap and no default order amount",
+    )
+    run_loop.add_argument(
+        "--agent-trade-thesis-path",
+        default="",
+        help="Optional Agent trade thesis JSON for paper/watch sizing and exits",
+    )
+    run_loop.add_argument(
+        "--paper-autonomy-profile-path",
+        default="",
+        help="Optional local paper autonomy profile JSON for Agent-delegated paper sizing/exits",
+    )
+    run_loop.add_argument(
+        "--portfolio-risk-policy-path", default="", help="Optional paper/watch portfolio risk policy JSON"
+    )
+    run_loop.add_argument(
+        "--paper-kill-switch-path",
+        default="",
+        help="Optional local file path; if present, new paper entries are rejected",
+    )
+    run_loop.add_argument("--event-limit", type=int, default=0, help="Signal-flow rows to read; 0 means no limit")
     run_loop.add_argument("--anomaly-limit", type=int, default=0)
     run_loop.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
     run_loop.add_argument("--ledger-path", default="", help="Optional persistent paper ledger JSON path")
-    run_loop.add_argument("--archive-path", default="", help="Optional JSONL path for full service-cycle replay records")
-    run_loop.add_argument("--journal-path", default="", help="Optional SQLite audit journal path for run/config/decision/order/fill records")
+    run_loop.add_argument(
+        "--archive-path", default="", help="Optional JSONL path for full service-cycle replay records"
+    )
+    run_loop.add_argument(
+        "--journal-path",
+        default="",
+        help="Optional SQLite audit journal path for run/config/decision/order/fill records",
+    )
     run_loop.add_argument("--initial-balance-usdt", type=float, default=1000.0)
-    run_loop.add_argument("--paper-fee-bps", type=float, default=2.0)
-    run_loop.add_argument("--paper-slippage-bps", type=float, default=0.5)
-    run_loop.add_argument("--paper-max-holding-minutes", type=float, default=0.0, help="Deprecated status/config field; paper time stops require Agent/strategy max_holding_minutes")
+    run_loop.add_argument("--paper-fee-bps", type=float, default=BINANCE_USDM_PUBLIC_TAKER_FEE_BPS)
+    run_loop.add_argument("--paper-slippage-bps", type=float, default=DEFAULT_PAPER_SLIPPAGE_BPS)
+    run_loop.add_argument(
+        "--paper-max-holding-minutes",
+        type=float,
+        default=0.0,
+        help="Deprecated status/config field; paper time stops require Agent/strategy max_holding_minutes",
+    )
     run_loop.add_argument("--interval-seconds", type=float, default=60.0)
-    run_loop.add_argument("--maintenance-interval-seconds", type=float, default=300.0, help="Run ledger/health maintenance after this many seconds without fresh input; 0 disables")
-    run_loop.add_argument("--max-cycles", type=int, default=0, help="Stop after N cycles; 0 means run until interrupted")
+    run_loop.add_argument(
+        "--maintenance-interval-seconds",
+        type=float,
+        default=300.0,
+        help="Run ledger/health maintenance after this many seconds without fresh input; 0 disables",
+    )
+    run_loop.add_argument(
+        "--max-cycles", type=int, default=0, help="Stop after N cycles; 0 means run until interrupted"
+    )
     run_loop.add_argument("--once", action="store_true", help="Run exactly one service cycle and exit")
-    run_loop.add_argument("--max-event-age-seconds", type=float, default=300.0)
+    run_loop.add_argument(
+        "--max-event-age-seconds",
+        type=float,
+        default=None,
+        help="Optional stale-signal cap; omitted means Agent/TradeCat can evaluate any fetched signal age",
+    )
     run_loop.add_argument("--json", action="store_true", help="Emit JSON")
 
-    paper = sub.add_parser("paper-report", help="Summarize the persistent paper ledger")
-    paper.add_argument("--ledger-path", default=".runtime/paper_ledger.json")
+    paper = sub.add_parser("paper-report", help="Summarize the persistent auto-paper ledger")
+    paper.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
     paper.add_argument("--initial-balance-usdt", type=float, default=1000.0)
     paper.add_argument("--json", action="store_true", help="Emit JSON")
 
-    position_manage = sub.add_parser("position-manage", help="Apply an Agent position-management thesis to the local paper ledger")
+    position_manage = sub.add_parser(
+        "position-manage", help="Apply an Agent position-management thesis to the local paper ledger"
+    )
     position_manage.add_argument("--thesis-path", required=True, help="Path to position_management_thesis.v1 JSON")
     position_manage.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
-    position_manage.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3", help="Optional SQLite audit journal path; empty disables journal write")
+    position_manage.add_argument(
+        "--journal-path",
+        default=".runtime/auto-paper/paper_audit.sqlite3",
+        help="Optional SQLite audit journal path; empty disables journal write",
+    )
     position_manage.add_argument("--initial-balance-usdt", type=float, default=1000.0)
-    position_manage.add_argument("--paper-fee-bps", type=float, default=2.0)
-    position_manage.add_argument("--paper-slippage-bps", type=float, default=0.5)
+    position_manage.add_argument("--paper-fee-bps", type=float, default=BINANCE_USDM_PUBLIC_TAKER_FEE_BPS)
+    position_manage.add_argument("--paper-slippage-bps", type=float, default=DEFAULT_PAPER_SLIPPAGE_BPS)
     position_manage.add_argument("--now", default="", help="Optional ISO timestamp for deterministic tests")
     position_manage.add_argument("--json", action="store_true", help="Emit JSON")
 
     soft_layer = sub.add_parser("soft-layer", help="Show self-contained Agent soft prompt/policy bundle")
-    soft_layer.add_argument("--no-prompt-text", action="store_true", help="List prompt paths without embedding template text")
+    soft_layer.add_argument(
+        "--no-prompt-text", action="store_true", help="List prompt paths without embedding template text"
+    )
     soft_layer.add_argument("--json", action="store_true", help="Emit JSON")
 
     research_cycle = sub.add_parser("research-cycle", help="Build an observe-only Agent research-cycle task")
     research_cycle.add_argument("--tradecat-public", default=str(DEFAULT_TRADECAT_PUBLIC))
-    research_cycle.add_argument("--symbol", default="auto", help="Symbol to research, or auto to use first anomaly candidate")
-    research_cycle.add_argument("--event-limit", type=int, default=5)
+    research_cycle.add_argument(
+        "--symbol", default="auto", help="Symbol to research, or auto to use first anomaly candidate"
+    )
+    research_cycle.add_argument("--event-limit", type=int, default=0, help="Signal-flow rows to read; 0 means no limit")
     research_cycle.add_argument("--anomaly-limit", type=int, default=0)
-    research_cycle.add_argument("--output-dir", default="", help="Optional isolated directory for observe-only draft JSON outputs")
+    research_cycle.add_argument(
+        "--output-dir", default="", help="Optional isolated directory for observe-only draft JSON outputs"
+    )
     research_cycle.add_argument("--json", action="store_true", help="Emit JSON")
 
     context_audit = sub.add_parser("context-audit", help="Audit Agent-supplied public/read-only market context JSON")
@@ -138,46 +242,81 @@ def build_parser() -> argparse.ArgumentParser:
     run_context = sub.add_parser("run-context", help="Run paper/watch pipeline from Agent-supplied market context JSON")
     run_context.add_argument("--input", required=True, help="Path to agent market context JSON")
     run_context.add_argument("--mode", choices=["paper", "watch", "mainnet"], default="paper")
-    run_context.add_argument("--notional-usdt", type=float, default=None, help="Explicit effective paper notional override; no default")
-    run_context.add_argument("--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin override; no default")
-    run_context.add_argument("--paper-leverage", type=float, default=None, help="Agent-decided paper leverage override; no default")
-    run_context.add_argument("--paper-margin-budget-usdt", type=float, default=None, help="Optional paper margin cap; omitted means no cap and no default order amount")
-    run_context.add_argument("--portfolio-risk-policy-path", default="", help="Optional paper/watch portfolio risk policy JSON")
-    run_context.add_argument("--paper-kill-switch-path", default="", help="Optional local file path; if present, new paper entries are rejected")
+    run_context.add_argument(
+        "--notional-usdt", type=float, default=None, help="Explicit effective paper notional override; no default"
+    )
+    run_context.add_argument(
+        "--agent-margin-usdt", type=float, default=None, help="Agent-decided paper margin override; no default"
+    )
+    run_context.add_argument(
+        "--paper-leverage", type=float, default=None, help="Agent-decided paper leverage override; no default"
+    )
+    run_context.add_argument(
+        "--paper-margin-budget-usdt",
+        type=float,
+        default=None,
+        help="Optional paper margin cap; omitted means no cap and no default order amount",
+    )
+    run_context.add_argument(
+        "--portfolio-risk-policy-path", default="", help="Optional paper/watch portfolio risk policy JSON"
+    )
+    run_context.add_argument(
+        "--paper-kill-switch-path",
+        default="",
+        help="Optional local file path; if present, new paper entries are rejected",
+    )
     run_context.add_argument("--json", action="store_true", help="Emit JSON")
 
-    replay = sub.add_parser("replay-report", help="Build a reproducible replay/backtest report from service-cycle archive and paper ledger")
-    replay.add_argument("--archive-path", default=".runtime/cycles.jsonl")
-    replay.add_argument("--ledger-path", default=".runtime/paper_ledger.json")
-    replay.add_argument("--journal-path", default="", help="Optional local SQLite audit journal path for decision trace metadata")
-    replay.add_argument("--generated-at", default="", help="Optional fixed report timestamp for deterministic replay tests")
+    replay = sub.add_parser(
+        "replay-report", help="Build a reproducible replay/backtest report from service-cycle archive and paper ledger"
+    )
+    replay.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
+    replay.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
+    replay.add_argument(
+        "--journal-path", default="", help="Optional local SQLite audit journal path for decision trace metadata"
+    )
+    replay.add_argument(
+        "--generated-at", default="", help="Optional fixed report timestamp for deterministic replay tests"
+    )
     replay.add_argument("--json", action="store_true", help="Emit JSON")
 
     audit_journal = sub.add_parser("audit-journal", help="Summarize the local SQLite append-only audit journal")
-    audit_journal.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3")
+    audit_journal.add_argument("--journal-path", default=str(DEFAULT_AUTO_PAPER_JOURNAL_PATH))
     audit_journal.add_argument("--json", action="store_true", help="Emit JSON")
 
-    health = sub.add_parser("health-report", help="Summarize production heartbeat, ledger, cycle archive, and audit journal")
-    health.add_argument("--state-path", default=".runtime/auto-paper/service_state.json")
-    health.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
-    health.add_argument("--archive-path", default=".runtime/auto-paper/cycles.jsonl")
-    health.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3")
+    latest_cycle = sub.add_parser("latest-cycle", help="Show the latest auto-paper service cycle from JSONL archive")
+    latest_cycle.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
+    latest_cycle.add_argument("--json", action="store_true", help="Emit JSON")
+
+    latest_decision = sub.add_parser(
+        "latest-decision", help="Show the latest auditable Agent/TradeCat decision text from JSONL archive"
+    )
+    latest_decision.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
+    latest_decision.add_argument("--json", action="store_true", help="Emit JSON")
+
+    health = sub.add_parser(
+        "health-report", help="Summarize production heartbeat, ledger, cycle archive, and audit journal"
+    )
+    health.add_argument("--state-path", default=str(DEFAULT_AUTO_PAPER_STATE_PATH))
+    health.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
+    health.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
+    health.add_argument("--journal-path", default=str(DEFAULT_AUTO_PAPER_JOURNAL_PATH))
     health.add_argument("--now", default="", help="Optional ISO timestamp for deterministic checks")
     health.add_argument("--max-heartbeat-age-seconds", type=float, default=180.0)
     health.add_argument("--json", action="store_true", help="Emit JSON")
 
     daily = sub.add_parser("daily-report", help="Build a daily paper production report from ledger and cycle archive")
-    daily.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
-    daily.add_argument("--archive-path", default=".runtime/auto-paper/cycles.jsonl")
+    daily.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
+    daily.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
     daily.add_argument("--date", default="", help="Report date YYYY-MM-DD; defaults to today")
     daily.add_argument("--json", action="store_true", help="Emit JSON")
 
     alerts = sub.add_parser("alert-payload", help="Build Telegram-friendly alert payload from health or daily report")
     alerts.add_argument("--kind", choices=["health", "daily"], default="health")
-    alerts.add_argument("--state-path", default=".runtime/auto-paper/service_state.json")
-    alerts.add_argument("--ledger-path", default=".runtime/auto-paper/paper_ledger.json")
-    alerts.add_argument("--archive-path", default=".runtime/auto-paper/cycles.jsonl")
-    alerts.add_argument("--journal-path", default=".runtime/auto-paper/paper_audit.sqlite3")
+    alerts.add_argument("--state-path", default=str(DEFAULT_AUTO_PAPER_STATE_PATH))
+    alerts.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
+    alerts.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
+    alerts.add_argument("--journal-path", default=str(DEFAULT_AUTO_PAPER_JOURNAL_PATH))
     alerts.add_argument("--date", default="", help="Daily report date YYYY-MM-DD; defaults to today")
     alerts.add_argument("--now", default="", help="Optional ISO timestamp for deterministic health checks")
     alerts.add_argument("--max-heartbeat-age-seconds", type=float, default=180.0)
@@ -204,6 +343,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "market-universe":
         payload = market_universe_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "market-snapshot":
+        payload = market_snapshot_report(args)
         _print(payload, as_json=args.json)
         return exit_code_for_payload(args.command, payload)
     if args.command == "probe-public":
@@ -250,6 +393,14 @@ def main(argv: list[str] | None = None) -> int:
         payload = audit_journal_report(args)
         _print(payload, as_json=args.json)
         return exit_code_for_payload(args.command, payload)
+    if args.command == "latest-cycle":
+        payload = latest_cycle_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "latest-decision":
+        payload = latest_decision_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
     if args.command == "health-report":
         payload = health_report(args)
         _print(payload, as_json=args.json)
@@ -272,8 +423,49 @@ def market_universe_report(args: argparse.Namespace) -> dict[str, Any]:
     except Exception as exc:
         return _market_universe_error_payload(args.base_url, exc, client)
     if not isinstance(payload, dict):
-        return _market_universe_error_payload(args.base_url, TypeError("market_universe returned non-object result"), client)
+        return _market_universe_error_payload(
+            args.base_url, TypeError("market_universe returned non-object result"), client
+        )
     return payload
+
+
+def market_snapshot_report(args: argparse.Namespace) -> dict[str, Any]:
+    client = BinanceMarketClient(base_url=args.base_url)
+    try:
+        payload = client.fetch_public_market_snapshot(_parse_symbols_arg(getattr(args, "symbols", "")))
+    except Exception as exc:
+        return {
+            "schema": "tradecat_auto.public_market_snapshot.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "error_code": "public_market_snapshot_failed",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "base_url": args.base_url,
+            "symbols": _parse_symbols_arg(getattr(args, "symbols", "")),
+            "errors": {"market_snapshot": _format_exception(exc)},
+            "provenance": {"source": "tradecat_auto.cli.market_snapshot_report"},
+            "safety": _safety_boundary(),
+        }
+    return payload if isinstance(payload, dict) else _market_snapshot_non_object_payload(args)
+
+
+def _market_snapshot_non_object_payload(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "schema": "tradecat_auto.public_market_snapshot.v1",
+        "schema_version": "1.0.0",
+        "ok": False,
+        "error_code": "public_market_snapshot_failed",
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "base_url": args.base_url,
+        "symbols": _parse_symbols_arg(getattr(args, "symbols", "")),
+        "errors": {"market_snapshot": "fetch_public_market_snapshot returned non-object result"},
+        "provenance": {"source": "tradecat_auto.cli.market_snapshot_report"},
+        "safety": _safety_boundary(),
+    }
 
 
 def _market_universe_error_payload(base_url: str, exc: Exception, client: Any) -> dict[str, Any]:
@@ -317,18 +509,22 @@ def probe_public(args: argparse.Namespace) -> dict[str, Any]:
     signal_flow = _fetch_signal_flow_events(source, tradable, limit=getattr(args, "event_limit", 20))
     selected_symbol = _select_symbol(args.symbol, tradable, anomaly, signal_flow)
     events = signal_events_payload(signal_flow, anomaly, selected_symbol=selected_symbol)
-    market_bundle = _safe_call(client.fetch_public_market_bundle, selected_symbol) if selected_symbol else {
-        "schema": "tradecat_auto.public_market_bundle.v1",
-        "schema_version": "1.0.0",
-        "ok": False,
-        "error_code": "no_symbol_selected",
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "errors": {"symbol": "no tradable symbol selected"},
-        "provenance": {"source": "tradecat_auto.cli.probe_public", "selected_symbol": ""},
-        "safety": _safety_boundary(),
-    }
+    market_bundle = (
+        _safe_call(client.fetch_public_market_bundle, selected_symbol)
+        if selected_symbol
+        else {
+            "schema": "tradecat_auto.public_market_bundle.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "error_code": "no_symbol_selected",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "errors": {"symbol": "no tradable symbol selected"},
+            "provenance": {"source": "tradecat_auto.cli.probe_public", "selected_symbol": ""},
+            "safety": _safety_boundary(),
+        }
+    )
     ok = bool(universe.get("ok") and events.get("ok") and anomaly.get("ok") and market_bundle.get("ok"))
     return {
         "schema": "tradecat_auto.public_probe.v1",
@@ -377,7 +573,9 @@ def probe_public(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def run_once_public(args: argparse.Namespace, *, client: Any | None = None, source: Any | None = None) -> dict[str, Any]:
+def run_once_public(
+    args: argparse.Namespace, *, client: Any | None = None, source: Any | None = None
+) -> dict[str, Any]:
     try:
         agent_trade_thesis = _agent_trade_thesis_from_args(args)
     except ValueError as exc:
@@ -394,18 +592,22 @@ def run_once_public(args: argparse.Namespace, *, client: Any | None = None, sour
     signal_flow = _fetch_signal_flow_events(tradecat_source, tradable, limit=getattr(args, "event_limit", 20))
     selected_symbol = _select_symbol(args.symbol, tradable, anomaly, signal_flow)
     events = signal_events_payload(signal_flow, anomaly, selected_symbol=selected_symbol)
-    market_bundle = _safe_call(market_client.fetch_public_market_bundle, selected_symbol) if selected_symbol else {
-        "schema": "tradecat_auto.public_market_bundle.v1",
-        "schema_version": "1.0.0",
-        "ok": False,
-        "error_code": "no_symbol_selected",
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "errors": {"symbol": "no tradable symbol selected"},
-        "provenance": {"source": "tradecat_auto.cli.run_once_public", "selected_symbol": ""},
-        "safety": _safety_boundary(),
-    }
+    market_bundle = (
+        _safe_call(market_client.fetch_public_market_bundle, selected_symbol)
+        if selected_symbol
+        else {
+            "schema": "tradecat_auto.public_market_bundle.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "error_code": "no_symbol_selected",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "errors": {"symbol": "no tradable symbol selected"},
+            "provenance": {"source": "tradecat_auto.cli.run_once_public", "selected_symbol": ""},
+            "safety": _safety_boundary(),
+        }
+    )
     if not selected_symbol:
         return {
             "schema": "tradecat_auto.run_once_report.v1",
@@ -442,6 +644,8 @@ def run_once_public(args: argparse.Namespace, *, client: Any | None = None, sour
         agent_trade_thesis=agent_trade_thesis,
         paper_autonomy_profile=paper_autonomy_profile,
         risk_policy=_risk_policy_from_args(args),
+        paper_fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+        paper_slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
     )
     report["universe"] = _summarize_universe(universe)
     report["signal_flow_events"] = {
@@ -554,7 +758,9 @@ def position_manage_report(args: argparse.Namespace) -> dict[str, Any]:
             thesis_path=thesis_path,
         )
     try:
-        ledger = load_paper_ledger(ledger_path, initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0))
+        ledger = load_paper_ledger(
+            ledger_path, initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0)
+        )
     except (PaperLedgerError, OSError) as exc:
         return _position_management_error_payload(
             code="paper_ledger_load_failed",
@@ -565,8 +771,8 @@ def position_manage_report(args: argparse.Namespace) -> dict[str, Any]:
     result = apply_position_management_thesis(
         ledger,
         thesis if isinstance(thesis, dict) else {},
-        fee_bps=_non_negative_arg(args, "paper_fee_bps", 2.0),
-        slippage_bps=_non_negative_arg(args, "paper_slippage_bps", 0.5),
+        fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+        slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
         now_iso=str(getattr(args, "now", "") or "") or None,
     )
     updated_ledger = result.pop("_ledger")
@@ -712,6 +918,14 @@ def audit_journal_report(args: argparse.Namespace) -> dict[str, Any]:
     return journal_summary(Path(args.journal_path))
 
 
+def latest_cycle_report(args: argparse.Namespace) -> dict[str, Any]:
+    return build_latest_cycle_report(archive_path=Path(args.archive_path))
+
+
+def latest_decision_report(args: argparse.Namespace) -> dict[str, Any]:
+    return build_latest_decision_report(archive_path=Path(args.archive_path))
+
+
 def health_report(args: argparse.Namespace) -> dict[str, Any]:
     return build_health_report(
         state_path=Path(args.state_path),
@@ -751,7 +965,17 @@ def _format_exception(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def _position_management_error_payload(*, code: str, message: str, ledger_path: Path, thesis_path: Path) -> dict[str, Any]:
+def _parse_symbols_arg(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw_items = value.replace(",", " ").split()
+    else:
+        raw_items = list(value or [])
+    return list(dict.fromkeys(str(item or "").upper().strip() for item in raw_items if str(item or "").strip()))
+
+
+def _position_management_error_payload(
+    *, code: str, message: str, ledger_path: Path, thesis_path: Path
+) -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.position_management_action_report.v1",
         "schema_version": "1.0.0",
@@ -837,7 +1061,9 @@ def _agent_trade_thesis_load_failed_payload(args: argparse.Namespace, source: st
     return payload
 
 
-def _paper_autonomy_profile_load_failed_payload(args: argparse.Namespace, source: str, exc: Exception) -> dict[str, Any]:
+def _paper_autonomy_profile_load_failed_payload(
+    args: argparse.Namespace, source: str, exc: Exception
+) -> dict[str, Any]:
     command = str(getattr(args, "command", "") or "")
     schema = "tradecat_auto.service_cycle.v1" if command == "run-loop" else "tradecat_auto.run_once_report.v1"
     payload: dict[str, Any] = {
@@ -869,8 +1095,8 @@ def _paper_autonomy_profile_load_failed_payload(args: argparse.Namespace, source
 
 def _validate_paper_cost_inputs(args: argparse.Namespace) -> None:
     _non_negative_arg(args, "initial_balance_usdt", 1000.0)
-    _non_negative_arg(args, "paper_fee_bps", 2.0)
-    _non_negative_arg(args, "paper_slippage_bps", 0.5)
+    _non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS)
+    _non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS)
     _positive_optional_arg(args, "paper_leverage")
     _positive_optional_arg(args, "agent_margin_usdt")
     _positive_optional_arg(args, "notional_usdt")
@@ -938,7 +1164,9 @@ def _fetch_signal_flow_events(source: Any, tradable: set[str], *, limit: int) ->
     return _safe_call(fetch, tradable_symbols=tradable, limit=limit)
 
 
-def _select_symbol(requested: str, tradable: set[str], anomaly: dict[str, Any], signal_flow: dict[str, Any] | None = None) -> str:
+def _select_symbol(
+    requested: str, tradable: set[str], anomaly: dict[str, Any], signal_flow: dict[str, Any] | None = None
+) -> str:
     text = str(requested or "auto").upper().strip()
     if text and text != "AUTO":
         return normalize_to_usdt_perp_symbol(text, tradable) or text
@@ -966,13 +1194,17 @@ def _summarize_market_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": bundle.get("ok"),
         "symbol": bundle.get("symbol"),
-        "ticker24hr": _pick(bundle.get("ticker24hr"), ["symbol", "lastPrice", "priceChangePercent", "volume", "quoteVolume"]),
+        "ticker24hr": _pick(
+            bundle.get("ticker24hr"), ["symbol", "lastPrice", "priceChangePercent", "volume", "quoteVolume"]
+        ),
         "bookTicker": _pick(bundle.get("bookTicker"), ["bidPrice", "bidQty", "askPrice", "askQty", "time"]),
         "depth_summary": bundle.get("depth_summary"),
         "openInterest": _pick(bundle.get("openInterest"), ["openInterest", "time"]),
         "openInterestHist_latest": _first(bundle.get("openInterestHist")),
         "fundingRate_latest": _first(bundle.get("fundingRate")),
-        "premiumIndex": _pick(bundle.get("premiumIndex"), ["markPrice", "indexPrice", "lastFundingRate", "nextFundingTime", "time"]),
+        "premiumIndex": _pick(
+            bundle.get("premiumIndex"), ["markPrice", "indexPrice", "lastFundingRate", "nextFundingTime", "time"]
+        ),
         "topLongShortAccountRatio_latest": _first(bundle.get("topLongShortAccountRatio")),
         "topLongShortPositionRatio_latest": _first(bundle.get("topLongShortPositionRatio")),
         "globalLongShortAccountRatio_latest": _first(bundle.get("globalLongShortAccountRatio")),

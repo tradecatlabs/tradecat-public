@@ -82,6 +82,8 @@ Canonical schemas:
 
 Allowed market-data families are public/read-only only: `klines`, `order_book_depth`, `book_ticker`, `24h_ticker`, `funding_rate`, `premium_index`, `open_interest`, `open_interest_history`, `long_short_ratios`, and `taker_buy_sell_volume`.
 
+For broad candidate scans, prefer `bash scripts/binance-public-snapshot.sh --symbols BTCUSDT,ETHUSDT --json` before per-symbol bundles. It batches the Binance public endpoints that support no-symbol snapshots (`ticker_price`, `24h_ticker`, `book_ticker`, `premium_index`) and explicitly reports the remaining per-symbol families (`order_book_depth`, OI, funding history, long/short ratios, taker flow, klines).
+
 Each market-data item must be `method=GET`, `requires_signature=false`, and `signed=false`. Forbidden material includes API keys, secrets, signatures, listen keys, private keys, account/balance/position endpoints, order endpoints, leverage or margin mutation endpoints, and any instruction to execute real orders.
 
 ## Paper Execution Rules
@@ -90,8 +92,9 @@ Each market-data item must be `method=GET`, `requires_signature=false`, and `sig
 - `agent_trade_thesis.paper_intent` is accepted when it supplies sizing/leverage and exits.
 - Missing sizing/leverage/exits must fail closed with structured reject.
 - TradeCat must not invent default margin, notional, leverage, stop loss, take profit, or time stop.
+- Local `paper_autonomy_profile.v1` may be auto-generated under ignored `.runtime/auto-paper/` for paper-only autonomy bootstrap; explicit `agent_trade_thesis.v1` still has priority, and `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0` restores strict external-thesis-only fail-closed behavior.
 - Multiple open paper positions for the same symbol are allowed only when Agent thesis explicitly grants `allow_multiple_open_positions_per_symbol=true` or a positive `max_concurrent_positions_per_symbol`.
-- `market-universe` and `probe-public` are diagnostics, not the canonical Agent market-context input surface.
+- `market-universe`, `market-snapshot`, and `probe-public` are diagnostics/research helpers, not the canonical Agent market-context input surface.
 
 ## Runtime Reports
 

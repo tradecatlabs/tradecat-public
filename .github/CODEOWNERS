@@ -1,0 +1,10 @@
+# Require repository-owner review for all public TradeCat changes.
+* @tukuaiai
+
+# Contracts, runtime, CI, and security boundaries need explicit owner review.
+/contracts/ @tukuaiai
+/src/tradecat_auto/ @tukuaiai
+/src/tradecat_sources/ @tukuaiai
+/scripts/ @tukuaiai
+/.github/ @tukuaiai
+/skills/tradecat-public/ @tukuaiai

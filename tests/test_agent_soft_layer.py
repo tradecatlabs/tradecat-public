@@ -24,7 +24,9 @@ def test_soft_layer_bundle_is_self_contained_and_prompt_oriented() -> None:
     allowed = {item["family"] for item in bundle["endpoint_policy"]["allowed_market_context_families"]}
     assert "klines" in allowed
     assert "open_interest" in allowed
-    forbidden_categories = {item["category"] for item in bundle["endpoint_policy"]["hard_forbidden_endpoint_categories"]}
+    forbidden_categories = {
+        item["category"] for item in bundle["endpoint_policy"]["hard_forbidden_endpoint_categories"]
+    }
     assert "real_order_lifecycle" in forbidden_categories
     assert "real_account_state" in forbidden_categories
     assert bundle["hard_boundaries"]["account_state_source"] == "local TradeCat paper ledger only"

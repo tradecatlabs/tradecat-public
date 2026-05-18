@@ -12,6 +12,7 @@ TradeCat Public is a headless Agent paper-trading runtime with an embedded Skill
 | Thesis sizing/exits | TradeCat invents defaults or swallows missing inputs | `tests/test_pipeline.py`, `tests/test_service.py` |
 | Paper ledger | Duplicate positions, bad mark-to-market, missing exits | `tests/test_paper_ledger.py`, `tests/test_paper_broker.py` |
 | Runtime reports | Health/daily/replay/audit evidence drifts | `tests/test_replay_reporting.py`, `tests/test_audit_journal.py`, `tests/test_production_control.py` |
+| Repository governance | Collaboration files, CI gates, and local runtime boundaries drift | `tests/test_public_repo_guardrails.py` |
 | Safety scans | Credentials or private executor code leaks | `scripts/security-scan.sh`, `scripts/supply-chain-audit.sh` |
 
 ## Required Local Gate
@@ -22,6 +23,8 @@ bash scripts/verify.sh
 bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
+python3 scripts/validate_dependency_policy.py
+ruff format --check src tests scripts
 git diff --check
 ```
 

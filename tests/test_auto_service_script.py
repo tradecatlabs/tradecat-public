@@ -38,9 +38,7 @@ def make_fake_systemctl(tmp_path: Path) -> tuple[Path, Path]:
     log_path = tmp_path / "systemctl.log"
     fake = tmp_path / "systemctl"
     fake.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\n' \"$*\" >>\"$FAKE_SYSTEMCTL_LOG\"\n"
-        "exit 0\n",
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >>"$FAKE_SYSTEMCTL_LOG"\nexit 0\n',
         encoding="utf-8",
     )
     fake.chmod(0o755)
@@ -68,22 +66,63 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["ledger_path"].endswith("paper_ledger.json")
     assert payload["archive_path"].endswith("cycles.jsonl")
     assert payload["journal_path"].endswith("paper_audit.sqlite3")
+    assert payload["cycle_timeout_seconds"] == 6000.0
     assert payload["paper_margin_budget_usdt"] is None
     assert payload["agent_margin_usdt"] is None
     assert payload["notional_usdt"] is None
     assert payload["paper_leverage"] is None
     assert payload["agent_trade_thesis_path"] == ""
     assert payload["agent_trade_thesis_configured"] is False
-    assert payload["paper_autonomy_profile_path"] == ""
-    assert payload["paper_autonomy_profile_configured"] is False
-    assert payload["effective_notional_usdt"] is None
-    assert payload["agent_sizing_required"] is True
-    assert payload["paper_sizing"]["source"] == "agent_required_missing"
-    assert payload["paper_fee_bps"] == 2.0
-    assert payload["paper_slippage_bps"] == 0.5
+    assert payload["paper_autonomy_profile_path"] == str(tmp_path / "run" / "paper_autonomy_profile.json")
+    assert payload["paper_autonomy_profile_configured"] is True
+    assert payload["paper_autonomy_enabled"] is True
+    assert payload["paper_autonomy_profile_defaulted"] is True
+    assert payload["effective_notional_usdt"] == 10.0
+    assert payload["agent_sizing_required"] is False
+    assert payload["paper_sizing"]["source"] == "paper_autonomy_profile"
+    assert payload["paper_sizing"]["requested_margin_usdt"] == 10.0
+    assert payload["paper_sizing"]["paper_leverage"] == 1.0
+    assert payload["paper_fee_bps"] == 4.0
+    assert payload["paper_fee_model"] == "binance_usdm_public_docs_vip0_taker_fallback"
+    assert payload["paper_slippage_bps"] == 0.0
     assert payload["paper_max_holding_minutes"] == 0.0
     assert "Agent" in payload["paper_max_holding_minutes_semantics"]
     assert str(tmp_path / "run") in payload["runtime_dir"]
+
+
+def test_auto_paper_service_status_can_disable_default_runtime_autonomy_profile(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "run"
+    runtime_dir.mkdir()
+    profile_path = runtime_dir / "paper_autonomy_profile.json"
+    profile_path.write_text("{}", encoding="utf-8")
+    env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir), "TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED": "0"}
+
+    proc = run_service_script(["status", "--json"], env=env)
+
+    assert proc.returncode == 1
+    payload = json.loads(proc.stdout)
+    assert payload["paper_autonomy_profile_path"] == ""
+    assert payload["paper_autonomy_profile_configured"] is False
+    assert payload["agent_sizing_required"] is True
+    assert payload["paper_autonomy_enabled"] is False
+    assert payload["paper_autonomy_profile_defaulted"] is False
+
+
+def test_auto_paper_service_status_treats_agent_thesis_path_as_autonomous_sizing_source(tmp_path: Path) -> None:
+    env = {
+        "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(tmp_path / "run"),
+        "TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH": str(tmp_path / "agent-thesis.json"),
+    }
+
+    proc = run_service_script(["status", "--json"], env=env)
+
+    assert proc.returncode == 1
+    payload = json.loads(proc.stdout)
+    assert payload["agent_trade_thesis_path"] == str(tmp_path / "agent-thesis.json")
+    assert payload["agent_trade_thesis_configured"] is True
+    assert payload["paper_autonomy_profile_configured"] is False
+    assert payload["agent_sizing_required"] is False
+    assert payload["paper_sizing"]["source"] == "agent_trade_thesis"
 
 
 def test_auto_paper_ops_check_reports_long_running_dependency_chain(tmp_path: Path) -> None:
@@ -142,6 +181,61 @@ def test_auto_paper_web_monitor_is_local_readonly_entrypoint() -> None:
     assert '"real_orders": False' in source
     assert '"signed_requests": False' in source
     assert '"reads_api_keys": False' in source
+
+
+def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constraints() -> None:
+    monitor = load_web_monitor_module()
+    checks = [
+        {"id": "python_available", "ok": True},
+        {"id": "project_source_exists", "ok": True},
+        {"id": "runtime_parent_exists", "ok": True},
+        {"id": "runtime_parent_writable", "ok": True},
+        {"id": "state_path_under_runtime", "ok": True},
+        {"id": "ledger_path_under_runtime", "ok": True},
+        {"id": "archive_path_under_runtime", "ok": True},
+        {"id": "journal_path_under_runtime", "ok": True},
+        {"id": "log_file_under_runtime", "ok": True},
+        {"id": "pid_file_under_runtime", "ok": True},
+        {"id": "no_binance_credential_env_names", "ok": True},
+    ]
+
+    nodes = monitor.build_dependency_health(
+        status={
+            "running": True,
+            "agent_sizing_required": True,
+            "agent_trade_thesis_path": "",
+            "paper_autonomy_profile_path": "",
+            "portfolio_risk_policy_path": "",
+            "paper_kill_switch_path": "",
+            "safety": {
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+                "binance_account_state": False,
+            },
+        },
+        health={
+            "ok": False,
+            "status": "degraded",
+            "alerts": ["last_error_present"],
+            "heartbeat": {"ok": True, "stale": False},
+            "service_state": {"cycles_attempted": 3},
+            "archive": {"ok": True, "cycle_count": 3, "last_action": "PROCESSED"},
+            "ledger": {"ok": True},
+            "audit_journal": {"ok": True, "chain_valid": True},
+        },
+        ops={"ok": True, "checks": checks},
+        audit={"ok": True, "chain_valid": True},
+        latest_cycle={"input_change": {"trigger_reason": "new_signal_event"}, "events": {"ok": True, "events": []}},
+    )
+    by_id = {item["id"]: item for item in nodes}
+
+    assert by_id["context_audit"]["status"] == "ok"
+    assert by_id["risk_controls"]["status"] == "ok"
+    assert "默认不启用本地组合约束" in by_id["risk_controls"]["detail"]
+    assert "not_configured" not in by_id["risk_controls"]["detail"]
+    assert by_id["trade_thesis"]["status"] == "warn"
+    assert "等待 Agent" in by_id["trade_thesis"]["detail"]
 
 
 def test_auto_paper_web_monitor_extracts_auditable_decision_text() -> None:
@@ -371,7 +465,10 @@ def test_auto_paper_web_monitor_uses_latest_cycle_with_pipeline_for_decision_tex
                     {
                         "schema": "tradecat_auto.service_cycle.v1",
                         "action": "PROCESSED",
-                        "pipeline_report": {"schema": "tradecat_auto.run_once_report.v1", "selected_symbol": "IRYSUSDT"},
+                        "pipeline_report": {
+                            "schema": "tradecat_auto.run_once_report.v1",
+                            "selected_symbol": "IRYSUSDT",
+                        },
                     },
                     ensure_ascii=False,
                 ),
@@ -541,7 +638,18 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert "Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_LEVERAGE=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH=" not in service_text
-    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH=" not in service_text
+    assert (
+        f"Environment=TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH={runtime_dir / 'paper_autonomy_profile.json'}"
+        in service_text
+    )
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT=10" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE=1" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY=sheet_signal_or_taker_flow" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS=" not in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_FEE_BPS=4" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=0" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES=0" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_NOTIONAL_USDT=" not in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH={runtime_dir / 'paper_audit.sqlite3'}" in service_text
@@ -600,6 +708,55 @@ def test_auto_paper_cycle_omits_margin_budget_arg_when_unset(tmp_path: Path) -> 
     assert "--paper-autonomy-profile-path" in argv
     assert str(tmp_path / "paper-autonomy.json") in argv
     assert "--paper-margin-budget-usdt" not in argv
+    assert "--event-limit" in argv
+    assert argv[argv.index("--event-limit") + 1] == "0"
+    assert "--max-event-age-seconds" not in argv
+
+
+def test_auto_paper_cycle_refreshes_default_runtime_autonomy_profile(tmp_path: Path) -> None:
+    argv_path = tmp_path / "argv.json"
+    fake_python = tmp_path / "fake-python"
+    fake_python.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "if len(sys.argv) > 1 and sys.argv[1] == '-':\n"
+        "    exec(sys.stdin.read())\n"
+        "else:\n"
+        "    open(os.environ['ARGV_PATH'], 'w', encoding='utf-8').write(json.dumps(sys.argv))\n"
+        "    print(json.dumps({'schema': 'fake.cycle', 'ok': True}))\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    runtime_dir = tmp_path / "run"
+    runtime_dir.mkdir()
+    profile_path = runtime_dir / "paper_autonomy_profile.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "schema": "tradecat_auto.paper_autonomy_profile.v1",
+                "schema_version": "1.0.0",
+                "paper_intent": {"direction_policy": "price_momentum_on_conflict"},
+                "provenance": {"source": "local_operator_runtime_profile"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = {
+        "PYTHON_BIN": str(fake_python),
+        "ARGV_PATH": str(argv_path),
+        "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir),
+    }
+
+    proc = run_service_script(["_cycle"], env=env)
+
+    assert proc.returncode == 0, proc.stderr
+    refreshed = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert refreshed["provenance"]["source"] == "scripts/start-auto-paper.sh"
+    assert refreshed["paper_intent"]["direction_policy"] == "sheet_signal_or_taker_flow"
+    assert refreshed["paper_intent"]["allow_signal_reject_override"] is True
+    argv = json.loads(argv_path.read_text(encoding="utf-8"))
+    assert "--paper-autonomy-profile-path" in argv
+    assert argv[argv.index("--paper-autonomy-profile-path") + 1] == str(profile_path)
 
 
 def test_auto_paper_systemd_uninstall_removes_user_units(tmp_path: Path) -> None:
@@ -657,7 +814,9 @@ def test_auto_paper_script_exposes_self_contained_health_daily_and_alert_entrypo
         ),
         encoding="utf-8",
     )
-    (runtime_dir / "cycles.jsonl").write_text('{"schema":"tradecat_auto.service_cycle.v1","action":"PROCESSED","ok":true}\n', encoding="utf-8")
+    (runtime_dir / "cycles.jsonl").write_text(
+        '{"schema":"tradecat_auto.service_cycle.v1","action":"PROCESSED","ok":true}\n', encoding="utf-8"
+    )
     append_audit_record(
         runtime_dir / "paper_audit.sqlite3",
         event_type="service_cycle",
@@ -665,7 +824,10 @@ def test_auto_paper_script_exposes_self_contained_health_daily_and_alert_entrypo
         run_id="script-health",
         idempotency_key="service_cycle:script-health",
     )
-    env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir), "TRADECAT_AUTO_PAPER_MAX_HEARTBEAT_AGE_SECONDS": "999999999"}
+    env = {
+        "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir),
+        "TRADECAT_AUTO_PAPER_MAX_HEARTBEAT_AGE_SECONDS": "999999999",
+    }
 
     health_proc = run_service_script(["health", "--json"], env=env)
     assert health_proc.returncode == 0, health_proc.stderr

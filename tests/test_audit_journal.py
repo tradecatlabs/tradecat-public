@@ -76,7 +76,9 @@ class AuditJournalTests(unittest.TestCase):
             self.assertTrue(summary["chain_valid"])
             self.assertEqual(summary["sqlite_user_version"], 1)
 
-    def test_record_service_cycle_persists_config_snapshot_decision_orders_fills_and_rejects_real_order_payloads(self) -> None:
+    def test_record_service_cycle_persists_config_snapshot_decision_orders_fills_and_rejects_real_order_payloads(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "paper_audit.sqlite3"
             cycle = {
@@ -88,7 +90,11 @@ class AuditJournalTests(unittest.TestCase):
                     "selected_symbol": "IRYSUSDT",
                     "signal": {"schema": "tradecat_auto.signal_score.v1", "direction": "LONG", "score": 80},
                     "risk_decision": {"schema": "tradecat_auto.risk_decision.v1", "decision": "ALLOW"},
-                    "paper_execution": {"schema": "tradecat_auto.paper_execution_report.v1", "status": "OPENED", "paper_execution_id": "exec-1"},
+                    "paper_execution": {
+                        "schema": "tradecat_auto.paper_execution_report.v1",
+                        "status": "OPENED",
+                        "paper_execution_id": "exec-1",
+                    },
                     "paper_ledger": {},
                 },
                 "paper_ledger": {
@@ -120,7 +126,9 @@ class AuditJournalTests(unittest.TestCase):
 
             bad_cycle = dict(cycle)
             bad_cycle["paper_ledger"] = {"recent_paper_orders": [{"order_id": "bad", "real_order": True}]}
-            bad = record_service_cycle(path, bad_cycle, run_id="run-prod-2", config_snapshot={}, created_at="2026-05-15T00:00:01Z")
+            bad = record_service_cycle(
+                path, bad_cycle, run_id="run-prod-2", config_snapshot={}, created_at="2026-05-15T00:00:01Z"
+            )
             self.assertFalse(bad["ok"])
             self.assertEqual(bad["error"]["code"], "real_order_payload_rejected")
 
@@ -151,10 +159,16 @@ class AuditJournalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for index, payload in enumerate(forbidden_payloads):
                 path = Path(tmp) / f"paper_audit_{index}.sqlite3"
-                cycle = {"schema": "tradecat_auto.service_cycle.v1", "action": "PROCESSED", "latest_event": {"event_id": f"evt-{index}"}}
+                cycle = {
+                    "schema": "tradecat_auto.service_cycle.v1",
+                    "action": "PROCESSED",
+                    "latest_event": {"event_id": f"evt-{index}"},
+                }
                 cycle.update(payload)
 
-                result = record_service_cycle(path, cycle, run_id=f"run-{index}", config_snapshot={}, created_at="2026-05-15T00:00:00Z")
+                result = record_service_cycle(
+                    path, cycle, run_id=f"run-{index}", config_snapshot={}, created_at="2026-05-15T00:00:00Z"
+                )
 
                 self.assertFalse(result["ok"], payload)
                 self.assertEqual(result["error"]["code"], "real_order_payload_rejected")

@@ -32,9 +32,15 @@ class ReplayReportingTests(unittest.TestCase):
                                     "research_cycle_run_id": "cycle-1",
                                     "signal": {"direction": "LONG", "score": 80},
                                     "risk_decision": {"decision": "ALLOW"},
-                                    "paper_execution": {"status": "OPENED", "paper_execution_id": "exec-1", "research_cycle_run_id": "cycle-1"},
+                                    "paper_execution": {
+                                        "status": "OPENED",
+                                        "paper_execution_id": "exec-1",
+                                        "research_cycle_run_id": "cycle-1",
+                                    },
                                 },
-                                "paper_ledger": {"recent_fills": [{"fill_id": "fill-1", "research_cycle_run_id": "cycle-1"}]},
+                                "paper_ledger": {
+                                    "recent_fills": [{"fill_id": "fill-1", "research_cycle_run_id": "cycle-1"}]
+                                },
                             }
                         ),
                         json.dumps(

@@ -171,6 +171,44 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(report["paper_execution"]["exit_plan_source"], "agent_trade_thesis")
         self.assertFalse(report["paper_execution"]["allow_multiple_open_positions_per_symbol"])
 
+    def test_build_paper_pipeline_report_estimates_taker_cost_from_public_depth(self) -> None:
+        thesis = {
+            "schema": "tradecat_auto.agent_trade_thesis.v1",
+            "schema_version": "1.0.0",
+            "paper_intent": {"requested_margin_usdt": 7.5, "paper_leverage": 2.0},
+            "invalidation_price": 0.055,
+            "take_profit_price": 0.08,
+            "max_holding_minutes": 45,
+        }
+        market_bundle = {
+            **MARKET_BUNDLE,
+            "depth": {
+                "bids": [["0.0619", "1000"]],
+                "asks": [["0.0621", "1000"]],
+            },
+        }
+
+        report = build_paper_pipeline_report(
+            selected_symbol="IRYSUSDT",
+            anomaly_symbols=ANOMALY,
+            market_bundle=market_bundle,
+            events=EVENTS,
+            mode="paper",
+            agent_trade_thesis=thesis,
+        )
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["paper_execution_cost"]["schema"], "tradecat_auto.paper_execution_cost_model.v1")
+        self.assertTrue(report["paper_execution_cost"]["ok"])
+        self.assertEqual(report["paper_execution_cost"]["price_source"], "binance_usdm_public_order_book_depth")
+        self.assertEqual(report["paper_execution_cost"]["fee_bps"], 4.0)
+        self.assertEqual(report["paper_execution"]["paper_fee_bps"], 4.0)
+        self.assertEqual(report["paper_execution"]["paper_fee_model"], "binance_usdm_public_docs_vip0_taker_fallback")
+        self.assertEqual(report["paper_execution"]["entry_price_source"], "binance_usdm_public_order_book_depth")
+        self.assertTrue(report["paper_execution"]["entry_price_includes_slippage"])
+        self.assertAlmostEqual(report["paper_execution"]["raw_entry_price"], 0.062)
+        self.assertAlmostEqual(report["paper_execution"]["entry_price"], 0.0621)
+
     def test_build_paper_pipeline_report_uses_paper_autonomy_profile_when_thesis_missing(self) -> None:
         report = build_paper_pipeline_report(
             selected_symbol="IRYSUSDT",
@@ -243,6 +281,45 @@ class PipelineTests(unittest.TestCase):
         self.assertAlmostEqual(with_override["paper_execution"]["stop_loss_price"], 303.0)
         self.assertAlmostEqual(with_override["paper_execution"]["take_profit_price"], 294.0)
         self.assertFalse(with_override["paper_execution"]["real_orders"])
+
+    def test_paper_autonomy_profile_can_follow_sheet_signal_direction(self) -> None:
+        anomaly = {
+            "symbols": [
+                {
+                    "raw_symbol": "IRYS",
+                    "normalized_symbol": "IRYSUSDT",
+                    "source_dataset_key": "signal_flow",
+                    "source_values": {
+                        "交易对": "IRYS",
+                        "类型": "主动卖盘占优",
+                        "内容": "主动卖盘占优；方向=卖出，强度=87",
+                    },
+                }
+            ]
+        }
+        profile = {
+            **PAPER_AUTONOMY_PROFILE,
+            "paper_intent": {
+                **PAPER_AUTONOMY_PROFILE["paper_intent"],
+                "direction_policy": "sheet_signal_or_taker_flow",
+                "allow_signal_reject_override": True,
+                "min_signal_score": 0,
+            },
+        }
+        report = build_paper_pipeline_report(
+            selected_symbol="IRYSUSDT",
+            anomaly_symbols=anomaly,
+            market_bundle=MARKET_BUNDLE,
+            events=EVENTS,
+            mode="paper",
+            paper_autonomy_profile=profile,
+        )
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["agent_trade_thesis"]["direction"], "SHORT")
+        self.assertEqual(report["paper_execution"]["status"], "OPENED")
+        self.assertEqual(report["paper_execution"]["side"], "SHORT")
+        self.assertTrue(report["signal"]["agent_direction_override"]["ok"])
 
     def test_build_paper_pipeline_report_rejects_missing_anomaly_symbol(self) -> None:
         report = build_paper_pipeline_report(

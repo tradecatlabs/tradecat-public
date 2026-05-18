@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-latest-cycle-report.schema.json",
+  "title": "TradeCat Auto Latest Cycle Report",
+  "description": "Latest local auto-paper service-cycle archive record summary.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "error_code",
+    "archive_path",
+    "cycle",
+    "summary",
+    "provenance",
+    "safety"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat_auto.latest_cycle_report.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "error_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "archive_path": {
+      "type": "string"
+    },
+    "cycle": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "source",
+        "archive_path"
+      ],
+      "properties": {
+        "source": {
+          "const": "local_tradecat_cycle_archive"
+        },
+        "archive_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "safety": {
+      "$ref": "#/$defs/safety"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "safety": {
+      "type": "object",
+      "properties": {
+        "public_readonly_market_data": {
+          "const": true
+        },
+        "public_readonly": {
+          "const": true
+        },
+        "paper_or_watch_only": {
+          "const": true
+        },
+        "real_orders": {
+          "const": false
+        },
+        "signed_requests": {
+          "const": false
+        },
+        "reads_api_keys": {
+          "const": false
+        },
+        "binance_account_state": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

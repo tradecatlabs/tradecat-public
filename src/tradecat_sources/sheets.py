@@ -79,9 +79,7 @@ def fetch_csv_body(url: str, timeout: float = 30.0, *, attempts: int = DEFAULT_A
         "headers": {"User-Agent": USER_AGENT},
     }
     proxy_url = _proxy_url_for(url)
-    http = urllib3.ProxyManager(proxy_url, **manager_kwargs) if proxy_url else urllib3.PoolManager(
-        **manager_kwargs
-    )
+    http = urllib3.ProxyManager(proxy_url, **manager_kwargs) if proxy_url else urllib3.PoolManager(**manager_kwargs)
     try:
         response = http.request("GET", url)
     except Exception as exc:
@@ -160,7 +158,9 @@ def find_header_row_index(rows: list[list[str]]) -> int:
 
 def is_public_top_row(row: Sequence[str]) -> bool:
     first = row[0].strip() if row else ""
-    return first.startswith("https://") or first.startswith("http://") or first.startswith("数据源，") or first == "数据源"
+    return (
+        first.startswith("https://") or first.startswith("http://") or first.startswith("数据源，") or first == "数据源"
+    )
 
 
 def is_section_header_row(row: Sequence[str]) -> bool:
@@ -168,7 +168,9 @@ def is_section_header_row(row: Sequence[str]) -> bool:
     if not cells or not cells[0] or is_public_top_row(row):
         return False
     tail = [cell for cell in cells[1:] if cell]
-    return "序号" in tail and any(cell in {"交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"} for cell in tail)
+    return "序号" in tail and any(
+        cell in {"交易对", "合约代码", "币种符号", "symbol", "Symbol", "SYMBOL"} for cell in tail
+    )
 
 
 def sectioned_data_rows(matrix: list[list[str]], start_index: int) -> list[dict[str, str]]:

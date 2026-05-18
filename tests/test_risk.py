@@ -182,7 +182,9 @@ class RiskTests(unittest.TestCase):
         self.assertIn("max_total_notional_reached", decision["reasons"])
         self.assertIn("max_symbol_risk_reached", decision["reasons"])
         self.assertIn("max_leverage_exceeded", decision["reasons"])
-        self.assertEqual(decision["policy"]["portfolio_risk_policy"]["schema"], "tradecat_auto.portfolio_risk_policy.v1")
+        self.assertEqual(
+            decision["policy"]["portfolio_risk_policy"]["schema"], "tradecat_auto.portfolio_risk_policy.v1"
+        )
         self.assertFalse(decision["real_orders"])
 
     def test_portfolio_risk_policy_requires_confidence_and_symbol_risk_when_limits_are_enabled(self) -> None:

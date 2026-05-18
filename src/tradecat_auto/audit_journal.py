@@ -103,7 +103,9 @@ def append_audit_record(
     payload_json = _canonical_json(clean_payload)
     payload_sha = _sha256(payload_json)
     clean_idempotency_key = str(idempotency_key or "").strip()
-    clean_record_id = str(record_id or "").strip() or _record_id(clean_run_id, clean_event_type, clean_idempotency_key, payload_sha)
+    clean_record_id = str(record_id or "").strip() or _record_id(
+        clean_run_id, clean_event_type, clean_idempotency_key, payload_sha
+    )
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
@@ -147,7 +149,9 @@ def append_audit_record(
                 ),
             )
         except sqlite3.IntegrityError:
-            existing = _get_record_by_idempotency_key(conn, clean_idempotency_key) or _get_record_by_id(conn, clean_record_id)
+            existing = _get_record_by_idempotency_key(conn, clean_idempotency_key) or _get_record_by_id(
+                conn, clean_record_id
+            )
             if existing is not None:
                 return _record_result(existing, inserted=False, path=db_path)
             raise
@@ -180,7 +184,13 @@ def record_service_cycle(
     _ensure_run(db_path, clean_run_id, config, created_at=created)
 
     writes: list[tuple[str, dict[str, Any], str]] = []
-    writes.append(("run_config_snapshot", _config_payload(config), f"run_config:{clean_run_id}:{_sha256(_canonical_json(config))}"))
+    writes.append(
+        (
+            "run_config_snapshot",
+            _config_payload(config),
+            f"run_config:{clean_run_id}:{_sha256(_canonical_json(config))}",
+        )
+    )
     event_id = _event_id(cycle)
     writes.append(("service_cycle", cycle, f"service_cycle:{clean_run_id}:{event_id}:{cycle.get('action')}"))
     raw_pipeline = cycle.get("pipeline_report")
@@ -241,7 +251,9 @@ def journal_summary(path: Path | str) -> dict[str, Any]:
         with _connect(db_path, read_only=True) as conn:
             event_type_counts = {
                 str(row["event_type"]): int(row["count"])
-                for row in conn.execute("select event_type, count(*) as count from audit_records group by event_type order by event_type")
+                for row in conn.execute(
+                    "select event_type, count(*) as count from audit_records group by event_type order by event_type"
+                )
             }
             record_count = int(conn.execute("select count(*) from audit_records").fetchone()[0])
             run_count = int(conn.execute("select count(*) from production_runs").fetchone()[0])
@@ -286,7 +298,12 @@ def _journal_summary_error(path: Path, *, code: str, message: str, chain_valid: 
         "latest_record_sha256": "",
         "chain_valid": chain_valid,
         "chain_error": None if chain_valid else code,
-        "error": {"code": code, "kind": "local_runtime", "message": message, "retryable": code == "audit_journal_missing"},
+        "error": {
+            "code": code,
+            "kind": "local_runtime",
+            "message": message,
+            "retryable": code == "audit_journal_missing",
+        },
         "safety": _safety_boundary(),
     }
 

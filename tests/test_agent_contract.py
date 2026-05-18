@@ -31,10 +31,13 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-daily-paper-report.schema.json": "tradecat_auto.daily_paper_report.v1",
     "tradecat-auto-decision-quality-report.schema.json": "tradecat_auto.decision_quality_report.v1",
     "tradecat-auto-decision-trace-report.schema.json": "tradecat_auto.decision_trace_report.v1",
+    "tradecat-auto-latest-cycle-report.schema.json": "tradecat_auto.latest_cycle_report.v1",
+    "tradecat-auto-latest-decision-report.schema.json": "tradecat_auto.latest_decision_report.v1",
     "tradecat-auto-market-universe.schema.json": "tradecat_auto.market_universe.v1",
     "tradecat-auto-paper-account-state.schema.json": "tradecat_auto.paper_account_state.v1",
     "tradecat-auto-paper-autonomy-profile.schema.json": "tradecat_auto.paper_autonomy_profile.v1",
     "tradecat-auto-paper-backtest-report.schema.json": "tradecat_auto.paper_backtest_report.v1",
+    "tradecat-auto-paper-execution-cost-model.schema.json": "tradecat_auto.paper_execution_cost_model.v1",
     "tradecat-auto-paper-ops-report.schema.json": "tradecat_auto.paper_ops_report.v1",
     "tradecat-auto-paper-report.schema.json": "tradecat_auto.paper_report.v1",
     "tradecat-auto-paper-service-status.schema.json": "tradecat_auto.paper_service_status.v1",
@@ -42,6 +45,7 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-position-management-action-report.schema.json": "tradecat_auto.position_management_action_report.v1",
     "tradecat-auto-position-management-thesis.schema.json": "tradecat_auto.position_management_thesis.v1",
     "tradecat-auto-production-health.schema.json": "tradecat_auto.production_health.v1",
+    "tradecat-auto-public-market-snapshot.schema.json": "tradecat_auto.public_market_snapshot.v1",
     "tradecat-auto-public-probe.schema.json": "tradecat_auto.public_probe.v1",
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
     "tradecat-auto-run-once-report.schema.json": "tradecat_auto.run_once_report.v1",
@@ -77,9 +81,7 @@ def test_skill_package_governance_is_agent_runtime_focused():
     assert governance["implementation_project_root"] == "."
     assert governance["no_second_truth"] is True
     assert "src/tradecat_terminal" in governance["forbidden_root_paths"]
-    assert {".runtime/**", ".hermes/**", ".venv/**", "project/**", "tasks/**"} <= set(
-        governance["local_runtime_paths"]
-    )
+    assert {".runtime/**", ".hermes/**", ".venv/**", "project/**", "tasks/**"} <= set(governance["local_runtime_paths"])
     assert "paper/watch" in governance["safety_boundary"]
 
 
@@ -132,9 +134,14 @@ def test_manifest_advertises_agent_runtime_entrypoints_only():
     mutating = {item["command"] for item in payload["preferred_mutating_entrypoints"]}
 
     assert "python3 scripts/request.py signal_flow --format json --limit 5" in readonly
+    assert "bash scripts/binance-public-snapshot.sh --symbols BTCUSDT,ETHUSDT --json" in readonly
     assert "bash scripts/run-tradecat.sh soft-layer --json" in readonly
+    assert "bash scripts/run-tradecat.sh latest-decision --json" in readonly
     assert "bash scripts/run-tradecat.sh context-audit --input /path/to/agent-market-context.json --json" in readonly
-    assert "bash scripts/run-tradecat.sh run-context --input /path/to/agent-market-context.json --mode paper --json" in mutating
+    assert (
+        "bash scripts/run-tradecat.sh run-context --input /path/to/agent-market-context.json --mode paper --json"
+        in mutating
+    )
     assert "bash scripts/start-auto-paper.sh start --json" in mutating
     assert not any("tradecat tui" in item or "scripts/start.sh" in item for item in readonly | mutating)
 

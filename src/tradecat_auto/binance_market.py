@@ -60,7 +60,9 @@ def extract_trading_usdt_perpetual_symbols(exchange_info: dict[str, Any]) -> lis
     return result
 
 
-def normalize_to_usdt_perp_symbol(raw_symbol: str, tradable_symbols: set[str] | list[str] | tuple[str, ...]) -> str | None:
+def normalize_to_usdt_perp_symbol(
+    raw_symbol: str, tradable_symbols: set[str] | list[str] | tuple[str, ...]
+) -> str | None:
     tradable = {str(item).upper().strip() for item in tradable_symbols if str(item).strip()}
     text = str(raw_symbol or "").upper().strip()
     if not text:
@@ -151,7 +153,9 @@ class BinanceMarketClient:
     def reset_api_usage(self) -> None:
         self._usage = _new_usage()
 
-    def request_json(self, path: str, params: dict[str, Any] | None = None, *, cache_ttl_seconds: float | None = None) -> Any:
+    def request_json(
+        self, path: str, params: dict[str, Any] | None = None, *, cache_ttl_seconds: float | None = None
+    ) -> Any:
         clean_path = path if path.startswith("/") else f"/{path}"
         url = self._url(clean_path, params)
         ttl = self.cache_ttl_seconds if cache_ttl_seconds is None else max(0.0, float(cache_ttl_seconds or 0.0))
@@ -212,20 +216,37 @@ class BinanceMarketClient:
             "safety": _safety_boundary(),
         }
 
-    def fetch_public_market_bundle(self, symbol: str, *, period: str = "5m", depth_limit: int = 5, hist_limit: int = 2) -> dict[str, Any]:
+    def fetch_public_market_bundle(
+        self, symbol: str, *, period: str = "5m", depth_limit: int = 20, hist_limit: int = 2
+    ) -> dict[str, Any]:
         normalized_symbol = str(symbol or "").upper().strip()
         endpoints: dict[str, tuple[str, dict[str, Any]]] = {
             "ticker24hr": ("/fapi/v1/ticker/24hr", {"symbol": normalized_symbol}),
             "bookTicker": ("/fapi/v1/ticker/bookTicker", {"symbol": normalized_symbol}),
             "depth": ("/fapi/v1/depth", {"symbol": normalized_symbol, "limit": depth_limit}),
             "openInterest": ("/fapi/v1/openInterest", {"symbol": normalized_symbol}),
-            "openInterestHist": ("/futures/data/openInterestHist", {"symbol": normalized_symbol, "period": period, "limit": hist_limit}),
+            "openInterestHist": (
+                "/futures/data/openInterestHist",
+                {"symbol": normalized_symbol, "period": period, "limit": hist_limit},
+            ),
             "fundingRate": ("/fapi/v1/fundingRate", {"symbol": normalized_symbol, "limit": 1}),
             "premiumIndex": ("/fapi/v1/premiumIndex", {"symbol": normalized_symbol}),
-            "topLongShortAccountRatio": ("/futures/data/topLongShortAccountRatio", {"symbol": normalized_symbol, "period": period, "limit": 1}),
-            "topLongShortPositionRatio": ("/futures/data/topLongShortPositionRatio", {"symbol": normalized_symbol, "period": period, "limit": 1}),
-            "globalLongShortAccountRatio": ("/futures/data/globalLongShortAccountRatio", {"symbol": normalized_symbol, "period": period, "limit": 1}),
-            "takerlongshortRatio": ("/futures/data/takerlongshortRatio", {"symbol": normalized_symbol, "period": period, "limit": 1}),
+            "topLongShortAccountRatio": (
+                "/futures/data/topLongShortAccountRatio",
+                {"symbol": normalized_symbol, "period": period, "limit": 1},
+            ),
+            "topLongShortPositionRatio": (
+                "/futures/data/topLongShortPositionRatio",
+                {"symbol": normalized_symbol, "period": period, "limit": 1},
+            ),
+            "globalLongShortAccountRatio": (
+                "/futures/data/globalLongShortAccountRatio",
+                {"symbol": normalized_symbol, "period": period, "limit": 1},
+            ),
+            "takerlongshortRatio": (
+                "/futures/data/takerlongshortRatio",
+                {"symbol": normalized_symbol, "period": period, "limit": 1},
+            ),
         }
         bundle: dict[str, Any] = {
             "schema": "tradecat_auto.public_market_bundle.v1",
@@ -253,6 +274,149 @@ class BinanceMarketClient:
             bundle["depth_summary"] = summarize_depth(bundle["depth"])
         bundle["api_usage"] = self.api_usage()
         return bundle
+
+    def fetch_last_price(self, symbol: str) -> dict[str, Any]:
+        normalized_symbol = str(symbol or "").upper().strip()
+        try:
+            payload = self.request_json("/fapi/v1/ticker/price", {"symbol": normalized_symbol})
+            price = _float_from_mapping(payload, "price")
+        except Exception as exc:
+            return {
+                "schema": "tradecat_auto.public_last_price.v1",
+                "schema_version": "1.0.0",
+                "ok": False,
+                "error_code": "public_last_price_failed",
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+                "symbol": normalized_symbol,
+                "last_price": None,
+                "error": f"{type(exc).__name__}: {exc}",
+                "api_usage": self.api_usage(),
+                "provenance": {"source": "binance_usdm_public_ticker_price", "endpoint": "/fapi/v1/ticker/price"},
+                "safety": _safety_boundary(),
+            }
+        return {
+            "schema": "tradecat_auto.public_last_price.v1",
+            "schema_version": "1.0.0",
+            "ok": price is not None,
+            "error_code": None if price is not None else "public_last_price_missing",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "symbol": normalized_symbol,
+            "last_price": price,
+            "raw": payload if isinstance(payload, dict) else {},
+            "api_usage": self.api_usage(),
+            "provenance": {"source": "binance_usdm_public_ticker_price", "endpoint": "/fapi/v1/ticker/price"},
+            "safety": _safety_boundary(),
+        }
+
+    def fetch_last_prices(self, symbols: list[str] | tuple[str, ...] | set[str]) -> dict[str, Any]:
+        requested_symbols = _normalize_symbol_list(symbols)
+        try:
+            payload = self.request_json("/fapi/v1/ticker/price")
+            rows_by_symbol = _rows_by_symbol(payload, requested_symbols)
+            prices: dict[str, float] = {}
+            missing: list[str] = []
+            target_symbols = requested_symbols or sorted(rows_by_symbol)
+            for symbol in target_symbols:
+                price = _float_from_mapping(rows_by_symbol.get(symbol), "price")
+                if price is None:
+                    missing.append(symbol)
+                else:
+                    prices[symbol] = price
+        except Exception as exc:
+            return {
+                "schema": "tradecat_auto.public_last_prices.v1",
+                "schema_version": "1.0.0",
+                "ok": False,
+                "error_code": "public_last_prices_failed",
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+                "symbols": requested_symbols,
+                "prices": {},
+                "missing_symbols": requested_symbols,
+                "error": f"{type(exc).__name__}: {exc}",
+                "api_usage": self.api_usage(),
+                "provenance": {"source": "binance_usdm_public_ticker_price_batch", "endpoint": "/fapi/v1/ticker/price"},
+                "safety": _safety_boundary(),
+            }
+        return {
+            "schema": "tradecat_auto.public_last_prices.v1",
+            "schema_version": "1.0.0",
+            "ok": not missing,
+            "error_code": None if not missing else "public_last_prices_partial_missing",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "symbols": target_symbols,
+            "prices": prices,
+            "missing_symbols": missing,
+            "api_usage": self.api_usage(),
+            "provenance": {"source": "binance_usdm_public_ticker_price_batch", "endpoint": "/fapi/v1/ticker/price"},
+            "safety": _safety_boundary(),
+        }
+
+    def fetch_public_market_snapshot(self, symbols: list[str] | tuple[str, ...] | set[str]) -> dict[str, Any]:
+        requested_symbols = _normalize_symbol_list(symbols)
+        endpoints: dict[str, str] = {
+            "tickerPrice": "/fapi/v1/ticker/price",
+            "ticker24hr": "/fapi/v1/ticker/24hr",
+            "bookTicker": "/fapi/v1/ticker/bookTicker",
+            "premiumIndex": "/fapi/v1/premiumIndex",
+        }
+        snapshot: dict[str, Any] = {
+            "schema": "tradecat_auto.public_market_snapshot.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "error_code": None,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "base_url": self.base_url,
+            "symbols": requested_symbols,
+            "batchable_endpoint_families": ["ticker_price", "24h_ticker", "book_ticker", "premium_index"],
+            "per_symbol_endpoint_families": [
+                "order_book_depth",
+                "open_interest",
+                "open_interest_history",
+                "funding_rate_history",
+                "long_short_ratios",
+                "taker_buy_sell_volume",
+                "klines",
+            ],
+            "errors": {},
+            "provenance": {
+                "source": "binance_usdm_public_market_snapshot",
+                "endpoint_count": len(endpoints),
+                "batched_without_symbol_param": True,
+            },
+            "safety": _safety_boundary(),
+        }
+        discovered_symbols: set[str] = set(requested_symbols)
+        for name, endpoint_path in endpoints.items():
+            try:
+                payload = self.request_json(endpoint_path)
+                rows = _rows_by_symbol(payload, requested_symbols)
+                snapshot[name] = rows
+                discovered_symbols.update(rows)
+            except Exception as exc:
+                snapshot["ok"] = False
+                snapshot["error_code"] = "public_market_snapshot_partial_failure"
+                snapshot["errors"][name] = f"{type(exc).__name__}: {exc}"
+                snapshot[name] = {}
+        if not requested_symbols:
+            snapshot["symbols"] = sorted(discovered_symbols)
+        price_rows = snapshot.get("tickerPrice") if isinstance(snapshot.get("tickerPrice"), dict) else {}
+        snapshot["prices"] = {
+            symbol: price
+            for symbol, row in price_rows.items()
+            if (price := _float_from_mapping(row, "price")) is not None
+        }
+        snapshot["api_usage"] = self.api_usage()
+        return snapshot
 
     def _url(self, path: str, params: dict[str, Any] | None = None) -> str:
         clean_path = path if path.startswith("/") else f"/{path}"
@@ -317,6 +481,44 @@ def _endpoint_weight(path: str) -> int:
 
 def _is_transient(exc: BinanceApiError) -> bool:
     return exc.status in TRANSIENT_HTTP_STATUSES or exc.status is None
+
+
+def _float_from_mapping(value: Any, key: str) -> float | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        return float(value.get(key))
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_symbol_list(symbols: Any) -> list[str]:
+    if isinstance(symbols, str):
+        raw_items = symbols.replace(",", " ").split()
+    else:
+        raw_items = list(symbols or [])
+    return list(dict.fromkeys(str(item or "").upper().strip() for item in raw_items if str(item or "").strip()))
+
+
+def _rows_by_symbol(payload: Any, requested_symbols: list[str]) -> dict[str, dict[str, Any]]:
+    requested = set(requested_symbols)
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        rows = [payload]
+    else:
+        rows = []
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        if not symbol:
+            continue
+        if requested and symbol not in requested:
+            continue
+        result[symbol] = row
+    return result
 
 
 def _safety_boundary() -> dict[str, bool]:

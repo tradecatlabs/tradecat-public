@@ -12,7 +12,7 @@ PAPER_ACCOUNT_STATE_SCHEMA = "tradecat_auto.paper_account_state.v1"
 POSITION_MANAGEMENT_ACTION_REPORT_SCHEMA = "tradecat_auto.position_management_action_report.v1"
 SCHEMA_VERSION = "1.0.0"
 DEFAULT_INITIAL_BALANCE_USDT = 1000.0
-DEFAULT_FEE_BPS = 2.0
+DEFAULT_FEE_BPS = 4.0
 DEFAULT_SLIPPAGE_BPS = 0.0
 
 
@@ -43,7 +43,9 @@ def default_paper_ledger(*, initial_balance_usdt: float = DEFAULT_INITIAL_BALANC
     }
 
 
-def load_paper_ledger(path: Path | str, *, initial_balance_usdt: float = DEFAULT_INITIAL_BALANCE_USDT) -> dict[str, Any]:
+def load_paper_ledger(
+    path: Path | str, *, initial_balance_usdt: float = DEFAULT_INITIAL_BALANCE_USDT
+) -> dict[str, Any]:
     p = Path(path)
     if not p.exists():
         return default_paper_ledger(initial_balance_usdt=initial_balance_usdt)
@@ -119,7 +121,10 @@ def apply_paper_execution(
 
     open_positions = updated.setdefault("open_positions", {})
     max_concurrent = _positive_int(execution.get("max_concurrent_positions_per_symbol"))
-    allow_multiple = bool(execution.get("allow_multiple_open_positions_per_symbol") is True or (max_concurrent is not None and max_concurrent > 1))
+    allow_multiple = bool(
+        execution.get("allow_multiple_open_positions_per_symbol") is True
+        or (max_concurrent is not None and max_concurrent > 1)
+    )
     same_symbol_count = _open_position_count_for_symbol(open_positions, symbol)
     if same_symbol_count and not allow_multiple:
         updated["last_rejected_execution"] = {
@@ -154,9 +159,14 @@ def apply_paper_execution(
         updated["last_updated_at"] = now_text
         return _recalculate_equity(updated, now_iso=now_text)
 
-    fill_price = _slipped_price(entry_price, side, "OPEN", slippage_bps)
+    effective_fee_bps = _execution_fee_bps(execution, fee_bps)
+    fill_price = (
+        entry_price
+        if _entry_price_includes_slippage(execution)
+        else _slipped_price(entry_price, side, "OPEN", slippage_bps)
+    )
     fill_notional = abs(fill_price * quantity)
-    fee = fill_notional * float(fee_bps) / 10_000
+    fee = fill_notional * float(effective_fee_bps) / 10_000
     margin_usdt = fill_notional / leverage
     sizing_source = str(execution.get("sizing_source") or "").strip() or None
     research_cycle_run_id = str(execution.get("research_cycle_run_id") or "").strip() or None
@@ -165,7 +175,9 @@ def apply_paper_execution(
     max_holding_minutes = _num(execution.get("max_holding_minutes"))
     has_exit_plan = any(value is not None for value in (stop_loss_price, take_profit_price, max_holding_minutes))
     exit_management = str(execution.get("exit_management") or ("agent_supplied" if has_exit_plan else "agent_managed"))
-    exit_plan_source = str(execution.get("exit_plan_source") or ("execution_exit_fields" if has_exit_plan else "agent_required_missing"))
+    exit_plan_source = str(
+        execution.get("exit_plan_source") or ("execution_exit_fields" if has_exit_plan else "agent_required_missing")
+    )
     position_id = _position_id(execution_id, symbol)
     position_key = position_id if allow_multiple else symbol
     position = {
@@ -176,8 +188,12 @@ def apply_paper_execution(
         "status": "OPEN",
         "opened_at": str(execution.get("opened_at") or now_text),
         "entry_price": fill_price,
-        "raw_entry_price": entry_price,
+        "raw_entry_price": _num(execution.get("raw_entry_price")) or entry_price,
         "entry_fee_usdt": fee,
+        "fee_bps": effective_fee_bps,
+        "paper_fee_model": execution.get("paper_fee_model"),
+        "liquidity_role": execution.get("liquidity_role"),
+        "execution_cost_model": _execution_cost_model(execution),
         "quantity": quantity,
         "notional_usdt": fill_notional,
         "requested_notional_usdt": _num(execution.get("requested_notional_usdt")),
@@ -208,7 +224,7 @@ def apply_paper_execution(
             "symbol": symbol,
             "side": "BUY" if side == "LONG" else "SELL",
             "position_side": side,
-            "order_type": "PAPER_POST_ONLY_MAKER_ASSUMPTION",
+            "order_type": "PAPER_TAKER_PUBLIC_DEPTH_ESTIMATE",
             "status": "FILLED",
             "requested_price": entry_price,
             "filled_price": fill_price,
@@ -221,6 +237,10 @@ def apply_paper_execution(
             "sizing_source": sizing_source,
             "research_cycle_run_id": research_cycle_run_id,
             "fee_usdt": fee,
+            "fee_bps": effective_fee_bps,
+            "paper_fee_model": execution.get("paper_fee_model"),
+            "liquidity_role": execution.get("liquidity_role"),
+            "execution_cost_model": _execution_cost_model(execution),
             "created_at": now_text,
             "filled_at": now_text,
             "real_order": False,
@@ -248,6 +268,10 @@ def apply_paper_execution(
             "sizing_source": sizing_source,
             "research_cycle_run_id": research_cycle_run_id,
             "fee_usdt": fee,
+            "fee_bps": effective_fee_bps,
+            "paper_fee_model": execution.get("paper_fee_model"),
+            "liquidity_role": execution.get("liquidity_role"),
+            "execution_cost_model": _execution_cost_model(execution),
             "created_at": now_text,
         }
     )
@@ -258,7 +282,9 @@ def apply_paper_execution(
 
 
 def load_paper_ledger_from_object(value: dict[str, Any]) -> dict[str, Any]:
-    ledger = default_paper_ledger(initial_balance_usdt=float(value.get("initial_balance_usdt") or DEFAULT_INITIAL_BALANCE_USDT))
+    ledger = default_paper_ledger(
+        initial_balance_usdt=float(value.get("initial_balance_usdt") or DEFAULT_INITIAL_BALANCE_USDT)
+    )
     ledger.update(copy.deepcopy(value))
     ledger["schema"] = LEDGER_SCHEMA
     ledger["schema_version"] = SCHEMA_VERSION
@@ -296,7 +322,15 @@ def mark_to_market(
         position["unrealized_pnl_usdt"] = _position_pnl(position, mark_price)
         close_reason = _close_reason(position, mark_price, now_iso=now_text, max_holding_minutes=max_holding_minutes)
         if close_reason:
-            _close_position(updated, position_key, mark_price, close_reason, fee_bps=fee_bps, slippage_bps=slippage_bps, now_iso=now_text)
+            _close_position(
+                updated,
+                position_key,
+                mark_price,
+                close_reason,
+                fee_bps=fee_bps,
+                slippage_bps=slippage_bps,
+                now_iso=now_text,
+            )
     updated["last_updated_at"] = now_text
     return _recalculate_equity(updated, now_iso=now_text)
 
@@ -352,7 +386,11 @@ def apply_position_management_thesis(
     if safety_error:
         return {**base, "error_code": safety_error, "reason": reason or safety_error}
     if mode not in {"paper", "watch"}:
-        return {**base, "error_code": "position_management_mode_rejected", "reason": reason or "mode must be paper or watch"}
+        return {
+            **base,
+            "error_code": "position_management_mode_rejected",
+            "reason": reason or "mode must be paper or watch",
+        }
     if action in {"hold", "noop"}:
         return {
             **base,
@@ -362,7 +400,11 @@ def apply_position_management_thesis(
             "reason": reason or "no explicit paper position change requested",
         }
     if action not in {"close", "adjust_exit", "add", "reduce"}:
-        return {**base, "error_code": "position_management_action_unknown", "reason": reason or "unknown position management action"}
+        return {
+            **base,
+            "error_code": "position_management_action_unknown",
+            "reason": reason or "unknown position management action",
+        }
     if not reason:
         return {**base, "error_code": "position_management_reason_required", "reason": "Agent reason is required"}
     if action in {"add", "reduce"}:
@@ -385,7 +427,13 @@ def apply_position_management_thesis(
         exit_update = payload.get("exit_update") if isinstance(payload.get("exit_update"), dict) else {}
         updated_fields = _apply_exit_update(position, exit_update, now_text, reason, base["provenance"])
         if not updated_fields:
-            return {**base, "symbol": symbol, "position_id": position_id, "error_code": "position_exit_update_required", "reason": "Agent exit_update must contain stop_loss_price, take_profit_price, or max_holding_minutes"}
+            return {
+                **base,
+                "symbol": symbol,
+                "position_id": position_id,
+                "error_code": "position_exit_update_required",
+                "reason": "Agent exit_update must contain stop_loss_price, take_profit_price, or max_holding_minutes",
+            }
         open_positions = updated.setdefault("open_positions", {})
         open_positions[position_key] = position
         report = {
@@ -404,10 +452,22 @@ def apply_position_management_thesis(
     close_intent = payload.get("close_intent") if isinstance(payload.get("close_intent"), dict) else {}
     close_fraction = _num(close_intent.get("close_fraction"))
     if close_fraction != 1:
-        return {**base, "symbol": symbol, "position_id": position_id, "error_code": "full_close_fraction_required", "reason": "close action currently requires close_fraction=1; partial reduce stays fail-closed"}
+        return {
+            **base,
+            "symbol": symbol,
+            "position_id": position_id,
+            "error_code": "full_close_fraction_required",
+            "reason": "close action currently requires close_fraction=1; partial reduce stays fail-closed",
+        }
     mark_price = _num(close_intent.get("mark_price"))
     if mark_price is None or mark_price <= 0:
-        return {**base, "symbol": symbol, "position_id": position_id, "error_code": "agent_mark_price_required", "reason": "close action requires an explicit positive Agent mark_price"}
+        return {
+            **base,
+            "symbol": symbol,
+            "position_id": position_id,
+            "error_code": "agent_mark_price_required",
+            "reason": "close action requires an explicit positive Agent mark_price",
+        }
     _close_position(
         updated,
         position_key,
@@ -507,7 +567,8 @@ def _close_position(
     entry_fee = _num(position.get("entry_fee_usdt"))
     if entry_fee is None:
         entry_fee = abs((_num(position.get("notional_usdt")) or 0.0) * float(fee_bps) / 10_000)
-    fee = exit_notional * float(fee_bps) / 10_000
+    effective_fee_bps = _position_fee_bps(position, fee_bps)
+    fee = exit_notional * float(effective_fee_bps) / 10_000
     net_pnl = gross_pnl - entry_fee - fee
     close_cash_delta = gross_pnl - fee
     position.update(
@@ -519,6 +580,7 @@ def _close_position(
             "entry_fee_usdt": entry_fee,
             "gross_pnl_usdt": gross_pnl,
             "exit_fee_usdt": fee,
+            "fee_bps": effective_fee_bps,
             "net_pnl_usdt": net_pnl,
             "unrealized_pnl_usdt": 0.0,
         }
@@ -540,6 +602,9 @@ def _close_position(
             "margin_usdt": position.get("margin_usdt"),
             "leverage": position.get("leverage"),
             "fee_usdt": fee,
+            "fee_bps": effective_fee_bps,
+            "paper_fee_model": position.get("paper_fee_model"),
+            "liquidity_role": position.get("liquidity_role"),
             "gross_pnl_usdt": gross_pnl,
             "net_pnl_usdt": net_pnl,
             "close_reason": close_reason,
@@ -610,7 +675,11 @@ def _close_reason(
     # Keep the function parameter for backward-compatible callers, but only a
     # position-level max_holding_minutes persisted from strategy_intent can close.
     effective_max_holding = _num(position.get("max_holding_minutes"))
-    if effective_max_holding is not None and effective_max_holding > 0 and _holding_minutes(position, now_iso) >= effective_max_holding:
+    if (
+        effective_max_holding is not None
+        and effective_max_holding > 0
+        and _holding_minutes(position, now_iso) >= effective_max_holding
+    ):
         return "time_stop"
     return None
 
@@ -644,6 +713,38 @@ def _slipped_price(price: float, side: str, action: str, slippage_bps: float) ->
     action = action.upper()
     buying = (action == "OPEN" and side == "LONG") or (action == "CLOSE" and side == "SHORT")
     return price * (1 + slip if buying else 1 - slip)
+
+
+def _execution_cost_model(execution: dict[str, Any]) -> dict[str, Any]:
+    model = execution.get("execution_cost_model")
+    return copy.deepcopy(model) if isinstance(model, dict) else {}
+
+
+def _entry_price_includes_slippage(execution: dict[str, Any]) -> bool:
+    model = execution.get("execution_cost_model")
+    return bool(
+        execution.get("entry_price_includes_slippage")
+        or (isinstance(model, dict) and model.get("fill_price_includes_slippage"))
+    )
+
+
+def _execution_fee_bps(execution: dict[str, Any], default_fee_bps: float) -> float:
+    model = execution.get("execution_cost_model")
+    if isinstance(model, dict):
+        parsed = _num(model.get("fee_bps"))
+        if parsed is not None and parsed >= 0:
+            return parsed
+    parsed = _num(execution.get("paper_fee_bps"))
+    if parsed is not None and parsed >= 0:
+        return parsed
+    return float(default_fee_bps)
+
+
+def _position_fee_bps(position: dict[str, Any], default_fee_bps: float) -> float:
+    parsed = _num(position.get("fee_bps"))
+    if parsed is not None and parsed >= 0:
+        return parsed
+    return float(default_fee_bps)
 
 
 def _execution_id(execution: dict[str, Any]) -> str:
@@ -708,7 +809,10 @@ def _find_open_position(open_positions: dict[str, Any], position_ref: Any) -> di
         return {"error_code": "position_not_found", "reason": "no matching open paper position found"}
     unique = {(key, str(position.get("position_id") or "")): (key, position) for key, position in matches}
     if len(unique) > 1 and not (wanted_position_id or wanted_execution_id):
-        return {"error_code": "position_ref_ambiguous", "reason": "symbol-only position_ref matched multiple open paper positions"}
+        return {
+            "error_code": "position_ref_ambiguous",
+            "reason": "symbol-only position_ref matched multiple open paper positions",
+        }
     position_key, position = next(iter(unique.values()))
     return {"position_key": position_key, "position": dict(position)}
 
@@ -784,7 +888,9 @@ def _position_management_safety_error(value: Any) -> str | None:
         return "position_management_schema_rejected"
     if value.get("schema_version") not in (None, "", SCHEMA_VERSION):
         return "position_management_schema_version_rejected"
-    if _nested_truthy_key(value, {"real_order", "real_orders", "signed_requests", "reads_api_keys", "binance_account_state", "signed"}):
+    if _nested_truthy_key(
+        value, {"real_order", "real_orders", "signed_requests", "reads_api_keys", "binance_account_state", "signed"}
+    ):
         return "position_management_safety_violation"
     return None
 
