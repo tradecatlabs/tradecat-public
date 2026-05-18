@@ -30,6 +30,8 @@ Runtime state may exist only in ignored local paths:
 - `.venv/**`
 - `.hermes/**`
 - `.tools/**`
+- `project/**`
+- `tasks/**`
 
 No runtime file may be committed.
 

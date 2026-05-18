@@ -19,7 +19,6 @@ tradecat-public/
 |   |-- tradecat_sources/
 |   `-- tradecat_auto/
 |-- tests/
-|-- tasks/
 `-- skills/
     `-- tradecat-public/
         |-- SKILL.md
@@ -62,6 +61,8 @@ signal_flow / anomaly_panel
 ## Forbidden Paths
 
 - No root `SKILL.md`, `agents/`, or `references/`.
+- No tracked `project/`; that root is retired.
+- No tracked `tasks/`; task decomposition stays local-only.
 - No `src/tradecat_terminal/`.
 - No `install.sh`, `install.ps1`, `uninstall.sh`, `uninstall.ps1`.
 - No `scripts/start.sh` or `scripts/watchdog.sh`.

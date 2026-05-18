@@ -13,6 +13,8 @@ htmlcov/
 .runtime/
 .hermes/
 .tools/
+project/
+tasks/
 
 # Local user/runtime data for public repo hygiene.
 # Keep schemas, examples, and sanitized fixtures in git; never commit real local state.

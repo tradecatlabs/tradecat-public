@@ -16,6 +16,7 @@ git diff --check
 - Root is the Python project root.
 - Skill package is only `skills/tradecat-public/`.
 - No root `SKILL.md`, `agents/`, or `references/`.
+- No tracked `project/` or `tasks/`.
 - No `src/tradecat_terminal/`.
 - No root install/uninstall scripts.
 - No old `scripts/start.sh` or `scripts/watchdog.sh`.

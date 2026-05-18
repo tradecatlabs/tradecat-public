@@ -31,7 +31,6 @@ tradecat-public/
 |   |-- tradecat_sources/      # 公开在线表格信号源与 dataset contract
 |   `-- tradecat_auto/         # Agent context 审计、paper/watch、ledger、风控、报告
 |-- tests/                     # 项目测试
-|-- tasks/                     # 任务治理资产
 `-- skills/
     `-- tradecat-public/
         |-- SKILL.md           # Hermes/Codex Skill 激活说明
@@ -49,7 +48,9 @@ tradecat-public/
 - `skills/tradecat-public/` 是唯一 Skill 包根；不得在仓库根重新创建 `SKILL.md`、`agents/` 或 `references/`。
 - `skills/tradecat-public/agents/manifest.json` 是 Agent/Hermes 机器主契约；文档只能解释它。
 - `scripts/request.py` 是公开在线表格读取入口；`src/tradecat_sources/` 只做信号源适配，不恢复 TUI 或本地缓存产品。
-- `.runtime/`、`.tradecat/`、`.venv/`、`.hermes/`、`.tools/` 只属于本机运行态或开发态，必须保持 ignored。
+- `project/` 已退役，禁止重新作为项目根进入公开仓库。
+- `tasks/` 只属于本地任务拆解/草稿，禁止进入 GitHub 公开仓库。
+- `.runtime/`、`.tradecat/`、`.venv/`、`.hermes/`、`.tools/`、`project/`、`tasks/` 只属于本机运行态或开发态，必须保持 ignored。
 
 ## 主要数据流
 

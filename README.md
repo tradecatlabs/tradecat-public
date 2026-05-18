@@ -30,11 +30,12 @@ tradecat-public/
 |   |-- tradecat_sources/      # 在线表格公开信号源读取与 dataset contract
 |   `-- tradecat_auto/         # Agent context、paper/watch、ledger、风控、报告
 |-- tests/
-|-- tasks/
 `-- skills/tradecat-public/    # Hermes/Codex Skill 包
 ```
 
 `skills/tradecat-public/agents/manifest.json` 是 Agent/Hermes 的唯一机器主契约。文档只解释它，不复制第二份机器契约。
+
+`project/` 已退役；`tasks/` 是本地任务拆解/草稿目录，和 `.runtime/` 一样不进入公开 GitHub 仓库。
 
 ## 快速开始
 

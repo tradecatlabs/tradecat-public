@@ -11,6 +11,8 @@ runtime_paths=(
   ".venv"
   ".tradecat"
   ".tools"
+  "project"
+  "tasks"
 )
 
 forbidden_project_roots=(

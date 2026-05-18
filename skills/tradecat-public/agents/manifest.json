@@ -58,12 +58,14 @@
       "scripts/watchdog.sh"
     ],
     "local_runtime_paths": [
-      ".runtime/**",
-      ".hermes/**",
-      ".tradecat/**",
-      ".venv/**",
-      ".tools/**"
-    ],
+        ".runtime/**",
+        ".hermes/**",
+        ".tradecat/**",
+        ".venv/**",
+        ".tools/**",
+        "project/**",
+        "tasks/**"
+      ],
     "safety_boundary": "Public repo remains public-readonly plus paper/watch; no Binance keys, no signed requests, no account reads, no real orders."
   },
   "agent_role_profiles": [

@@ -77,7 +77,9 @@ def test_skill_package_governance_is_agent_runtime_focused():
     assert governance["implementation_project_root"] == "."
     assert governance["no_second_truth"] is True
     assert "src/tradecat_terminal" in governance["forbidden_root_paths"]
-    assert {".runtime/**", ".hermes/**", ".venv/**"} <= set(governance["local_runtime_paths"])
+    assert {".runtime/**", ".hermes/**", ".venv/**", "project/**", "tasks/**"} <= set(
+        governance["local_runtime_paths"]
+    )
     assert "paper/watch" in governance["safety_boundary"]
 
 
