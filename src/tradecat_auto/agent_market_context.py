@@ -373,7 +373,9 @@ def agent_market_context_to_market_bundle(context: dict[str, Any]) -> dict[str, 
         family = str(item.get("family") or "")
         endpoint = _normalize_endpoint(str(item.get("endpoint") or ""))
         data = copy.deepcopy(item.get("data"))
-        if family == "24h_ticker":
+        if family == "klines":
+            bundle["klines"] = data
+        elif family == "24h_ticker":
             bundle["ticker24hr"] = data
         elif family == "book_ticker":
             bundle["bookTicker"] = data
@@ -381,8 +383,6 @@ def agent_market_context_to_market_bundle(context: dict[str, Any]) -> dict[str, 
             bundle["depth"] = data
             if isinstance(data, dict):
                 bundle["depth_summary"] = summarize_depth(data)
-        elif family == "klines":
-            bundle["klines"] = data
         elif family == "open_interest":
             bundle["openInterest"] = data
         elif family == "open_interest_history":
@@ -398,6 +398,69 @@ def agent_market_context_to_market_bundle(context: dict[str, Any]) -> dict[str, 
     return bundle
 
 
+def build_agent_market_context_from_public_bundle(
+    bundle: dict[str, Any],
+    *,
+    source_event: dict[str, Any] | None = None,
+    anomaly_symbol: dict[str, Any] | None = None,
+    agent: str = "tradecat-public-agent-tool-runner",
+) -> dict[str, Any]:
+    symbol = str(bundle.get("symbol") or "").upper().strip()
+    market_data = [
+        _market_data_item(bundle, "klines", "klines", "/fapi/v1/klines"),
+        _market_data_item(bundle, "24h_ticker", "ticker24hr", "/fapi/v1/ticker/24hr"),
+        _market_data_item(bundle, "book_ticker", "bookTicker", "/fapi/v1/ticker/bookTicker"),
+        _market_data_item(bundle, "order_book_depth", "depth", "/fapi/v1/depth"),
+        _market_data_item(bundle, "open_interest", "openInterest", "/fapi/v1/openInterest"),
+        _market_data_item(bundle, "open_interest_history", "openInterestHist", "/futures/data/openInterestHist"),
+        _market_data_item(bundle, "funding_rate", "fundingRate", "/fapi/v1/fundingRate"),
+        _market_data_item(bundle, "premium_index", "premiumIndex", "/fapi/v1/premiumIndex"),
+        _market_data_item(
+            bundle,
+            "long_short_ratios",
+            "topLongShortAccountRatio",
+            "/futures/data/topLongShortAccountRatio",
+        ),
+        _market_data_item(
+            bundle,
+            "long_short_ratios",
+            "topLongShortPositionRatio",
+            "/futures/data/topLongShortPositionRatio",
+        ),
+        _market_data_item(
+            bundle,
+            "long_short_ratios",
+            "globalLongShortAccountRatio",
+            "/futures/data/globalLongShortAccountRatio",
+        ),
+        _market_data_item(bundle, "taker_buy_sell_volume", "takerlongshortRatio", "/futures/data/takerlongshortRatio"),
+    ]
+    return {
+        "schema": CONTEXT_SCHEMA,
+        "schema_version": SCHEMA_VERSION,
+        "ok": bool(bundle.get("ok")),
+        "symbol": symbol,
+        "generated_at": _now_iso(),
+        "mode": "public_readonly",
+        "provenance": {
+            "agent": agent,
+            "source": "tradecat_auto.agent_market_context.build_agent_market_context_from_public_bundle",
+            "source_manifest": DEFAULT_SOURCE_MANIFEST,
+            "bundle_schema": str(bundle.get("schema") or ""),
+        },
+        "source_event": copy.deepcopy(source_event or {}),
+        "anomaly_symbol": copy.deepcopy(anomaly_symbol or {}),
+        "market_data": market_data,
+        "safety": _safety_boundary(),
+        "limitations": [
+            "Agent/Hermes consumable public-readonly context envelope",
+            "no Binance credentials are read",
+            "no signed requests are made",
+            "no real order is placed",
+        ],
+    }
+
+
 def build_paper_report_from_agent_market_context(
     context: dict[str, Any],
     *,
@@ -407,6 +470,8 @@ def build_paper_report_from_agent_market_context(
     paper_leverage: float | None = None,
     margin_budget_usdt: float | None = None,
     risk_policy: dict[str, Any] | None = None,
+    paper_fee_bps: float = 4.0,
+    paper_slippage_bps: float = 0.0,
 ) -> dict[str, Any]:
     audit = audit_agent_market_context(context)
     if not audit.get("ok"):
@@ -463,6 +528,8 @@ def build_paper_report_from_agent_market_context(
         if isinstance(context.get("agent_trade_thesis"), dict)
         else None,
         risk_policy=risk_policy,
+        paper_fee_bps=paper_fee_bps,
+        paper_slippage_bps=paper_slippage_bps,
     )
     report["schema_version"] = SCHEMA_VERSION
     report["agent_market_context_audit"] = audit
@@ -478,6 +545,36 @@ def build_paper_report_from_agent_market_context(
     if "agent-supplied public/read-only market context" not in report["limitations"]:
         report["limitations"].append("agent-supplied public/read-only market context")
     return report
+
+
+def _market_data_item(bundle: dict[str, Any], family: str, key: str, endpoint: str) -> dict[str, Any]:
+    errors = bundle.get("errors") if isinstance(bundle.get("errors"), dict) else {}
+    ok = key in bundle and key not in errors
+    item = {
+        "family": family,
+        "endpoint": endpoint,
+        "method": "GET",
+        "ok": ok,
+        "requires_signature": False,
+        "signed": False,
+        "reads_api_keys": False,
+        "real_orders": False,
+        "fetched_at": _now_iso(),
+        "provenance": {
+            "source": "binance_public_rest",
+            "bundle_source": str((bundle.get("provenance") or {}).get("source") or ""),
+            "symbol": str(bundle.get("symbol") or ""),
+        },
+        "data": copy.deepcopy(bundle.get(key)),
+    }
+    if not ok:
+        item["error"] = {
+            "code": "public_market_data_unavailable",
+            "kind": "public_readonly_market_data",
+            "message": str(errors.get(key) or f"{key} missing from public market bundle"),
+            "retryable": True,
+        }
+    return item
 
 
 def _agent_paper_sizing(context: dict[str, Any]) -> dict[str, Any]:

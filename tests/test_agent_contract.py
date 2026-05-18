@@ -45,6 +45,7 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-position-management-action-report.schema.json": "tradecat_auto.position_management_action_report.v1",
     "tradecat-auto-position-management-thesis.schema.json": "tradecat_auto.position_management_thesis.v1",
     "tradecat-auto-production-health.schema.json": "tradecat_auto.production_health.v1",
+    "tradecat-auto-public-market-bundle-batch.schema.json": "tradecat_auto.public_market_bundle_batch.v1",
     "tradecat-auto-public-market-snapshot.schema.json": "tradecat_auto.public_market_snapshot.v1",
     "tradecat-auto-public-probe.schema.json": "tradecat_auto.public_probe.v1",
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
@@ -135,6 +136,8 @@ def test_manifest_advertises_agent_runtime_entrypoints_only():
 
     assert "python3 scripts/request.py signal_flow --format json --limit 5" in readonly
     assert "bash scripts/binance-public-snapshot.sh --symbols BTCUSDT,ETHUSDT --json" in readonly
+    assert "bash scripts/binance-public-bundle.sh --symbols BTCUSDT,ETHUSDT --json" in readonly
+    assert "bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json" in readonly
     assert "bash scripts/run-tradecat.sh soft-layer --json" in readonly
     assert "bash scripts/run-tradecat.sh latest-decision --json" in readonly
     assert "bash scripts/run-tradecat.sh context-audit --input /path/to/agent-market-context.json --json" in readonly

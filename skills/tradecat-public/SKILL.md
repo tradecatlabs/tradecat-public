@@ -45,6 +45,8 @@ bash scripts/run-tradecat.sh soft-layer --json
 Agent-supplied market context:
 
 ```bash
+bash scripts/binance-public-bundle.sh --symbols BTCUSDT,ETHUSDT --json
+bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json
 bash scripts/run-tradecat.sh context-audit --input /path/to/agent-market-context.json --json
 bash scripts/run-tradecat.sh run-context --input /path/to/agent-market-context.json --mode paper --json
 bash scripts/run-tradecat.sh replay-report --archive-path .runtime/auto-paper/cycles.jsonl --ledger-path .runtime/auto-paper/paper_ledger.json --json

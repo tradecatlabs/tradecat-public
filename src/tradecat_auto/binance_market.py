@@ -217,10 +217,11 @@ class BinanceMarketClient:
         }
 
     def fetch_public_market_bundle(
-        self, symbol: str, *, period: str = "5m", depth_limit: int = 20, hist_limit: int = 2
+        self, symbol: str, *, period: str = "5m", depth_limit: int = 20, hist_limit: int = 2, kline_limit: int = 100
     ) -> dict[str, Any]:
         normalized_symbol = str(symbol or "").upper().strip()
         endpoints: dict[str, tuple[str, dict[str, Any]]] = {
+            "klines": ("/fapi/v1/klines", {"symbol": normalized_symbol, "interval": period, "limit": kline_limit}),
             "ticker24hr": ("/fapi/v1/ticker/24hr", {"symbol": normalized_symbol}),
             "bookTicker": ("/fapi/v1/ticker/bookTicker", {"symbol": normalized_symbol}),
             "depth": ("/fapi/v1/depth", {"symbol": normalized_symbol, "limit": depth_limit}),
@@ -274,6 +275,118 @@ class BinanceMarketClient:
             bundle["depth_summary"] = summarize_depth(bundle["depth"])
         bundle["api_usage"] = self.api_usage()
         return bundle
+
+    def fetch_public_market_bundles(
+        self,
+        symbols: list[str] | tuple[str, ...] | set[str],
+        *,
+        period: str = "5m",
+        depth_limit: int = 20,
+        hist_limit: int = 2,
+        kline_limit: int = 100,
+    ) -> dict[str, Any]:
+        requested_symbols = _normalize_symbol_list(symbols)
+        snapshot = self.fetch_public_market_snapshot(requested_symbols)
+        bundles: dict[str, dict[str, Any]] = {}
+        for symbol in requested_symbols:
+            bundles[symbol] = {
+                "schema": "tradecat_auto.public_market_bundle.v1",
+                "schema_version": "1.0.0",
+                "ok": True,
+                "error_code": None,
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+                "base_url": self.base_url,
+                "symbol": symbol,
+                "period": period,
+                "errors": {},
+                "provenance": {
+                    "source": "binance_usdm_public_market_bundle_batch",
+                    "batchable_endpoint_source": "binance_usdm_public_market_snapshot",
+                },
+                "safety": _safety_boundary(),
+            }
+            _copy_batch_row(bundles[symbol], snapshot, "ticker24hr", symbol)
+            _copy_batch_row(bundles[symbol], snapshot, "bookTicker", symbol)
+            _copy_batch_row(bundles[symbol], snapshot, "premiumIndex", symbol)
+
+        per_symbol_endpoints: dict[str, tuple[str, dict[str, Any]]] = {}
+        for symbol in requested_symbols:
+            per_symbol_endpoints.update(
+                {
+                    f"{symbol}:klines": (
+                        "/fapi/v1/klines",
+                        {"symbol": symbol, "interval": period, "limit": kline_limit},
+                    ),
+                    f"{symbol}:depth": ("/fapi/v1/depth", {"symbol": symbol, "limit": depth_limit}),
+                    f"{symbol}:openInterest": ("/fapi/v1/openInterest", {"symbol": symbol}),
+                    f"{symbol}:openInterestHist": (
+                        "/futures/data/openInterestHist",
+                        {"symbol": symbol, "period": period, "limit": hist_limit},
+                    ),
+                    f"{symbol}:fundingRate": ("/fapi/v1/fundingRate", {"symbol": symbol, "limit": 1}),
+                    f"{symbol}:topLongShortAccountRatio": (
+                        "/futures/data/topLongShortAccountRatio",
+                        {"symbol": symbol, "period": period, "limit": 1},
+                    ),
+                    f"{symbol}:topLongShortPositionRatio": (
+                        "/futures/data/topLongShortPositionRatio",
+                        {"symbol": symbol, "period": period, "limit": 1},
+                    ),
+                    f"{symbol}:globalLongShortAccountRatio": (
+                        "/futures/data/globalLongShortAccountRatio",
+                        {"symbol": symbol, "period": period, "limit": 1},
+                    ),
+                    f"{symbol}:takerlongshortRatio": (
+                        "/futures/data/takerlongshortRatio",
+                        {"symbol": symbol, "period": period, "limit": 1},
+                    ),
+                }
+            )
+        for key, (endpoint_path, params) in per_symbol_endpoints.items():
+            symbol, name = key.split(":", 1)
+            try:
+                bundles[symbol][name] = self.request_json(endpoint_path, params)
+            except Exception as exc:  # keep a probe useful even on partial endpoint failure
+                bundles[symbol]["ok"] = False
+                bundles[symbol]["error_code"] = "public_market_bundle_partial_failure"
+                bundles[symbol]["errors"][name] = f"{type(exc).__name__}: {exc}"
+        for bundle in bundles.values():
+            if isinstance(bundle.get("depth"), dict):
+                bundle["depth_summary"] = summarize_depth(bundle["depth"])
+            bundle["api_usage"] = self.api_usage()
+        ok = bool(snapshot.get("ok")) and all(bool(bundle.get("ok")) for bundle in bundles.values())
+        return {
+            "schema": "tradecat_auto.public_market_bundle_batch.v1",
+            "schema_version": "1.0.0",
+            "ok": ok,
+            "error_code": None if ok else "public_market_bundle_batch_partial_failure",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "base_url": self.base_url,
+            "symbols": requested_symbols,
+            "period": period,
+            "batchable_endpoint_families": snapshot.get("batchable_endpoint_families") or [],
+            "per_symbol_endpoint_families": [
+                "klines",
+                "order_book_depth",
+                "open_interest",
+                "open_interest_history",
+                "funding_rate_history",
+                "long_short_ratios",
+                "taker_buy_sell_volume",
+            ],
+            "bundles": bundles,
+            "market_snapshot": snapshot,
+            "api_usage": self.api_usage(),
+            "provenance": {
+                "source": "binance_usdm_public_market_bundle_batch",
+                "batchable_requests_merged": True,
+            },
+            "safety": _safety_boundary(),
+        }
 
     def fetch_last_price(self, symbol: str) -> dict[str, Any]:
         normalized_symbol = str(symbol or "").upper().strip()
@@ -519,6 +632,17 @@ def _rows_by_symbol(payload: Any, requested_symbols: list[str]) -> dict[str, dic
             continue
         result[symbol] = row
     return result
+
+
+def _copy_batch_row(bundle: dict[str, Any], snapshot: dict[str, Any], name: str, symbol: str) -> None:
+    rows = snapshot.get(name) if isinstance(snapshot.get(name), dict) else {}
+    row = rows.get(symbol) if isinstance(rows, dict) else None
+    if isinstance(row, dict):
+        bundle[name] = row
+    else:
+        bundle["ok"] = False
+        bundle["error_code"] = "public_market_bundle_partial_failure"
+        bundle.setdefault("errors", {})[name] = "batchable endpoint row missing"
 
 
 def _safety_boundary() -> dict[str, bool]:

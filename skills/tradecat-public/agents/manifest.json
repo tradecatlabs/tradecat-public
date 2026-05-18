@@ -58,14 +58,14 @@
       "scripts/watchdog.sh"
     ],
     "local_runtime_paths": [
-        ".runtime/**",
-        ".hermes/**",
-        ".tradecat/**",
-        ".venv/**",
-        ".tools/**",
-        "project/**",
-        "tasks/**"
-      ],
+      ".runtime/**",
+      ".hermes/**",
+      ".tradecat/**",
+      ".venv/**",
+      ".tools/**",
+      "project/**",
+      "tasks/**"
+    ],
     "safety_boundary": "Public repo remains public-readonly plus paper/watch; no Binance keys, no signed requests, no account reads, no real orders."
   },
   "agent_role_profiles": [
@@ -111,6 +111,18 @@
       "command": "bash scripts/binance-public-snapshot.sh --symbols BTCUSDT,ETHUSDT --json",
       "risk_class": "network_readonly",
       "schema": "tradecat_auto.public_market_snapshot.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/binance-public-bundle.sh --symbols BTCUSDT,ETHUSDT --json",
+      "risk_class": "network_readonly",
+      "schema": "tradecat_auto.public_market_bundle_batch.v1",
+      "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json",
+      "risk_class": "network_readonly",
+      "schema": "tradecat_auto.agent_market_context.v1",
       "schema_version": "1.0.0"
     },
     {
@@ -767,6 +779,15 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.public_market_bundle_batch.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-public-market-bundle-batch.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
     }
   ],
   "automation_entrypoints": [
@@ -962,7 +983,9 @@
     "automation_paper_ledger": ".runtime/auto-paper/paper_ledger.json",
     "automation_cycle_archive": ".runtime/auto-paper/cycles.jsonl",
     "automation_audit_journal": ".runtime/auto-paper/paper_audit.sqlite3",
-    "automation_run_loop_log": ".runtime/auto-paper/paper-run-loop.log"
+    "automation_run_loop_log": ".runtime/auto-paper/paper-run-loop.log",
+    "binance_public_snapshot_script": "scripts/binance-public-snapshot.sh",
+    "binance_public_bundle_script": "scripts/binance-public-bundle.sh"
   },
   "references": [
     "skills/tradecat-public/references/index.md",

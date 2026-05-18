@@ -9,9 +9,11 @@ from pathlib import Path
 from tradecat_auto.agent_market_context import (
     agent_market_context_to_market_bundle,
     audit_agent_market_context,
+    build_agent_market_context_from_public_bundle,
     build_paper_report_from_agent_market_context,
 )
 from tradecat_auto.cli import context_audit_report, run_context_public
+from tradecat_auto.paper_ledger import load_paper_ledger
 
 
 def sample_context() -> dict:
@@ -115,6 +117,46 @@ def sample_context() -> dict:
 
 
 class AgentMarketContextTests(unittest.TestCase):
+    def test_builds_agent_market_context_from_public_market_bundle(self) -> None:
+        bundle = {
+            "schema": "tradecat_auto.public_market_bundle.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "symbol": "IRYSUSDT",
+            "ticker24hr": {"symbol": "IRYSUSDT", "lastPrice": "0.062", "quoteVolume": "50000000"},
+            "bookTicker": {"symbol": "IRYSUSDT", "bidPrice": "0.0619", "askPrice": "0.0621"},
+            "depth": {"bids": [["0.0619", "100"]], "asks": [["0.0621", "120"]]},
+            "klines": [[1700000000000, "0.060", "0.063", "0.059", "0.062", "123"]],
+            "openInterest": {"openInterest": "1000000"},
+            "openInterestHist": [{"sumOpenInterestValue": "100000"}],
+            "fundingRate": [{"fundingRate": "0.00005"}],
+            "premiumIndex": {"markPrice": "0.062", "indexPrice": "0.0619"},
+            "topLongShortAccountRatio": [{"longShortRatio": "1.2"}],
+            "topLongShortPositionRatio": [{"longShortRatio": "1.3"}],
+            "globalLongShortAccountRatio": [{"longShortRatio": "1.1"}],
+            "takerlongshortRatio": [{"buySellRatio": "1.2"}],
+            "errors": {},
+            "provenance": {"source": "binance_usdm_public_market_bundle"},
+        }
+
+        context = build_agent_market_context_from_public_bundle(
+            bundle,
+            source_event={"event_id": "evt-bundle"},
+            anomaly_symbol={"normalized_symbol": "IRYSUSDT"},
+            agent="unit-test-agent",
+        )
+        audit = audit_agent_market_context(context)
+        mapped = agent_market_context_to_market_bundle(context)
+
+        self.assertEqual(context["schema"], "tradecat_auto.agent_market_context.v1")
+        self.assertTrue(audit["ok"])
+        self.assertIn("klines", audit["accepted_families"])
+        self.assertIn("order_book_depth", audit["accepted_families"])
+        self.assertEqual(mapped["klines"][0][4], "0.062")
+        self.assertFalse(context["safety"]["real_orders"])
+        self.assertFalse(context["safety"]["signed_requests"])
+        self.assertFalse(context["safety"]["reads_api_keys"])
+
     def test_audit_accepts_public_readonly_context_with_provenance(self) -> None:
         audit = audit_agent_market_context(sample_context())
 
@@ -352,6 +394,96 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
         self.assertEqual(report["agent_market_context_audit"]["schema"], "tradecat_auto.agent_market_context_audit.v1")
         self.assertFalse(report["agent_market_context_audit"]["signed_requests"])
+
+    def test_run_context_cli_can_write_local_paper_runtime_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            context = sample_context()
+            context["market_data"][1]["data"] = {"bids": [["0.06190", "100"]], "asks": [["0.06195", "120"]]}
+            context["agent_trade_thesis"] = {
+                "schema": "tradecat_auto.agent_trade_thesis.v1",
+                "schema_version": "1.0.0",
+                "direction": "LONG",
+                "paper_intent": {"requested_margin_usdt": 7.5, "paper_leverage": 2.0},
+                "invalidation_price": 0.055,
+                "take_profit_price": 0.08,
+                "max_holding_minutes": 45,
+                "exit_rationale": "agent supplied invalidation and target",
+                "provenance": {"research_cycle_run_id": "research-cycle-context-write"},
+            }
+            path = root / "context.json"
+            ledger_path = root / "paper_ledger.json"
+            archive_path = root / "cycles.jsonl"
+            journal_path = root / "paper_audit.sqlite3"
+            path.write_text(json.dumps(context), encoding="utf-8")
+
+            report = run_context_public(
+                argparse.Namespace(
+                    input=str(path),
+                    mode="paper",
+                    notional_usdt=None,
+                    agent_margin_usdt=None,
+                    paper_leverage=None,
+                    paper_margin_budget_usdt=None,
+                    portfolio_risk_policy_path="",
+                    paper_kill_switch_path="",
+                    ledger_path=str(ledger_path),
+                    archive_path=str(archive_path),
+                    journal_path=str(journal_path),
+                    initial_balance_usdt=1000.0,
+                    paper_fee_bps=4.0,
+                    paper_slippage_bps=0.0,
+                    now="2026-05-18T00:00:00Z",
+                )
+            )
+
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["paper_execution"]["status"], "OPENED")
+            self.assertTrue(report["paper_runtime_write"]["ledger_written"])
+            self.assertTrue(report["paper_runtime_write"]["archive_written"])
+            self.assertTrue(report["paper_runtime_write"]["journal_written"])
+            self.assertFalse(report["paper_runtime_write"]["safety"]["real_orders"])
+            self.assertEqual(report["paper_ledger"]["open_positions_count"], 1)
+            ledger = load_paper_ledger(ledger_path)
+            self.assertEqual(len(ledger["open_positions"]), 1)
+            self.assertTrue(archive_path.exists())
+            self.assertEqual(
+                json.loads(archive_path.read_text(encoding="utf-8").splitlines()[0])["action"],
+                "RUN_CONTEXT_PAPER",
+            )
+            self.assertTrue(journal_path.exists())
+
+    def test_run_context_cli_rejects_invalid_runtime_cost_inputs_structured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "context.json"
+            path.write_text(json.dumps(sample_context()), encoding="utf-8")
+
+            report = run_context_public(
+                argparse.Namespace(
+                    input=str(path),
+                    mode="paper",
+                    notional_usdt=None,
+                    agent_margin_usdt=None,
+                    paper_leverage=None,
+                    paper_margin_budget_usdt=None,
+                    portfolio_risk_policy_path="",
+                    paper_kill_switch_path="",
+                    ledger_path="",
+                    archive_path="",
+                    journal_path="",
+                    initial_balance_usdt=1000.0,
+                    paper_fee_bps=-1.0,
+                    paper_slippage_bps=0.0,
+                    now="",
+                )
+            )
+
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["error_code"], "run_context_invalid_numeric_input")
+            self.assertEqual(report["error"]["kind"], "operator_input")
+            self.assertFalse(report["safety"]["real_orders"])
+            self.assertFalse(report["safety"]["signed_requests"])
+            self.assertFalse(report["safety"]["reads_api_keys"])
 
 
 if __name__ == "__main__":

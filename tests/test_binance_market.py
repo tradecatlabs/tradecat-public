@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import unittest
 from urllib.parse import parse_qs, urlparse
@@ -11,6 +12,7 @@ from tradecat_auto.binance_market import (
     normalize_to_usdt_perp_symbol,
     summarize_depth,
 )
+from tradecat_auto.cli import market_bundle_report
 
 
 class FakeTransport:
@@ -92,6 +94,21 @@ class FakeTransport:
             return json.dumps(
                 {"bids": [["99.9", "10"], ["99.8", "5"]], "asks": [["100.1", "8"], ["100.2", "6"]]}
             ).encode()
+        if parsed.path == "/fapi/v1/klines":
+            return json.dumps(
+                [
+                    [
+                        1700000000000,
+                        "99.0",
+                        "101.0",
+                        "98.0",
+                        "100.0",
+                        "1234",
+                        1700000300000,
+                        "123400",
+                    ]
+                ]
+            ).encode()
         if parsed.path == "/fapi/v1/openInterest":
             return json.dumps({"symbol": symbol, "openInterest": "12345.6", "time": 1700000000000}).encode()
         if parsed.path == "/futures/data/openInterestHist":
@@ -167,6 +184,7 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(bundle["symbol"], "BTCUSDT")
         self.assertTrue(bundle["ok"])
         self.assertEqual(bundle["ticker24hr"]["lastPrice"], "100.0")
+        self.assertEqual(bundle["klines"][0][4], "100.0")
         self.assertEqual(bundle["openInterest"]["openInterest"], "12345.6")
         self.assertIn("depth_summary", bundle)
         self.assertIn("api_usage", bundle)
@@ -229,6 +247,47 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(paths.count("/fapi/v1/ticker/24hr"), 1)
         self.assertEqual(paths.count("/fapi/v1/ticker/bookTicker"), 1)
         self.assertEqual(paths.count("/fapi/v1/premiumIndex"), 1)
+
+    def test_client_fetches_complete_market_bundles_with_batchable_requests_merged(self) -> None:
+        transport = FakeTransport()
+        client = BinanceMarketClient(base_url="https://example.test", transport=transport)
+
+        payload = client.fetch_public_market_bundles(["BTCUSDT", "ETHUSDT"])
+
+        self.assertEqual(payload["schema"], "tradecat_auto.public_market_bundle_batch.v1")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["symbols"], ["BTCUSDT", "ETHUSDT"])
+        self.assertEqual(payload["bundles"]["BTCUSDT"]["ticker24hr"]["lastPrice"], "100.0")
+        self.assertEqual(payload["bundles"]["ETHUSDT"]["bookTicker"]["askPrice"], "3001.0")
+        self.assertEqual(payload["bundles"]["BTCUSDT"]["klines"][0][4], "100.0")
+        self.assertIn("depth_summary", payload["bundles"]["ETHUSDT"])
+        self.assertFalse(payload["real_orders"])
+        self.assertFalse(payload["signed_requests"])
+        self.assertFalse(payload["reads_api_keys"])
+        paths = [urlparse(url).path for url in transport.calls]
+        self.assertEqual(paths.count("/fapi/v1/ticker/24hr"), 1)
+        self.assertEqual(paths.count("/fapi/v1/ticker/bookTicker"), 1)
+        self.assertEqual(paths.count("/fapi/v1/premiumIndex"), 1)
+        self.assertEqual(paths.count("/fapi/v1/depth"), 2)
+        self.assertEqual(paths.count("/fapi/v1/klines"), 2)
+
+    def test_market_bundle_report_rejects_empty_symbols_structured(self) -> None:
+        payload = market_bundle_report(
+            argparse.Namespace(
+                base_url="https://example.test",
+                symbols="",
+                period="5m",
+                depth_limit=20,
+                hist_limit=2,
+                kline_limit=100,
+            )
+        )
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "public_market_bundle_symbols_required")
+        self.assertFalse(payload["real_orders"])
+        self.assertFalse(payload["signed_requests"])
+        self.assertFalse(payload["reads_api_keys"])
 
     def test_market_universe_uses_ttl_cache_and_reports_usage(self) -> None:
         transport = FakeTransport()

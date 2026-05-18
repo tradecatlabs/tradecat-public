@@ -242,15 +242,15 @@ def build_dependency_health(
             "agent_market_context",
             "Agent-supplied Binance public market context",
             "warn" if agent_sizing_required else "ok",
-            "等待 Agent/Hermes 输出 thesis；本地不套用默认金额、杠杆或退出参数"
+            "等待外部 Agent/Hermes thesis；若启用默认 runtime profile 会自动补齐 paper-only sizing/exits"
             if agent_sizing_required
-            else "Agent thesis 已进入 paper/watch 链路",
+            else "Agent thesis 或默认 runtime profile 已进入 paper/watch 链路",
         ),
         _node(
             "context_audit",
             "context-audit 契约审计",
             "ok",
-            "契约审计可用；缺 Agent thesis 时只记录结构化等待/拒绝，不生成本地默认交易参数"
+            "契约审计可用；关闭默认 runtime profile 时缺 Agent thesis 会结构化等待/拒绝"
             if agent_sizing_required
             else "Agent context 已通过链路进入 paper",
         ),
@@ -258,7 +258,7 @@ def build_dependency_health(
             "trade_thesis",
             "Agent 自主 thesis / sizing / exits",
             "warn" if agent_sizing_required else "ok",
-            "等待 Agent 显式给出 paper_intent、leverage 与 exit plan"
+            "等待外部 Agent thesis，或重新启用默认 runtime paper autonomy profile"
             if agent_sizing_required
             else f"paper_sizing_source={(status.get('paper_sizing') or {}).get('source') if isinstance(status.get('paper_sizing'), dict) else '-'}; thesis_path={'configured' if thesis_path else 'inline_or_runtime'}",
         ),
@@ -1009,7 +1009,7 @@ async function refresh() {
     opsRows.push(row("纸面 sizing 来源", statusText(status.paper_sizing && status.paper_sizing.source)));
   }
   if (status.paper_autonomy_profile_configured) {
-    opsRows.push(row("用户显式本地约束", "paper autonomy profile"));
+    opsRows.push(row("paper autonomy profile", status.paper_autonomy_profile_defaulted ? "默认 runtime profile" : "显式配置"));
   }
   $("ops").innerHTML = opsRows.join("");
   $("dependencyHealth").innerHTML = (data.dependency_health || []).map(dependencyNode).join("") || row("状态", "无依赖链数据");

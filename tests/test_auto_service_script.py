@@ -235,7 +235,7 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
     assert "默认不启用本地组合约束" in by_id["risk_controls"]["detail"]
     assert "not_configured" not in by_id["risk_controls"]["detail"]
     assert by_id["trade_thesis"]["status"] == "warn"
-    assert "等待 Agent" in by_id["trade_thesis"]["detail"]
+    assert "默认 runtime paper autonomy profile" in by_id["trade_thesis"]["detail"]
 
 
 def test_auto_paper_web_monitor_extracts_auditable_decision_text() -> None:

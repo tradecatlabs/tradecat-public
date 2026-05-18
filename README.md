@@ -143,6 +143,8 @@ signal_flow / anomaly_panel
 常用 paper/watch 命令：
 
 ```bash
+bash scripts/binance-public-bundle.sh --symbols BTCUSDT,ETHUSDT --json
+bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json
 bash scripts/run-tradecat.sh context-audit --input context.json --json
 bash scripts/run-tradecat.sh run-context --input context.json --mode paper --json
 bash scripts/run-tradecat.sh run-once --agent-trade-thesis-path thesis.json --mode paper --json

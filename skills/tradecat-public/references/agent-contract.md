@@ -17,6 +17,8 @@ bash scripts/start-auto-paper.sh status --json
 Only enter paper/watch when Agent-supplied context and thesis pass audit:
 
 ```bash
+bash scripts/binance-public-bundle.sh --symbols BTCUSDT,ETHUSDT --json
+bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json
 bash scripts/run-tradecat.sh context-audit --input context.json --json
 bash scripts/run-tradecat.sh run-context --input context.json --mode paper --json
 ```

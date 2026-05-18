@@ -11,6 +11,7 @@ from tradecat_auto.agent_market_context import (
     ALLOWED_MODES,
     DEFAULT_SOURCE_MANIFEST,
     audit_agent_market_context,
+    build_agent_market_context_from_public_bundle,
     build_paper_report_from_agent_market_context,
     load_agent_market_context,
 )
@@ -22,12 +23,13 @@ from tradecat_auto.agent_research_cycle import (
 )
 from tradecat_auto.agent_soft_layer import build_agent_soft_layer_bundle
 from tradecat_auto.agent_trade_thesis import load_agent_trade_thesis
-from tradecat_auto.audit_journal import append_audit_record, journal_summary
+from tradecat_auto.audit_journal import append_audit_record, journal_summary, record_service_cycle
 from tradecat_auto.binance_market import BinanceMarketClient, normalize_to_usdt_perp_symbol
 from tradecat_auto.paper_autonomy import load_paper_autonomy_profile
 from tradecat_auto.paper_costs import BINANCE_USDM_PUBLIC_TAKER_FEE_BPS, DEFAULT_PAPER_SLIPPAGE_BPS
 from tradecat_auto.paper_ledger import (
     PaperLedgerError,
+    apply_paper_execution,
     apply_position_management_thesis,
     load_paper_ledger,
     paper_account_state,
@@ -71,6 +73,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma/space separated symbols to filter, e.g. BTCUSDT,ETHUSDT; empty returns all endpoint rows",
     )
     snapshot.add_argument("--json", action="store_true", help="Emit JSON")
+
+    bundle = sub.add_parser(
+        "market-bundle",
+        help="Fetch complete per-symbol Binance public market bundles with batchable requests merged",
+    )
+    bundle.add_argument("--base-url", default="https://fapi.binance.com")
+    bundle.add_argument("--symbols", required=True, help="Comma/space separated symbols, e.g. BTCUSDT,ETHUSDT")
+    bundle.add_argument("--period", default="5m")
+    bundle.add_argument("--depth-limit", type=int, default=20)
+    bundle.add_argument("--hist-limit", type=int, default=2)
+    bundle.add_argument("--kline-limit", type=int, default=100)
+    bundle.add_argument("--json", action="store_true", help="Emit JSON")
+
+    agent_context = sub.add_parser(
+        "agent-market-context",
+        help="Fetch one symbol's complete Binance public bundle and emit agent_market_context.v1",
+    )
+    agent_context.add_argument("--base-url", default="https://fapi.binance.com")
+    agent_context.add_argument("--symbol", required=True)
+    agent_context.add_argument("--period", default="5m")
+    agent_context.add_argument("--depth-limit", type=int, default=20)
+    agent_context.add_argument("--hist-limit", type=int, default=2)
+    agent_context.add_argument("--kline-limit", type=int, default=100)
+    agent_context.add_argument("--agent", default="tradecat-public-agent-tool-runner")
+    agent_context.add_argument("--output", default="", help="Optional JSON output path")
+    agent_context.add_argument("--json", action="store_true", help="Emit JSON")
 
     probe = sub.add_parser("probe-public", help="Probe TradeCat public sheets and Binance public market endpoints")
     probe.add_argument("--tradecat-public", default=str(DEFAULT_TRADECAT_PUBLIC))
@@ -265,6 +293,25 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Optional local file path; if present, new paper entries are rejected",
     )
+    run_context.add_argument(
+        "--ledger-path",
+        default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH),
+        help="Local paper ledger JSON path; empty disables run-context ledger write",
+    )
+    run_context.add_argument(
+        "--archive-path",
+        default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH),
+        help="Local JSONL service-cycle archive path; empty disables archive write",
+    )
+    run_context.add_argument(
+        "--journal-path",
+        default=str(DEFAULT_AUTO_PAPER_JOURNAL_PATH),
+        help="Local SQLite audit journal path; empty disables journal write",
+    )
+    run_context.add_argument("--initial-balance-usdt", type=float, default=1000.0)
+    run_context.add_argument("--paper-fee-bps", type=float, default=BINANCE_USDM_PUBLIC_TAKER_FEE_BPS)
+    run_context.add_argument("--paper-slippage-bps", type=float, default=DEFAULT_PAPER_SLIPPAGE_BPS)
+    run_context.add_argument("--now", default="", help="Optional ISO timestamp for deterministic runtime writes")
     run_context.add_argument("--json", action="store_true", help="Emit JSON")
 
     replay = sub.add_parser(
@@ -347,6 +394,14 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code_for_payload(args.command, payload)
     if args.command == "market-snapshot":
         payload = market_snapshot_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "market-bundle":
+        payload = market_bundle_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "agent-market-context":
+        payload = agent_market_context_report(args)
         _print(payload, as_json=args.json)
         return exit_code_for_payload(args.command, payload)
     if args.command == "probe-public":
@@ -451,6 +506,109 @@ def market_snapshot_report(args: argparse.Namespace) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else _market_snapshot_non_object_payload(args)
 
 
+def market_bundle_report(args: argparse.Namespace) -> dict[str, Any]:
+    client = BinanceMarketClient(base_url=args.base_url)
+    symbols = _parse_symbols_arg(getattr(args, "symbols", ""))
+    if not symbols:
+        return {
+            "schema": "tradecat_auto.public_market_bundle_batch.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "error_code": "public_market_bundle_symbols_required",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "base_url": args.base_url,
+            "symbols": [],
+            "errors": {"symbols": "at least one symbol is required"},
+            "provenance": {"source": "tradecat_auto.cli.market_bundle_report"},
+            "safety": _safety_boundary(),
+        }
+    try:
+        payload = client.fetch_public_market_bundles(
+            symbols,
+            period=str(getattr(args, "period", "5m") or "5m"),
+            depth_limit=int(getattr(args, "depth_limit", 20) or 20),
+            hist_limit=int(getattr(args, "hist_limit", 2) or 2),
+            kline_limit=int(getattr(args, "kline_limit", 100) or 100),
+        )
+    except Exception as exc:
+        return {
+            "schema": "tradecat_auto.public_market_bundle_batch.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "error_code": "public_market_bundle_batch_failed",
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "base_url": args.base_url,
+            "symbols": symbols,
+            "errors": {"market_bundle": _format_exception(exc)},
+            "provenance": {"source": "tradecat_auto.cli.market_bundle_report"},
+            "safety": _safety_boundary(),
+        }
+    return payload if isinstance(payload, dict) else _market_bundle_non_object_payload(args, symbols)
+
+
+def agent_market_context_report(args: argparse.Namespace) -> dict[str, Any]:
+    client = BinanceMarketClient(base_url=args.base_url)
+    symbol = str(args.symbol or "").upper().strip()
+    if symbol and not symbol.endswith("USDT"):
+        symbol = f"{symbol}USDT"
+    try:
+        bundle = client.fetch_public_market_bundle(
+            symbol,
+            period=str(getattr(args, "period", "5m") or "5m"),
+            depth_limit=int(getattr(args, "depth_limit", 20) or 20),
+            hist_limit=int(getattr(args, "hist_limit", 2) or 2),
+            kline_limit=int(getattr(args, "kline_limit", 100) or 100),
+        )
+    except Exception as exc:
+        return {
+            "schema": "tradecat_auto.agent_market_context.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "symbol": symbol.upper().strip(),
+            "mode": "public_readonly",
+            "error_code": "agent_market_context_public_bundle_failed",
+            "error": {
+                "code": "agent_market_context_public_bundle_failed",
+                "kind": "public_readonly_market_data",
+                "message": _format_exception(exc),
+                "retryable": True,
+            },
+            "provenance": {
+                "agent": str(getattr(args, "agent", "") or "tradecat-public-agent-tool-runner"),
+                "source": "tradecat_auto.cli.agent_market_context_report",
+                "source_manifest": DEFAULT_SOURCE_MANIFEST,
+            },
+            "market_data": [],
+            "safety": _safety_boundary(),
+        }
+    context = build_agent_market_context_from_public_bundle(
+        bundle,
+        agent=str(getattr(args, "agent", "") or "tradecat-public-agent-tool-runner"),
+    )
+    output = str(getattr(args, "output", "") or "").strip()
+    if output:
+        try:
+            out_path = Path(output)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(context, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError as exc:
+            context["ok"] = False
+            context["error_code"] = "agent_market_context_write_failed"
+            context["error"] = {
+                "code": "agent_market_context_write_failed",
+                "kind": "local_io",
+                "message": _format_exception(exc),
+                "retryable": False,
+            }
+        else:
+            context["output_path"] = output
+    return context
+
+
 def _market_snapshot_non_object_payload(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.public_market_snapshot.v1",
@@ -464,6 +622,23 @@ def _market_snapshot_non_object_payload(args: argparse.Namespace) -> dict[str, A
         "symbols": _parse_symbols_arg(getattr(args, "symbols", "")),
         "errors": {"market_snapshot": "fetch_public_market_snapshot returned non-object result"},
         "provenance": {"source": "tradecat_auto.cli.market_snapshot_report"},
+        "safety": _safety_boundary(),
+    }
+
+
+def _market_bundle_non_object_payload(args: argparse.Namespace, symbols: list[str]) -> dict[str, Any]:
+    return {
+        "schema": "tradecat_auto.public_market_bundle_batch.v1",
+        "schema_version": "1.0.0",
+        "ok": False,
+        "error_code": "public_market_bundle_batch_failed",
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "base_url": args.base_url,
+        "symbols": symbols,
+        "errors": {"market_bundle": "fetch_public_market_bundles returned non-object result"},
+        "provenance": {"source": "tradecat_auto.cli.market_bundle_report"},
         "safety": _safety_boundary(),
     }
 
@@ -875,6 +1050,10 @@ def context_audit_report(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        _validate_paper_cost_inputs(args)
+    except ValueError as exc:
+        return _run_context_input_error(args, "run_context_invalid_numeric_input", exc)
     context = load_agent_market_context(Path(args.input))
     if context.get("ok") is False and context.get("error"):
         return {
@@ -893,7 +1072,7 @@ def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
             "safety": _safety_boundary(),
             "limitations": ["no Binance credentials were read", "no real order was placed"],
         }
-    return build_paper_report_from_agent_market_context(
+    report = build_paper_report_from_agent_market_context(
         context,
         mode=args.mode,
         requested_notional_usdt=getattr(args, "notional_usdt", None),
@@ -901,7 +1080,187 @@ def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
         paper_leverage=getattr(args, "paper_leverage", None),
         margin_budget_usdt=getattr(args, "paper_margin_budget_usdt", None),
         risk_policy=_risk_policy_from_args(args),
+        paper_fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+        paper_slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
     )
+    return _apply_run_context_runtime_writes(args, context, report)
+
+
+def _run_context_input_error(args: argparse.Namespace, code: str, exc: Exception) -> dict[str, Any]:
+    return {
+        "schema": "tradecat_auto.run_once_report.v1",
+        "schema_version": "1.0.0",
+        "ok": False,
+        "error_code": code,
+        "mode": str(getattr(args, "mode", "paper") or "paper"),
+        "selected_symbol": "",
+        "error": {
+            "code": code,
+            "kind": "operator_input",
+            "message": _format_exception(exc),
+            "retryable": False,
+        },
+        "provenance": {
+            "source": "tradecat_auto.cli.run_context_public",
+            "agent_market_context_input": str(getattr(args, "input", "") or ""),
+        },
+        "safety": _safety_boundary(),
+        "limitations": ["no Binance credentials were read", "no real order was placed"],
+    }
+
+
+def _apply_run_context_runtime_writes(
+    args: argparse.Namespace, context: dict[str, Any], report: dict[str, Any]
+) -> dict[str, Any]:
+    result = dict(report)
+    ledger_path_text = str(getattr(args, "ledger_path", "") or "").strip()
+    archive_path_text = str(getattr(args, "archive_path", "") or "").strip()
+    journal_path_text = str(getattr(args, "journal_path", "") or "").strip()
+    now_iso = str(getattr(args, "now", "") or "").strip() or None
+    runtime_write = {
+        "schema": "tradecat_auto.run_context_runtime_write.v1",
+        "schema_version": "1.0.0",
+        "ok": True,
+        "mode": str(getattr(args, "mode", "paper") or "paper"),
+        "ledger_path": ledger_path_text,
+        "archive_path": archive_path_text,
+        "journal_path": journal_path_text,
+        "ledger_written": False,
+        "archive_written": False,
+        "journal_written": False,
+        "provenance": {"source": "tradecat_auto.cli.run_context_public"},
+        "safety": _safety_boundary(),
+    }
+    result["paper_runtime_write"] = runtime_write
+
+    if runtime_write["mode"] == "paper" and ledger_path_text and isinstance(result.get("paper_execution"), dict):
+        ledger_path = Path(ledger_path_text)
+        try:
+            ledger = load_paper_ledger(
+                ledger_path,
+                initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0),
+            )
+            ledger = apply_paper_execution(
+                ledger,
+                result["paper_execution"],
+                fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+                slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
+                now_iso=now_iso,
+            )
+            save_paper_ledger(ledger_path, ledger)
+        except (PaperLedgerError, OSError, ValueError) as exc:
+            return _run_context_runtime_write_error(result, runtime_write, "paper_ledger_write_failed", exc)
+        result["paper_ledger"] = {**paper_ledger_summary(ledger), "path": str(ledger_path)}
+        runtime_write["ledger_written"] = True
+
+    cycle = _run_context_cycle_payload(args, context, result, runtime_write)
+    if journal_path_text:
+        try:
+            result["audit_journal"] = record_service_cycle(
+                Path(journal_path_text),
+                cycle,
+                run_id=_run_context_run_id(context, result),
+                config_snapshot=_run_context_config_snapshot(args),
+                created_at=now_iso,
+            )
+            runtime_write["journal_written"] = bool(result["audit_journal"].get("ok"))
+        except (OSError, ValueError) as exc:
+            return _run_context_runtime_write_error(result, runtime_write, "audit_journal_write_failed", exc)
+    if archive_path_text:
+        try:
+            _append_jsonl(Path(archive_path_text), cycle)
+        except OSError as exc:
+            return _run_context_runtime_write_error(result, runtime_write, "cycle_archive_write_failed", exc)
+        runtime_write["archive_written"] = True
+    return result
+
+
+def _run_context_runtime_write_error(
+    report: dict[str, Any], runtime_write: dict[str, Any], code: str, exc: Exception
+) -> dict[str, Any]:
+    runtime_write["ok"] = False
+    runtime_write["error_code"] = code
+    runtime_write["error"] = {
+        "code": code,
+        "kind": "local_runtime_io",
+        "message": _format_exception(exc),
+        "retryable": False,
+    }
+    return {
+        **report,
+        "ok": False,
+        "error_code": code,
+        "error": runtime_write["error"],
+        "paper_runtime_write": runtime_write,
+    }
+
+
+def _run_context_cycle_payload(
+    args: argparse.Namespace, context: dict[str, Any], report: dict[str, Any], runtime_write: dict[str, Any]
+) -> dict[str, Any]:
+    event = context.get("source_event") if isinstance(context.get("source_event"), dict) else {}
+    action = "RUN_CONTEXT_PAPER" if str(getattr(args, "mode", "paper") or "paper") == "paper" else "RUN_CONTEXT_WATCH"
+    reason = (
+        "agent_market_context_processed" if report.get("ok") else str(report.get("error_code") or "run_context_failed")
+    )
+    return {
+        "schema": "tradecat_auto.service_cycle.v1",
+        "schema_version": "1.0.0",
+        "ok": bool(report.get("ok")),
+        "action": action,
+        "reason": reason,
+        "error_code": report.get("error_code"),
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "latest_event": event,
+        "pipeline_report": report,
+        "paper_ledger": report.get("paper_ledger") if isinstance(report.get("paper_ledger"), dict) else {},
+        "paper_runtime_write": runtime_write,
+        "provenance": {
+            "source": "tradecat_auto.cli.run_context_public",
+            "agent_market_context_input": str(getattr(args, "input", "") or ""),
+        },
+        "safety": _safety_boundary(),
+    }
+
+
+def _run_context_config_snapshot(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "schema": "tradecat_auto.run_context_config_snapshot.v1",
+        "schema_version": "1.0.0",
+        "command": "run-context",
+        "input": str(getattr(args, "input", "") or ""),
+        "mode": str(getattr(args, "mode", "paper") or "paper"),
+        "ledger_path": str(getattr(args, "ledger_path", "") or ""),
+        "archive_path": str(getattr(args, "archive_path", "") or ""),
+        "journal_path": str(getattr(args, "journal_path", "") or ""),
+        "paper_fee_bps": _non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+        "paper_slippage_bps": _non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
+        "real_orders": False,
+        "signed_requests": False,
+        "reads_api_keys": False,
+        "safety": _safety_boundary(),
+    }
+
+
+def _run_context_run_id(context: dict[str, Any], report: dict[str, Any]) -> str:
+    provenance = context.get("provenance") if isinstance(context.get("provenance"), dict) else {}
+    event = context.get("source_event") if isinstance(context.get("source_event"), dict) else {}
+    execution = report.get("paper_execution") if isinstance(report.get("paper_execution"), dict) else {}
+    for source in (provenance, event, execution, report):
+        for key in ("research_cycle_run_id", "run_id", "event_id", "paper_execution_id", "selected_symbol"):
+            value = str(source.get(key) or "").strip()
+            if value:
+                return f"run-context:{value}"
+    return "run-context"
+
+
+def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        handle.write("\n")
 
 
 def replay_report(args: argparse.Namespace) -> dict[str, Any]:
