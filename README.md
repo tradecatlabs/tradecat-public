@@ -173,6 +173,17 @@ bash scripts/start-auto-paper.sh status --json
 bash scripts/start-auto-paper.sh stop --json
 ```
 
+长期常驻用 user systemd service 作为唯一生命周期 owner：
+
+```bash
+bash scripts/start-auto-paper.sh systemd-install --json
+systemctl --user status tradecat-auto-paper.service
+```
+
+`systemd-install` 会禁用旧版 `tradecat-auto-paper.timer`，停止已有手动 `_run`，
+再启用长驻 `tradecat-auto-paper.service`；不要让 timer `_cycle` 和手动 `_run`
+同时写 `.runtime/auto-paper/`。
+
 本地 Web 监控页面：
 
 ```bash

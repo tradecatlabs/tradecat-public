@@ -6,6 +6,7 @@ RUNTIME_DIR="${TRADECAT_AUTO_PAPER_RUNTIME_DIR:-$APP_DIR/.runtime/auto-paper}"
 SYSTEMD_USER_DIR="${TRADECAT_AUTO_PAPER_SYSTEMD_USER_DIR:-${HOME:-}/.config/systemd/user}"
 SYSTEMCTL_BIN="${TRADECAT_AUTO_PAPER_SYSTEMCTL_BIN:-systemctl}"
 SYSTEMD_SERVICE_UNIT="tradecat-auto-paper.service"
+# Legacy unit name. New installs use the long-running service as the single owner.
 SYSTEMD_TIMER_UNIT="tradecat-auto-paper.timer"
 INTERVAL_SECONDS="${TRADECAT_AUTO_PAPER_INTERVAL_SECONDS:-60}"
 MAINTENANCE_INTERVAL_SECONDS="${TRADECAT_AUTO_PAPER_MAINTENANCE_INTERVAL_SECONDS:-300}"
@@ -103,6 +104,38 @@ is_running() {
     return $?
   fi
   return 0
+}
+
+write_own_pid_file() {
+  mkdir -p "$RUNTIME_DIR"
+  printf '%s\n' "$$" >"$PID_FILE"
+}
+
+clear_own_pid_file() {
+  local pid
+  pid="$(read_pid)"
+  if [[ "$pid" == "$$" ]]; then
+    rm -f "$PID_FILE"
+  fi
+}
+
+stop_running_loop_quietly() {
+  if ! is_running; then
+    rm -f "$PID_FILE"
+    return 0
+  fi
+  local pid
+  pid="$(read_pid)"
+  kill "$pid" >/dev/null 2>&1 || true
+  for _ in $(seq 1 30); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      rm -f "$PID_FILE"
+      return 0
+    fi
+    sleep 0.2
+  done
+  kill -9 "$pid" >/dev/null 2>&1 || true
+  rm -f "$PID_FILE"
 }
 
 proc_env_value() {
@@ -288,6 +321,7 @@ payload = {
     "systemd_user_dir": os.environ["AUTO_JSON_SYSTEMD_USER_DIR"],
     "systemd_service_unit": os.environ["AUTO_JSON_SYSTEMD_SERVICE_UNIT"],
     "systemd_timer_unit": os.environ["AUTO_JSON_SYSTEMD_TIMER_UNIT"],
+    "systemd_lifecycle_owner": "service",
     "interval_seconds": optional_float(os.environ["AUTO_JSON_INTERVAL_SECONDS"]),
     "maintenance_interval_seconds": optional_float(os.environ["AUTO_JSON_MAINTENANCE_INTERVAL_SECONDS"]),
     "cycle_timeout_seconds": optional_float(os.environ["AUTO_JSON_CYCLE_TIMEOUT_SECONDS"]),
@@ -566,6 +600,9 @@ run_cycle() {
 
 run_forever() {
   mkdir -p "$RUNTIME_DIR"
+  write_own_pid_file
+  trap 'clear_own_pid_file; exit 0' INT TERM
+  trap 'clear_own_pid_file' EXIT
   while true; do
     if ! run_cycle; then
       printf '{"event":"cycle_error","ts":"%s","ok":false}\n' "$(date -Iseconds)"
@@ -767,7 +804,7 @@ for path_id, path in {
 check(checks, "python_available", python_bin.exists() or shutil.which(str(python_bin)) is not None, "block", "python executable is available", python=str(python_bin))
 check(checks, "project_source_exists", (app_dir / "src" / "tradecat_auto").exists(), "block", "tradecat_auto source tree exists", path=str(app_dir / "src" / "tradecat_auto"))
 check(checks, "base_url_https", base_url.startswith("https://"), "block", "base_url uses https public endpoint", base_url=base_url)
-check(checks, "systemctl_available", shutil.which(systemctl_bin) is not None, "warn", "systemctl is available for user timer install", systemctl=systemctl_bin)
+check(checks, "systemctl_available", shutil.which(systemctl_bin) is not None, "warn", "systemctl is available for user service install", systemctl=systemctl_bin)
 
 uid = getattr(os, "geteuid", lambda: None)()
 check(
@@ -846,6 +883,8 @@ payload = {
         "user_dir": os.environ["AUTO_OPS_SYSTEMD_USER_DIR"],
         "service_unit": os.environ["AUTO_OPS_SYSTEMD_SERVICE_UNIT"],
         "timer_unit": os.environ["AUTO_OPS_SYSTEMD_TIMER_UNIT"],
+        "lifecycle_owner": "service",
+        "legacy_timer_policy": "disabled_on_install",
         "cycle_timeout_seconds": as_int(os.environ["AUTO_OPS_CYCLE_TIMEOUT_SECONDS"], 6000),
         "start_limit_burst": as_int(os.environ["AUTO_OPS_START_LIMIT_BURST"], 5),
         "start_limit_interval_seconds": as_int(os.environ["AUTO_OPS_START_LIMIT_INTERVAL_SECONDS"], 600),
@@ -857,7 +896,7 @@ payload = {
     "checks": checks,
     "blocking_checks": [item["id"] for item in blocking],
     "operations": {
-        "lifecycle": "systemd timer or Hermes/operator heal should restart missing paper loop",
+        "lifecycle": "systemd user service owns one long-running paper loop; legacy timer is disabled on install",
         "restart_storm": "systemd StartLimitBurst/StartLimitIntervalSec and RestartSec bound retry pressure",
         "identity": "uid/run_as_root is reported; public paper/watch does not require Binance credentials",
         "logging_audit": "log_file plus paper_audit.sqlite3 preserve service behavior and audit chain",
@@ -943,9 +982,10 @@ StartLimitIntervalSec=$START_LIMIT_INTERVAL_SECONDS
 StartLimitBurst=$START_LIMIT_BURST
 
 [Service]
-Type=oneshot
+Type=simple
 WorkingDirectory=$APP_DIR
 TimeoutStartSec=$TIMEOUT_START_SECONDS
+TimeoutStopSec=30
 Restart=on-failure
 RestartSec=$RESTART_SEC
 Environment=PYTHONUNBUFFERED=1
@@ -1019,7 +1059,7 @@ UNIT
       printf 'Environment=TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS=%s\n' "$MAX_EVENT_AGE_SECONDS"
     fi
     cat <<UNIT
-ExecStart=$APP_DIR/scripts/start-auto-paper.sh _cycle
+ExecStart=$APP_DIR/scripts/start-auto-paper.sh _run
 StandardOutput=append:$LOG_FILE
 StandardError=append:$LOG_FILE
 UMask=0077
@@ -1035,41 +1075,54 @@ RestrictSUIDSGID=true
 WantedBy=default.target
 UNIT
   } >"$service_path"
-  cat >"$timer_path" <<UNIT
-[Unit]
-Description=Run TradeCat auto paper cycle every $INTERVAL_SECONDS seconds
-
-[Timer]
-OnBootSec=30s
-OnUnitActiveSec=${INTERVAL_SECONDS}s
-AccuracySec=5s
-Persistent=true
-Unit=$SYSTEMD_SERVICE_UNIT
-
-[Install]
-WantedBy=timers.target
-UNIT
+  rm -f "$timer_path"
 }
 
 systemd_install() {
+  "$SYSTEMCTL_BIN" --user disable --now "$SYSTEMD_TIMER_UNIT" >/dev/null 2>&1 || true
+  "$SYSTEMCTL_BIN" --user stop "$SYSTEMD_SERVICE_UNIT" >/dev/null 2>&1 || true
+  stop_running_loop_quietly
   write_systemd_units
   if ! "$SYSTEMCTL_BIN" --user daemon-reload; then
     emit_text_or_json "systemd-install" "failed" "0" "0" "daemon_reload_failed" "systemd daemon-reload failed" "" "systemd_daemon_reload_failed" "systemctl --user daemon-reload failed"
     return 1
   fi
-  if ! "$SYSTEMCTL_BIN" --user enable --now "$SYSTEMD_TIMER_UNIT"; then
-    emit_text_or_json "systemd-install" "failed" "0" "0" "enable_failed" "systemd timer enable failed" "" "systemd_timer_enable_failed" "systemctl --user enable --now $SYSTEMD_TIMER_UNIT failed"
+  "$SYSTEMCTL_BIN" --user reset-failed "$SYSTEMD_SERVICE_UNIT" >/dev/null 2>&1 || true
+  if ! "$SYSTEMCTL_BIN" --user enable --now "$SYSTEMD_SERVICE_UNIT"; then
+    emit_text_or_json "systemd-install" "failed" "0" "0" "enable_failed" "systemd service enable failed" "" "systemd_service_enable_failed" "systemctl --user enable --now $SYSTEMD_SERVICE_UNIT failed"
     return 1
   fi
-  emit_text_or_json "systemd-install" "enabled" "1" "1" "timer_enabled" "installed and enabled $SYSTEMD_TIMER_UNIT in $SYSTEMD_USER_DIR"
+  local active=0
+  for _ in $(seq 1 20); do
+    if "$SYSTEMCTL_BIN" --user is-active --quiet "$SYSTEMD_SERVICE_UNIT"; then
+      active=1
+      break
+    fi
+    sleep 0.25
+  done
+  if [[ "$active" != "1" ]]; then
+    emit_text_or_json "systemd-install" "failed" "0" "0" "service_not_active" "systemd service is not active after enable --now" "" "systemd_service_not_active" "systemctl --user is-active --quiet $SYSTEMD_SERVICE_UNIT failed"
+    return 1
+  fi
+  local pid=""
+  for _ in $(seq 1 10); do
+    if is_running; then
+      pid="$(read_pid)"
+      load_running_env_config "$pid"
+      break
+    fi
+    sleep 0.1
+  done
+  emit_text_or_json "systemd-install" "enabled" "1" "1" "service_enabled" "installed and enabled $SYSTEMD_SERVICE_UNIT in $SYSTEMD_USER_DIR" "$pid"
 }
 
 systemd_uninstall() {
   mkdir -p "$SYSTEMD_USER_DIR"
+  "$SYSTEMCTL_BIN" --user disable --now "$SYSTEMD_SERVICE_UNIT" >/dev/null 2>&1 || true
   "$SYSTEMCTL_BIN" --user disable --now "$SYSTEMD_TIMER_UNIT" >/dev/null 2>&1 || true
   rm -f "$SYSTEMD_USER_DIR/$SYSTEMD_SERVICE_UNIT" "$SYSTEMD_USER_DIR/$SYSTEMD_TIMER_UNIT"
   "$SYSTEMCTL_BIN" --user daemon-reload >/dev/null 2>&1 || true
-  emit_text_or_json "systemd-uninstall" "disabled" "0" "1" "timer_disabled" "disabled and removed $SYSTEMD_TIMER_UNIT from $SYSTEMD_USER_DIR"
+  emit_text_or_json "systemd-uninstall" "disabled" "0" "1" "service_disabled" "disabled and removed $SYSTEMD_SERVICE_UNIT and legacy $SYSTEMD_TIMER_UNIT from $SYSTEMD_USER_DIR"
 }
 
 case "$ACTION" in

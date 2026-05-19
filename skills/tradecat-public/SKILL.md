@@ -75,7 +75,7 @@ Run `bash scripts/run-tradecat.sh context-audit --input context.json --json`. On
 
 ### Example 3: Operate Paper Runtime
 
-Run `bash scripts/start-auto-paper.sh ops-check --json`, then `bash scripts/start-auto-paper.sh status --json`. Use `python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765` only for local runtime observation.
+Run `bash scripts/start-auto-paper.sh ops-check --json`, then `bash scripts/start-auto-paper.sh status --json`. For long-lived operation, use `bash scripts/start-auto-paper.sh systemd-install --json` so the user systemd service is the only paper loop owner. Use `python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765` only for local runtime observation.
 
 ### Example 4: Change Project Code
 

@@ -26,7 +26,7 @@ Hermes/operator supervisor
 
 | 对象 | TradeCat 落点 | 验收 |
 | --- | --- | --- |
-| 生命周期 | `start-auto-paper.sh start/status/stop/heal --json` 和 user systemd timer | `running=true`，或 `heal` 能在缺进程时拉起 paper loop |
+| 生命周期 | `start-auto-paper.sh start/status/stop/heal --json` 和 user systemd service | `running=true`，或 `heal` 能在缺进程时拉起 paper loop |
 | 防重启风暴 | systemd `StartLimitIntervalSec`、`StartLimitBurst`、`RestartSec` | 单元文件包含限制，失败不会无限紧密重启 |
 | 身份权限 | `ops-check --json` 输出 `uid/run_as_root` | 能看出是否 root；public paper/watch 不要求 Binance 凭证 |
 | 日志审计 | `paper-run-loop.log`、`paper_audit.sqlite3`、`cycles.jsonl` | 日志、cycle、audit chain 可排查且只在 `.runtime/auto-paper/` |
@@ -76,11 +76,13 @@ TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY=sheet_signal_or_taker_flow \
   bash scripts/start-auto-paper.sh restart --json
 ```
 
-使用 user systemd timer 作为长期 keepalive：
+使用 user systemd service 作为长期 keepalive。`systemd-install` 会禁用旧版
+`tradecat-auto-paper.timer`，停止已有手动 loop，再启用唯一的长驻
+`tradecat-auto-paper.service`，避免 timer `_cycle` 和手动 `_run` 同时写同一套账本：
 
 ```bash
 bash scripts/start-auto-paper.sh systemd-install --json
-systemctl --user status tradecat-auto-paper.timer
+systemctl --user status tradecat-auto-paper.service
 ```
 
 健康、日报和告警：

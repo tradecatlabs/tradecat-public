@@ -24,6 +24,17 @@ bash scripts/start-auto-paper.sh stop --json
 
 启动脚本也默认运行 `strategy-review` 并写入 ignored `.runtime/auto-paper/strategy_state.json`。该状态根据本地 paper outcome 自动暂停亏损 symbol、亏损信号类型或亏损方向，并限制最大 open positions 与单币并发；设置 `TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED=0` 可关闭这层 paper/watch 自我迭代过滤。
 
+长期常驻建议使用 user systemd service 作为唯一生命周期 owner：
+
+```bash
+bash scripts/start-auto-paper.sh systemd-install --json
+systemctl --user status tradecat-auto-paper.service
+```
+
+该安装入口会禁用旧版 `tradecat-auto-paper.timer`，停止已有手动 `_run`，再启用长驻
+`tradecat-auto-paper.service`。不要同时让 timer `_cycle` 和手动 `_run` 写同一套
+`.runtime/auto-paper/`。
+
 ## Web 监控
 
 ```bash

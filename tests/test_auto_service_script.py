@@ -91,6 +91,7 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["strategy_state_path"] == str(tmp_path / "run" / "strategy_state.json")
     assert payload["strategy_state_configured"] is True
     assert payload["strategy_review_report_path"] == str(tmp_path / "run" / "strategy-review-latest.json")
+    assert payload["systemd_lifecycle_owner"] == "service"
     assert str(tmp_path / "run") in payload["runtime_dir"]
 
 
@@ -147,6 +148,8 @@ def test_auto_paper_ops_check_reports_long_running_dependency_chain(tmp_path: Pa
     assert "auto-paper run-loop" in payload["dependency_chain"]
     assert payload["runtime"]["ledger_path"] == str(runtime_dir / "paper_ledger.json")
     assert payload["systemd"]["start_limit_burst"] == 5
+    assert payload["systemd"]["lifecycle_owner"] == "service"
+    assert payload["systemd"]["legacy_timer_policy"] == "disabled_on_install"
     assert payload["systemd"]["limit_nofile"] == 4096
     assert checks["no_binance_credential_env_names"]["ok"] is True
     assert checks["identity_detected"]["run_as_root"] in {True, False}
@@ -600,7 +603,9 @@ def test_auto_paper_heal_starts_when_process_is_missing(tmp_path: Path) -> None:
         run_service_script(["stop", "--json"], env={"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir)})
 
 
-def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path) -> None:
+def test_auto_paper_systemd_install_writes_long_running_user_service_and_disables_legacy_timer(
+    tmp_path: Path,
+) -> None:
     fake_systemctl, systemctl_log = make_fake_systemctl(tmp_path)
     systemd_dir = tmp_path / "systemd-user"
     runtime_dir = tmp_path / "run"
@@ -626,16 +631,16 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert payload["systemd_user_dir"] == str(systemd_dir)
     assert payload["systemd_timer_unit"] == "tradecat-auto-paper.timer"
     assert payload["systemd_service_unit"] == "tradecat-auto-paper.service"
+    assert payload["systemd_lifecycle_owner"] == "service"
 
     service_path = systemd_dir / "tradecat-auto-paper.service"
     timer_path = systemd_dir / "tradecat-auto-paper.timer"
     service_text = service_path.read_text(encoding="utf-8")
-    timer_text = timer_path.read_text(encoding="utf-8")
     assert service_path.exists()
-    assert timer_path.exists()
-    assert "Type=oneshot" in service_text
+    assert not timer_path.exists()
+    assert "Type=simple" in service_text
     assert f"WorkingDirectory={PROJECT_ROOT}" in service_text
-    assert f"ExecStart={PROJECT_ROOT}/scripts/start-auto-paper.sh _cycle" in service_text
+    assert f"ExecStart={PROJECT_ROOT}/scripts/start-auto-paper.sh _run" in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_RUNTIME_DIR={runtime_dir}" in service_text
     assert "Environment=HTTPS_PROXY=http://127.0.0.1:7890" in service_text
     assert "Environment=NO_PROXY=localhost,127.0.0.1,::1" in service_text
@@ -673,6 +678,7 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert "Restart=on-failure" in service_text
     assert "RestartSec=30s" in service_text
     assert "TimeoutStartSec=120" in service_text
+    assert "TimeoutStopSec=30" in service_text
     assert "StandardOutput=append:" in service_text
     assert "StandardError=append:" in service_text
     assert "UMask=0077" in service_text
@@ -682,12 +688,13 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert "PrivateDevices=true" in service_text
     assert "LockPersonality=true" in service_text
     assert "RestrictSUIDSGID=true" in service_text
-    assert "OnBootSec=30s" in timer_text
-    assert "OnUnitActiveSec=17s" in timer_text
-    assert "Unit=tradecat-auto-paper.service" in timer_text
     assert systemctl_log.read_text(encoding="utf-8").splitlines() == [
+        "--user disable --now tradecat-auto-paper.timer",
+        "--user stop tradecat-auto-paper.service",
         "--user daemon-reload",
-        "--user enable --now tradecat-auto-paper.timer",
+        "--user reset-failed tradecat-auto-paper.service",
+        "--user enable --now tradecat-auto-paper.service",
+        "--user is-active --quiet tradecat-auto-paper.service",
     ]
 
 
@@ -799,6 +806,7 @@ def test_auto_paper_systemd_uninstall_removes_user_units(tmp_path: Path) -> None
     assert not (systemd_dir / "tradecat-auto-paper.service").exists()
     assert not (systemd_dir / "tradecat-auto-paper.timer").exists()
     assert systemctl_log.read_text(encoding="utf-8").splitlines() == [
+        "--user disable --now tradecat-auto-paper.service",
         "--user disable --now tradecat-auto-paper.timer",
         "--user daemon-reload",
     ]

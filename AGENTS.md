@@ -93,6 +93,7 @@ bash scripts/start-auto-paper.sh ops-check --json
 bash scripts/start-auto-paper.sh start --json
 bash scripts/start-auto-paper.sh status --json
 bash scripts/start-auto-paper.sh stop --json
+bash scripts/start-auto-paper.sh systemd-install --json
 ```
 
 本地 Web 监控：
@@ -176,6 +177,7 @@ tradecat-public/
 - `pytest` / `ruff` 不存在：运行 `bash scripts/bootstrap-dev.sh` 或安装 `python3 -m pip install -c constraints.txt -e ".[dev]"`。
 - 在线表格请求失败：先跑 `python3 scripts/request.py --datasets --format json`；网络受限时设置 `HTTP_PROXY` / `HTTPS_PROXY`。
 - `paper_service_not_running`：运行 `bash scripts/start-auto-paper.sh status --json`；需要常驻时运行 `bash scripts/start-auto-paper.sh start --json`。
+- 长期常驻 owner 冲突：应使用 `bash scripts/start-auto-paper.sh systemd-install --json` 让 user systemd service 托管唯一 `_run`；不要让旧 timer `_cycle` 和手动 `_run` 同时写同一套 `.runtime/auto-paper/`。
 - `heartbeat_stale` 但 pid 仍在：单轮可能卡在 public 网络或盯市；默认 `TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000`，可运行 `bash scripts/start-auto-paper.sh heal --json`。
 - `paper-report` 和常驻交易不一致：默认事实源是 `.runtime/auto-paper/paper_ledger.json` 与 `.runtime/auto-paper/cycles.jsonl`；先跑 `bash scripts/run-tradecat.sh latest-decision --json`。
 - `strategy_symbol_blocked` / `strategy_signal_type_blocked` / `strategy_side_blocked`：`strategy-review` 根据本地 paper 亏损结果生成了 `.runtime/auto-paper/strategy_state.json`，这是 paper/watch 自我迭代过滤；先看 `bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json`。
