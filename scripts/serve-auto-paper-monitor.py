@@ -111,6 +111,14 @@ def read_latest_jsonl(path: Path, *, max_bytes: int = 262144) -> dict[str, Any]:
     return {}
 
 
+def read_json_file(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def read_latest_decision_jsonl(path: Path, *, max_bytes: int = 1048576) -> dict[str, Any]:
     try:
         with path.open("rb") as handle:
@@ -152,6 +160,7 @@ def build_dependency_health(
     ops: dict[str, Any],
     audit: dict[str, Any],
     latest_cycle: dict[str, Any],
+    strategy_state: dict[str, Any],
 ) -> list[dict[str, str]]:
     heartbeat = health.get("heartbeat") if isinstance(health.get("heartbeat"), dict) else {}
     service_state = health.get("service_state") if isinstance(health.get("service_state"), dict) else {}
@@ -191,6 +200,8 @@ def build_dependency_health(
     )
     portfolio_policy_path = str(status.get("portfolio_risk_policy_path") or "")
     kill_switch_path = str(status.get("paper_kill_switch_path") or "")
+    strategy_policy = strategy_state.get("policy") if isinstance(strategy_state.get("policy"), dict) else {}
+    strategy_enabled = bool(status.get("strategy_review_enabled")) and bool(strategy_state.get("enabled", False))
     latest_events = latest_cycle.get("events") if isinstance(latest_cycle.get("events"), dict) else {}
     input_change = latest_cycle.get("input_change") if isinstance(latest_cycle.get("input_change"), dict) else {}
     latest_event_error = latest_events.get("error") if isinstance(latest_events.get("error"), dict) else {}
@@ -273,6 +284,20 @@ def build_dependency_health(
             )
             if portfolio_policy_path or kill_switch_path
             else "默认不启用本地组合约束；Agent thesis 直接驱动 paper/watch，安全边界单独强制",
+        ),
+        _node(
+            "strategy_iteration",
+            "paper outcome 自我迭代过滤",
+            "ok" if strategy_enabled else "warn",
+            (
+                f"state={strategy_state.get('status') or '-'}; "
+                f"blocked_symbols={len(strategy_policy.get('blocked_symbols') or [])}; "
+                f"blocked_signal_types={len(strategy_policy.get('blocked_signal_types') or [])}; "
+                f"blocked_sides={','.join(strategy_policy.get('blocked_sides') or []) or '-'}; "
+                f"max_open_positions={strategy_policy.get('max_open_positions') or '-'}"
+            )
+            if strategy_state
+            else "strategy_state.json 尚未生成；等待下一轮 strategy-review",
         ),
         _node(
             "auto_paper_loop",
@@ -506,8 +531,12 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
     journal_path = runtime_dir / "paper_audit.sqlite3"
     log_path = runtime_dir / "paper-run-loop.log"
     archive_path = runtime_dir / "cycles.jsonl"
+    strategy_state_path = runtime_dir / "strategy_state.json"
+    strategy_review_report_path = runtime_dir / "strategy-review-latest.json"
     latest_cycle = read_latest_jsonl(archive_path)
     latest_decision_cycle = read_latest_decision_jsonl(archive_path)
+    strategy_state = read_json_file(strategy_state_path)
+    strategy_review = read_json_file(strategy_review_report_path)
     status = run_json(["bash", "scripts/start-auto-paper.sh", "status", "--json"], runtime_dir=runtime_dir)
     health = run_json(["bash", "scripts/start-auto-paper.sh", "health", "--json"], runtime_dir=runtime_dir)
     ops = run_json(["bash", "scripts/start-auto-paper.sh", "ops-check", "--json"], runtime_dir=runtime_dir)
@@ -546,6 +575,8 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
             "ledger_path": str(ledger_path),
             "journal_path": str(journal_path),
             "log_path": str(log_path),
+            "strategy_state_path": str(strategy_state_path),
+            "strategy_review_report_path": str(strategy_review_report_path),
         },
         "status": status,
         "health": health,
@@ -554,10 +585,17 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
         "audit": audit,
         "latest_cycle": latest_cycle,
         "latest_decision_cycle": latest_decision_cycle,
+        "strategy_state": strategy_state,
+        "strategy_review": strategy_review,
         "risk_state": build_risk_state(health),
         "decision_text": build_decision_text(latest_decision_cycle or latest_cycle),
         "dependency_health": build_dependency_health(
-            status=status, health=health, ops=ops, audit=audit, latest_cycle=latest_cycle
+            status=status,
+            health=health,
+            ops=ops,
+            audit=audit,
+            latest_cycle=latest_cycle,
+            strategy_state=strategy_state,
         ),
         "log_tail": read_tail(log_path),
         "monitor_environment": {

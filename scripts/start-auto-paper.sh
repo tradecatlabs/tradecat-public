@@ -43,6 +43,12 @@ BASE_URL="${TRADECAT_AUTO_PAPER_BASE_URL:-https://fapi.binance.com}"
 MAX_HEARTBEAT_AGE_SECONDS="${TRADECAT_AUTO_PAPER_MAX_HEARTBEAT_AGE_SECONDS:-180}"
 PORTFOLIO_RISK_POLICY_PATH="${TRADECAT_AUTO_PAPER_PORTFOLIO_RISK_POLICY_PATH:-}"
 PAPER_KILL_SWITCH_PATH="${TRADECAT_AUTO_PAPER_KILL_SWITCH_PATH:-}"
+STRATEGY_REVIEW_ENABLED="${TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED:-1}"
+STRATEGY_STATE_PATH="${TRADECAT_AUTO_PAPER_STRATEGY_STATE_PATH:-$RUNTIME_DIR/strategy_state.json}"
+STRATEGY_REVIEW_REPORT_PATH="${TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_REPORT_PATH:-$RUNTIME_DIR/strategy-review-latest.json}"
+STRATEGY_REVIEW_MIN_CLOSED_POSITIONS="${TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MIN_CLOSED_POSITIONS:-50}"
+STRATEGY_REVIEW_MAX_OPEN_POSITIONS="${TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_OPEN_POSITIONS:-50}"
+STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL="${TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL:-3}"
 MIN_FREE_BYTES="${TRADECAT_AUTO_PAPER_MIN_FREE_BYTES:-104857600}"
 MIN_NOFILE="${TRADECAT_AUTO_PAPER_MIN_NOFILE:-1024}"
 MIN_NPROC="${TRADECAT_AUTO_PAPER_MIN_NPROC:-128}"
@@ -138,6 +144,9 @@ load_running_env_config() {
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_BASE_URL")"; then BASE_URL="$value"; fi
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_PORTFOLIO_RISK_POLICY_PATH")"; then PORTFOLIO_RISK_POLICY_PATH="$value"; fi
   if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_KILL_SWITCH_PATH")"; then PAPER_KILL_SWITCH_PATH="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED")"; then STRATEGY_REVIEW_ENABLED="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_STRATEGY_STATE_PATH")"; then STRATEGY_STATE_PATH="$value"; fi
+  if value="$(proc_env_value "$pid" "TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_REPORT_PATH")"; then STRATEGY_REVIEW_REPORT_PATH="$value"; fi
 }
 
 emit_json() {
@@ -192,6 +201,9 @@ emit_json() {
   AUTO_JSON_BASE_URL="$BASE_URL" \
   AUTO_JSON_PORTFOLIO_RISK_POLICY_PATH="$PORTFOLIO_RISK_POLICY_PATH" \
   AUTO_JSON_PAPER_KILL_SWITCH_PATH="$PAPER_KILL_SWITCH_PATH" \
+  AUTO_JSON_STRATEGY_REVIEW_ENABLED="$STRATEGY_REVIEW_ENABLED" \
+  AUTO_JSON_STRATEGY_STATE_PATH="$STRATEGY_STATE_PATH" \
+  AUTO_JSON_STRATEGY_REVIEW_REPORT_PATH="$STRATEGY_REVIEW_REPORT_PATH" \
   AUTO_JSON_PYTHON="$py" \
   "$py" - <<'PY'
 import json
@@ -315,6 +327,10 @@ payload = {
     "base_url": os.environ["AUTO_JSON_BASE_URL"],
     "portfolio_risk_policy_path": os.environ["AUTO_JSON_PORTFOLIO_RISK_POLICY_PATH"],
     "paper_kill_switch_path": os.environ["AUTO_JSON_PAPER_KILL_SWITCH_PATH"],
+    "strategy_review_enabled": truthy(os.environ["AUTO_JSON_STRATEGY_REVIEW_ENABLED"]),
+    "strategy_state_path": os.environ["AUTO_JSON_STRATEGY_STATE_PATH"],
+    "strategy_state_configured": bool(os.environ["AUTO_JSON_STRATEGY_STATE_PATH"]),
+    "strategy_review_report_path": os.environ["AUTO_JSON_STRATEGY_REVIEW_REPORT_PATH"],
     "python": os.environ["AUTO_JSON_PYTHON"],
     "health": "spawned_unverified" if truthy(os.environ["AUTO_JSON_RUNNING"]) else "not_running",
     "safety": {
@@ -460,6 +476,25 @@ path.write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encodi
 PY
 }
 
+ensure_strategy_state() {
+  if [[ "$STRATEGY_REVIEW_ENABLED" == "0" || "$STRATEGY_REVIEW_ENABLED" == "false" || -z "$STRATEGY_STATE_PATH" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$STRATEGY_STATE_PATH")"
+  local py
+  py="$(python_bin)"
+  if ! "$py" -m tradecat_auto.cli strategy-review \
+    --ledger-path "$LEDGER_PATH" \
+    --archive-path "$ARCHIVE_PATH" \
+    --output-state-path "$STRATEGY_STATE_PATH" \
+    --min-closed-positions "$STRATEGY_REVIEW_MIN_CLOSED_POSITIONS" \
+    --max-open-positions "$STRATEGY_REVIEW_MAX_OPEN_POSITIONS" \
+    --max-positions-per-symbol "$STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL" \
+    --json >"$STRATEGY_REVIEW_REPORT_PATH"; then
+    printf '{"event":"strategy_review_error","ts":"%s","ok":false,"path":"%s"}\n' "$(date -Iseconds)" "$STRATEGY_REVIEW_REPORT_PATH" >&2
+  fi
+}
+
 run_cycle() {
   local py
   py="$(python_bin)"
@@ -468,6 +503,7 @@ run_cycle() {
   export PYTHONUNBUFFERED=1
   mkdir -p "$RUNTIME_DIR"
   ensure_paper_autonomy_profile
+  ensure_strategy_state
   local -a sizing_args=()
   if [[ -n "$PAPER_MARGIN_BUDGET_USDT" ]]; then
     sizing_args+=(--paper-margin-budget-usdt "$PAPER_MARGIN_BUDGET_USDT")
@@ -492,6 +528,9 @@ run_cycle() {
   fi
   if [[ -n "$PAPER_KILL_SWITCH_PATH" ]]; then
     sizing_args+=(--paper-kill-switch-path "$PAPER_KILL_SWITCH_PATH")
+  fi
+  if [[ "$STRATEGY_REVIEW_ENABLED" != "0" && "$STRATEGY_REVIEW_ENABLED" != "false" && -n "$STRATEGY_STATE_PATH" ]]; then
+    sizing_args+=(--strategy-state-path "$STRATEGY_STATE_PATH")
   fi
   printf '{"event":"cycle_start","ts":"%s"}\n' "$(date -Iseconds)"
   local -a command=(
@@ -969,6 +1008,12 @@ Environment=TRADECAT_AUTO_PAPER_SYMBOL=$SYMBOL
 Environment=TRADECAT_AUTO_PAPER_BASE_URL=$BASE_URL
 Environment=TRADECAT_AUTO_PAPER_PORTFOLIO_RISK_POLICY_PATH=$PORTFOLIO_RISK_POLICY_PATH
 Environment=TRADECAT_AUTO_PAPER_KILL_SWITCH_PATH=$PAPER_KILL_SWITCH_PATH
+Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED=$STRATEGY_REVIEW_ENABLED
+Environment=TRADECAT_AUTO_PAPER_STRATEGY_STATE_PATH=$STRATEGY_STATE_PATH
+Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_REPORT_PATH=$STRATEGY_REVIEW_REPORT_PATH
+Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MIN_CLOSED_POSITIONS=$STRATEGY_REVIEW_MIN_CLOSED_POSITIONS
+Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_OPEN_POSITIONS=$STRATEGY_REVIEW_MAX_OPEN_POSITIONS
+Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL=$STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL
 UNIT
     if [[ -n "$MAX_EVENT_AGE_SECONDS" ]]; then
       printf 'Environment=TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS=%s\n' "$MAX_EVENT_AGE_SECONDS"

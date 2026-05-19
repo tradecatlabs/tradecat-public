@@ -50,6 +50,7 @@ bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json
 bash scripts/run-tradecat.sh context-audit --input /path/to/agent-market-context.json --json
 bash scripts/run-tradecat.sh run-context --input /path/to/agent-market-context.json --mode paper --json
 bash scripts/run-tradecat.sh replay-report --archive-path .runtime/auto-paper/cycles.jsonl --ledger-path .runtime/auto-paper/paper_ledger.json --json
+bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json
 ```
 
 Validation:

@@ -84,6 +84,16 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         reasons.append("new_entries_disabled")
     if active_policy.get("cooldown_active") is True:
         reasons.append("cooldown_active")
+    blocked_symbols = _normalized_set(active_policy.get("blocked_symbols"))
+    if str(signal.get("symbol") or "").upper().strip() in blocked_symbols:
+        reasons.append("strategy_symbol_blocked")
+    blocked_sides = _normalized_set(active_policy.get("blocked_sides"))
+    if str(signal.get("direction") or "").upper().strip() in blocked_sides:
+        reasons.append("strategy_side_blocked")
+    blocked_signal_types = _text_set(active_policy.get("blocked_signal_types"))
+    current_signal_type = str(active_policy.get("current_signal_type") or "").strip()
+    if current_signal_type and current_signal_type in blocked_signal_types:
+        reasons.append("strategy_signal_type_blocked")
 
     kill_switch_file = str(active_policy.get("kill_switch_file") or "").strip()
     if kill_switch_file and Path(kill_switch_file).exists():
@@ -270,6 +280,11 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
             "abnormal_move_halt_bps": active_policy.get("abnormal_move_halt_bps"),
             "current_abnormal_move_bps": active_policy.get("current_abnormal_move_bps"),
             "cooldown_active": active_policy.get("cooldown_active"),
+            "strategy_state": active_policy.get("strategy_state"),
+            "current_signal_type": current_signal_type,
+            "blocked_symbols": sorted(blocked_symbols),
+            "blocked_signal_types": sorted(blocked_signal_types),
+            "blocked_sides": sorted(blocked_sides),
             "requested_notional_usdt": requested_notional,
             "max_daily_loss_usdt": active_policy.get("max_daily_loss_usdt"),
             "daily_realized_pnl_usdt": active_policy.get("daily_realized_pnl_usdt"),
@@ -366,6 +381,18 @@ def _as_reason_list(value: Any) -> list[str]:
         return [str(item) for item in value if str(item)]
     text = str(value or "").strip()
     return [text] if text else []
+
+
+def _normalized_set(value: Any) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    return {str(item or "").upper().strip() for item in value if str(item or "").strip()}
+
+
+def _text_set(value: Any) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    return {str(item or "").strip() for item in value if str(item or "").strip()}
 
 
 def _dedupe(values: list[str]) -> list[str]:

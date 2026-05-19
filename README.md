@@ -121,6 +121,11 @@ TRADECAT_AUTO_PAPER_MONITOR_PORT=8765
 `agent_sizing_required`。显式 `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH` 仍优先；要恢复
 严格等待外部 thesis 的模式，设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0`。
 
+`start-auto-paper.sh` 也会默认维护 ignored `.runtime/auto-paper/strategy_state.json`。
+该状态由 `strategy-review` 基于本地 paper ledger / cycle archive 生成，用于把亏损
+symbol、亏损信号类型、亏损方向、最大持仓数和单币并发上限反馈到下一轮 paper 风控。
+这是本地 paper/watch 自我迭代过滤，不读取 Binance 凭证，也不会触发真实订单。
+
 纸面成本模型默认使用 Binance USDⓈ-M 官方 commission-rate 文档示例中的 taker 费率 `4 bps`
 作为 public fallback；实际开仓滑点优先用公开 `/fapi/v1/depth` 盘口按 Agent notional
 估算成交均价。精确账户/VIP/symbol 费率需要签名 `USER_DATA`，不属于本公开仓库边界。
@@ -149,6 +154,7 @@ bash scripts/run-tradecat.sh context-audit --input context.json --json
 bash scripts/run-tradecat.sh run-context --input context.json --mode paper --json
 bash scripts/run-tradecat.sh run-once --agent-trade-thesis-path thesis.json --mode paper --json
 bash scripts/run-tradecat.sh paper-report --json
+bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json
 bash scripts/run-tradecat.sh latest-cycle --json
 bash scripts/run-tradecat.sh latest-decision --json
 bash scripts/run-tradecat.sh audit-journal --json

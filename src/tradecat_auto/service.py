@@ -21,6 +21,7 @@ from tradecat_auto.paper_ledger import (
 )
 from tradecat_auto.pipeline import build_paper_pipeline_report, resolve_paper_sizing
 from tradecat_auto.risk import load_portfolio_risk_policy
+from tradecat_auto.strategy_review import load_strategy_state, strategy_state_policy
 from tradecat_auto.tradecat_source import signal_events_payload
 
 DEFAULT_STATE_PATH = Path(".runtime/service_state.json")
@@ -239,7 +240,13 @@ def run_service_cycle(
             ),
         )
 
-    risk_policy = _risk_policy_from_runtime(args, cycle_time, state=previous_state)
+    risk_policy = _risk_policy_from_runtime(
+        args,
+        cycle_time,
+        state=previous_state,
+        selected_symbol=selected_symbol,
+        latest_event=latest_event,
+    )
     sizing = _paper_sizing_from_args(args)
     pipeline_report = build_paper_pipeline_report(
         selected_symbol=selected_symbol,
@@ -777,9 +784,14 @@ def _monitor_existing_paper_positions(args: Any, client: Any, cycle_time: dateti
 
 
 def _risk_policy_from_runtime(
-    args: Any, cycle_time: datetime | None = None, state: dict[str, Any] | None = None
+    args: Any,
+    cycle_time: datetime | None = None,
+    state: dict[str, Any] | None = None,
+    selected_symbol: str = "",
+    latest_event: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    policy = _risk_policy_from_existing_ledger(args, cycle_time)
+    policy = _risk_policy_from_existing_ledger(args, cycle_time, selected_symbol=selected_symbol)
+    policy.update(_strategy_state_policy_from_args(args, selected_symbol=selected_symbol, latest_event=latest_event))
     policy.update(_portfolio_risk_policy_from_args(args))
     _apply_reject_cooldown(policy, state or {}, cycle_time)
     sizing = _paper_sizing_from_args(args)
@@ -798,6 +810,22 @@ def _risk_policy_from_runtime(
         }
     )
     return policy
+
+
+def _strategy_state_policy_from_args(
+    args: Any, *, selected_symbol: str = "", latest_event: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    path = str(getattr(args, "strategy_state_path", "") or "").strip()
+    if not path:
+        return {}
+    try:
+        state = load_strategy_state(path)
+    except ValueError as exc:
+        return {
+            "force_reject_reasons": ["strategy_state_load_failed"],
+            "strategy_state_error": str(exc),
+        }
+    return strategy_state_policy(state, selected_symbol=selected_symbol, latest_event=latest_event)
 
 
 def _portfolio_risk_policy_from_args(args: Any) -> dict[str, Any]:
@@ -837,7 +865,9 @@ def _apply_reject_cooldown(policy: dict[str, Any], state: dict[str, Any], cycle_
         policy["cooldown_limit_minutes"] = cooldown_minutes
 
 
-def _risk_policy_from_existing_ledger(args: Any, cycle_time: datetime | None = None) -> dict[str, Any]:
+def _risk_policy_from_existing_ledger(
+    args: Any, cycle_time: datetime | None = None, *, selected_symbol: str = ""
+) -> dict[str, Any]:
     ledger_path = _paper_ledger_path(args)
     if ledger_path is None or not ledger_path.exists():
         return {}
@@ -854,6 +884,7 @@ def _risk_policy_from_existing_ledger(args: Any, cycle_time: datetime | None = N
         daily_realized = float(ledger.get("realized_pnl_usdt") or 0.0)
     return {
         "current_open_positions": len(open_positions),
+        "current_symbol_open_positions": _open_positions_for_symbol(open_positions, selected_symbol),
         "current_total_notional_usdt": current_total_notional,
         "daily_realized_pnl_usdt": daily_realized,
         "consecutive_losses": _consecutive_losses(closed_positions),
@@ -872,6 +903,17 @@ def _open_positions_notional(open_positions: dict[str, Any]) -> float:
             notional = entry_price * quantity
         total += abs(float(notional or 0.0))
     return total
+
+
+def _open_positions_for_symbol(open_positions: dict[str, Any], selected_symbol: str) -> int:
+    symbol = str(selected_symbol or "").upper().strip()
+    if not symbol:
+        return 0
+    return sum(
+        1
+        for position in open_positions.values()
+        if isinstance(position, dict) and str(position.get("symbol") or "").upper().strip() == symbol
+    )
 
 
 def _daily_realized_pnl(closed_positions: list[Any], cycle_time: datetime) -> float | None:

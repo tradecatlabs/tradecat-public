@@ -87,6 +87,10 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["paper_slippage_bps"] == 0.0
     assert payload["paper_max_holding_minutes"] == 0.0
     assert "Agent" in payload["paper_max_holding_minutes_semantics"]
+    assert payload["strategy_review_enabled"] is True
+    assert payload["strategy_state_path"] == str(tmp_path / "run" / "strategy_state.json")
+    assert payload["strategy_state_configured"] is True
+    assert payload["strategy_review_report_path"] == str(tmp_path / "run" / "strategy-review-latest.json")
     assert str(tmp_path / "run") in payload["runtime_dir"]
 
 
@@ -227,6 +231,7 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
         ops={"ok": True, "checks": checks},
         audit={"ok": True, "chain_valid": True},
         latest_cycle={"input_change": {"trigger_reason": "new_signal_event"}, "events": {"ok": True, "events": []}},
+        strategy_state={},
     )
     by_id = {item["id"]: item for item in nodes}
 
@@ -236,6 +241,7 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
     assert "not_configured" not in by_id["risk_controls"]["detail"]
     assert by_id["trade_thesis"]["status"] == "warn"
     assert "默认 runtime paper autonomy profile" in by_id["trade_thesis"]["detail"]
+    assert by_id["strategy_iteration"]["status"] == "warn"
 
 
 def test_auto_paper_web_monitor_extracts_auditable_decision_text() -> None:
@@ -651,6 +657,15 @@ def test_auto_paper_systemd_install_writes_user_timer_and_service(tmp_path: Path
     assert "Environment=TRADECAT_AUTO_PAPER_FEE_BPS=4" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=0" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_MAX_HOLDING_MINUTES=0" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED=1" in service_text
+    assert f"Environment=TRADECAT_AUTO_PAPER_STRATEGY_STATE_PATH={runtime_dir / 'strategy_state.json'}" in service_text
+    assert (
+        f"Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_REPORT_PATH={runtime_dir / 'strategy-review-latest.json'}"
+        in service_text
+    )
+    assert "Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MIN_CLOSED_POSITIONS=50" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_OPEN_POSITIONS=50" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL=3" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_NOTIONAL_USDT=" not in service_text
     assert f"Environment=TRADECAT_AUTO_PAPER_JOURNAL_PATH={runtime_dir / 'paper_audit.sqlite3'}" in service_text
     assert "StartLimitIntervalSec=600" in service_text
@@ -707,6 +722,7 @@ def test_auto_paper_cycle_omits_margin_budget_arg_when_unset(tmp_path: Path) -> 
     assert str(tmp_path / "agent-thesis.json") in argv
     assert "--paper-autonomy-profile-path" in argv
     assert str(tmp_path / "paper-autonomy.json") in argv
+    assert "--strategy-state-path" in argv
     assert "--paper-margin-budget-usdt" not in argv
     assert "--event-limit" in argv
     assert argv[argv.index("--event-limit") + 1] == "0"
@@ -757,6 +773,7 @@ def test_auto_paper_cycle_refreshes_default_runtime_autonomy_profile(tmp_path: P
     argv = json.loads(argv_path.read_text(encoding="utf-8"))
     assert "--paper-autonomy-profile-path" in argv
     assert argv[argv.index("--paper-autonomy-profile-path") + 1] == str(profile_path)
+    assert "--strategy-state-path" in argv
 
 
 def test_auto_paper_systemd_uninstall_removes_user_units(tmp_path: Path) -> None:

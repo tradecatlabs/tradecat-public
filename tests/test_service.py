@@ -157,6 +157,7 @@ def make_args(**overrides):
         "paper_slippage_bps": 0.0,
         "archive_path": "",
         "journal_path": "",
+        "strategy_state_path": "",
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -217,6 +218,40 @@ def write_paper_autonomy_profile(root: str | Path) -> Path:
         encoding="utf-8",
     )
     return profile_path
+
+
+def write_strategy_state(root: str | Path, *, blocked_symbols: list[str] | None = None) -> Path:
+    state_path = Path(root) / "strategy_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": "tradecat_auto.strategy_state.v1",
+                "schema_version": "1.0.0",
+                "ok": True,
+                "enabled": True,
+                "status": "active",
+                "policy": {
+                    "new_entries_enabled": True,
+                    "max_open_positions": 50,
+                    "max_positions_per_symbol": 3,
+                    "blocked_symbols": blocked_symbols or [],
+                    "blocked_signal_types": [],
+                    "blocked_sides": [],
+                },
+                "provenance": {"source": "test_service"},
+                "safety": {
+                    "public_readonly_market_data": True,
+                    "paper_or_watch_only": True,
+                    "real_orders": False,
+                    "signed_requests": False,
+                    "reads_api_keys": False,
+                    "binance_account_state": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return state_path
 
 
 class ServiceTests(unittest.TestCase):
@@ -876,6 +911,36 @@ class ServiceTests(unittest.TestCase):
             self.assertAlmostEqual(position["take_profit_price"], 0.06324)
             self.assertEqual(position["max_holding_minutes"], 45.0)
             self.assertEqual(position["exit_plan_source"], "agent_trade_thesis")
+
+    def test_run_service_cycle_applies_strategy_state_symbol_block(self) -> None:
+        event = {
+            "event_id": "evt-strategy-block",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "IRYS 异动",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "paper_ledger.json"
+            profile_path = write_paper_autonomy_profile(tmp)
+            strategy_state_path = write_strategy_state(tmp, blocked_symbols=["IRYSUSDT"])
+
+            report = run_service_cycle(
+                make_args(
+                    ledger_path=str(ledger_path),
+                    paper_autonomy_profile_path=str(profile_path),
+                    strategy_state_path=str(strategy_state_path),
+                ),
+                state_path=Path(tmp) / "service_state.json",
+                client=FakeClient(),
+                source=FakeSource(event),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "PROCESSED")
+            self.assertFalse(report["pipeline_report"]["ok"])
+            self.assertEqual(report["pipeline_report"]["risk_decision"]["decision"], "REJECT")
+            self.assertIn("strategy_symbol_blocked", report["pipeline_report"]["risk_decision"]["reasons"])
+            self.assertEqual(report["pipeline_report"]["paper_execution"]["status"], "REJECTED")
+            self.assertFalse(report["safety"]["real_orders"])
 
     def test_run_service_cycle_fails_closed_when_agent_trade_thesis_path_is_invalid(self) -> None:
         event = {

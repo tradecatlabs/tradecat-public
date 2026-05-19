@@ -22,6 +22,8 @@ bash scripts/start-auto-paper.sh stop --json
 单轮 public-readonly/paper cycle 默认受 `TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000` 限制，避免进程仍在但心跳长期停滞。
 启动脚本默认生成并沿用 ignored `.runtime/auto-paper/paper_autonomy_profile.json`，用于 paper-only 自治开仓；Agent/Hermes 显式写入的 `agent_trade_thesis.v1` 仍通过 `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH` 优先注入。要恢复严格等待外部 thesis，设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0`。用户后续要限制仓位、杠杆、退出或组合风险时，再显式传入 profile/policy。
 
+启动脚本也默认运行 `strategy-review` 并写入 ignored `.runtime/auto-paper/strategy_state.json`。该状态根据本地 paper outcome 自动暂停亏损 symbol、亏损信号类型或亏损方向，并限制最大 open positions 与单币并发；设置 `TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED=0` 可关闭这层 paper/watch 自我迭代过滤。
+
 ## Web 监控
 
 ```bash

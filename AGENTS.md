@@ -63,6 +63,7 @@ bash scripts/run-tradecat.sh soft-layer --json
 bash scripts/start-auto-paper.sh status --json
 bash scripts/run-tradecat.sh latest-cycle --json
 bash scripts/run-tradecat.sh latest-decision --json
+bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json
 ```
 
 测试、lint、format：
@@ -177,6 +178,7 @@ tradecat-public/
 - `paper_service_not_running`：运行 `bash scripts/start-auto-paper.sh status --json`；需要常驻时运行 `bash scripts/start-auto-paper.sh start --json`。
 - `heartbeat_stale` 但 pid 仍在：单轮可能卡在 public 网络或盯市；默认 `TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000`，可运行 `bash scripts/start-auto-paper.sh heal --json`。
 - `paper-report` 和常驻交易不一致：默认事实源是 `.runtime/auto-paper/paper_ledger.json` 与 `.runtime/auto-paper/cycles.jsonl`；先跑 `bash scripts/run-tradecat.sh latest-decision --json`。
+- `strategy_symbol_blocked` / `strategy_signal_type_blocked` / `strategy_side_blocked`：`strategy-review` 根据本地 paper 亏损结果生成了 `.runtime/auto-paper/strategy_state.json`，这是 paper/watch 自我迭代过滤；先看 `bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json`。
 - `agent_sizing_required` 在重启后出现：先看 `bash scripts/start-auto-paper.sh status --json` 的 `paper_autonomy_profile_configured`。默认应为 true；若被 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0` 关闭，则需要 Agent/Hermes 显式写入 thesis。
 - `agent_sizing_required`：这是安全拒绝；Agent thesis 或默认 ignored runtime paper autonomy profile 必须提供 sizing/leverage/exits。用户需要额外约束时再显式传入 portfolio risk policy 或 kill switch。
 - 监控端口 `8765` 冲突：换空闲端口运行 `python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port <free-port>`。

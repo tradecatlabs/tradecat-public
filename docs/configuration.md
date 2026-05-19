@@ -18,6 +18,10 @@ TradeCat Public 的配置原则是少配置、强边界、默认本地隔离。�
 - `TRADECAT_AUTO_PAPER_AUTONOMY_TAKE_PROFIT_BPS`: 默认 `300`，runtime profile 的目标价距离。
 - `TRADECAT_AUTO_PAPER_AUTONOMY_MAX_HOLDING_MINUTES`: 默认 `90`，runtime profile 的最长纸面持仓分钟数。
 - `TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY`: 默认 `sheet_signal_or_taker_flow`，优先按在线表格信号方向生成 paper thesis。
+- `TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_ENABLED`: 默认 `1`，每轮从本地 paper ledger / cycle archive 生成 runtime `strategy_state.v1`，用于亏损 symbol/信号/方向过滤和持仓上限。
+- `TRADECAT_AUTO_PAPER_STRATEGY_STATE_PATH`: 默认 `.runtime/auto-paper/strategy_state.json`。
+- `TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_OPEN_POSITIONS`: 默认 `50`，自我迭代策略状态的最大 open position 上限。
+- `TRADECAT_AUTO_PAPER_STRATEGY_REVIEW_MAX_POSITIONS_PER_SYMBOL`: 默认 `3`，自我迭代策略状态的单币最大并发上限。
 - `TRADECAT_AUTO_PAPER_EVENT_LIMIT`: 读取 `signal_flow` 行数；默认 `0` 表示不限制。
 - `TRADECAT_AUTO_PAPER_MAX_EVENT_AGE_SECONDS`: 可选旧信号过滤；默认留空。
 - `TRADECAT_AUTO_PAPER_MONITOR_HOST`: 本地监控监听地址。

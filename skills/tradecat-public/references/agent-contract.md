@@ -21,6 +21,7 @@ bash scripts/binance-public-bundle.sh --symbols BTCUSDT,ETHUSDT --json
 bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json
 bash scripts/run-tradecat.sh context-audit --input context.json --json
 bash scripts/run-tradecat.sh run-context --input context.json --mode paper --json
+bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json
 ```
 
 ## Command Risk Classes
@@ -108,5 +109,6 @@ Local paper/watch runtime defaults to `.runtime/auto-paper/` and is ignored by G
 - `daily-report`: `tradecat_auto.daily_paper_report.v1`
 - `alert-payload`: `tradecat_auto.telegram_alerts.v1`
 - `replay-report`: `tradecat_auto.replay_report.v1`
+- `strategy-review`: `tradecat_auto.strategy_review_report.v1`, optionally writes ignored `.runtime/auto-paper/strategy_state.json`
 
 These commands read local paper evidence only; they never touch Binance private APIs.

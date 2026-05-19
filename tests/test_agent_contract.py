@@ -51,6 +51,8 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-replay-report.schema.json": "tradecat_auto.replay_report.v1",
     "tradecat-auto-run-once-report.schema.json": "tradecat_auto.run_once_report.v1",
     "tradecat-auto-service-cycle.schema.json": "tradecat_auto.service_cycle.v1",
+    "tradecat-auto-strategy-review-report.schema.json": "tradecat_auto.strategy_review_report.v1",
+    "tradecat-auto-strategy-state.schema.json": "tradecat_auto.strategy_state.v1",
     "tradecat-auto-telegram-alerts.schema.json": "tradecat_auto.telegram_alerts.v1",
 }
 
@@ -140,6 +142,10 @@ def test_manifest_advertises_agent_runtime_entrypoints_only():
     assert "bash scripts/run-tradecat.sh agent-market-context --symbol BTCUSDT --json" in readonly
     assert "bash scripts/run-tradecat.sh soft-layer --json" in readonly
     assert "bash scripts/run-tradecat.sh latest-decision --json" in readonly
+    assert (
+        "bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json"
+        in readonly
+    )
     assert "bash scripts/run-tradecat.sh context-audit --input /path/to/agent-market-context.json --json" in readonly
     assert (
         "bash scripts/run-tradecat.sh run-context --input /path/to/agent-market-context.json --mode paper --json"

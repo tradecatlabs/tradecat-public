@@ -51,6 +51,7 @@ from tradecat_auto.production_control import (
 from tradecat_auto.replay import build_replay_report
 from tradecat_auto.risk import load_portfolio_risk_policy
 from tradecat_auto.service import DEFAULT_STATE_PATH, run_service_cycle
+from tradecat_auto.strategy_review import build_strategy_review_report, save_strategy_state
 from tradecat_auto.tradecat_source import DEFAULT_TRADECAT_PUBLIC, TradeCatPublicSource, signal_events_payload
 
 
@@ -184,6 +185,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Optional local file path; if present, new paper entries are rejected",
     )
+    run_loop.add_argument(
+        "--strategy-state-path",
+        default="",
+        help="Optional local strategy_state.v1 JSON produced by strategy-review",
+    )
     run_loop.add_argument("--event-limit", type=int, default=0, help="Signal-flow rows to read; 0 means no limit")
     run_loop.add_argument("--anomaly-limit", type=int, default=0)
     run_loop.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
@@ -228,6 +234,27 @@ def build_parser() -> argparse.ArgumentParser:
     paper.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
     paper.add_argument("--initial-balance-usdt", type=float, default=1000.0)
     paper.add_argument("--json", action="store_true", help="Emit JSON")
+
+    strategy_review = sub.add_parser(
+        "strategy-review",
+        help="Review local paper outcomes and optionally write strategy_state.v1 runtime filters",
+    )
+    strategy_review.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
+    strategy_review.add_argument("--archive-path", default=str(DEFAULT_AUTO_PAPER_ARCHIVE_PATH))
+    strategy_review.add_argument("--output-state-path", default="", help="Optional strategy_state.v1 output path")
+    strategy_review.add_argument("--min-closed-positions", type=int, default=50)
+    strategy_review.add_argument("--min-symbol-trades", type=int, default=5)
+    strategy_review.add_argument("--symbol-loss-usdt", type=float, default=0.75)
+    strategy_review.add_argument("--symbol-win-rate-below", type=float, default=0.35)
+    strategy_review.add_argument("--min-signal-type-trades", type=int, default=20)
+    strategy_review.add_argument("--signal-type-loss-usdt", type=float, default=2.0)
+    strategy_review.add_argument("--signal-type-win-rate-below", type=float, default=0.38)
+    strategy_review.add_argument("--min-side-trades", type=int, default=100)
+    strategy_review.add_argument("--side-loss-usdt", type=float, default=10.0)
+    strategy_review.add_argument("--side-win-rate-below", type=float, default=0.38)
+    strategy_review.add_argument("--max-open-positions", type=int, default=50)
+    strategy_review.add_argument("--max-positions-per-symbol", type=int, default=3)
+    strategy_review.add_argument("--json", action="store_true", help="Emit JSON")
 
     position_manage = sub.add_parser(
         "position-manage", help="Apply an Agent position-management thesis to the local paper ledger"
@@ -418,6 +445,10 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code_for_payload(args.command, payload)
     if args.command == "paper-report":
         payload = paper_report(args)
+        _print(payload, as_json=args.json)
+        return exit_code_for_payload(args.command, payload)
+    if args.command == "strategy-review":
+        payload = strategy_review_report(args)
         _print(payload, as_json=args.json)
         return exit_code_for_payload(args.command, payload)
     if args.command == "position-manage":
@@ -918,6 +949,57 @@ def paper_report(args: argparse.Namespace) -> dict[str, Any]:
         "recent_fills": ledger.get("fills", [])[-20:],
         "equity_curve_tail": ledger.get("equity_curve", [])[-50:],
     }
+
+
+def strategy_review_report(args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        report = build_strategy_review_report(
+            ledger_path=Path(args.ledger_path),
+            archive_path=Path(args.archive_path) if str(getattr(args, "archive_path", "") or "").strip() else None,
+            min_closed_positions=int(args.min_closed_positions),
+            min_symbol_trades=int(args.min_symbol_trades),
+            symbol_loss_usdt=float(args.symbol_loss_usdt),
+            symbol_win_rate_below=float(args.symbol_win_rate_below),
+            min_signal_type_trades=int(args.min_signal_type_trades),
+            signal_type_loss_usdt=float(args.signal_type_loss_usdt),
+            signal_type_win_rate_below=float(args.signal_type_win_rate_below),
+            min_side_trades=int(args.min_side_trades),
+            side_loss_usdt=float(args.side_loss_usdt),
+            side_win_rate_below=float(args.side_win_rate_below),
+            max_open_positions=int(args.max_open_positions),
+            max_positions_per_symbol=int(args.max_positions_per_symbol),
+        )
+    except ValueError as exc:
+        report = {
+            "schema": "tradecat_auto.strategy_review_report.v1",
+            "schema_version": "1.0.0",
+            "ok": False,
+            "error_code": "strategy_review_invalid_input",
+            "error": {
+                "code": "strategy_review_invalid_input",
+                "kind": "operator_input",
+                "message": _format_exception(exc),
+                "retryable": False,
+            },
+            "provenance": {"source": "tradecat_auto.cli.strategy_review_report"},
+            "safety": _safety_boundary(),
+        }
+    output = str(getattr(args, "output_state_path", "") or "").strip()
+    if output and isinstance(report.get("strategy_state"), dict):
+        try:
+            save_strategy_state(Path(output), report["strategy_state"])
+        except OSError as exc:
+            report["ok"] = False
+            report["error_code"] = "strategy_state_write_failed"
+            report["error"] = {
+                "code": "strategy_state_write_failed",
+                "kind": "local_runtime_io",
+                "message": _format_exception(exc),
+                "retryable": False,
+            }
+        else:
+            report["output_state_path"] = output
+    return report
 
 
 def position_manage_report(args: argparse.Namespace) -> dict[str, Any]:

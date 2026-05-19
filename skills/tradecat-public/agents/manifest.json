@@ -166,6 +166,12 @@
       "risk_class": "local_readonly",
       "schema": "tradecat_auto.paper_ops_report.v1",
       "schema_version": "1.0.0"
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json",
+      "risk_class": "local_readonly",
+      "schema": "tradecat_auto.strategy_review_report.v1",
+      "schema_version": "1.0.0"
     }
   ],
   "preferred_mutating_entrypoints": [
@@ -200,6 +206,15 @@
       "command": "bash scripts/start-auto-paper.sh stop --json",
       "risk_class": "paper_runtime_write",
       "schema": "tradecat_auto.paper_service_status.v1",
+      "schema_version": "1.0.0",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false
+    },
+    {
+      "command": "bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --output-state-path .runtime/auto-paper/strategy_state.json --json",
+      "risk_class": "paper_runtime_write",
+      "schema": "tradecat_auto.strategy_review_report.v1",
       "schema_version": "1.0.0",
       "real_orders": false,
       "signed_requests": false,
@@ -788,6 +803,24 @@
       "signed_requests": false,
       "reads_api_keys": false,
       "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.strategy_review_report.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-strategy-review-report.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
+    },
+    {
+      "schema": "tradecat_auto.strategy_state.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-strategy-state.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public-readonly market data plus local paper/watch runtime only"
     }
   ],
   "automation_entrypoints": [
@@ -985,7 +1018,9 @@
     "automation_audit_journal": ".runtime/auto-paper/paper_audit.sqlite3",
     "automation_run_loop_log": ".runtime/auto-paper/paper-run-loop.log",
     "binance_public_snapshot_script": "scripts/binance-public-snapshot.sh",
-    "binance_public_bundle_script": "scripts/binance-public-bundle.sh"
+    "binance_public_bundle_script": "scripts/binance-public-bundle.sh",
+    "automation_strategy_state": ".runtime/auto-paper/strategy_state.json",
+    "automation_strategy_review_report": ".runtime/auto-paper/strategy-review-latest.json"
   },
   "references": [
     "skills/tradecat-public/references/index.md",
