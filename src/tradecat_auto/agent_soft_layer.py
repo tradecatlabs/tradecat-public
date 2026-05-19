@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
+
 SCHEMA_VERSION = "1.0.0"
 AGENT_SOFT_LAYER_SCHEMA = "tradecat_auto.agent_soft_layer.v1"
 AGENT_TRADE_THESIS_SCHEMA = "tradecat_auto.agent_trade_thesis.v1"
@@ -39,9 +41,7 @@ def build_agent_soft_layer_bundle(*, include_prompt_text: bool = True) -> dict[s
         "hard_boundaries": {
             "market_context_audit_schema": "tradecat_auto.agent_market_context_audit.v1",
             "paper_account_state_schema": "tradecat_auto.paper_account_state.v1",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_safety_boundary(),
             "account_state_source": "local TradeCat paper ledger only",
             "forbidden": [
                 "Binance API keys or secrets",
@@ -102,9 +102,7 @@ def _role_profiles(*, include_prompt_text: bool) -> list[dict[str, Any]]:
             },
             "safety_boundary": {
                 "mode": "public_readonly_plus_paper_watch",
-                "real_orders": False,
-                "signed_requests": False,
-                "reads_api_keys": False,
+                **paper_watch_safety_boundary(),
                 "account_state_source": "local TradeCat paper ledger only",
             },
         }

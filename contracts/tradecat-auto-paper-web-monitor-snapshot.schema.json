@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradecat.local/contracts/tradecat-auto-paper-web-monitor-snapshot.schema.json",
+  "title": "TradeCat Auto Paper Web Monitor Snapshot",
+  "description": "Read-only JSON snapshot served by the local paper/watch web monitor at /api/snapshot.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "ok",
+    "generated_at",
+    "mode",
+    "runtime",
+    "status",
+    "health",
+    "ops",
+    "dependency_health",
+    "decision_text",
+    "monitor_environment",
+    "safety"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tradecat_auto.paper_web_monitor_snapshot.v1"
+    },
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "mode": {
+      "const": "paper"
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "runtime_dir",
+        "ledger_path",
+        "journal_path",
+        "log_path"
+      ],
+      "properties": {
+        "runtime_dir": {
+          "type": "string"
+        },
+        "ledger_path": {
+          "type": "string"
+        },
+        "journal_path": {
+          "type": "string"
+        },
+        "log_path": {
+          "type": "string"
+        },
+        "strategy_state_path": {
+          "type": "string"
+        },
+        "strategy_review_report_path": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "status": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ops": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "paper": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "latest_cycle": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "latest_decision_cycle": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "strategy_state": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "strategy_review": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "monitor_command_elapsed_ms": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "risk_state": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "decision_text": {
+      "$ref": "https://tradecat.local/contracts/tradecat-auto-paper-web-monitor-decision-text.schema.json"
+    },
+    "dependency_health": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "log_tail": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "monitor_environment": {
+      "type": "object",
+      "required": [
+        "credential_env_names_present",
+        "credential_env_values_read"
+      ],
+      "properties": {
+        "credential_env_names_present": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "credential_env_values_read": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "safety": {
+      "$ref": "#/$defs/safety"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "safety": {
+      "type": "object",
+      "required": [
+        "public_readonly_market_data",
+        "public_readonly",
+        "paper_or_watch_only",
+        "real_orders",
+        "signed_requests",
+        "reads_api_keys",
+        "binance_account_state"
+      ],
+      "properties": {
+        "public_readonly_market_data": {
+          "const": true
+        },
+        "public_readonly": {
+          "const": true
+        },
+        "paper_or_watch_only": {
+          "const": true
+        },
+        "real_orders": {
+          "const": false
+        },
+        "signed_requests": {
+          "const": false
+        },
+        "reads_api_keys": {
+          "const": false
+        },
+        "binance_account_state": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

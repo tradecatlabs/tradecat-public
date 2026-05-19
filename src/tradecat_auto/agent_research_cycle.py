@@ -11,6 +11,12 @@ from tradecat_auto.agent_market_context import (
     DEFAULT_SOURCE_MANIFEST,
     audit_agent_market_context,
 )
+from tradecat_auto.safety_boundary import (
+    forbidden_private_or_real_trade_hits,
+    is_false_only_safety_violation,
+    normalize_paper_watch_safety,
+    paper_watch_safety_boundary,
+)
 
 RESEARCH_CYCLE_SCHEMA = "tradecat_auto.agent_research_cycle.v1"
 RESEARCH_CYCLE_AUDIT_SCHEMA = "tradecat_auto.agent_research_cycle_audit.v1"
@@ -18,14 +24,6 @@ TOOL_ORCHESTRATION_SCHEMA = "tradecat_auto.agent_tool_orchestration.v1"
 SCHEMA_VERSION = "1.0.0"
 ALLOWED_MODES = {"observe_only", "paper", "watch"}
 PAPER_ACTIONS = {"run_context_paper"}
-PUBLIC_SAFETY_FLAGS = {
-    "public_readonly_market_data": True,
-    "paper_or_watch_only": True,
-    "real_orders": False,
-    "signed_requests": False,
-    "reads_api_keys": False,
-    "binance_account_state": False,
-}
 FORBIDDEN_ENDPOINT_MARKERS = (
     "account",
     "balance",
@@ -47,7 +45,6 @@ FORBIDDEN_ENDPOINT_MARKERS = (
     "apikey",
     "secret",
 )
-CREDENTIAL_KEY_MARKERS = ("api_key", "apikey", "secret", "signature", "listen_key", "private_key")
 
 
 def load_agent_research_cycle(path: Path | str) -> dict[str, Any]:
@@ -116,7 +113,7 @@ def audit_agent_research_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
         errors.append(_error("missing_signal_provenance", "source_signal.provenance is required"))
 
     _audit_safety(cycle.get("safety"), errors)
-    for hit in _credential_key_hits(cycle):
+    for hit in forbidden_private_or_real_trade_hits(cycle):
         errors.append(_error("credential_material_forbidden", f"credential-like key is not allowed: {hit}"))
 
     accepted_endpoints: list[str] = []
@@ -166,7 +163,10 @@ def audit_agent_research_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
                 rejected_endpoints.append(endpoint)
             else:
                 accepted_endpoints.append(endpoint)
-            if item.get("requires_signature") is True or item.get("signed") is True:
+            if (
+                "requires_signature" in item
+                and is_false_only_safety_violation("requires_signature", item.get("requires_signature"))
+            ) or ("signed" in item and is_false_only_safety_violation("signed", item.get("signed"))):
                 errors.append(
                     _error(
                         "signed_request_forbidden",
@@ -174,7 +174,10 @@ def audit_agent_research_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
                         index=index,
                     )
                 )
-            if item.get("reads_api_keys") is True or item.get("real_orders") is True:
+            if (
+                "reads_api_keys" in item
+                and is_false_only_safety_violation("reads_api_keys", item.get("reads_api_keys"))
+            ) or ("real_orders" in item and is_false_only_safety_violation("real_orders", item.get("real_orders"))):
                 errors.append(
                     _error(
                         "safety_boundary_violation",
@@ -386,6 +389,7 @@ def build_observe_only_trade_thesis_draft(cycle: dict[str, Any], *, context_audi
             "source": "tradecat_auto.agent_research_cycle.build_observe_only_trade_thesis_draft",
             "research_cycle_run_id": str(cycle.get("run_id") or ""),
         },
+        "safety": _safety_boundary(),
         "limitations": [
             "paper/watch only; no Binance credentials; no real order",
             "draft thesis is not a trade instruction",
@@ -435,10 +439,15 @@ def _reject_forbidden_output_dir(output_dir: Path) -> None:
 
 
 def _audit_safety(value: Any, errors: list[dict[str, Any]]) -> None:
+    try:
+        normalize_paper_watch_safety(value, error_prefix="agent_research_cycle", allow_extra=True)
+    except ValueError as exc:
+        errors.append(_error("safety_boundary_violation", str(exc)))
+        return
     safety = value if isinstance(value, dict) else {}
-    for key, expected in PUBLIC_SAFETY_FLAGS.items():
-        if safety.get(key) is not expected:
-            errors.append(_error("safety_boundary_violation", f"safety.{key} must be {expected!r}"))
+    for key in _safety_boundary():
+        if key not in safety:
+            errors.append(_error("safety_boundary_violation", f"safety.{key} is required"))
 
 
 def _latest_event(events: dict[str, Any]) -> dict[str, Any] | None:
@@ -615,31 +624,6 @@ def _normalize_endpoint(value: Any) -> str:
     return text if text.startswith("/") else f"/{text}"
 
 
-def _credential_key_hits(value: Any, *, prefix: str = "") -> list[str]:
-    hits: list[str] = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            key_text = str(key)
-            path = f"{prefix}.{key_text}" if prefix else key_text
-            compact = key_text.lower().replace("-", "_").replace("_", "")
-            normalized = key_text.lower().replace("-", "_")
-            if any(marker in normalized for marker in CREDENTIAL_KEY_MARKERS) or any(
-                marker in compact for marker in CREDENTIAL_KEY_MARKERS
-            ):
-                if (
-                    normalized in {"requires_signature", "signed", "signed_requests", "reads_api_keys"}
-                    and child is False
-                ):
-                    pass
-                else:
-                    hits.append(path)
-            hits.extend(_credential_key_hits(child, prefix=path))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            hits.extend(_credential_key_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]"))
-    return hits
-
-
 def _positive_float(value: Any) -> float | None:
     try:
         if value is None or value == "":
@@ -669,14 +653,7 @@ def _dedupe(values: list[str]) -> list[str]:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()
 
 
 def _now_iso() -> str:

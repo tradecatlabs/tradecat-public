@@ -39,8 +39,7 @@
       "additionalProperties": true
     },
     "summary": {
-      "type": "object",
-      "additionalProperties": true
+      "$ref": "#/$defs/cycle_summary"
     },
     "provenance": {
       "type": "object",
@@ -64,8 +63,57 @@
   },
   "additionalProperties": true,
   "$defs": {
+    "cycle_summary": {
+      "type": "object",
+      "required": [
+        "schema",
+        "schema_version",
+        "error_code",
+        "provenance",
+        "safety"
+      ],
+      "properties": {
+        "schema": {
+          "const": "tradecat_auto.latest_cycle_summary.v1"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "source": {
+              "const": "tradecat_auto.production_control.cycle_summary"
+            }
+          },
+          "additionalProperties": true
+        },
+        "safety": {
+          "$ref": "#/$defs/safety"
+        }
+      },
+      "additionalProperties": true
+    },
     "safety": {
       "type": "object",
+      "required": [
+        "public_readonly_market_data",
+        "public_readonly",
+        "paper_or_watch_only",
+        "real_orders",
+        "signed_requests",
+        "reads_api_keys",
+        "binance_account_state"
+      ],
       "properties": {
         "public_readonly_market_data": {
           "const": true

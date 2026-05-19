@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from tradecat_auto.binance_market import normalize_to_usdt_perp_symbol
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
 
 
 def _default_tradecat_public_root() -> Path:
@@ -49,17 +50,21 @@ def anomaly_signal_event_for(anomaly_symbol: dict[str, Any]) -> dict[str, Any]:
     source_values = anomaly_symbol.get("source_values") if isinstance(anomaly_symbol.get("source_values"), dict) else {}
     symbol = str(anomaly_symbol.get("normalized_symbol") or anomaly_symbol.get("raw_symbol") or "").upper().strip()
     row_index = anomaly_symbol.get("first_row_index") or anomaly_symbol.get("row_index")
+    dataset_key = str(anomaly_symbol.get("source_dataset_key") or "anomaly_panel")
     return {
         "schema": "tradecat_auto.anomaly_signal_event.v1",
         "schema_version": "1.0.0",
+        "error_code": None,
         "event_id": anomaly_event_id_for(anomaly_symbol),
-        "source_dataset_key": str(anomaly_symbol.get("source_dataset_key") or "anomaly_panel"),
+        "source_dataset_key": dataset_key,
         "row_index": row_index,
         "source_time_bj": _source_time_from_row(source_values),
         "symbol": symbol,
         "raw_symbol": str(anomaly_symbol.get("raw_symbol") or "").upper().strip(),
         "content": _anomaly_content(symbol, source_values),
         "source_values": source_values,
+        "provenance": _source_provenance("tradecat_auto.tradecat_source.anomaly_signal_event_for", dataset_key),
+        "safety": paper_watch_safety_boundary(),
     }
 
 
@@ -69,6 +74,7 @@ def signal_flow_event_for(row: dict[str, Any], *, row_index: int = 0, normalized
     return {
         "schema": "tradecat_auto.signal_flow_event.v1",
         "schema_version": "1.0.0",
+        "error_code": None,
         "event_id": signal_flow_event_id_for(row, row_index=row_index, normalized_symbol=symbol),
         "source_dataset_key": "signal_flow",
         "source_dataset_keys": ["signal_flow"],
@@ -80,6 +86,8 @@ def signal_flow_event_for(row: dict[str, Any], *, row_index: int = 0, normalized
         "signal_type": str(row.get("类型") or "").strip(),
         "content": _signal_flow_content(symbol, row),
         "source_values": row,
+        "provenance": _source_provenance("tradecat_auto.tradecat_source.signal_flow_event_for", "signal_flow"),
+        "safety": paper_watch_safety_boundary(),
     }
 
 
@@ -106,6 +114,11 @@ def anomaly_signal_events_payload(anomaly_symbols: dict[str, Any], *, selected_s
         "events": events,
         "error_code": None if events else _source_error_code(anomaly_symbols) or "no_anomaly_signal_available",
         "error": anomaly_symbols.get("error") if isinstance(anomaly_symbols, dict) else None,
+        "provenance": _source_provenance(
+            "tradecat_auto.tradecat_source.anomaly_signal_events_payload",
+            payload=anomaly_symbols if isinstance(anomaly_symbols, dict) else {},
+        ),
+        "safety": paper_watch_safety_boundary(),
     }
 
 
@@ -174,6 +187,11 @@ def parse_signal_flow_payload(
         "duplicate_count": len(duplicates),
         "error_code": None if events else _source_error_code(payload) or "no_signal_flow_available",
         "error": payload.get("error") if isinstance(payload, dict) else None,
+        "provenance": _source_provenance(
+            "tradecat_auto.tradecat_source.parse_signal_flow_payload",
+            payload=payload,
+        ),
+        "safety": paper_watch_safety_boundary(),
     }
 
 
@@ -226,6 +244,8 @@ def signal_events_payload(
             },
             "error_code": None,
             "error": None,
+            "provenance": _source_provenance("tradecat_auto.tradecat_source.signal_events_payload", "signal_flow"),
+            "safety": paper_watch_safety_boundary(),
         }
     return anomaly_signal_events_payload(anomaly_symbols, selected_symbol=selected_symbol)
 
@@ -249,11 +269,18 @@ def parse_event_stream_payload(payload: dict[str, Any]) -> dict[str, Any]:
                 {
                     "schema": "tradecat_auto.sheet_event.v1",
                     "schema_version": "1.0.0",
+                    "error_code": None,
                     "event_id": event_id_for(source_time, content),
                     "source_dataset_key": str(payload.get("dataset_key") or "event_stream"),
                     "row_index": index,
                     "source_time_bj": source_time,
                     "content": content,
+                    "provenance": _source_provenance(
+                        "tradecat_auto.tradecat_source.parse_event_stream_payload",
+                        str(payload.get("dataset_key") or "event_stream"),
+                        payload=payload,
+                    ),
+                    "safety": paper_watch_safety_boundary(),
                 }
             )
     return {
@@ -263,6 +290,13 @@ def parse_event_stream_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "source_schema": payload.get("schema"),
         "source_dataset_key": payload.get("dataset_key", "event_stream"),
         "events": events,
+        "error_code": None if events else _source_error_code(payload) or "no_event_stream_available",
+        "error": payload.get("error") if isinstance(payload, dict) else None,
+        "provenance": _source_provenance(
+            "tradecat_auto.tradecat_source.parse_event_stream_payload",
+            payload=payload,
+        ),
+        "safety": paper_watch_safety_boundary(),
     }
 
 
@@ -311,6 +345,13 @@ def parse_anomaly_symbols(
                 "section": section,
                 "source_dataset_key": str(payload.get("dataset_key") or "anomaly_panel"),
                 "source_values": row,
+                "error_code": None,
+                "provenance": _source_provenance(
+                    "tradecat_auto.tradecat_source.parse_anomaly_symbols.item",
+                    str(payload.get("dataset_key") or "anomaly_panel"),
+                    payload=payload,
+                ),
+                "safety": paper_watch_safety_boundary(),
             }
             symbol_rows.append(item)
             section_counts[section or ""] = int(section_counts.get(section or "") or 0) + 1
@@ -325,6 +366,13 @@ def parse_anomaly_symbols(
         "rows": symbol_rows,
         "sections": [{"name": name, "row_count": count} for name, count in section_counts.items() if name],
         "rejected": rejected,
+        "error_code": None if symbols else _source_error_code(payload) or "no_anomaly_symbols_available",
+        "error": payload.get("error") if isinstance(payload, dict) else None,
+        "provenance": _source_provenance(
+            "tradecat_auto.tradecat_source.parse_anomaly_symbols",
+            payload=payload,
+        ),
+        "safety": paper_watch_safety_boundary(),
     }
 
 
@@ -341,6 +389,12 @@ def _dataset_error_payload(
         "source_dataset_key": payload.get("dataset_key", dataset_key),
         "error_code": code,
         "error": error or payload.get("error") or "source_unavailable",
+        "provenance": _source_provenance(
+            "tradecat_auto.tradecat_source.dataset_error_payload",
+            dataset_key,
+            payload=payload,
+        ),
+        "safety": paper_watch_safety_boundary(),
         events_key: [],
     }
 
@@ -488,6 +542,15 @@ def _source_error_code(payload: Any) -> str:
     return ""
 
 
+def _source_provenance(source: str, dataset_key: str = "", *, payload: dict[str, Any] | None = None) -> dict[str, str]:
+    source_payload = payload if isinstance(payload, dict) else {}
+    return {
+        "source": source,
+        "dataset_key": str(dataset_key or source_payload.get("dataset_key") or ""),
+        "source_schema": str(source_payload.get("schema") or ""),
+    }
+
+
 class TradeCatPublicSource:
     def __init__(self, root: Path | str = DEFAULT_TRADECAT_PUBLIC, *, timeout: float = 20.0) -> None:
         self.root = Path(root)
@@ -508,15 +571,31 @@ class TradeCatPublicSource:
             parsed_error = _json_object_from_text(proc.stdout)
             if parsed_error is not None:
                 parsed_error.setdefault("returncode", proc.returncode)
+                parsed_error.setdefault("error_code", _source_error_code(parsed_error) or "request_dataset_failed")
+                parsed_error.setdefault(
+                    "provenance",
+                    _source_provenance(
+                        "tradecat_auto.tradecat_source.TradeCatPublicSource.request_dataset",
+                        dataset_key,
+                        payload=parsed_error,
+                    ),
+                )
+                parsed_error.setdefault("safety", paper_watch_safety_boundary())
                 return parsed_error
             return {
                 "schema": "tradecat_auto.source_error.v1",
                 "schema_version": "1.0.0",
                 "ok": False,
+                "error_code": "request_dataset_failed",
                 "dataset_key": dataset_key,
                 "returncode": proc.returncode,
                 "stderr": proc.stderr.strip(),
                 "stdout": proc.stdout.strip()[:500],
+                "provenance": _source_provenance(
+                    "tradecat_auto.tradecat_source.TradeCatPublicSource.request_dataset",
+                    dataset_key,
+                ),
+                "safety": paper_watch_safety_boundary(),
             }
         try:
             payload = json.loads(proc.stdout)
@@ -525,10 +604,16 @@ class TradeCatPublicSource:
                 "schema": "tradecat_auto.source_error.v1",
                 "schema_version": "1.0.0",
                 "ok": False,
+                "error_code": "invalid_source_json",
                 "dataset_key": dataset_key,
                 "returncode": proc.returncode,
                 "stderr": f"invalid JSON: {exc}",
                 "stdout": proc.stdout.strip()[:500],
+                "provenance": _source_provenance(
+                    "tradecat_auto.tradecat_source.TradeCatPublicSource.request_dataset",
+                    dataset_key,
+                ),
+                "safety": paper_watch_safety_boundary(),
             }
         if isinstance(payload, dict):
             return payload
@@ -536,9 +621,15 @@ class TradeCatPublicSource:
             "schema": "tradecat_auto.source_error.v1",
             "schema_version": "1.0.0",
             "ok": False,
+            "error_code": "non_object_source_json",
             "dataset_key": dataset_key,
             "stderr": "request.py returned non-object JSON",
             "stdout": proc.stdout.strip()[:500],
+            "provenance": _source_provenance(
+                "tradecat_auto.tradecat_source.TradeCatPublicSource.request_dataset",
+                dataset_key,
+            ),
+            "safety": paper_watch_safety_boundary(),
         }
 
     def fetch_events(self, *, limit: int = 20) -> dict[str, Any]:

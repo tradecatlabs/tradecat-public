@@ -43,6 +43,7 @@ resolve_tooling
 bash scripts/guard_public_local_files.sh
 PYTHONPATH=src "$PYTHON_BIN" -m compileall src tests
 PYTHONPATH=src "$PYTHON_BIN" scripts/validate_dependency_policy.py
+PYTHONPATH=src "$PYTHON_BIN" scripts/validate_testing_ci_contract.py
 PYTHONPATH=src "${PYTEST_CMD[@]}" -q -p no:cacheprovider tests
 PYTHONPATH=src "$PYTHON_BIN" scripts/validate_data_contract.py
 PYTHONPATH=src "$PYTHON_BIN" scripts/validate_dataset_consumption_contract.py
@@ -57,3 +58,4 @@ else
 fi
 bash -n scripts/start-auto-paper.sh scripts/monitor-auto-paper.sh scripts/guard_public_local_files.sh
 "$PYTHON_BIN" -m py_compile scripts/request.py scripts/serve-auto-paper-monitor.py scripts/validate_dependency_policy.py scripts/validate_data_contract.py scripts/validate_dataset_consumption_contract.py scripts/validate_agent_market_context_resources.py
+"$PYTHON_BIN" -m py_compile scripts/validate_testing_ci_contract.py

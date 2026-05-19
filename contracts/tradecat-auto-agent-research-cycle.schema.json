@@ -204,6 +204,7 @@
       "type": "object",
       "required": [
         "public_readonly_market_data",
+        "public_readonly",
         "paper_or_watch_only",
         "real_orders",
         "signed_requests",
@@ -212,6 +213,7 @@
       ],
       "properties": {
         "public_readonly_market_data": {"const": true},
+        "public_readonly": {"const": true},
         "paper_or_watch_only": {"const": true},
         "real_orders": {"const": false},
         "signed_requests": {"const": false},

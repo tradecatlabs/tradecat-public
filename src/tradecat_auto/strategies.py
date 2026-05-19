@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
+
 
 def build_strategy_intent(
     signal: dict[str, Any],
@@ -17,10 +19,12 @@ def build_strategy_intent(
     entry_price = _num(metrics.get("last_price"))
 
     if not tradable or not entry_price or entry_price <= 0:
+        do_not_trade_reasons = do_not_trade or ["signal_not_tradable"]
         return {
             "schema": "tradecat_auto.strategy_intent.v1",
             "schema_version": "1.0.0",
             "ok": True,
+            "error_code": do_not_trade_reasons[0],
             "symbol": symbol,
             "action": "WATCH",
             "direction": "WATCH_ONLY",
@@ -34,8 +38,10 @@ def build_strategy_intent(
             "exit_plan_source": None,
             "exit_rationale": None,
             "strategy_tags": _strategy_tags(signal, metrics),
-            "do_not_trade_reasons": do_not_trade or ["signal_not_tradable"],
+            "do_not_trade_reasons": do_not_trade_reasons,
             "explanation": _explanation(signal, metrics),
+            "provenance": _provenance(signal, enrichment, agent_trade_thesis),
+            "safety": paper_watch_safety_boundary(),
             "limitations": ["strategy intent only; not an order and not investment advice"],
         }
 
@@ -44,6 +50,7 @@ def build_strategy_intent(
         "schema": "tradecat_auto.strategy_intent.v1",
         "schema_version": "1.0.0",
         "ok": True,
+        "error_code": None,
         "symbol": symbol,
         "action": "ENTER",
         "direction": direction,
@@ -59,7 +66,24 @@ def build_strategy_intent(
         "strategy_tags": _strategy_tags(signal, metrics),
         "do_not_trade_reasons": [],
         "explanation": _explanation(signal, metrics),
+        "provenance": _provenance(signal, enrichment, agent_trade_thesis),
+        "safety": paper_watch_safety_boundary(),
         "limitations": ["strategy intent only; not an order and not investment advice"],
+    }
+
+
+def _provenance(
+    signal: dict[str, Any],
+    enrichment: dict[str, Any],
+    agent_trade_thesis: dict[str, Any] | None,
+) -> dict[str, Any]:
+    thesis = agent_trade_thesis if isinstance(agent_trade_thesis, dict) else {}
+    return {
+        "source": "tradecat_auto.strategies.build_strategy_intent",
+        "signal_schema": str(signal.get("schema") or ""),
+        "enrichment_schema": str(enrichment.get("schema") or ""),
+        "agent_trade_thesis_schema": str(thesis.get("schema") or ""),
+        "agent_trade_thesis_source": str(thesis.get("source") or ""),
     }
 
 

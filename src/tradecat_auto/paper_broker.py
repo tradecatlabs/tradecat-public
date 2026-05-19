@@ -4,6 +4,8 @@ import hashlib
 from datetime import UTC, datetime
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
+
 
 def open_paper_position(
     signal: dict[str, Any],
@@ -56,10 +58,9 @@ def open_paper_position(
         "schema": "tradecat_auto.paper_execution_report.v1",
         "schema_version": "1.0.0",
         "ok": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "status": "OPENED",
+        "error_code": None,
         "paper_execution_id": _execution_id(symbol, side, opened_at, entry_price, quantity, notional),
         "mode": "paper",
         "opened_at": opened_at,
@@ -90,6 +91,11 @@ def open_paper_position(
         "entry_price_source": cost_model.get("price_source"),
         "entry_price_includes_slippage": bool(cost_model.get("fill_price_includes_slippage")),
         "risk_decision": risk_decision,
+        "provenance": {
+            "source": "tradecat_auto.paper_broker.open_paper_position",
+            "entry_price_source": cost_model.get("price_source") or "market_enrichment.metrics.last_price",
+            "sizing_source": str(sizing_source or "agent_supplied_or_explicit"),
+        },
         "safety": _safety_boundary(),
         "limitations": ["paper simulation only; no exchange order was placed"],
     }
@@ -124,15 +130,15 @@ def _rejected(signal: dict[str, Any], risk_decision: dict[str, Any], reasons: li
         "schema": "tradecat_auto.paper_execution_report.v1",
         "schema_version": "1.0.0",
         "ok": False,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "status": "REJECTED",
+        "error_code": str(reasons[0] if reasons else "paper_execution_rejected"),
         "mode": risk_decision.get("mode", "paper"),
         "symbol": str(signal.get("symbol") or ""),
         "side": signal.get("direction", "WATCH_ONLY"),
         "reasons": reasons,
         "risk_decision": risk_decision,
+        "provenance": {"source": "tradecat_auto.paper_broker.open_paper_position"},
         "safety": _safety_boundary(),
         "limitations": ["paper simulation only; no exchange order was placed"],
     }
@@ -188,14 +194,7 @@ def _execution_id(symbol: str, side: str, opened_at: str, entry_price: float, qu
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()
 
 
 def _now_iso() -> str:

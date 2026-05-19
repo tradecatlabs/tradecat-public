@@ -66,8 +66,11 @@ Public sheet access is limited to `scripts/request.py` and `src/tradecat_sources
 - Dataset consumption contract: `src/tradecat_sources/dataset_consumption_contract.json`
 - Result schema: `contracts/tradecat-request-result.schema.json`
 - Dataset-list schema: `contracts/tradecat-request-dataset-list.schema.json`
+- Source adapter payload schema: `contracts/tradecat-auto-source-payload.schema.json`
 
 The canonical signal taps are `signal_flow` and `anomaly_panel`. `signal_flow` is event-like and should be deduplicated by event identity. `anomaly_panel` is snapshot-like and should be treated as current state across all榜单/tabs, not as a single first row.
+
+TradeCat source adapter outputs advertised in `agents/manifest.json` include `sheet_events`, `signal_flow_events`, `anomaly_symbols`, `signal_events`, `anomaly_signal_events`, and `source_error`. Each payload must preserve `schema_version=1.0.0`, `error_code`, `provenance`, and public-readonly `safety`.
 
 ## Agent-supplied Market Context
 

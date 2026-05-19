@@ -59,6 +59,11 @@ class TradeCatSourceTests(unittest.TestCase):
         self.assertEqual(result["events"][0]["source_time_bj"], "2026-05-13 12:00:00")
         self.assertEqual(result["events"][0]["content"], "BTCUSDT 出现大幅波动")
         self.assertIn("event_id", result["events"][0])
+        self.assertIsNone(result["error_code"])
+        self.assertEqual(result["provenance"]["source"], "tradecat_auto.tradecat_source.parse_event_stream_payload")
+        self.assertFalse(result["safety"]["real_orders"])
+        self.assertIsNone(result["events"][0]["error_code"])
+        self.assertFalse(result["events"][0]["safety"]["signed_requests"])
 
     def test_event_stream_preserves_remote_source_error(self) -> None:
         result = parse_event_stream_payload(
@@ -74,6 +79,8 @@ class TradeCatSourceTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "remote_http_status")
         self.assertEqual(result["error"]["status"], 404)
         self.assertEqual(result["events"], [])
+        self.assertEqual(result["provenance"]["dataset_key"], "event_stream")
+        self.assertFalse(result["safety"]["reads_api_keys"])
 
     def test_parses_anomaly_symbols_and_normalizes_against_tradable_universe(self) -> None:
         payload = {
@@ -90,7 +97,10 @@ class TradeCatSourceTests(unittest.TestCase):
         result = parse_anomaly_symbols(payload, tradable_symbols={"IRYSUSDT", "BTCUSDT"})
 
         self.assertEqual(result["schema"], "tradecat_auto.anomaly_symbols.v1")
+        self.assertIsNone(result["error_code"])
         self.assertEqual([item["normalized_symbol"] for item in result["symbols"]], ["IRYSUSDT", "BTCUSDT"])
+        self.assertFalse(result["symbols"][0]["safety"]["real_orders"])
+        self.assertEqual(result["provenance"]["source"], "tradecat_auto.tradecat_source.parse_anomaly_symbols")
         self.assertEqual(result["rejected"][0]["raw_symbol"], "NOPE")
         self.assertEqual(result["rejected"][0]["reason"], "not_in_tradable_usdt_perp_universe")
 
@@ -161,9 +171,13 @@ class TradeCatSourceTests(unittest.TestCase):
 
         self.assertEqual(first["schema"], "tradecat_auto.anomaly_signal_events.v1")
         self.assertTrue(first["ok"])
+        self.assertIsNone(first["error_code"])
+        self.assertFalse(first["safety"]["signed_requests"])
         self.assertEqual(first["source_dataset_key"], "anomaly_panel")
         self.assertEqual(first["events"][0]["source_dataset_key"], "anomaly_panel")
         self.assertEqual(first["events"][0]["symbol"], "IRYSUSDT")
+        self.assertIsNone(first["events"][0]["error_code"])
+        self.assertFalse(first["events"][0]["safety"]["reads_api_keys"])
         self.assertEqual(first["events"][0]["source_time_bj"], "2026-05-18 17:08:43")
         self.assertIn("IRYSUSDT 异动面板信号", first["events"][0]["content"])
         self.assertEqual(first["events"][0]["event_id"], second["events"][0]["event_id"])
@@ -208,9 +222,13 @@ class TradeCatSourceTests(unittest.TestCase):
 
         self.assertEqual(events["schema"], "tradecat_auto.signal_events.v1")
         self.assertTrue(events["ok"])
+        self.assertIsNone(events["error_code"])
+        self.assertFalse(events["safety"]["real_orders"])
         self.assertEqual(events["source_dataset_key"], "signal_flow")
         event = events["events"][0]
         self.assertEqual(event["symbol"], "FORMUSDT")
+        self.assertIsNone(event["error_code"])
+        self.assertFalse(event["safety"]["signed_requests"])
         self.assertEqual(event["period"], "5分钟")
         self.assertEqual(event["signal_type"], "成交额暴增")
         self.assertIn("周期=5分钟", event["content"])
@@ -242,6 +260,7 @@ class TradeCatSourceTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(len(result["events"]), 2)
+        self.assertIsNone(result["error_code"])
         self.assertEqual(result["duplicate_count"], 1)
         self.assertEqual(result["duplicates"][0]["reason"], "duplicate_signal_flow_event")
         self.assertEqual(result["duplicates"][0]["first_row_index"], 1)
@@ -264,6 +283,8 @@ class TradeCatSourceTests(unittest.TestCase):
         self.assertEqual(result["error"]["status"], 404)
         self.assertEqual(result["symbols"], [])
         self.assertEqual(result["rejected"], [])
+        self.assertEqual(result["provenance"]["dataset_key"], "anomaly_panel")
+        self.assertFalse(result["safety"]["real_orders"])
 
     def test_request_dataset_preserves_json_error_from_nonzero_request_script(self) -> None:
         class Proc:
@@ -280,6 +301,9 @@ class TradeCatSourceTests(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "remote_http_status")
         self.assertEqual(result["error"]["status"], 404)
         self.assertEqual(result["returncode"], 1)
+        self.assertEqual(result["error_code"], "remote_http_status")
+        self.assertEqual(result["provenance"]["dataset_key"], "event_stream")
+        self.assertFalse(result["safety"]["signed_requests"])
 
 
 if __name__ == "__main__":

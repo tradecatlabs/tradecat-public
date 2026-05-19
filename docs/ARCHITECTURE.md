@@ -32,6 +32,8 @@ tradecat-public/
 
 `skills/tradecat-public/agents/manifest.json` 是 Agent/Hermes 的唯一机器主契约。`contracts/` 下的 JSON Schema 是 I/O 校验契约。文档只能解释这些契约，不复制第二份机器真相。
 
+在线表格 source adapter 输出由 `contracts/tradecat-auto-source-payload.schema.json` 统一约束，覆盖 `sheet_events`、`signal_flow_events`、`anomaly_symbols`、`signal_events`、`anomaly_signal_events` 和 `source_error`。Agent/Hermes 应以 manifest 中的 `json_outputs` 为发现入口。
+
 ## 安全边界
 
 - 只允许 public/read-only market data 与本地 paper/watch。

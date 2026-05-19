@@ -16,11 +16,14 @@ from tradecat_auto.paper_ledger import (
     apply_paper_execution,
     load_paper_ledger,
     mark_to_market,
+    paper_ledger_lock,
     paper_ledger_summary,
     save_paper_ledger,
+    write_runtime_json_atomic,
 )
 from tradecat_auto.pipeline import build_paper_pipeline_report, resolve_paper_sizing
 from tradecat_auto.risk import load_portfolio_risk_policy
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
 from tradecat_auto.strategy_review import load_strategy_state, strategy_state_policy
 from tradecat_auto.tradecat_source import signal_events_payload
 
@@ -31,6 +34,19 @@ BEIJING = timezone(timedelta(hours=8))
 
 
 def run_service_cycle(
+    args: Any,
+    *,
+    state_path: Path | str = DEFAULT_STATE_PATH,
+    client: Any,
+    source: Any,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    path = Path(state_path)
+    with paper_ledger_lock(_service_run_lock_path(path)):
+        return _run_service_cycle_locked(args, state_path=path, client=client, source=source, now=now)
+
+
+def _run_service_cycle_locked(
     args: Any,
     *,
     state_path: Path | str = DEFAULT_STATE_PATH,
@@ -52,6 +68,21 @@ def run_service_cycle(
     state["last_attempt_at"] = _iso(cycle_time)
     state["cycles_attempted"] = int(state.get("cycles_attempted") or 0) + 1
     save_service_state(path, state)
+    state_load_error = state.get("state_load_error")
+    if isinstance(state_load_error, dict) and state_load_error:
+        state["last_error"] = state_load_error
+        save_service_state(path, state)
+        return _archive_and_return(
+            args,
+            _cycle_payload(
+                action="ERROR",
+                ok=False,
+                reason="service_state_load_failed",
+                error_code="service_state_load_failed",
+                error=state_load_error,
+                state=state,
+            ),
+        )
 
     try:
         agent_trade_thesis = _agent_trade_thesis_from_args(args)
@@ -271,13 +302,27 @@ def run_service_cycle(
     paper_ledger = _update_paper_ledger_from_cycle(args, client, pipeline_report, market_bundle, cycle_time)
     if paper_ledger:
         pipeline_report["paper_ledger"] = paper_ledger
+        if paper_ledger.get("ok") is False:
+            ledger_error_code = str(paper_ledger.get("error_code") or "paper_ledger_write_failed")
+            pipeline_report["ok"] = False
+            pipeline_report["error_code"] = ledger_error_code
+            pipeline_report["error"] = {
+                "code": ledger_error_code,
+                "kind": "local_runtime_write",
+                "message": str(paper_ledger.get("error") or "paper ledger update failed"),
+                "retryable": True,
+            }
 
-    if event_id:
+    ledger_runtime_failed = bool(paper_ledger and paper_ledger.get("ok") is False)
+    if event_id and not ledger_runtime_failed:
         _remember_event_id(state, event_id)
+    elif event_id and ledger_runtime_failed:
+        state["last_failed_event_id"] = event_id
     _remember_source_snapshot(state, source_snapshot, snapshot_delta, cycle_time)
     state["last_success_at"] = _iso(cycle_time) if pipeline_report.get("ok") else state.get("last_success_at")
     state["last_full_cycle_at"] = _iso(cycle_time)
-    state["last_processed_event_id"] = event_id
+    if not ledger_runtime_failed:
+        state["last_processed_event_id"] = event_id
     state["last_selected_symbol"] = selected_symbol
     state["last_trigger_reason"] = trigger_reason
     state["last_error"] = None if pipeline_report.get("ok") else pipeline_report.get("error") or "pipeline_not_ok"
@@ -306,16 +351,22 @@ def load_service_state(path: Path | str) -> dict[str, Any]:
     p = Path(path)
     if not p.exists():
         return _new_state()
+    load_error: dict[str, Any] | None = None
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
         data = {}
+        load_error = _service_state_load_error(p, exc)
     if not isinstance(data, dict):
         data = {}
+        load_error = _service_state_load_error(p, "state root is not an object")
     state = _new_state()
     state.update(data)
     state["schema"] = STATE_SCHEMA
     state["seen_event_ids"] = list(dict.fromkeys(str(item) for item in state.get("seen_event_ids") or [] if str(item)))
+    if load_error:
+        state["state_load_error"] = load_error
+        state["state_trust_level"] = "recovered_untrusted"
     return state
 
 
@@ -324,9 +375,22 @@ def save_service_state(path: Path | str, state: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(state)
     payload["schema"] = STATE_SCHEMA
-    tmp = p.with_suffix(f"{p.suffix}.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(p)
+    with paper_ledger_lock(p):
+        write_runtime_json_atomic(p, payload)
+
+
+def _service_run_lock_path(path: Path) -> Path:
+    return path.with_suffix(f"{path.suffix}.run") if path.suffix else path.with_name(f"{path.name}.run")
+
+
+def _service_state_load_error(path: Path, exc: Any) -> dict[str, Any]:
+    return {
+        "code": "service_state_load_failed",
+        "kind": "local_runtime_state",
+        "message": f"{path}: {exc}",
+        "retryable": False,
+        "operator_action": "inspect or replace the local service_state.json before processing new paper signals",
+    }
 
 
 def _new_state() -> dict[str, Any]:
@@ -354,18 +418,9 @@ def _cycle_payload(**kwargs: Any) -> dict[str, Any]:
         "schema": CYCLE_SCHEMA,
         "schema_version": "1.0.0",
         "error_code": None,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "provenance": {"source": "tradecat_auto.service.run_service_cycle"},
-        "safety": {
-            "public_readonly_market_data": True,
-            "paper_or_watch_only": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-            "binance_account_state": False,
-        },
+        "safety": _safety_boundary(),
     }
     payload.update(kwargs)
     if payload.get("ok") is False and not payload.get("error_code"):
@@ -403,9 +458,10 @@ def _archive_cycle(args: Any, payload: dict[str, Any]) -> None:
         return
     path = Path(text)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-        handle.write("\n")
+    line = json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
+    with paper_ledger_lock(path):
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line)
 
 
 def _safe_call(func, *args, **kwargs) -> dict[str, Any]:
@@ -481,6 +537,7 @@ def _source_snapshot(signal_flow: dict[str, Any], anomaly: dict[str, Any]) -> di
     return {
         "schema": "tradecat_auto.source_snapshot.v1",
         "schema_version": "1.0.0",
+        "error_code": None,
         "signal_flow_event_ids": [item["event_id"] for item in signal_material if item.get("event_id")],
         "signal_flow_count": len(signal_material),
         "signal_flow_snapshot_hash": signal_hash,
@@ -495,6 +552,12 @@ def _source_snapshot(signal_flow: dict[str, Any], anomaly: dict[str, Any]) -> di
                 "anomaly_panel_snapshot_hash": anomaly_hash,
             }
         ),
+        "provenance": {
+            "source": "tradecat_auto.service.source_snapshot",
+            "signal_flow_schema": str(signal_flow.get("schema") or ""),
+            "anomaly_symbols_schema": str(anomaly.get("schema") or ""),
+        },
+        "safety": _safety_boundary(),
     }
 
 
@@ -514,12 +577,18 @@ def _source_snapshot_delta(state: dict[str, Any], snapshot: dict[str, Any]) -> d
     return {
         "schema": "tradecat_auto.input_change.v1",
         "schema_version": "1.0.0",
+        "error_code": None,
         "new_signal_flow_event_id": new_signal_event_id or None,
         "signal_flow_changed": bool(signal_hash and signal_hash != previous_signal_hash),
         "anomaly_panel_changed": bool(anomaly_hash and anomaly_hash != previous_anomaly_hash),
         "source_snapshot_changed": bool(source_hash and source_hash != previous_source_hash),
         "previous_source_snapshot_hash": previous_source_hash or None,
         "current_source_snapshot_hash": source_hash or None,
+        "provenance": {
+            "source": "tradecat_auto.service.source_snapshot_delta",
+            "source_snapshot_schema": str(snapshot.get("schema") or ""),
+        },
+        "safety": _safety_boundary(),
     }
 
 
@@ -598,6 +667,11 @@ def _fetch_signal_flow_events(source: Any, tradable: set[str], *, limit: int) ->
             "rejected": [],
             "error_code": "signal_flow_source_not_available",
             "error": {"code": "signal_flow_source_not_available", "message": "source has no fetch_signal_flow_events"},
+            "provenance": {
+                "source": "tradecat_auto.service.fetch_signal_flow_events",
+                "source_dataset_key": "signal_flow",
+            },
+            "safety": _safety_boundary(),
         }
     return _safe_call(fetch, tradable_symbols=tradable, limit=limit)
 
@@ -687,6 +761,11 @@ def _summarize_anomaly_symbols(anomaly: dict[str, Any]) -> dict[str, Any]:
         "rejected_count": len(rejected),
         "error_code": anomaly.get("error_code"),
         "error": anomaly.get("error"),
+        "provenance": _source_payload_provenance(
+            anomaly,
+            source="tradecat_auto.service.summarize_anomaly_symbols",
+        ),
+        "safety": _source_payload_safety(anomaly),
     }
 
 
@@ -703,7 +782,28 @@ def _summarize_signal_flow_events(signal_flow: dict[str, Any]) -> dict[str, Any]
         "duplicate_count": int(signal_flow.get("duplicate_count") or len(duplicates)),
         "error_code": signal_flow.get("error_code"),
         "error": signal_flow.get("error"),
+        "provenance": _source_payload_provenance(
+            signal_flow,
+            source="tradecat_auto.service.summarize_signal_flow_events",
+        ),
+        "safety": _source_payload_safety(signal_flow),
     }
+
+
+def _source_payload_provenance(payload: dict[str, Any], *, source: str) -> dict[str, Any]:
+    provenance = payload.get("provenance") if isinstance(payload.get("provenance"), dict) else {}
+    if provenance:
+        return dict(provenance)
+    return {
+        "source": source,
+        "source_schema": str(payload.get("schema") or ""),
+        "source_dataset_key": str(payload.get("source_dataset_key") or ""),
+    }
+
+
+def _source_payload_safety(payload: dict[str, Any]) -> dict[str, bool]:
+    del payload
+    return _safety_boundary()
 
 
 def _collect_errors(*payloads: dict[str, Any]) -> list[Any]:
@@ -725,27 +825,36 @@ def _update_paper_ledger_from_cycle(
     if ledger_path is None:
         return {}
     try:
-        ledger = load_paper_ledger(ledger_path, initial_balance_usdt=_initial_balance(args))
+        ledger_snapshot = load_paper_ledger(ledger_path, initial_balance_usdt=_initial_balance(args))
     except PaperLedgerError as exc:
         return _ledger_error_summary(ledger_path, exc)
-    prices, mark_errors = _prices_for_open_positions(ledger, client, selected_market_bundle)
-    if prices:
-        ledger = mark_to_market(
-            ledger,
-            prices,
-            fee_bps=_paper_fee_bps(args),
-            slippage_bps=_paper_slippage_bps(args),
-            now_iso=_iso(cycle_time),
-            max_holding_minutes=_paper_max_holding_minutes(args),
-        )
-    ledger = apply_paper_execution(
-        ledger,
-        pipeline_report.get("paper_execution") if isinstance(pipeline_report.get("paper_execution"), dict) else {},
-        fee_bps=_paper_fee_bps(args),
-        slippage_bps=_paper_slippage_bps(args),
-        now_iso=_iso(cycle_time),
-    )
-    save_paper_ledger(ledger_path, ledger)
+    prices, mark_errors = _prices_for_open_positions(ledger_snapshot, client, selected_market_bundle)
+    try:
+        with paper_ledger_lock(ledger_path):
+            ledger = load_paper_ledger(ledger_path, initial_balance_usdt=_initial_balance(args))
+            if prices:
+                ledger = mark_to_market(
+                    ledger,
+                    prices,
+                    fee_bps=_paper_fee_bps(args),
+                    slippage_bps=_paper_slippage_bps(args),
+                    now_iso=_iso(cycle_time),
+                    max_holding_minutes=_paper_max_holding_minutes(args),
+                )
+            ledger = apply_paper_execution(
+                ledger,
+                pipeline_report.get("paper_execution")
+                if isinstance(pipeline_report.get("paper_execution"), dict)
+                else {},
+                fee_bps=_paper_fee_bps(args),
+                slippage_bps=_paper_slippage_bps(args),
+                now_iso=_iso(cycle_time),
+            )
+            save_paper_ledger(ledger_path, ledger)
+    except PaperLedgerError as exc:
+        return _ledger_error_summary(ledger_path, exc, code=_paper_ledger_runtime_error_code(exc))
+    except (OSError, ValueError) as exc:
+        return _ledger_error_summary(ledger_path, exc, code="paper_ledger_write_failed")
     summary = paper_ledger_summary(ledger)
     summary["recent_paper_orders"] = list(ledger.get("paper_orders") or [])[-20:]
     summary["recent_fills"] = list(ledger.get("fills") or [])[-20:]
@@ -760,22 +869,31 @@ def _monitor_existing_paper_positions(args: Any, client: Any, cycle_time: dateti
     if ledger_path is None or not ledger_path.exists():
         return {}
     try:
-        ledger = load_paper_ledger(ledger_path, initial_balance_usdt=_initial_balance(args))
+        ledger_snapshot = load_paper_ledger(ledger_path, initial_balance_usdt=_initial_balance(args))
     except PaperLedgerError as exc:
         return _ledger_error_summary(ledger_path, exc)
-    if not ledger.get("open_positions"):
-        return {**paper_ledger_summary(ledger), "path": str(ledger_path)}
-    prices, mark_errors = _prices_for_open_positions(ledger, client, {})
-    if prices:
-        ledger = mark_to_market(
-            ledger,
-            prices,
-            fee_bps=_paper_fee_bps(args),
-            slippage_bps=_paper_slippage_bps(args),
-            now_iso=_iso(cycle_time),
-            max_holding_minutes=_paper_max_holding_minutes(args),
-        )
-        save_paper_ledger(ledger_path, ledger)
+    if not ledger_snapshot.get("open_positions"):
+        return {**paper_ledger_summary(ledger_snapshot), "path": str(ledger_path)}
+    prices, mark_errors = _prices_for_open_positions(ledger_snapshot, client, {})
+    try:
+        with paper_ledger_lock(ledger_path):
+            ledger = load_paper_ledger(ledger_path, initial_balance_usdt=_initial_balance(args))
+            if not ledger.get("open_positions"):
+                return {**paper_ledger_summary(ledger), "path": str(ledger_path)}
+            if prices:
+                ledger = mark_to_market(
+                    ledger,
+                    prices,
+                    fee_bps=_paper_fee_bps(args),
+                    slippage_bps=_paper_slippage_bps(args),
+                    now_iso=_iso(cycle_time),
+                    max_holding_minutes=_paper_max_holding_minutes(args),
+                )
+                save_paper_ledger(ledger_path, ledger)
+    except PaperLedgerError as exc:
+        return _ledger_error_summary(ledger_path, exc, code=_paper_ledger_runtime_error_code(exc))
+    except (OSError, ValueError) as exc:
+        return _ledger_error_summary(ledger_path, exc, code="paper_ledger_write_failed")
     summary = paper_ledger_summary(ledger)
     if mark_errors:
         summary["mark_errors"] = mark_errors
@@ -975,14 +1093,29 @@ def _parse_state_time(value: Any) -> datetime | None:
     return _parse_closed_at(value)
 
 
-def _ledger_error_summary(path: Path, exc: PaperLedgerError) -> dict[str, Any]:
+def _ledger_error_summary(path: Path, exc: Exception, *, code: str = "paper_ledger_load_failed") -> dict[str, Any]:
     return {
         "schema": "tradecat_auto.paper_ledger_summary.v1",
         "schema_version": "1.0.0",
         "ok": False,
+        "error_code": code,
         "error": str(exc),
         "path": str(path),
+        "provenance": {
+            "source": "tradecat_auto.service.paper_ledger_runtime_update",
+            "ledger_path": str(path),
+        },
+        "safety": _safety_boundary(),
     }
+
+
+def _paper_ledger_runtime_error_code(exc: Exception) -> str:
+    text = str(exc)
+    return "paper_ledger_write_failed" if "paper_ledger_save_failed" in text else "paper_ledger_load_failed"
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return paper_watch_safety_boundary()
 
 
 def _prices_for_open_positions(
@@ -1136,13 +1269,7 @@ def _journal_config_snapshot(args: Any) -> dict[str, Any]:
             "portfolio_risk_policy_path": str(getattr(args, "portfolio_risk_policy_path", "") or ""),
             "paper_kill_switch_path": str(getattr(args, "paper_kill_switch_path", "") or ""),
         },
-        "safety": {
-            "public_readonly_market_data": True,
-            "paper_or_watch_only": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-        },
+        "safety": _safety_boundary(),
     }
 
 

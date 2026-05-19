@@ -41,6 +41,8 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-paper-ops-report.schema.json": "tradecat_auto.paper_ops_report.v1",
     "tradecat-auto-paper-report.schema.json": "tradecat_auto.paper_report.v1",
     "tradecat-auto-paper-service-status.schema.json": "tradecat_auto.paper_service_status.v1",
+    "tradecat-auto-paper-web-monitor-decision-text.schema.json": "tradecat_auto.paper_web_monitor_decision_text.v1",
+    "tradecat-auto-paper-web-monitor-snapshot.schema.json": "tradecat_auto.paper_web_monitor_snapshot.v1",
     "tradecat-auto-portfolio-risk-policy.schema.json": "tradecat_auto.portfolio_risk_policy.v1",
     "tradecat-auto-position-management-action-report.schema.json": "tradecat_auto.position_management_action_report.v1",
     "tradecat-auto-position-management-thesis.schema.json": "tradecat_auto.position_management_thesis.v1",
@@ -54,6 +56,17 @@ AUTO_SCHEMA_FILES = {
     "tradecat-auto-strategy-review-report.schema.json": "tradecat_auto.strategy_review_report.v1",
     "tradecat-auto-strategy-state.schema.json": "tradecat_auto.strategy_state.v1",
     "tradecat-auto-telegram-alerts.schema.json": "tradecat_auto.telegram_alerts.v1",
+}
+
+AGGREGATE_SCHEMA_FILES = {
+    "tradecat-auto-source-payload.schema.json": {
+        "tradecat_auto.sheet_events.v1",
+        "tradecat_auto.signal_flow_events.v1",
+        "tradecat_auto.anomaly_symbols.v1",
+        "tradecat_auto.signal_events.v1",
+        "tradecat_auto.anomaly_signal_events.v1",
+        "tradecat_auto.source_error.v1",
+    }
 }
 
 
@@ -182,6 +195,48 @@ def test_automation_output_contracts_have_formal_schemas():
     assert "tradecat_auto.paper_service_status.v1" in automation_schemas
     assert "tradecat_auto.agent_market_context_audit.v1" in automation_schemas
     assert "tradecat_auto.run_once_report.v1" in automation_schemas
+    for item in payload.get("automation_output_contracts", []):
+        schema_file = item.get("schema_file")
+        if not schema_file:
+            continue
+        schema_path = REPO_ROOT / schema_file
+        assert schema_path.exists()
+        schema_payload = json.loads(schema_path.read_text(encoding="utf-8"))
+        assert schema_payload["properties"]["schema"]["const"] == item["schema"]
+
+
+def test_manifest_json_outputs_advertise_source_payload_contracts():
+    payload = _manifest()
+    json_outputs = payload.get("json_outputs", [])
+    output_schemas = {item["schema"] for item in json_outputs}
+
+    assert AGGREGATE_SCHEMA_FILES["tradecat-auto-source-payload.schema.json"] <= output_schemas
+    for item in json_outputs:
+        if item.get("schema_file") != "contracts/tradecat-auto-source-payload.schema.json":
+            continue
+        schema_path = REPO_ROOT / item["schema_file"]
+        schema_payload = json.loads(schema_path.read_text(encoding="utf-8"))
+        assert item["schema"] in set(schema_payload["properties"]["schema"]["enum"])
+        assert item["real_orders"] is False
+        assert item["signed_requests"] is False
+        assert item["reads_api_keys"] is False
+
+
+def test_manifest_json_outputs_have_existing_schema_files_and_safe_flags():
+    payload = _manifest()
+
+    for item in payload.get("json_outputs", []):
+        schema = item["schema"]
+        schema_path = REPO_ROOT / item["schema_file"]
+        assert schema_path.exists(), f"{schema}: missing {schema_path}"
+
+        schema_payload = json.loads(schema_path.read_text(encoding="utf-8"))
+        assert _schema_payload_accepts_schema(schema_payload, schema), f"{schema}: not declared by {schema_path.name}"
+
+        if schema.startswith("tradecat_auto."):
+            assert item["real_orders"] is False
+            assert item["signed_requests"] is False
+            assert item["reads_api_keys"] is False
 
 
 def test_formal_contract_schemas_are_valid_json():
@@ -194,6 +249,7 @@ def test_formal_contract_schemas_are_valid_json():
         *REQUEST_SCHEMA_FILES,
         *RESOURCE_SCHEMA_FILES,
         *AUTO_SCHEMA_FILES,
+        *AGGREGATE_SCHEMA_FILES,
     }
     for path in schemas:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -207,7 +263,18 @@ def test_schema_files_pin_expected_payload_schema_names():
 
         assert properties["schema"]["const"] == expected_schema
         assert properties["schema_version"]["const"] == "1.0.0"
+    for filename, expected_schemas in AGGREGATE_SCHEMA_FILES.items():
+        payload = json.loads((REPO_ROOT / "contracts" / filename).read_text(encoding="utf-8"))
+        properties = payload.get("properties", {})
+
+        assert set(properties["schema"]["enum"]) == expected_schemas
+        assert properties["schema_version"]["const"] == "1.0.0"
 
 
 def _manifest() -> dict:
     return json.loads((SKILL_PACKAGE_ROOT / "agents" / "manifest.json").read_text(encoding="utf-8"))
+
+
+def _schema_payload_accepts_schema(payload: dict, schema: str) -> bool:
+    schema_property = payload.get("properties", {}).get("schema", {})
+    return schema_property.get("const") == schema or schema in set(schema_property.get("enum") or [])

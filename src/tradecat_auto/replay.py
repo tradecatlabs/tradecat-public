@@ -8,6 +8,7 @@ from typing import Any
 
 from tradecat_auto.audit_journal import journal_summary
 from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, load_paper_ledger_from_object
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
 
 SCHEMA_VERSION = "1.0.0"
 
@@ -30,9 +31,10 @@ def build_replay_report(
         except (PaperLedgerError, OSError) as exc:
             ledger_error = f"{type(exc).__name__}: {exc}"
 
+    archive_sha256 = _sha256_file(archive) if archive.exists() else ""
     archive_summary = _summarize_cycles(cycles)
     archive_summary["path"] = str(archive)
-    archive_summary["sha256"] = _sha256_file(archive) if archive.exists() else ""
+    archive_summary["sha256"] = archive_sha256
     archive_summary["load_errors"] = errors
 
     paper_backtest = (
@@ -52,8 +54,13 @@ def build_replay_report(
         }
     )
 
-    decision_trace = build_decision_trace_report(
-        archive_path=archive, journal_path=journal_path, generated_at=report_time
+    decision_trace = _build_decision_trace_report_from_cycles(
+        archive_path=archive,
+        cycles=cycles,
+        errors=errors,
+        journal_path=journal_path,
+        generated_at=report_time,
+        archive_sha256=archive_sha256,
     )
     decision_quality = build_decision_quality_report_from_reports(
         decision_trace, paper_backtest, generated_at=report_time
@@ -69,11 +76,7 @@ def build_replay_report(
         "decision_quality": decision_quality,
         "paper_backtest": paper_backtest,
         "safety": {
-            "public_readonly": True,
-            "paper_or_watch_only": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **_replay_safety(),
             "write_paths": [str(archive), str(ledger_path) if ledger_path is not None else ""],
         },
         "limitations": [
@@ -152,13 +155,7 @@ def build_decision_quality_report_from_reports(
             "use error_code_counts to improve Agent context/thesis completeness",
         ],
         "provenance": {"source": "tradecat_auto.replay.build_decision_quality_report_from_reports"},
-        "safety": {
-            "paper_or_watch_only": True,
-            "not_investment_advice": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-        },
+        "safety": {**_replay_safety(), "not_investment_advice": True},
     }
 
 
@@ -170,6 +167,26 @@ def build_decision_trace_report(
 ) -> dict[str, Any]:
     archive = Path(archive_path)
     cycles, errors = _load_jsonl(archive)
+    return _build_decision_trace_report_from_cycles(
+        archive_path=archive,
+        cycles=cycles,
+        errors=errors,
+        journal_path=journal_path,
+        generated_at=generated_at,
+        archive_sha256=_sha256_file(archive) if archive.exists() else "",
+    )
+
+
+def _build_decision_trace_report_from_cycles(
+    *,
+    archive_path: Path,
+    cycles: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+    journal_path: Path | str | None = None,
+    generated_at: str | None = None,
+    archive_sha256: str = "",
+) -> dict[str, Any]:
+    archive = Path(archive_path)
     traces = [_decision_trace_from_cycle(cycle, index) for index, cycle in enumerate(cycles)]
     decision_counts: dict[str, int] = {}
     error_code_counts: dict[str, int] = {}
@@ -181,7 +198,7 @@ def build_decision_trace_report(
     source_paths = {
         "archive_path": str(archive),
         "journal_path": str(journal_path) if journal_path is not None else "",
-        "archive_sha256": _sha256_file(archive) if archive.exists() else "",
+        "archive_sha256": archive_sha256,
     }
     payload = {
         "schema": "tradecat_auto.decision_trace_report.v1",
@@ -226,12 +243,7 @@ def build_paper_backtest_report(ledger: dict[str, Any], *, generated_at: str | N
         "closed_positions_count": len(closed_positions),
         "fills_count": len(fills),
         "equity_curve_points": len(equity_curve),
-        "safety": {
-            "paper_only": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-        },
+        "safety": {**_replay_safety(), "paper_only": True},
     }
 
 
@@ -271,12 +283,7 @@ def _decision_trace_from_cycle(cycle: dict[str, Any], index: int) -> dict[str, A
         "paper_execution_id": str(execution.get("paper_execution_id") or ""),
         "paper_fill_count": len(ledger.get("recent_fills") or ledger.get("fills") or []),
         "provenance": {"source": "tradecat_auto.replay._decision_trace_from_cycle"},
-        "safety": {
-            "paper_or_watch_only": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-        },
+        "safety": _replay_safety(),
     }
 
 
@@ -286,23 +293,27 @@ def _load_jsonl(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
     if not path.exists():
         return cycles, [{"code": "archive_missing", "message": f"archive does not exist: {path}"}]
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        with path.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    errors.append({"code": "invalid_jsonl", "line": line_number, "message": str(exc)})
+                    continue
+                if isinstance(payload, dict):
+                    cycles.append(payload)
+                else:
+                    errors.append(
+                        {
+                            "code": "invalid_cycle_payload",
+                            "line": line_number,
+                            "message": "cycle root is not an object",
+                        }
+                    )
     except OSError as exc:
         return cycles, [{"code": "archive_read_failed", "message": str(exc)}]
-    for line_number, line in enumerate(lines, start=1):
-        if not line.strip():
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
-            errors.append({"code": "invalid_jsonl", "line": line_number, "message": str(exc)})
-            continue
-        if isinstance(payload, dict):
-            cycles.append(payload)
-        else:
-            errors.append(
-                {"code": "invalid_cycle_payload", "line": line_number, "message": "cycle root is not an object"}
-            )
     return cycles, errors
 
 
@@ -326,7 +337,7 @@ def _summarize_cycles(cycles: list[dict[str, Any]]) -> dict[str, Any]:
         raw_execution = pipeline.get("paper_execution")
         execution: dict[str, Any] = raw_execution if isinstance(raw_execution, dict) else {}
         status = execution.get("status")
-        if status == "OPENED":
+        if status == "OPENED" and _cycle_open_countable(cycle, pipeline):
             opened_count += 1
         elif status == "REJECTED":
             rejected_count += 1
@@ -350,15 +361,27 @@ def _summarize_cycles(cycles: list[dict[str, Any]]) -> dict[str, Any]:
 def _trace_decision(service_action: str, execution_status: str, risk_decision: str, error_codes: list[str]) -> str:
     if service_action.startswith("SKIPPED"):
         return "SKIPPED"
+    if service_action == "ERROR":
+        return "ERROR"
+    if execution_status == "OPENED" and error_codes:
+        return "ERROR"
     if execution_status == "OPENED":
         return "OPENED"
     if execution_status == "REJECTED" or risk_decision == "REJECT":
         return "REJECTED"
     if risk_decision == "WATCH_ONLY":
         return "WATCH_ONLY"
-    if service_action == "ERROR" or error_codes:
+    if error_codes:
         return "ERROR"
     return "NO_EXECUTION"
+
+
+def _cycle_open_countable(cycle: dict[str, Any], pipeline: dict[str, Any]) -> bool:
+    return (
+        cycle.get("ok") is not False
+        and pipeline.get("ok") is not False
+        and not (cycle.get("error_code") or pipeline.get("error_code"))
+    )
 
 
 def _context_audit_reject_count(error_counts: dict[str, int]) -> int:
@@ -459,13 +482,7 @@ def _trace_id(
 
 
 def _replay_safety() -> dict[str, bool]:
-    return {
-        "public_readonly": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-    }
+    return paper_watch_safety_boundary()
 
 
 def _metrics_from_series(

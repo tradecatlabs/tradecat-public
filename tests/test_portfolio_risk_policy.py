@@ -41,6 +41,7 @@ class PortfolioRiskPolicySchemaTests(unittest.TestCase):
                 payload = load_fixture(name)
                 self.assertValid(payload)
                 self.assertEqual(payload["schema"], "tradecat_auto.portfolio_risk_policy.v1")
+                self.assertTrue(payload["safety"]["public_readonly"])
                 self.assertFalse(payload["safety"]["real_orders"])
                 self.assertTrue(payload["hard_boundaries"]["does_not_set_order_size"])
 

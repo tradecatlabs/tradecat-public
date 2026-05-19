@@ -12,6 +12,8 @@
     "source": "portfolio_risk_policy_fixture"
   },
   "safety": {
+    "public_readonly_market_data": true,
+    "public_readonly": true,
     "paper_or_watch_only": true,
     "real_orders": false,
     "signed_requests": false,

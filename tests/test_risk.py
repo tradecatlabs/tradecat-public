@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from tradecat_auto.risk import default_risk_policy, evaluate_risk
+from tradecat_auto.risk import default_risk_policy, evaluate_risk, load_portfolio_risk_policy
 
 LONG_SIGNAL = {
     "schema": "tradecat_auto.signal_score.v1",
@@ -32,6 +33,74 @@ class RiskTests(unittest.TestCase):
         self.assertEqual(decision["provenance"]["source"], "tradecat_auto.risk.evaluate_risk")
         self.assertIn("agent_sizing_required", decision["reasons"])
         self.assertIn("paper_only", decision["constraints"])
+
+    def test_portfolio_risk_policy_loader_rejects_unsafe_safety_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "portfolio-policy.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.portfolio_risk_policy.v1",
+                        "schema_version": "1.0.0",
+                        "mode": "paper",
+                        "safety": {
+                            "public_readonly_market_data": True,
+                            "public_readonly": True,
+                            "paper_or_watch_only": True,
+                            "real_orders": True,
+                            "signed_requests": False,
+                            "reads_api_keys": False,
+                            "binance_account_state": False,
+                        },
+                        "hard_boundaries": {
+                            "does_not_set_order_size": True,
+                            "does_not_set_leverage": True,
+                            "does_not_set_exit_plan": True,
+                            "real_orders": False,
+                            "signed_requests": False,
+                            "reads_api_keys": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, r"safety\.real_orders must be False"):
+                load_portfolio_risk_policy(path)
+
+    def test_portfolio_risk_policy_loader_rejects_unsafe_hard_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "portfolio-policy.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.portfolio_risk_policy.v1",
+                        "schema_version": "1.0.0",
+                        "mode": "paper",
+                        "safety": {
+                            "public_readonly_market_data": True,
+                            "public_readonly": True,
+                            "paper_or_watch_only": True,
+                            "real_orders": False,
+                            "signed_requests": False,
+                            "reads_api_keys": False,
+                            "binance_account_state": False,
+                        },
+                        "hard_boundaries": {
+                            "does_not_set_order_size": False,
+                            "does_not_set_leverage": True,
+                            "does_not_set_exit_plan": True,
+                            "real_orders": False,
+                            "signed_requests": False,
+                            "reads_api_keys": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, r"hard_boundaries\.does_not_set_order_size must be True"):
+                load_portfolio_risk_policy(path)
 
     def test_explicit_agent_sizing_allows_only_paper_for_strong_signal(self) -> None:
         policy = default_risk_policy(mode="paper")

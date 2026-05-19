@@ -95,6 +95,24 @@ class StrategyReviewTests(unittest.TestCase):
             self.assertEqual(state["schema"], "tradecat_auto.strategy_state.v1")
             self.assertIn("RAVEUSDT", state["policy"]["blocked_symbols"])
 
+    def test_strategy_review_preserves_archive_load_errors_while_streaming(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger_path = root / "paper_ledger.json"
+            save_paper_ledger(ledger_path, default_paper_ledger())
+            archive_path = root / "cycles.jsonl"
+            archive_path.write_text(
+                json.dumps(cycle_for_execution("exec-1", "GOOD_SIGNAL")) + "\n{not-json}\n",
+                encoding="utf-8",
+            )
+
+            report = build_strategy_review_report(ledger_path=ledger_path, archive_path=archive_path)
+
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["archive_errors"][0]["line"], 2)
+            self.assertIn("Expecting property name", report["archive_errors"][0]["error"])
+            self.assertFalse(report["safety"]["real_orders"])
+
     def test_strategy_state_roundtrip_and_policy_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "strategy_state.json"

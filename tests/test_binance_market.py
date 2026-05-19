@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from tradecat_auto.binance_market import (
@@ -12,7 +13,14 @@ from tradecat_auto.binance_market import (
     normalize_to_usdt_perp_symbol,
     summarize_depth,
 )
-from tradecat_auto.cli import market_bundle_report
+from tradecat_auto.cli import market_bundle_report, market_snapshot_report, market_universe_report
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
+
+
+def _assert_public_readonly_report(testcase: unittest.TestCase, payload: dict[str, object]) -> None:
+    for key, expected in paper_watch_report_flags().items():
+        testcase.assertIs(payload[key], expected)
+    testcase.assertEqual(payload["safety"], paper_watch_safety_boundary())
 
 
 class FakeTransport:
@@ -188,11 +196,8 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(bundle["openInterest"]["openInterest"], "12345.6")
         self.assertIn("depth_summary", bundle)
         self.assertIn("api_usage", bundle)
-        self.assertFalse(bundle["real_orders"])
-        self.assertFalse(bundle["signed_requests"])
-        self.assertFalse(bundle["reads_api_keys"])
+        _assert_public_readonly_report(self, bundle)
         self.assertEqual(bundle["provenance"]["source"], "binance_usdm_public_market_bundle")
-        self.assertFalse(bundle["safety"]["binance_account_state"])
         self.assertGreaterEqual(len(transport.calls), 10)
 
     def test_client_fetches_lightweight_last_price_for_mark_to_market(self) -> None:
@@ -204,9 +209,7 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "tradecat_auto.public_last_price.v1")
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["last_price"], 100.0)
-        self.assertFalse(payload["real_orders"])
-        self.assertFalse(payload["signed_requests"])
-        self.assertFalse(payload["reads_api_keys"])
+        _assert_public_readonly_report(self, payload)
         self.assertEqual(urlparse(transport.calls[-1]).path, "/fapi/v1/ticker/price")
 
     def test_client_fetches_batch_last_prices_with_one_public_request(self) -> None:
@@ -219,9 +222,7 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["prices"], {"BTCUSDT": 100.0, "ETHUSDT": 3000.0})
         self.assertEqual(payload["missing_symbols"], [])
-        self.assertFalse(payload["real_orders"])
-        self.assertFalse(payload["signed_requests"])
-        self.assertFalse(payload["reads_api_keys"])
+        _assert_public_readonly_report(self, payload)
         price_calls = [url for url in transport.calls if urlparse(url).path == "/fapi/v1/ticker/price"]
         self.assertEqual(len(price_calls), 1)
         self.assertNotIn("symbol=", price_calls[0])
@@ -239,9 +240,10 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(payload["ticker24hr"]["BTCUSDT"]["lastPrice"], "100.0")
         self.assertEqual(payload["bookTicker"]["ETHUSDT"]["askPrice"], "3001.0")
         self.assertIn("open_interest", payload["per_symbol_endpoint_families"])
-        self.assertFalse(payload["real_orders"])
-        self.assertFalse(payload["signed_requests"])
-        self.assertFalse(payload["reads_api_keys"])
+        self.assertEqual(
+            len(payload["per_symbol_endpoint_families"]), len(set(payload["per_symbol_endpoint_families"]))
+        )
+        _assert_public_readonly_report(self, payload)
         paths = [urlparse(url).path for url in transport.calls]
         self.assertEqual(paths.count("/fapi/v1/ticker/price"), 1)
         self.assertEqual(paths.count("/fapi/v1/ticker/24hr"), 1)
@@ -261,9 +263,10 @@ class BinanceMarketTests(unittest.TestCase):
         self.assertEqual(payload["bundles"]["ETHUSDT"]["bookTicker"]["askPrice"], "3001.0")
         self.assertEqual(payload["bundles"]["BTCUSDT"]["klines"][0][4], "100.0")
         self.assertIn("depth_summary", payload["bundles"]["ETHUSDT"])
-        self.assertFalse(payload["real_orders"])
-        self.assertFalse(payload["signed_requests"])
-        self.assertFalse(payload["reads_api_keys"])
+        self.assertEqual(
+            len(payload["per_symbol_endpoint_families"]), len(set(payload["per_symbol_endpoint_families"]))
+        )
+        _assert_public_readonly_report(self, payload)
         paths = [urlparse(url).path for url in transport.calls]
         self.assertEqual(paths.count("/fapi/v1/ticker/24hr"), 1)
         self.assertEqual(paths.count("/fapi/v1/ticker/bookTicker"), 1)
@@ -285,9 +288,41 @@ class BinanceMarketTests(unittest.TestCase):
 
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["error_code"], "public_market_bundle_symbols_required")
-        self.assertFalse(payload["real_orders"])
-        self.assertFalse(payload["signed_requests"])
-        self.assertFalse(payload["reads_api_keys"])
+        _assert_public_readonly_report(self, payload)
+
+    def test_market_snapshot_report_failure_uses_public_readonly_safety(self) -> None:
+        class FailingClient:
+            def __init__(self, *, base_url: str):
+                self.base_url = base_url
+
+            def fetch_public_market_snapshot(self, symbols: list[str]) -> dict[str, object]:
+                raise BinanceApiError("rate limited", status=429, url=f"{self.base_url}/fapi/v1/ticker/price")
+
+        with patch("tradecat_auto.cli.BinanceMarketClient", FailingClient):
+            payload = market_snapshot_report(
+                argparse.Namespace(base_url="https://example.test", symbols="BTCUSDT,ETHUSDT")
+            )
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "public_market_snapshot_failed")
+        self.assertEqual(payload["symbols"], ["BTCUSDT", "ETHUSDT"])
+        _assert_public_readonly_report(self, payload)
+
+    def test_market_snapshot_report_rejects_non_object_payload_structured(self) -> None:
+        class NonObjectClient:
+            def __init__(self, *, base_url: str):
+                self.base_url = base_url
+
+            def fetch_public_market_snapshot(self, symbols: list[str]) -> list[str]:
+                return ["not", "an", "object"]
+
+        with patch("tradecat_auto.cli.BinanceMarketClient", NonObjectClient):
+            payload = market_snapshot_report(argparse.Namespace(base_url="https://example.test", symbols="BTCUSDT"))
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "public_market_snapshot_failed")
+        self.assertEqual(payload["symbols"], ["BTCUSDT"])
+        _assert_public_readonly_report(self, payload)
 
     def test_market_universe_uses_ttl_cache_and_reports_usage(self) -> None:
         transport = FakeTransport()
@@ -298,14 +333,33 @@ class BinanceMarketTests(unittest.TestCase):
 
         self.assertEqual(first["symbol_count"], 3)
         self.assertEqual(second["symbol_count"], 3)
-        self.assertFalse(first["real_orders"])
-        self.assertFalse(first["signed_requests"])
-        self.assertFalse(first["reads_api_keys"])
+        _assert_public_readonly_report(self, first)
         self.assertEqual(first["provenance"]["endpoint"], "/fapi/v1/exchangeInfo")
-        self.assertFalse(first["safety"]["binance_account_state"])
         exchange_info_calls = [url for url in transport.calls if urlparse(url).path == "/fapi/v1/exchangeInfo"]
         self.assertEqual(len(exchange_info_calls), 1)
         self.assertGreaterEqual(second["api_usage"]["cache_hits"], 1)
+
+    def test_market_universe_report_failure_uses_public_readonly_safety(self) -> None:
+        class FailingClient:
+            def __init__(self, *, base_url: str):
+                self.base_url = base_url
+
+            def market_universe(self) -> dict[str, object]:
+                raise BinanceApiError(
+                    "exchange info unavailable", status=503, url=f"{self.base_url}/fapi/v1/exchangeInfo"
+                )
+
+            def api_usage(self) -> dict[str, object]:
+                return {"requests_attempted": 1, "endpoints": {"/fapi/v1/exchangeInfo": 1}}
+
+        with patch("tradecat_auto.cli.BinanceMarketClient", FailingClient):
+            payload = market_universe_report(argparse.Namespace(base_url="https://example.test"))
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "market_universe_failed")
+        self.assertEqual(payload["symbols"], [])
+        self.assertEqual(payload["api_usage"]["requests_attempted"], 1)
+        _assert_public_readonly_report(self, payload)
 
     def test_request_json_retries_transient_errors_and_records_usage(self) -> None:
         attempts: list[str] = []

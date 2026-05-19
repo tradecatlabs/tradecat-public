@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 from tradecat_auto.audit_journal import journal_summary
 from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger, paper_ledger_summary
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
 
 SCHEMA_VERSION = "1.0.0"
 BENIGN_LAST_ERROR_CODES = {
@@ -17,6 +19,9 @@ BENIGN_LAST_ERROR_CODES = {
     "no_events_available",
     "no_anomaly_signal_available",
     "signal_not_tradable",
+    "strategy_side_blocked",
+    "strategy_signal_type_blocked",
+    "strategy_symbol_blocked",
     "position_already_open_for_symbol",
     "max_concurrent_positions_per_symbol_reached",
 }
@@ -41,9 +46,22 @@ def build_health_report(
     state = state_payload.get("data") if state_payload.get("ok") else {}
     state = state if isinstance(state, dict) else {}
     heartbeat = _heartbeat(state, now_text, max_heartbeat_age_seconds=max_heartbeat_age_seconds)
-    ledger = _ledger_health(Path(ledger_path))
-    archive = _archive_health(Path(archive_path))
-    audit = journal_summary(Path(journal_path))
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        ledger_future = executor.submit(_ledger_health, Path(ledger_path))
+        archive_future = executor.submit(_archive_health, Path(archive_path))
+        audit_future = executor.submit(journal_summary, Path(journal_path))
+        ledger = _component_future_result(
+            ledger_future,
+            fallback=lambda exc: _ledger_health_exception(Path(ledger_path), exc),
+        )
+        archive = _component_future_result(
+            archive_future,
+            fallback=lambda exc: _archive_health_exception(Path(archive_path), exc),
+        )
+        audit = _component_future_result(
+            audit_future,
+            fallback=lambda exc: _audit_health_exception(Path(journal_path), exc),
+        )
 
     alerts: list[str] = []
     if not state_payload.get("ok"):
@@ -86,6 +104,8 @@ def build_health_report(
             "last_selected_symbol": state.get("last_selected_symbol"),
             "last_error": state.get("last_error"),
             "last_error_code": _last_error_code(state.get("last_error")),
+            "state_load_error": state.get("state_load_error"),
+            "state_trust_level": state.get("state_trust_level"),
         },
         "ledger": ledger,
         "archive": archive,
@@ -134,6 +154,8 @@ def build_latest_decision_report(*, archive_path: Path | str) -> dict[str, Any]:
     risk = _as_dict(pipeline.get("risk_decision"))
     execution = _as_dict(pipeline.get("paper_execution"))
     sizing = _as_dict(pipeline.get("paper_sizing"))
+    execution_status = _effective_paper_execution_status(cycle, pipeline, execution)
+    error_code = str(cycle.get("error_code") or pipeline.get("error_code") or "").strip()
     sections = [
         _text_section(
             "输入信号",
@@ -181,7 +203,9 @@ def build_latest_decision_report(*, archive_path: Path | str) -> dict[str, Any]:
         _text_section(
             "纸面执行",
             [
-                ("状态", execution.get("status")),
+                ("状态", execution_status),
+                ("原始执行状态", execution.get("status") if execution_status != execution.get("status") else None),
+                ("错误码", error_code),
                 ("方向", execution.get("side")),
                 ("名义金额 USDT", execution.get("notional_usdt")),
                 ("保证金 USDT", execution.get("margin_usdt")),
@@ -200,7 +224,7 @@ def build_latest_decision_report(*, archive_path: Path | str) -> dict[str, Any]:
         "symbol": thesis.get("symbol") or pipeline.get("selected_symbol") or signal.get("symbol"),
         "direction": thesis.get("direction") or strategy.get("direction") or signal.get("direction"),
         "risk_decision": risk.get("decision"),
-        "paper_execution_status": execution.get("status"),
+        "paper_execution_status": execution_status,
         "text": text,
         "sections": sections,
         "cycle_summary": _cycle_summary(cycle),
@@ -211,7 +235,7 @@ def build_latest_decision_report(*, archive_path: Path | str) -> dict[str, Any]:
             "pipeline_schema": str(pipeline.get("schema") or ""),
             "event_id": str(event.get("event_id") or ""),
         },
-        "safety": {**_safety_boundary(), **_as_dict(pipeline.get("safety"))},
+        "safety": _safety_boundary(),
         "limitations": ["auditable decision summary only; not hidden model chain-of-thought"],
     }
 
@@ -268,9 +292,7 @@ def build_telegram_alerts(report: dict[str, Any]) -> dict[str, Any]:
                 "kind": kind,
                 "text": text,
                 "parse_mode": "plain_text",
-                "real_orders": False,
-                "signed_requests": False,
-                "reads_api_keys": False,
+                **paper_watch_report_flags(),
             }
         ],
         "safety": _safety_boundary(),
@@ -314,13 +336,23 @@ def _ledger_health(path: Path) -> dict[str, Any]:
     return {"ok": True, "path": str(path), "summary": paper_ledger_summary(ledger)}
 
 
+def _ledger_health_exception(path: Path, exc: BaseException) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "path": str(path),
+        "alert": "paper_ledger_health_exception",
+        "summary": {},
+        "error": _component_error("paper_ledger_health_exception", exc),
+    }
+
+
 def _archive_health(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"ok": False, "path": str(path), "alert": "cycle_archive_missing", "cycle_count": 0, "action_counts": {}}
     action_counts: Counter[str] = Counter()
     malformed = 0
     cycle_count = 0
-    last_cycle: dict[str, Any] = {}
+    last_action: str | None = None
     try:
         with path.open("r", encoding="utf-8") as handle:
             for line in handle:
@@ -336,8 +368,9 @@ def _archive_health(path: Path) -> dict[str, Any]:
                     malformed += 1
                     continue
                 cycle_count += 1
-                action_counts[str(payload.get("action") or "UNKNOWN")] += 1
-                last_cycle = payload
+                action = str(payload.get("action") or "UNKNOWN")
+                action_counts[action] += 1
+                last_action = action
     except OSError as exc:
         return {
             "ok": False,
@@ -353,32 +386,99 @@ def _archive_health(path: Path) -> dict[str, Any]:
         "cycle_count": cycle_count,
         "action_counts": dict(action_counts),
         "malformed_lines": malformed,
-        "last_action": last_cycle.get("action"),
+        "last_action": last_action,
         "alert": "cycle_archive_malformed" if malformed else None,
     }
 
 
-def _read_latest_jsonl(path: Path, *, predicate: Callable[[dict[str, Any]], bool] | None = None) -> dict[str, Any]:
+def _archive_health_exception(path: Path, exc: BaseException) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "path": str(path),
+        "alert": "cycle_archive_health_exception",
+        "cycle_count": 0,
+        "action_counts": {},
+        "malformed_lines": 0,
+        "last_action": None,
+        "error": _component_error("cycle_archive_health_exception", exc),
+    }
+
+
+def _audit_health_exception(path: Path, exc: BaseException) -> dict[str, Any]:
+    code = "audit_journal_health_exception"
+    return {
+        "schema": "tradecat_auto.audit_journal_summary.v1",
+        "schema_version": SCHEMA_VERSION,
+        "ok": False,
+        "path": str(path),
+        "storage": "sqlite3_local_audit_journal",
+        "sqlite_user_version": None,
+        "record_count": 0,
+        "run_count": 0,
+        "event_type_counts": {},
+        "latest_record_sha256": "",
+        "chain_valid": False,
+        "chain_error": code,
+        "error": _component_error(code, exc),
+        "safety": _safety_boundary(),
+    }
+
+
+def _component_future_result(future: Any, *, fallback: Callable[[BaseException], dict[str, Any]]) -> dict[str, Any]:
+    try:
+        result = future.result()
+    except Exception as exc:  # pragma: no cover - covered through caller-level behavior
+        return fallback(exc)
+    return result if isinstance(result, dict) else fallback(TypeError("health component returned non-object payload"))
+
+
+def _component_error(code: str, exc: BaseException) -> dict[str, Any]:
+    message = str(exc).strip() or exc.__class__.__name__
+    return {
+        "code": code,
+        "kind": "local_runtime",
+        "message": f"{exc.__class__.__name__}: {message}",
+        "retryable": False,
+    }
+
+
+def _read_latest_jsonl(
+    path: Path,
+    *,
+    predicate: Callable[[dict[str, Any]], bool] | None = None,
+    initial_scan_bytes: int = 1048576,
+    max_scan_bytes: int = 4194304,
+) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
         with path.open("rb") as handle:
             handle.seek(0, 2)
             size = handle.tell()
-            handle.seek(max(0, size - 1048576), 0)
-            text = handle.read().decode("utf-8", errors="replace")
+            window = max(1, min(size, initial_scan_bytes))
+            scan_limit = max(window, max_scan_bytes)
+            while True:
+                start = max(0, size - window)
+                handle.seek(start, 0)
+                text = handle.read().decode("utf-8", errors="replace")
+                lines = text.splitlines()
+                if start > 0 and lines:
+                    lines = lines[1:]
+                for line in reversed(lines):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(payload, dict) and (predicate is None or predicate(payload)):
+                        return payload
+                if start == 0 or window >= scan_limit:
+                    return {}
+                window = min(size, scan_limit, max(window * 2, window + 1))
     except OSError:
         return {}
-    for line in reversed(text.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict) and (predicate is None or predicate(payload)):
-            return payload
     return {}
 
 
@@ -386,17 +486,27 @@ def _cycle_summary(cycle: dict[str, Any]) -> dict[str, Any]:
     pipeline = cycle.get("pipeline_report") if isinstance(cycle.get("pipeline_report"), dict) else {}
     execution = pipeline.get("paper_execution") if isinstance(pipeline.get("paper_execution"), dict) else {}
     event = cycle.get("latest_event") if isinstance(cycle.get("latest_event"), dict) else {}
+    event_id = event.get("event_id")
     return {
+        "schema": "tradecat_auto.latest_cycle_summary.v1",
+        "schema_version": SCHEMA_VERSION,
         "action": cycle.get("action"),
         "ok": cycle.get("ok"),
         "error_code": cycle.get("error_code") or pipeline.get("error_code"),
         "reason": cycle.get("reason"),
         "selected_symbol": pipeline.get("selected_symbol") or event.get("symbol"),
-        "event_id": event.get("event_id"),
+        "event_id": event_id,
         "source_dataset_key": event.get("source_dataset_key"),
         "source_time_bj": event.get("source_time_bj"),
         "risk_decision": _as_dict(pipeline.get("risk_decision")).get("decision"),
-        "paper_execution_status": execution.get("status"),
+        "paper_execution_status": _effective_paper_execution_status(cycle, pipeline, execution),
+        "provenance": {
+            "source": "tradecat_auto.production_control.cycle_summary",
+            "cycle_schema": str(cycle.get("schema") or ""),
+            "pipeline_schema": str(pipeline.get("schema") or ""),
+            "event_id": str(event_id or ""),
+        },
+        "safety": _safety_boundary(),
     }
 
 
@@ -420,6 +530,17 @@ def _last_error_is_alertable(value: Any) -> bool:
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _effective_paper_execution_status(
+    cycle: dict[str, Any], pipeline: dict[str, Any], execution: dict[str, Any]
+) -> str | None:
+    status = execution.get("status")
+    if status == "OPENED" and (
+        cycle.get("ok") is False or pipeline.get("ok") is False or cycle.get("error_code") or pipeline.get("error_code")
+    ):
+        return "ERROR"
+    return status
 
 
 def _join_text_list(value: Any) -> str:
@@ -536,12 +657,4 @@ def _today_iso() -> str:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "public_readonly": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

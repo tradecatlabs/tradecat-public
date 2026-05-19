@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tradecat_auto.safety_boundary import FALSE_ONLY_SAFETY_KEY_COMPACTS, paper_watch_safety_boundary
+
 JOURNAL_SCHEMA = "tradecat_auto.audit_journal.v1"
 JOURNAL_WRITE_SCHEMA = "tradecat_auto.audit_journal_write.v1"
 SCHEMA_VERSION = "1.0.0"
@@ -88,9 +90,6 @@ def append_audit_record(
 ) -> dict[str, Any]:
     db_path = Path(path)
     created = created_at or _now_iso()
-    clean_event_type = str(event_type or "").strip()
-    if not clean_event_type:
-        raise AuditJournalError("event_type is required")
     clean_payload = payload if isinstance(payload, dict) else {"payload": payload}
     clean_run_id = str(run_id or "").strip()
     if _contains_real_order_payload(clean_payload):
@@ -100,6 +99,38 @@ def append_audit_record(
             code="real_order_payload_rejected",
             message="audit journal refuses real order/account/credential payloads in tradecat-public",
         )
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with _connect(db_path) as conn:
+        _ensure_schema(conn)
+        return _append_audit_record_to_conn(
+            conn,
+            db_path,
+            event_type=event_type,
+            payload=clean_payload,
+            run_id=clean_run_id,
+            idempotency_key=idempotency_key,
+            record_id=record_id,
+            created_at=created,
+        )
+
+
+def _append_audit_record_to_conn(
+    conn: sqlite3.Connection,
+    db_path: Path,
+    *,
+    event_type: str,
+    payload: dict[str, Any],
+    run_id: str,
+    idempotency_key: str = "",
+    record_id: str = "",
+    created_at: str,
+) -> dict[str, Any]:
+    clean_event_type = str(event_type or "").strip()
+    if not clean_event_type:
+        raise AuditJournalError("event_type is required")
+    clean_payload = payload
+    clean_run_id = str(run_id or "").strip()
     payload_json = _canonical_json(clean_payload)
     payload_sha = _sha256(payload_json)
     clean_idempotency_key = str(idempotency_key or "").strip()
@@ -107,58 +138,55 @@ def append_audit_record(
         clean_run_id, clean_event_type, clean_idempotency_key, payload_sha
     )
 
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    with _connect(db_path) as conn:
-        _ensure_schema(conn)
-        if clean_idempotency_key:
-            existing = _get_record_by_idempotency_key(conn, clean_idempotency_key)
-            if existing is not None:
-                return _record_result(existing, inserted=False, path=db_path)
-        previous = _latest_record(conn)
-        prev_hash = str(previous["record_sha256"] if previous else "")
-        record_hash = _record_hash(
-            record_id=clean_record_id,
-            run_id=clean_run_id,
-            event_type=clean_event_type,
-            idempotency_key=clean_idempotency_key,
-            payload_sha256=payload_sha,
-            prev_record_sha256=prev_hash,
-            created_at=created,
+    if clean_idempotency_key:
+        existing = _get_record_by_idempotency_key(conn, clean_idempotency_key)
+        if existing is not None:
+            return _record_result(existing, inserted=False, path=db_path)
+    previous = _latest_record(conn)
+    prev_hash = str(previous["record_sha256"] if previous else "")
+    record_hash = _record_hash(
+        record_id=clean_record_id,
+        run_id=clean_run_id,
+        event_type=clean_event_type,
+        idempotency_key=clean_idempotency_key,
+        payload_sha256=payload_sha,
+        prev_record_sha256=prev_hash,
+        created_at=created_at,
+    )
+    try:
+        conn.execute(
+            """
+            insert into audit_records (
+                record_id, idempotency_key, run_id, event_type, schema_name,
+                schema_version, payload_json, payload_sha256, prev_record_sha256,
+                record_sha256, created_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                clean_record_id,
+                clean_idempotency_key or None,
+                clean_run_id,
+                clean_event_type,
+                str(clean_payload.get("schema") or ""),
+                str(clean_payload.get("schema_version") or ""),
+                payload_json,
+                payload_sha,
+                prev_hash,
+                record_hash,
+                created_at,
+            ),
         )
-        try:
-            conn.execute(
-                """
-                insert into audit_records (
-                    record_id, idempotency_key, run_id, event_type, schema_name,
-                    schema_version, payload_json, payload_sha256, prev_record_sha256,
-                    record_sha256, created_at
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    clean_record_id,
-                    clean_idempotency_key or None,
-                    clean_run_id,
-                    clean_event_type,
-                    str(clean_payload.get("schema") or ""),
-                    str(clean_payload.get("schema_version") or ""),
-                    payload_json,
-                    payload_sha,
-                    prev_hash,
-                    record_hash,
-                    created,
-                ),
-            )
-        except sqlite3.IntegrityError:
-            existing = _get_record_by_idempotency_key(conn, clean_idempotency_key) or _get_record_by_id(
-                conn, clean_record_id
-            )
-            if existing is not None:
-                return _record_result(existing, inserted=False, path=db_path)
-            raise
-        inserted = _get_record_by_id(conn, clean_record_id)
-        if inserted is None:  # pragma: no cover - sqlite invariant guard
-            raise AuditJournalError("audit record insert failed")
-        return _record_result(inserted, inserted=True, path=db_path)
+    except sqlite3.IntegrityError:
+        existing = _get_record_by_idempotency_key(conn, clean_idempotency_key) or _get_record_by_id(
+            conn, clean_record_id
+        )
+        if existing is not None:
+            return _record_result(existing, inserted=False, path=db_path)
+        raise
+    inserted = _get_record_by_id(conn, clean_record_id)
+    if inserted is None:  # pragma: no cover - sqlite invariant guard
+        raise AuditJournalError("audit record insert failed")
+    return _record_result(inserted, inserted=True, path=db_path)
 
 
 def record_service_cycle(
@@ -179,9 +207,7 @@ def record_service_cycle(
             code="real_order_payload_rejected",
             message="audit journal refuses real order payloads in tradecat-public",
         )
-    init_audit_journal(db_path)
     config = config_snapshot if isinstance(config_snapshot, dict) else {}
-    _ensure_run(db_path, clean_run_id, config, created_at=created)
 
     writes: list[tuple[str, dict[str, Any], str]] = []
     writes.append(
@@ -206,17 +232,22 @@ def record_service_cycle(
         fill_id = str(fill.get("fill_id") or _sha256(_canonical_json(fill)))
         writes.append(("paper_fill", fill, f"paper_fill:{clean_run_id}:{fill_id}"))
 
-    results = [
-        append_audit_record(
-            db_path,
-            event_type=event_type,
-            payload=payload,
-            run_id=clean_run_id,
-            idempotency_key=idempotency_key,
-            created_at=created,
-        )
-        for event_type, payload, idempotency_key in writes
-    ]
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with _connect(db_path) as conn:
+        _ensure_schema(conn)
+        _ensure_run(conn, clean_run_id, config, created_at=created)
+        results = [
+            _append_audit_record_to_conn(
+                conn,
+                db_path,
+                event_type=event_type,
+                payload=payload,
+                run_id=clean_run_id,
+                idempotency_key=idempotency_key,
+                created_at=created,
+            )
+            for event_type, payload, idempotency_key in writes
+        ]
     inserted_count = sum(1 for item in results if item.get("inserted"))
     return {
         "schema": JOURNAL_WRITE_SCHEMA,
@@ -362,27 +393,24 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _ensure_run(path: Path, run_id: str, config_snapshot: dict[str, Any], *, created_at: str) -> None:
+def _ensure_run(conn: sqlite3.Connection, run_id: str, config_snapshot: dict[str, Any], *, created_at: str) -> None:
     config_json = _canonical_json(config_snapshot)
-    with _connect(path) as conn:
-        _ensure_schema(conn)
-        conn.execute(
-            """
-            insert or ignore into production_runs (
-                run_id, status, started_at, finished_at, source,
-                config_snapshot_json, config_sha256, created_at
-            ) values (?, 'RUNNING', ?, null, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                created_at,
-                str(config_snapshot.get("source") or "tradecat_auto.service"),
-                config_json,
-                _sha256(config_json),
-                created_at,
-            ),
-        )
-        conn.commit()
+    conn.execute(
+        """
+        insert or ignore into production_runs (
+            run_id, status, started_at, finished_at, source,
+            config_snapshot_json, config_sha256, created_at
+        ) values (?, 'RUNNING', ?, null, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            created_at,
+            str(config_snapshot.get("source") or "tradecat_auto.service"),
+            config_json,
+            _sha256(config_json),
+            created_at,
+        ),
+    )
 
 
 def _latest_record(conn: sqlite3.Connection) -> sqlite3.Row | None:
@@ -401,7 +429,22 @@ def _get_record_by_id(conn: sqlite3.Connection, record_id: str) -> sqlite3.Row |
 
 def _chain_integrity(conn: sqlite3.Connection) -> dict[str, Any]:
     previous_hash = ""
-    for row in conn.execute("select * from audit_records order by seq asc"):
+    for row in conn.execute(
+        """
+        select
+            seq,
+            record_id,
+            run_id,
+            event_type,
+            idempotency_key,
+            payload_sha256,
+            prev_record_sha256,
+            created_at,
+            record_sha256
+        from audit_records
+        order by seq asc
+        """
+    ):
         expected = _record_hash(
             record_id=str(row["record_id"]),
             run_id=str(row["run_id"]),
@@ -481,6 +524,8 @@ def _contains_real_order_payload(value: Any, *, signed_context: bool = False) ->
             return True
         for key, child in value.items():
             compact = _compact_key(key)
+            if compact in FALSE_ONLY_SAFETY_KEY_COMPACTS and child is not False:
+                return True
             if compact in DANGEROUS_REAL_ORDER_KEY_COMPACTS:
                 # ``order_id`` / ``position_side`` are TradeCat local paper-order fields.
                 # CamelCase Binance fields (``orderId``, ``positionSide``) stay forbidden.
@@ -548,12 +593,4 @@ def _now_iso() -> str:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "public_readonly": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

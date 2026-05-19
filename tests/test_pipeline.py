@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from tradecat_auto.paper_autonomy import normalize_paper_autonomy_profile
 from tradecat_auto.pipeline import build_paper_pipeline_report
 
 ANOMALY = {
@@ -14,6 +15,7 @@ ANOMALY = {
     ]
 }
 MARKET_BUNDLE = {
+    "schema": "tradecat_auto.public_market_bundle.v1",
     "ok": True,
     "symbol": "IRYSUSDT",
     "ticker24hr": {"lastPrice": "0.062", "priceChangePercent": "24.0", "quoteVolume": "50000000"},
@@ -63,6 +65,7 @@ PAPER_AUTONOMY_PROFILE = {
     "provenance": {"source": "test_pipeline"},
     "safety": {
         "public_readonly_market_data": True,
+        "public_readonly": True,
         "paper_or_watch_only": True,
         "real_orders": False,
         "signed_requests": False,
@@ -107,7 +110,29 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(report["enrichment"]["schema"], "tradecat_auto.market_enrichment.v1")
         self.assertEqual(report["signal"]["schema"], "tradecat_auto.signal_score.v1")
         self.assertEqual(report["strategy_intent"]["schema"], "tradecat_auto.strategy_intent.v1")
+        for stage_name in ("enrichment", "signal", "strategy_intent"):
+            self.assertEqual(report[stage_name]["schema_version"], "1.0.0")
+            self.assertIn("error_code", report[stage_name])
+            self.assertIn("provenance", report[stage_name])
+            self.assertFalse(report[stage_name]["safety"]["real_orders"])
+            self.assertFalse(report[stage_name]["safety"]["signed_requests"])
+            self.assertFalse(report[stage_name]["safety"]["reads_api_keys"])
         self.assertEqual(report["risk_decision"]["schema"], "tradecat_auto.risk_decision.v1")
+        self.assertEqual(report["risk_decision"]["schema_version"], "1.0.0")
+        self.assertEqual(report["risk_decision"]["provenance"]["source"], "tradecat_auto.risk.evaluate_risk")
+        self.assertFalse(report["risk_decision"]["real_orders"])
+        self.assertFalse(report["risk_decision"]["signed_requests"])
+        self.assertFalse(report["risk_decision"]["reads_api_keys"])
+        self.assertFalse(report["risk_decision"]["safety"]["real_orders"])
+        self.assertEqual(report["paper_sizing"]["schema"], "tradecat_auto.paper_sizing_decision.v1")
+        self.assertEqual(report["paper_sizing"]["schema_version"], "1.0.0")
+        self.assertEqual(
+            report["paper_sizing"]["provenance"]["source"],
+            "tradecat_auto.pipeline.paper_sizing_decision",
+        )
+        self.assertFalse(report["paper_sizing"]["safety"]["real_orders"])
+        self.assertFalse(report["paper_sizing"]["safety"]["signed_requests"])
+        self.assertFalse(report["paper_sizing"]["safety"]["reads_api_keys"])
         self.assertEqual(report["paper_execution"]["schema"], "tradecat_auto.paper_execution_report.v1")
         self.assertIn(report["paper_execution"]["status"], {"OPENED", "REJECTED"})
 
@@ -136,6 +161,7 @@ class PipelineTests(unittest.TestCase):
         thesis = {
             "schema": "tradecat_auto.agent_trade_thesis.v1",
             "schema_version": "1.0.0",
+            "provenance": {"source": ""},
             "paper_intent": {
                 "requested_margin_usdt": 7.5,
                 "paper_leverage": 2.0,
@@ -156,6 +182,10 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertTrue(report["ok"])
+        self.assertEqual(report["agent_trade_thesis"]["provenance"]["source"], "agent_supplied_trade_thesis")
+        self.assertFalse(report["agent_trade_thesis"]["safety"]["real_orders"])
+        self.assertFalse(report["agent_trade_thesis"]["safety"]["signed_requests"])
+        self.assertFalse(report["agent_trade_thesis"]["safety"]["reads_api_keys"])
         self.assertEqual(report["paper_sizing"]["source"], "agent_trade_thesis.paper_intent")
         self.assertEqual(report["requested_margin_usdt"], 7.5)
         self.assertEqual(report["paper_leverage"], 2.0)
@@ -170,6 +200,96 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(report["paper_execution"]["max_holding_minutes"], 45.0)
         self.assertEqual(report["paper_execution"]["exit_plan_source"], "agent_trade_thesis")
         self.assertFalse(report["paper_execution"]["allow_multiple_open_positions_per_symbol"])
+
+    def test_build_paper_pipeline_report_accepts_wrapped_agent_trade_thesis(self) -> None:
+        wrapped_thesis = {
+            "agent_trade_thesis": {
+                "schema": "tradecat_auto.agent_trade_thesis.v1",
+                "schema_version": "1.0.0",
+                "paper_intent": {
+                    "requested_margin_usdt": 5.0,
+                    "paper_leverage": 3.0,
+                },
+                "invalidation_price": 0.055,
+                "take_profit_price": 0.08,
+                "max_holding_minutes": 45,
+            }
+        }
+
+        report = build_paper_pipeline_report(
+            selected_symbol="IRYSUSDT",
+            anomaly_symbols=ANOMALY,
+            market_bundle=MARKET_BUNDLE,
+            events=EVENTS,
+            mode="paper",
+            agent_trade_thesis=wrapped_thesis,
+        )
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["paper_sizing"]["source"], "agent_trade_thesis.paper_intent")
+        self.assertEqual(report["effective_notional_usdt"], 15.0)
+        self.assertEqual(report["paper_execution"]["status"], "OPENED")
+
+    def test_build_paper_pipeline_report_rejects_unsafe_raw_agent_trade_thesis(self) -> None:
+        thesis = {
+            "schema": "tradecat_auto.agent_trade_thesis.v1",
+            "schema_version": "1.0.0",
+            "paper_intent": {
+                "requested_margin_usdt": 7.5,
+                "paper_leverage": 2.0,
+                "real_order": True,
+            },
+            "invalidation_price": 0.055,
+            "take_profit_price": 0.08,
+            "max_holding_minutes": 45,
+        }
+
+        with self.assertRaisesRegex(ValueError, "agent_trade_thesis_synthesis_failed: forbidden"):
+            build_paper_pipeline_report(
+                selected_symbol="IRYSUSDT",
+                anomaly_symbols=ANOMALY,
+                market_bundle=MARKET_BUNDLE,
+                events=EVENTS,
+                mode="paper",
+                agent_trade_thesis=thesis,
+            )
+
+        with self.assertRaisesRegex(ValueError, "agent_trade_thesis_synthesis_failed: forbidden"):
+            build_paper_pipeline_report(
+                selected_symbol="IRYSUSDT",
+                anomaly_symbols=ANOMALY,
+                market_bundle=MARKET_BUNDLE,
+                events=EVENTS,
+                mode="paper",
+                agent_trade_thesis={
+                    "agent_trade_thesis": {**thesis, "paper_intent": {"real_order": False}},
+                    "api_key": "x",
+                },
+            )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"agent_trade_thesis_synthesis_failed: safety\.public_readonly must be True",
+        ):
+            build_paper_pipeline_report(
+                selected_symbol="IRYSUSDT",
+                anomaly_symbols=ANOMALY,
+                market_bundle=MARKET_BUNDLE,
+                events=EVENTS,
+                mode="paper",
+                agent_trade_thesis={
+                    "safety": {
+                        "public_readonly_market_data": True,
+                        "public_readonly": False,
+                        "paper_or_watch_only": True,
+                        "real_orders": False,
+                        "signed_requests": False,
+                        "reads_api_keys": False,
+                        "binance_account_state": False,
+                    },
+                    "agent_trade_thesis": {**thesis, "paper_intent": {"real_order": False}},
+                },
+            )
 
     def test_build_paper_pipeline_report_estimates_taker_cost_from_public_depth(self) -> None:
         thesis = {
@@ -227,6 +347,9 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertEqual(report["agent_trade_thesis"]["exit_rationale"], "operator delegated paper autonomy")
         self.assertIn("paper/watch only", report["agent_trade_thesis"]["limitations"][0])
+        self.assertFalse(report["agent_trade_thesis"]["safety"]["real_orders"])
+        self.assertFalse(report["agent_trade_thesis"]["safety"]["signed_requests"])
+        self.assertFalse(report["agent_trade_thesis"]["safety"]["reads_api_keys"])
         self.assertEqual(report["paper_sizing"]["source"], "agent_trade_thesis.paper_intent")
         self.assertEqual(report["requested_margin_usdt"], 7.5)
         self.assertEqual(report["paper_leverage"], 2.0)
@@ -241,6 +364,15 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(report["paper_execution"]["real_orders"])
         self.assertFalse(report["paper_execution"]["signed_requests"])
         self.assertFalse(report["paper_execution"]["reads_api_keys"])
+
+    def test_paper_autonomy_profile_rejects_unknown_safety_keys(self) -> None:
+        profile = {
+            **PAPER_AUTONOMY_PROFILE,
+            "safety": {**PAPER_AUTONOMY_PROFILE["safety"], "can_place_real_orders": False},
+        }
+
+        with self.assertRaisesRegex(ValueError, r"paper_autonomy_profile_load_failed: safety\.can_place_real_orders"):
+            normalize_paper_autonomy_profile(profile)
 
     def test_build_paper_pipeline_report_allows_agent_direction_override_on_conflict(self) -> None:
         conflict_bundle = {

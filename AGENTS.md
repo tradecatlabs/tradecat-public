@@ -83,6 +83,7 @@ bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
 python3 scripts/validate_dependency_policy.py
+python3 scripts/validate_testing_ci_contract.py
 git diff --check
 ```
 
@@ -121,6 +122,7 @@ python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765
 - pytest 配置在 `pyproject.toml`：测试目录为 `tests`，文件名 `test_*.py`，函数名 `test_*`。
 - 人类可见文档、注释、日志优先中文；机器结构、变量、函数、类名使用清晰英文。
 - 输出 JSON contract 时保留 `schema_version`、`error_code`、`provenance`、`safety`；安全字段 `real_orders`、`signed_requests`、`reads_api_keys` 必须保持 false。
+- 在线表格 source adapter 输出统一由 `contracts/tradecat-auto-source-payload.schema.json` 覆盖；新增 `sheet_events`、`signal_flow_events`、`anomaly_symbols`、`signal_events`、`anomaly_signal_events` 或 `source_error` 行为时必须同步 schema、manifest 和 payload validation。
 
 ## Project Map
 
@@ -143,6 +145,7 @@ tradecat-public/
 |-- contracts/                 # JSON Schema 机器契约
 |-- docs/                      # 架构、配置、部署、发布说明
 |-- resources/                 # Binance 快照、Agent soft layer 等公开资源
+|   `-- test_ci_matrix.json    # 测试分层与 CI/CD 机器契约
 |-- scripts/                   # request、paper runtime、监控、验证脚本
 |-- src/
 |   |-- tradecat_sources/      # 公开在线表格信号源与 dataset contract

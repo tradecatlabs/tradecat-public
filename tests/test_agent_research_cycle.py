@@ -233,11 +233,38 @@ class AgentResearchCycleTests(unittest.TestCase):
         self.assertEqual(audit["error_code"], "safety_boundary_violation")
 
         payload = copy.deepcopy(fixture("success-paper-candidate.json"))
+        payload["safety"]["public_readonly"] = False
+        audit = audit_agent_research_cycle(payload)
+
+        self.assertFalse(audit["ok"])
+        self.assertEqual(audit["error_code"], "safety_boundary_violation")
+
+        payload = copy.deepcopy(fixture("success-paper-candidate.json"))
+        del payload["safety"]["public_readonly"]
+        audit = audit_agent_research_cycle(payload)
+
+        self.assertFalse(audit["ok"])
+        self.assertEqual(audit["error_code"], "safety_boundary_violation")
+
+        payload = copy.deepcopy(fixture("success-paper-candidate.json"))
         payload["tool_calls"][0]["signed"] = True
         audit = audit_agent_research_cycle(payload)
 
         self.assertFalse(audit["ok"])
         self.assertIn("signed_request_forbidden", {error["code"] for error in audit["errors"]})
+
+        for key, unsafe_value, expected_code in (
+            ("signed", "true", "signed_request_forbidden"),
+            ("requires_signature", 1, "signed_request_forbidden"),
+            ("reads_api_keys", "yes", "safety_boundary_violation"),
+            ("real_orders", 1, "safety_boundary_violation"),
+        ):
+            payload = copy.deepcopy(fixture("success-paper-candidate.json"))
+            payload["tool_calls"][0][key] = unsafe_value
+            audit = audit_agent_research_cycle(payload)
+
+            self.assertFalse(audit["ok"])
+            self.assertIn(expected_code, {error["code"] for error in audit["errors"]})
 
     def test_tool_call_failure_degrades_to_request_more_context_without_paper(self) -> None:
         payload = fixture("tool-failure-request-more-context.json")

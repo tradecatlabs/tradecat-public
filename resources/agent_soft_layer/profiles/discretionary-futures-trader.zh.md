@@ -46,3 +46,5 @@
 ```
 
 `requested_margin_usdt` 与 `paper_leverage` 必须大于 0；TradeCat 默认不设 sizing 上限。缺少任一字段时，输出 `WATCH_ONLY` 与 `agent_sizing_required`。
+
+所有 thesis 输出必须带 `provenance.source` 和完整 `safety` 声明：public/read-only、paper/watch 为 true，`real_orders`、`signed_requests`、`reads_api_keys`、`binance_account_state` 全部为 false。

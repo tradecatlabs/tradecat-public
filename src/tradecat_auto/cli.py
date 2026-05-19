@@ -33,6 +33,7 @@ from tradecat_auto.paper_ledger import (
     apply_position_management_thesis,
     load_paper_ledger,
     paper_account_state,
+    paper_ledger_lock,
     paper_ledger_summary,
     save_paper_ledger,
 )
@@ -50,6 +51,7 @@ from tradecat_auto.production_control import (
 )
 from tradecat_auto.replay import build_replay_report
 from tradecat_auto.risk import load_portfolio_risk_policy
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
 from tradecat_auto.service import DEFAULT_STATE_PATH, run_service_cycle
 from tradecat_auto.strategy_review import build_strategy_review_report, save_strategy_state
 from tradecat_auto.tradecat_source import DEFAULT_TRADECAT_PUBLIC, TradeCatPublicSource, signal_events_payload
@@ -233,6 +235,12 @@ def build_parser() -> argparse.ArgumentParser:
     paper = sub.add_parser("paper-report", help="Summarize the persistent auto-paper ledger")
     paper.add_argument("--ledger-path", default=str(DEFAULT_AUTO_PAPER_LEDGER_PATH))
     paper.add_argument("--initial-balance-usdt", type=float, default=1000.0)
+    paper.add_argument(
+        "--detail-limit",
+        type=int,
+        default=20,
+        help="Maximum open positions / tail rows to include in the JSON report; 0 includes all local ledger details.",
+    )
     paper.add_argument("--json", action="store_true", help="Emit JSON")
 
     strategy_review = sub.add_parser(
@@ -525,9 +533,7 @@ def market_snapshot_report(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "1.0.0",
             "ok": False,
             "error_code": "public_market_snapshot_failed",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": args.base_url,
             "symbols": _parse_symbols_arg(getattr(args, "symbols", "")),
             "errors": {"market_snapshot": _format_exception(exc)},
@@ -546,9 +552,7 @@ def market_bundle_report(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "1.0.0",
             "ok": False,
             "error_code": "public_market_bundle_symbols_required",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": args.base_url,
             "symbols": [],
             "errors": {"symbols": "at least one symbol is required"},
@@ -569,9 +573,7 @@ def market_bundle_report(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "1.0.0",
             "ok": False,
             "error_code": "public_market_bundle_batch_failed",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": args.base_url,
             "symbols": symbols,
             "errors": {"market_bundle": _format_exception(exc)},
@@ -646,9 +648,7 @@ def _market_snapshot_non_object_payload(args: argparse.Namespace) -> dict[str, A
         "schema_version": "1.0.0",
         "ok": False,
         "error_code": "public_market_snapshot_failed",
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "base_url": args.base_url,
         "symbols": _parse_symbols_arg(getattr(args, "symbols", "")),
         "errors": {"market_snapshot": "fetch_public_market_snapshot returned non-object result"},
@@ -663,9 +663,7 @@ def _market_bundle_non_object_payload(args: argparse.Namespace, symbols: list[st
         "schema_version": "1.0.0",
         "ok": False,
         "error_code": "public_market_bundle_batch_failed",
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "base_url": args.base_url,
         "symbols": symbols,
         "errors": {"market_bundle": "fetch_public_market_bundles returned non-object result"},
@@ -679,9 +677,7 @@ def _market_universe_error_payload(base_url: str, exc: Exception, client: Any) -
         "schema": "tradecat_auto.market_universe.v1",
         "schema_version": "1.0.0",
         "ok": False,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "base_url": base_url,
         "symbol_count": 0,
         "symbols": [],
@@ -723,9 +719,7 @@ def probe_public(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "1.0.0",
             "ok": False,
             "error_code": "no_symbol_selected",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "errors": {"symbol": "no tradable symbol selected"},
             "provenance": {"source": "tradecat_auto.cli.probe_public", "selected_symbol": ""},
             "safety": _safety_boundary(),
@@ -736,9 +730,7 @@ def probe_public(args: argparse.Namespace) -> dict[str, Any]:
         "schema": "tradecat_auto.public_probe.v1",
         "schema_version": "1.0.0",
         "ok": ok,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "error_code": None if ok else "public_probe_failed",
         "mode": "public_readonly_no_credentials_no_orders",
         "tradecat_public": str(Path(args.tradecat_public)),
@@ -806,9 +798,7 @@ def run_once_public(
             "schema_version": "1.0.0",
             "ok": False,
             "error_code": "no_symbol_selected",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "errors": {"symbol": "no tradable symbol selected"},
             "provenance": {"source": "tradecat_auto.cli.run_once_public", "selected_symbol": ""},
             "safety": _safety_boundary(),
@@ -819,9 +809,7 @@ def run_once_public(
             "schema": "tradecat_auto.run_once_report.v1",
             "schema_version": "1.0.0",
             "ok": False,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "mode": args.mode,
             "selected_symbol": "",
             "error_code": "no_symbol_selected",
@@ -913,6 +901,7 @@ def run_loop_public(
 
 def paper_report(args: argparse.Namespace) -> dict[str, Any]:
     initial_balance = _non_negative_arg(args, "initial_balance_usdt", 1000.0)
+    detail_limit = _paper_report_detail_limit(args)
     ledger_path = Path(args.ledger_path)
     try:
         ledger = load_paper_ledger(ledger_path, initial_balance_usdt=initial_balance)
@@ -921,9 +910,7 @@ def paper_report(args: argparse.Namespace) -> dict[str, Any]:
             "schema": "tradecat_auto.paper_report.v1",
             "schema_version": "1.0.0",
             "ok": False,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "ledger_path": str(ledger_path),
             "error_code": "paper_ledger_load_failed",
             "error": _format_exception(exc),
@@ -934,20 +921,20 @@ def paper_report(args: argparse.Namespace) -> dict[str, Any]:
         "schema": "tradecat_auto.paper_report.v1",
         "schema_version": "1.0.0",
         "ok": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "error_code": None,
         "ledger_path": str(ledger_path),
         "provenance": _paper_report_provenance(ledger_path),
         "safety": _safety_boundary(),
+        "detail_limit": detail_limit,
+        "detail_truncated": _paper_report_detail_truncated(ledger, detail_limit),
         "summary": paper_ledger_summary(ledger),
-        "paper_account_state": paper_account_state(ledger),
-        "open_positions": ledger.get("open_positions", {}),
-        "closed_positions": ledger.get("closed_positions", [])[-20:],
-        "recent_paper_orders": ledger.get("paper_orders", [])[-20:],
-        "recent_fills": ledger.get("fills", [])[-20:],
-        "equity_curve_tail": ledger.get("equity_curve", [])[-50:],
+        "paper_account_state": paper_account_state(ledger, open_positions_limit=_limit_or_none(detail_limit)),
+        "open_positions": _tail_mapping(ledger.get("open_positions"), detail_limit),
+        "closed_positions": _tail_list(ledger.get("closed_positions"), detail_limit),
+        "recent_paper_orders": _tail_list(ledger.get("paper_orders"), detail_limit),
+        "recent_fills": _tail_list(ledger.get("fills"), detail_limit),
+        "equity_curve_tail": _tail_list(ledger.get("equity_curve"), detail_limit),
     }
 
 
@@ -1015,9 +1002,20 @@ def position_manage_report(args: argparse.Namespace) -> dict[str, Any]:
             thesis_path=thesis_path,
         )
     try:
-        ledger = load_paper_ledger(
-            ledger_path, initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0)
-        )
+        with paper_ledger_lock(ledger_path):
+            ledger = load_paper_ledger(
+                ledger_path, initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0)
+            )
+            result = apply_position_management_thesis(
+                ledger,
+                thesis if isinstance(thesis, dict) else {},
+                fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+                slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
+                now_iso=str(getattr(args, "now", "") or "") or None,
+            )
+            updated_ledger = result.pop("_ledger")
+            if result.get("ledger_mutated"):
+                save_paper_ledger(ledger_path, updated_ledger)
     except (PaperLedgerError, OSError) as exc:
         return _position_management_error_payload(
             code="paper_ledger_load_failed",
@@ -1025,16 +1023,6 @@ def position_manage_report(args: argparse.Namespace) -> dict[str, Any]:
             ledger_path=ledger_path,
             thesis_path=thesis_path,
         )
-    result = apply_position_management_thesis(
-        ledger,
-        thesis if isinstance(thesis, dict) else {},
-        fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
-        slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
-        now_iso=str(getattr(args, "now", "") or "") or None,
-    )
-    updated_ledger = result.pop("_ledger")
-    if result.get("ledger_mutated"):
-        save_paper_ledger(ledger_path, updated_ledger)
     result["ledger_path"] = str(ledger_path)
     result["thesis_path"] = str(thesis_path)
     result["paper_ledger_summary"] = paper_ledger_summary(updated_ledger)
@@ -1122,9 +1110,7 @@ def context_audit_report(args: argparse.Namespace) -> dict[str, Any]:
             "provenance": {},
             "source_manifest": DEFAULT_SOURCE_MANIFEST,
             "safety_boundary_enforced": True,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "allowed_modes": sorted(ALLOWED_MODES),
             "allowed_market_context_families": sorted(ALLOWED_ENDPOINTS_BY_FAMILY),
         }
@@ -1142,9 +1128,7 @@ def run_context_public(args: argparse.Namespace) -> dict[str, Any]:
             "schema": "tradecat_auto.run_once_report.v1",
             "schema_version": "1.0.0",
             "ok": False,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "mode": args.mode,
             "selected_symbol": "",
             "error_code": "agent_market_context_load_failed",
@@ -1218,18 +1202,19 @@ def _apply_run_context_runtime_writes(
     if runtime_write["mode"] == "paper" and ledger_path_text and isinstance(result.get("paper_execution"), dict):
         ledger_path = Path(ledger_path_text)
         try:
-            ledger = load_paper_ledger(
-                ledger_path,
-                initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0),
-            )
-            ledger = apply_paper_execution(
-                ledger,
-                result["paper_execution"],
-                fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
-                slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
-                now_iso=now_iso,
-            )
-            save_paper_ledger(ledger_path, ledger)
+            with paper_ledger_lock(ledger_path):
+                ledger = load_paper_ledger(
+                    ledger_path,
+                    initial_balance_usdt=_non_negative_arg(args, "initial_balance_usdt", 1000.0),
+                )
+                ledger = apply_paper_execution(
+                    ledger,
+                    result["paper_execution"],
+                    fee_bps=_non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
+                    slippage_bps=_non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
+                    now_iso=now_iso,
+                )
+                save_paper_ledger(ledger_path, ledger)
         except (PaperLedgerError, OSError, ValueError) as exc:
             return _run_context_runtime_write_error(result, runtime_write, "paper_ledger_write_failed", exc)
         result["paper_ledger"] = {**paper_ledger_summary(ledger), "path": str(ledger_path)}
@@ -1292,9 +1277,7 @@ def _run_context_cycle_payload(
         "action": action,
         "reason": reason,
         "error_code": report.get("error_code"),
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "latest_event": event,
         "pipeline_report": report,
         "paper_ledger": report.get("paper_ledger") if isinstance(report.get("paper_ledger"), dict) else {},
@@ -1319,9 +1302,7 @@ def _run_context_config_snapshot(args: argparse.Namespace) -> dict[str, Any]:
         "journal_path": str(getattr(args, "journal_path", "") or ""),
         "paper_fee_bps": _non_negative_arg(args, "paper_fee_bps", BINANCE_USDM_PUBLIC_TAKER_FEE_BPS),
         "paper_slippage_bps": _non_negative_arg(args, "paper_slippage_bps", DEFAULT_PAPER_SLIPPAGE_BPS),
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "safety": _safety_boundary(),
     }
 
@@ -1340,9 +1321,10 @@ def _run_context_run_id(context: dict[str, Any], report: dict[str, Any]) -> str:
 
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
-        handle.write("\n")
+    line = json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
+    with paper_ledger_lock(path):
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line)
 
 
 def replay_report(args: argparse.Namespace) -> dict[str, Any]:
@@ -1479,9 +1461,7 @@ def _agent_trade_thesis_load_failed_payload(args: argparse.Namespace, source: st
         "schema": schema,
         "schema_version": "1.0.0",
         "ok": False,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "mode": str(getattr(args, "mode", "paper") or "paper"),
         "selected_symbol": "",
         "error_code": "agent_trade_thesis_load_failed",
@@ -1511,9 +1491,7 @@ def _paper_autonomy_profile_load_failed_payload(
         "schema": schema,
         "schema_version": "1.0.0",
         "ok": False,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "mode": str(getattr(args, "mode", "paper") or "paper"),
         "selected_symbol": "",
         "error_code": "paper_autonomy_profile_load_failed",
@@ -1675,10 +1653,13 @@ def _collect_errors(*payloads: dict[str, Any]) -> list[Any]:
 
 
 def _print(payload: dict[str, Any], *, as_json: bool) -> None:
-    if as_json:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-    else:
-        print(json.dumps(payload, ensure_ascii=False))
+    try:
+        if as_json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps(payload, ensure_ascii=False))
+    except BrokenPipeError:
+        return
 
 
 def _paper_report_provenance(ledger_path: Path) -> dict[str, Any]:
@@ -1688,15 +1669,49 @@ def _paper_report_provenance(ledger_path: Path) -> dict[str, Any]:
     }
 
 
-def _safety_boundary() -> dict[str, bool]:
+def _paper_report_detail_limit(args: argparse.Namespace) -> int:
+    try:
+        return max(0, int(getattr(args, "detail_limit", 20) or 0))
+    except (TypeError, ValueError):
+        return 20
+
+
+def _limit_or_none(limit: int) -> int | None:
+    return limit if limit > 0 else None
+
+
+def _tail_list(value: Any, limit: int) -> list[Any]:
+    items = list(value or []) if isinstance(value, list) else []
+    return items if limit <= 0 else items[-limit:]
+
+
+def _tail_mapping(value: Any, limit: int) -> dict[str, Any]:
+    items = list((value or {}).items()) if isinstance(value, dict) else []
+    if limit > 0:
+        items = items[-limit:]
+    return dict(items)
+
+
+def _paper_report_detail_truncated(ledger: dict[str, Any], limit: int) -> dict[str, bool]:
+    if limit <= 0:
+        return {
+            "open_positions": False,
+            "closed_positions": False,
+            "paper_orders": False,
+            "fills": False,
+            "equity_curve": False,
+        }
     return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
+        "open_positions": len(ledger.get("open_positions") or {}) > limit,
+        "closed_positions": len(ledger.get("closed_positions") or []) > limit,
+        "paper_orders": len(ledger.get("paper_orders") or []) > limit,
+        "fills": len(ledger.get("fills") or []) > limit,
+        "equity_curve": len(ledger.get("equity_curve") or []) > limit,
     }
+
+
+def _safety_boundary() -> dict[str, bool]:
+    return paper_watch_safety_boundary()
 
 
 if __name__ == "__main__":

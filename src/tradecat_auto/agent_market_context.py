@@ -8,6 +8,12 @@ from typing import Any
 
 from tradecat_auto.binance_market import summarize_depth
 from tradecat_auto.pipeline import build_paper_pipeline_report
+from tradecat_auto.safety_boundary import (
+    is_false_only_safety_violation,
+    normalize_paper_watch_safety,
+    paper_watch_report_flags,
+    paper_watch_safety_boundary,
+)
 
 CONTEXT_SCHEMA = "tradecat_auto.agent_market_context.v1"
 AUDIT_SCHEMA = "tradecat_auto.agent_market_context_audit.v1"
@@ -72,6 +78,7 @@ FORBIDDEN_ENDPOINTS = {
     "/fapi/v3/positionRisk",
     "/sapi/",
 }
+FORBIDDEN_ENDPOINTS_LOWER = {item.lower() for item in FORBIDDEN_ENDPOINTS}
 FORBIDDEN_ENDPOINT_MARKERS = (
     "/sapi/",
     "/account",
@@ -102,7 +109,7 @@ FORBIDDEN_ENDPOINT_MARKERS = (
     "/forceorders",
     "/pmaccountinfo",
 )
-CREDENTIAL_KEY_FRAGMENTS = ("api_key", "secret", "signature", "signed", "listen_key", "private_key")
+CREDENTIAL_KEY_FRAGMENTS = ("api_key", "secret", "signature", "listen_key", "private_key")
 CREDENTIAL_KEY_COMPACT_FRAGMENTS = tuple(fragment.replace("_", "") for fragment in CREDENTIAL_KEY_FRAGMENTS) + (
     "apikey",
     "secretkey",
@@ -187,6 +194,7 @@ FORBIDDEN_STATE_KEY_NAMES = {
     "working_type",
     "workingtype",
 }
+FORBIDDEN_STATE_KEY_COMPACTS = {item.replace("_", "") for item in FORBIDDEN_STATE_KEY_NAMES}
 
 
 def load_agent_market_context(path: Path | str) -> dict[str, Any]:
@@ -198,18 +206,34 @@ def load_agent_market_context(path: Path | str) -> dict[str, Any]:
             "schema": CONTEXT_SCHEMA,
             "schema_version": SCHEMA_VERSION,
             "ok": False,
+            "error_code": "agent_market_context_load_failed",
+            **paper_watch_report_flags(),
             "error": {
                 "code": "agent_market_context_load_failed",
                 "kind": "validation",
                 "message": f"failed to load agent market context: {exc}",
                 "retryable": False,
             },
+            "provenance": {"source": "tradecat_auto.agent_market_context.load_agent_market_context", "path": str(p)},
+            "safety": _safety_boundary(),
         }
-    return (
-        payload
-        if isinstance(payload, dict)
-        else {"schema": CONTEXT_SCHEMA, "schema_version": SCHEMA_VERSION, "ok": False}
-    )
+    if isinstance(payload, dict):
+        return payload
+    return {
+        "schema": CONTEXT_SCHEMA,
+        "schema_version": SCHEMA_VERSION,
+        "ok": False,
+        "error_code": "agent_market_context_invalid_json_root",
+        **paper_watch_report_flags(),
+        "error": {
+            "code": "agent_market_context_invalid_json_root",
+            "kind": "validation",
+            "message": "agent market context root must be a JSON object",
+            "retryable": False,
+        },
+        "provenance": {"source": "tradecat_auto.agent_market_context.load_agent_market_context", "path": str(p)},
+        "safety": _safety_boundary(),
+    }
 
 
 def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
@@ -228,6 +252,15 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
     mode = str(context.get("mode") or "public_readonly").strip()
     if mode not in ALLOWED_MODES:
         errors.append(_error("forbidden_mode", f"mode {mode!r} is outside public_readonly/paper/watch boundary"))
+
+    try:
+        normalize_paper_watch_safety(
+            context.get("safety"),
+            error_prefix="agent_market_context",
+            allow_extra=True,
+        )
+    except ValueError as exc:
+        errors.append(_error("safety_boundary_violation", str(exc)))
 
     symbol = str(context.get("symbol") or "").upper().strip()
     if not symbol:
@@ -306,11 +339,24 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
                     index=index,
                 )
             )
-        if item.get("requires_signature") is True or item.get("signed") is True:
+        if (
+            "requires_signature" in item
+            and is_false_only_safety_violation("requires_signature", item.get("requires_signature"))
+        ) or ("signed" in item and is_false_only_safety_violation("signed", item.get("signed"))):
             errors.append(
                 _error(
                     "signed_request_forbidden",
                     f"market_data[{index}] is marked as signed/requires_signature",
+                    index=index,
+                )
+            )
+        if (
+            "reads_api_keys" in item and is_false_only_safety_violation("reads_api_keys", item.get("reads_api_keys"))
+        ) or ("real_orders" in item and is_false_only_safety_violation("real_orders", item.get("real_orders"))):
+            errors.append(
+                _error(
+                    "safety_boundary_violation",
+                    f"market_data[{index}] violates public paper/watch safety flags",
                     index=index,
                 )
             )
@@ -342,9 +388,7 @@ def audit_agent_market_context(context: dict[str, Any]) -> dict[str, Any]:
         "provenance": copy.deepcopy(top_provenance),
         "source_manifest": top_provenance.get("source_manifest") or DEFAULT_SOURCE_MANIFEST,
         "safety_boundary_enforced": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "allowed_modes": sorted(ALLOWED_MODES),
         "allowed_market_context_families": sorted(ALLOWED_ENDPOINTS_BY_FAMILY),
         "generated_at": _now_iso(),
@@ -479,9 +523,7 @@ def build_paper_report_from_agent_market_context(
             "schema": "tradecat_auto.run_once_report.v1",
             "schema_version": SCHEMA_VERSION,
             "ok": False,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "mode": mode,
             "selected_symbol": audit.get("symbol") or str(context.get("symbol") or "").upper().strip(),
             "error_code": "agent_market_context_audit_failed",
@@ -557,8 +599,7 @@ def _market_data_item(bundle: dict[str, Any], family: str, key: str, endpoint: s
         "ok": ok,
         "requires_signature": False,
         "signed": False,
-        "reads_api_keys": False,
-        "real_orders": False,
+        **paper_watch_report_flags(),
         "fetched_at": _now_iso(),
         "provenance": {
             "source": "binance_public_rest",
@@ -669,8 +710,7 @@ def _normalize_endpoint(endpoint: str) -> str:
 
 def _forbidden_endpoint_reason(endpoint: str) -> str | None:
     normalized = _normalize_endpoint(endpoint).lower()
-    explicit = {item.lower() for item in FORBIDDEN_ENDPOINTS}
-    if normalized in explicit:
+    if normalized in FORBIDDEN_ENDPOINTS_LOWER:
         return "hard forbidden account/order endpoint"
     for marker in FORBIDDEN_ENDPOINT_MARKERS:
         if marker in normalized:
@@ -686,8 +726,7 @@ def _forbidden_state_key_hits(value: Any, *, prefix: str = "") -> list[str]:
             path = f"{prefix}.{key_text}" if prefix else key_text
             normalized = key_text.lower().replace("-", "_")
             compact = _compact_key(key_text)
-            forbidden_compact = {item.replace("_", "") for item in FORBIDDEN_STATE_KEY_NAMES}
-            if normalized in FORBIDDEN_STATE_KEY_NAMES or compact in forbidden_compact:
+            if normalized in FORBIDDEN_STATE_KEY_NAMES or compact in FORBIDDEN_STATE_KEY_COMPACTS:
                 if compact in {"realorder", "realorders"} and child is False:
                     pass
                 else:
@@ -783,11 +822,4 @@ def _top_provenance(context: dict[str, Any]) -> dict[str, Any]:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

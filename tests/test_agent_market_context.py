@@ -11,9 +11,16 @@ from tradecat_auto.agent_market_context import (
     audit_agent_market_context,
     build_agent_market_context_from_public_bundle,
     build_paper_report_from_agent_market_context,
+    load_agent_market_context,
 )
 from tradecat_auto.cli import context_audit_report, run_context_public
 from tradecat_auto.paper_ledger import load_paper_ledger
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
+
+
+def assert_public_readonly_flags(testcase: unittest.TestCase, payload: dict) -> None:
+    for key, expected in paper_watch_report_flags().items():
+        testcase.assertIs(payload[key], expected)
 
 
 def sample_context() -> dict:
@@ -116,6 +123,40 @@ def sample_context() -> dict:
     }
 
 
+class AgentMarketContextLoadTests(unittest.TestCase):
+    def test_load_agent_market_context_returns_structured_error_for_malformed_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent-context.json"
+            path.write_text("{not-json", encoding="utf-8")
+
+            payload = load_agent_market_context(path)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "agent_market_context_load_failed")
+        self.assertEqual(payload["error"]["code"], "agent_market_context_load_failed")
+        self.assertEqual(
+            payload["provenance"]["source"], "tradecat_auto.agent_market_context.load_agent_market_context"
+        )
+        assert_public_readonly_flags(self, payload)
+        self.assertEqual(payload["safety"], paper_watch_safety_boundary())
+
+    def test_load_agent_market_context_returns_structured_error_for_non_object_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent-context.json"
+            path.write_text("[]\n", encoding="utf-8")
+
+            payload = load_agent_market_context(path)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "agent_market_context_invalid_json_root")
+        self.assertEqual(payload["error"]["code"], "agent_market_context_invalid_json_root")
+        self.assertEqual(
+            payload["provenance"]["source"], "tradecat_auto.agent_market_context.load_agent_market_context"
+        )
+        assert_public_readonly_flags(self, payload)
+        self.assertEqual(payload["safety"], paper_watch_safety_boundary())
+
+
 class AgentMarketContextTests(unittest.TestCase):
     def test_builds_agent_market_context_from_public_market_bundle(self) -> None:
         bundle = {
@@ -153,9 +194,8 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertIn("klines", audit["accepted_families"])
         self.assertIn("order_book_depth", audit["accepted_families"])
         self.assertEqual(mapped["klines"][0][4], "0.062")
-        self.assertFalse(context["safety"]["real_orders"])
-        self.assertFalse(context["safety"]["signed_requests"])
-        self.assertFalse(context["safety"]["reads_api_keys"])
+        self.assertEqual(context["safety"], paper_watch_safety_boundary())
+        assert_public_readonly_flags(self, context["market_data"][0])
 
     def test_audit_accepts_public_readonly_context_with_provenance(self) -> None:
         audit = audit_agent_market_context(sample_context())
@@ -165,9 +205,17 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertTrue(audit["ok"])
         self.assertEqual(audit["symbol"], "IRYSUSDT")
         self.assertIn("24h_ticker", audit["accepted_families"])
-        self.assertFalse(audit["real_orders"])
+        assert_public_readonly_flags(self, audit)
+
+    def test_audit_allows_benign_signed_reference_provenance_without_credentials(self) -> None:
+        context = sample_context()
+        context["provenance"]["commission_reference_requires_signed_user_data"] = True
+
+        audit = audit_agent_market_context(context)
+
+        self.assertTrue(audit["ok"])
+        self.assertNotIn("credential_material_forbidden", {item["code"] for item in audit["errors"]})
         self.assertFalse(audit["signed_requests"])
-        self.assertFalse(audit["reads_api_keys"])
 
     def test_false_safety_declarations_are_allowed_but_true_flags_are_rejected(self) -> None:
         context = sample_context()
@@ -184,6 +232,40 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertFalse(rejected["ok"])
         codes = {item["code"] for item in rejected["errors"]}
         self.assertIn("credential_material_forbidden", codes)
+
+        for key, unsafe_value, expected_code in (
+            ("signed", "true", "signed_request_forbidden"),
+            ("requires_signature", 1, "signed_request_forbidden"),
+            ("reads_api_keys", "yes", "safety_boundary_violation"),
+            ("real_orders", 1, "safety_boundary_violation"),
+        ):
+            context = sample_context()
+            context["market_data"][0][key] = unsafe_value
+            rejected = audit_agent_market_context(context)
+            codes = {item["code"] for item in rejected["errors"]}
+
+            self.assertFalse(rejected["ok"])
+            self.assertIn(expected_code, codes)
+
+        context = sample_context()
+        context["safety"] = {
+            "public_readonly_market_data": True,
+            "public_readonly": False,
+            "paper_or_watch_only": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "binance_account_state": False,
+        }
+        rejected = audit_agent_market_context(context)
+        self.assertFalse(rejected["ok"])
+        self.assertIn("safety_boundary_violation", {item["code"] for item in rejected["errors"]})
+
+        context = sample_context()
+        context["safety"] = "not-an-object"
+        rejected = audit_agent_market_context(context)
+        self.assertFalse(rejected["ok"])
+        self.assertIn("safety_boundary_violation", {item["code"] for item in rejected["errors"]})
 
     def test_audit_rejects_missing_top_level_source_manifest(self) -> None:
         context = sample_context()
@@ -298,10 +380,8 @@ class AgentMarketContextTests(unittest.TestCase):
         )
 
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
-        self.assertFalse(report["real_orders"])
-        self.assertFalse(report["signed_requests"])
-        self.assertFalse(report["reads_api_keys"])
-        self.assertFalse(report["safety"]["binance_account_state"])
+        assert_public_readonly_flags(self, report)
+        self.assertEqual(report["safety"], paper_watch_safety_boundary())
         self.assertEqual(
             report["provenance"]["agent_market_context"]["source_manifest"],
             "resources/agent_market_context/binance/provenance.manifest.json",
@@ -375,6 +455,18 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertEqual(report["schema"], "tradecat_auto.agent_market_context_audit.v1")
         self.assertTrue(report["ok"])
 
+    def test_context_audit_cli_load_failure_keeps_public_readonly_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "broken-context.json"
+            path.write_text("{not-json", encoding="utf-8")
+
+            report = context_audit_report(argparse.Namespace(input=str(path)))
+
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["schema"], "tradecat_auto.agent_market_context_audit.v1")
+        self.assertEqual(report["errors"][0]["code"], "agent_market_context_load_failed")
+        assert_public_readonly_flags(self, report)
+
     def test_run_context_cli_entrypoint_returns_run_once_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "context.json"
@@ -394,6 +486,37 @@ class AgentMarketContextTests(unittest.TestCase):
         self.assertEqual(report["schema"], "tradecat_auto.run_once_report.v1")
         self.assertEqual(report["agent_market_context_audit"]["schema"], "tradecat_auto.agent_market_context_audit.v1")
         self.assertFalse(report["agent_market_context_audit"]["signed_requests"])
+
+    def test_run_context_cli_load_failure_keeps_public_readonly_safety(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "broken-context.json"
+            path.write_text("{not-json", encoding="utf-8")
+
+            report = run_context_public(
+                argparse.Namespace(
+                    input=str(path),
+                    mode="paper",
+                    notional_usdt=None,
+                    agent_margin_usdt=None,
+                    paper_leverage=None,
+                    paper_margin_budget_usdt=None,
+                    portfolio_risk_policy_path="",
+                    paper_kill_switch_path="",
+                    ledger_path="",
+                    archive_path="",
+                    journal_path="",
+                    initial_balance_usdt=1000.0,
+                    paper_fee_bps=4.0,
+                    paper_slippage_bps=0.0,
+                    now="",
+                )
+            )
+
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error_code"], "agent_market_context_load_failed")
+        self.assertEqual(report["selected_symbol"], "")
+        assert_public_readonly_flags(self, report)
+        self.assertEqual(report["safety"], paper_watch_safety_boundary())
 
     def test_run_context_cli_can_write_local_paper_runtime_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -447,10 +570,9 @@ class AgentMarketContextTests(unittest.TestCase):
             ledger = load_paper_ledger(ledger_path)
             self.assertEqual(len(ledger["open_positions"]), 1)
             self.assertTrue(archive_path.exists())
-            self.assertEqual(
-                json.loads(archive_path.read_text(encoding="utf-8").splitlines()[0])["action"],
-                "RUN_CONTEXT_PAPER",
-            )
+            archived_cycle = json.loads(archive_path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(archived_cycle["action"], "RUN_CONTEXT_PAPER")
+            assert_public_readonly_flags(self, archived_cycle)
             self.assertTrue(journal_path.exists())
 
     def test_run_context_cli_rejects_invalid_runtime_cost_inputs_structured(self) -> None:

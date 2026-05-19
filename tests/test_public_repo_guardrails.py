@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
 from pathlib import Path
 
 from tradecat_auto.agent_market_context import FORBIDDEN_ENDPOINTS
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL_PACKAGE_ROOT = REPO_ROOT / "skills" / "tradecat-public"
@@ -47,26 +49,33 @@ BINANCE_CREDENTIAL_ENV_READ = re.compile(
 )
 SHELL_BINANCE_CREDENTIAL_REFERENCE = re.compile(r"\$\{?BINANCE_[A-Z0-9_]*(?:KEY|SECRET|API)\b")
 BINANCE_API_KEY_HEADER = re.compile(r"X-MBX-APIKEY", re.IGNORECASE)
+CANONICAL_PAPER_WATCH_FLAG_KEYS = (
+    "real_orders",
+    "signed_requests",
+    "reads_api_keys",
+    "binance_account_state",
+)
+CANONICAL_PAPER_WATCH_FLAG_OWNER = "src/tradecat_auto/safety_boundary.py"
 
 
-def _tracked_active_code_files() -> list[Path]:
+def _active_code_files() -> list[Path]:
     output = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files"],
+        ["git", "-C", str(REPO_ROOT), "ls-files", "--cached", "--others", "--exclude-standard"],
         check=True,
         text=True,
         capture_output=True,
     ).stdout.splitlines()
-    paths: list[Path] = []
+    paths: set[Path] = set()
     for raw_path in output:
         if not raw_path.endswith(ACTIVE_CODE_SUFFIXES):
             continue
         if not raw_path.startswith(ACTIVE_CODE_PREFIXES):
             continue
-        paths.append(Path(raw_path))
-    return paths
+        paths.add(Path(raw_path))
+    return sorted(paths)
 
 
-def _read_tracked_text(relative_path: Path) -> str:
+def _read_repo_text(relative_path: Path) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
 
@@ -74,10 +83,10 @@ def test_private_binance_endpoint_literals_only_live_in_denylist_policy():
     assert DISALLOWED_BINANCE_PRIVATE_ENDPOINTS <= FORBIDDEN_ENDPOINTS
 
     findings: list[str] = []
-    for relative_path in _tracked_active_code_files():
+    for relative_path in _active_code_files():
         if relative_path.as_posix() in ALLOWLISTED_POLICY_FILES:
             continue
-        text = _read_tracked_text(relative_path)
+        text = _read_repo_text(relative_path)
         for endpoint in sorted(DISALLOWED_BINANCE_PRIVATE_ENDPOINTS):
             if endpoint in text:
                 findings.append(f"{relative_path}: private endpoint literal {endpoint}")
@@ -87,8 +96,8 @@ def test_private_binance_endpoint_literals_only_live_in_denylist_policy():
 
 def test_active_code_has_no_binance_credentials_or_mutating_http_calls():
     findings: list[str] = []
-    for relative_path in _tracked_active_code_files():
-        text = _read_tracked_text(relative_path)
+    for relative_path in _active_code_files():
+        text = _read_repo_text(relative_path)
         checks = {
             "binance credential env read": BINANCE_CREDENTIAL_ENV_READ,
             "shell binance credential reference": SHELL_BINANCE_CREDENTIAL_REFERENCE,
@@ -99,6 +108,37 @@ def test_active_code_has_no_binance_credentials_or_mutating_http_calls():
         for label, pattern in checks.items():
             if pattern.search(text):
                 findings.append(f"{relative_path}: {label}")
+
+    assert findings == []
+
+
+def test_active_code_guard_scans_untracked_worktree_files():
+    assert Path("src/tradecat_auto/safety_boundary.py") in _active_code_files()
+
+
+def test_core_python_code_uses_canonical_paper_watch_flag_helpers():
+    findings: list[str] = []
+    for relative_path in _active_code_files():
+        path_text = relative_path.as_posix()
+        if (
+            not path_text.startswith("src/")
+            or not path_text.endswith(".py")
+            or path_text == CANONICAL_PAPER_WATCH_FLAG_OWNER
+        ):
+            continue
+        text = _read_repo_text(relative_path)
+        tree = ast.parse(text, filename=path_text)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict):
+                continue
+            for key, value in zip(node.keys, node.values, strict=False):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value in CANONICAL_PAPER_WATCH_FLAG_KEYS
+                    and isinstance(value, ast.Constant)
+                    and value.value is False
+                ):
+                    findings.append(f"{relative_path}:{node.lineno}: hand-written {key.value}=False")
 
     assert findings == []
 
@@ -180,3 +220,14 @@ def test_ci_enforces_repository_governance_gates():
             findings.append(snippet)
 
     assert findings == []
+
+
+def test_agent_smoke_trade_thesis_fixture_uses_canonical_safety_boundary():
+    smoke_text = (REPO_ROOT / "scripts" / "agent-smoke.sh").read_text(encoding="utf-8")
+    thesis_start = smoke_text.index('"agent_trade_thesis"')
+    market_data_start = smoke_text.index('"market_data"', thesis_start)
+    thesis_block = smoke_text[thesis_start:market_data_start]
+
+    for key, expected_value in paper_watch_safety_boundary().items():
+        expected_literal = "True" if expected_value is True else "False"
+        assert f'"{key}": {expected_literal}' in thesis_block

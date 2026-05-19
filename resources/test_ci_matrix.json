@@ -1,0 +1,214 @@
+{
+  "schema": "tradecat_public.test_ci_matrix.v1",
+  "schema_version": "1.0.0",
+  "provenance": {
+    "source": "tradecat-public repository",
+    "maintainer": "TradeCat public CI contract"
+  },
+  "safety": {
+    "public_readonly_market_data": true,
+    "public_readonly": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
+  "test_layers": [
+    {
+      "id": "unit_function_logic",
+      "description": "纯函数、业务规则和边界值测试",
+      "evidence_globs": [
+        "tests/test_signals.py",
+        "tests/test_strategies.py",
+        "tests/test_risk.py",
+        "tests/test_market_enrichment.py",
+        "tests/test_paper_broker.py",
+        "tests/test_paper_costs.py",
+        "tests/test_paper_ledger.py"
+      ]
+    },
+    {
+      "id": "contract_schema",
+      "description": "JSON schema、Skill manifest、Agent context 和 payload 契约测试",
+      "evidence_globs": [
+        "tests/test_agent_contract.py",
+        "tests/test_payload_schema_validation.py",
+        "tests/test_agent_market_context.py",
+        "tests/test_agent_trade_thesis.py",
+        "tests/test_audited_intent_handoff.py",
+        "contracts/*.json"
+      ]
+    },
+    {
+      "id": "service_integration",
+      "description": "run_service_cycle、run-context、paper ledger、audit journal 的模块协作测试",
+      "evidence_globs": [
+        "tests/test_cli_runtime.py",
+        "tests/test_service.py",
+        "tests/test_audit_journal.py",
+        "tests/test_production_control.py",
+        "tests/test_replay_reporting.py"
+      ]
+    },
+    {
+      "id": "dataflow_sources",
+      "description": "公开在线表格 signal_flow/anomaly_panel、dataset registry 和消费契约测试",
+      "evidence_globs": [
+        "tests/test_tradecat_source.py",
+        "tests/test_dataset_consumption_contract.py",
+        "tests/test_transport.py"
+      ]
+    },
+    {
+      "id": "agent_loop_safety",
+      "description": "Agent research cycle、soft layer、position management 和 safety boundary 测试",
+      "evidence_globs": [
+        "tests/test_agent_research_cycle.py",
+        "tests/test_agent_soft_layer.py",
+        "tests/test_position_management_thesis.py",
+        "tests/test_safety_boundary.py"
+      ]
+    },
+    {
+      "id": "operability_smoke",
+      "description": "常驻 paper/watch、监控、启动脚本和运维健康检查测试",
+      "evidence_globs": [
+        "tests/test_auto_service_script.py",
+        "tests/test_production_control.py",
+        "scripts/agent-smoke.sh",
+        "scripts/start-auto-paper.sh",
+        "scripts/monitor-auto-paper.sh"
+      ]
+    },
+    {
+      "id": "security_supply_chain",
+      "description": "public-readonly guard、secret scan、依赖策略和供应链扫描入口",
+      "evidence_globs": [
+        "tests/test_public_repo_guardrails.py",
+        "scripts/security-scan.sh",
+        "scripts/supply-chain-audit.sh",
+        "scripts/validate_dependency_policy.py",
+        "scripts/guard_public_local_files.sh"
+      ]
+    },
+    {
+      "id": "ci_contract",
+      "description": "CI/CD workflow、测试矩阵和本地门禁本身的回归测试",
+      "evidence_globs": [
+        "tests/test_testing_ci_contract.py",
+        "scripts/validate_testing_ci_contract.py",
+        ".github/workflows/ci.yml"
+      ]
+    }
+  ],
+  "ci_contract": {
+    "workflow_path": ".github/workflows/ci.yml",
+    "required_triggers": ["push", "pull_request", "workflow_dispatch", "schedule"],
+    "required_top_level_snippets": [
+      "permissions:",
+      "contents: read",
+      "concurrency:",
+      "cancel-in-progress: true"
+    ],
+    "required_jobs": ["verify", "agent-readiness"],
+    "required_job_snippets": {
+      "verify": ["timeout-minutes: 30"],
+      "agent-readiness": ["timeout-minutes: 10"]
+    },
+    "required_step_names": [
+      "Skill strict",
+      "Secret scan",
+      "Install",
+      "Guard public boundary",
+      "Dependency policy",
+      "Testing/CI contract",
+      "Lint",
+      "Format",
+      "Test",
+      "Data contracts",
+      "Supply-chain audit",
+      "Shell syntax",
+      "Python script syntax",
+      "Wheel package data",
+      "Agent readiness smoke"
+    ],
+    "required_command_snippets": [
+      "bash scripts/validate-skill.sh --strict",
+      "bash scripts/security-scan.sh",
+      "python scripts/validate_dependency_policy.py",
+      "python scripts/validate_testing_ci_contract.py",
+      "ruff check src tests",
+      "ruff format --check src tests scripts",
+      "PYTHONPATH=src pytest -q",
+      "scripts/validate_data_contract.py",
+      "scripts/validate_dataset_consumption_contract.py",
+      "scripts/validate_agent_market_context_resources.py",
+      "bash scripts/supply-chain-audit.sh",
+      "bash scripts/agent-smoke.sh",
+      "persist-credentials: false"
+    ],
+    "required_wheel_package_paths": [
+      "tradecat_sources/dataset_consumption_contract.json",
+      "tradecat_sources/dataset_registry.json",
+      "tradecat_sources/dataset_contract.py",
+      "tradecat_sources/registry.py",
+      "tradecat_sources/sheets.py",
+      "tradecat_auto/agent_market_context.py",
+      "tradecat_auto/agent_trade_thesis.py",
+      "tradecat_auto/cli.py",
+      "tradecat_auto/paper_ledger.py",
+      "tradecat_auto/pipeline.py",
+      "tradecat_auto/production_control.py",
+      "tradecat_auto/safety_boundary.py",
+      "tradecat_auto/service.py"
+    ]
+  },
+  "local_gate_contract": {
+    "script_path": "scripts/verify-project.sh",
+    "required_command_snippets": [
+      "scripts/validate_testing_ci_contract.py",
+      "scripts/guard_public_local_files.sh",
+      "scripts/validate_dependency_policy.py",
+      "tests",
+      "scripts/validate_data_contract.py",
+      "scripts/validate_dataset_consumption_contract.py",
+      "scripts/validate_agent_market_context_resources.py",
+      "ruff"
+    ]
+  },
+  "makefile_contract": {
+    "path": "Makefile",
+    "required_targets": [
+      "install",
+      "install-dev",
+      "test",
+      "lint",
+      "format",
+      "format-check",
+      "test-ci-contract",
+      "security",
+      "supply-chain",
+      "agent-smoke",
+      "paper-status",
+      "paper-health",
+      "paper-ops",
+      "paper-start",
+      "paper-stop",
+      "monitor",
+      "verify"
+    ],
+    "required_command_snippets": [
+      "$(PYTHON) -m pip install -c constraints.txt -e .",
+      "$(PYTHON) -m pip install -c constraints.txt -e \".[dev]\"",
+      "PYTHONPATH=src $(PYTHON) -m pytest -q",
+      "$(PYTHON) -m ruff check src tests",
+      "$(PYTHON) -m ruff format --check src tests scripts",
+      "$(PYTHON) scripts/validate_testing_ci_contract.py",
+      "bash scripts/security-scan.sh",
+      "bash scripts/supply-chain-audit.sh",
+      "bash scripts/agent-smoke.sh",
+      "bash scripts/verify.sh"
+    ]
+  }
+}

@@ -6,20 +6,15 @@ from pathlib import Path
 from typing import Any
 
 from tradecat_auto.market_enrichment import parse_float
+from tradecat_auto.safety_boundary import (
+    forbidden_private_or_real_trade_hits,
+    normalize_paper_watch_safety,
+    paper_watch_safety_boundary,
+)
 
 PAPER_AUTONOMY_PROFILE_SCHEMA = "tradecat_auto.paper_autonomy_profile.v1"
 AGENT_TRADE_THESIS_SCHEMA = "tradecat_auto.agent_trade_thesis.v1"
 SCHEMA_VERSION = "1.0.0"
-FORBIDDEN_TRUE_KEYS = {
-    "real_order",
-    "real_orders",
-    "signed",
-    "signed_requests",
-    "requires_signature",
-    "reads_api_keys",
-    "binance_account_state",
-}
-CREDENTIAL_KEY_MARKERS = ("api_key", "apikey", "secret", "signature", "listen_key", "private_key")
 
 
 def load_paper_autonomy_profile(path: Path | str | None, *, mode: str = "paper") -> dict[str, Any] | None:
@@ -49,13 +44,10 @@ def normalize_paper_autonomy_profile(value: Any) -> dict[str, Any] | None:
         raise ValueError(f"paper_autonomy_profile_load_failed: schema_version must be {SCHEMA_VERSION}")
     if value.get("enabled") is False:
         return None
-    hits = _forbidden_hits(value)
+    hits = forbidden_private_or_real_trade_hits(value)
     if hits:
         raise ValueError(f"paper_autonomy_profile_load_failed: forbidden private/real-trade fields: {', '.join(hits)}")
-    safety = value.get("safety") if isinstance(value.get("safety"), dict) else {}
-    for key, expected in _safety_boundary().items():
-        if key in safety and safety.get(key) is not expected:
-            raise ValueError(f"paper_autonomy_profile_load_failed: safety.{key} must be {expected!r}")
+    safety = _normalize_safety(value.get("safety"), error_prefix="paper_autonomy_profile_load_failed")
     paper_intent = _paper_intent(value)
     leverage = _positive_float(
         paper_intent.get("paper_leverage") or paper_intent.get("requested_leverage") or paper_intent.get("leverage")
@@ -80,7 +72,7 @@ def normalize_paper_autonomy_profile(value: Any) -> dict[str, Any] | None:
         "schema_version": SCHEMA_VERSION,
         "ok": bool(value.get("ok", True)),
         "enabled": True,
-        "safety": {**_safety_boundary(), **safety},
+        "safety": safety,
     }
 
 
@@ -97,7 +89,7 @@ def synthesize_agent_trade_thesis(
         if isinstance(paper_autonomy_profile, dict) and paper_autonomy_profile.get("enabled") is not False
         else None
     )
-    thesis = dict(agent_trade_thesis) if isinstance(agent_trade_thesis, dict) else {}
+    thesis = _normalize_agent_trade_thesis(agent_trade_thesis)
     if profile is None:
         return thesis or None
 
@@ -149,6 +141,36 @@ def synthesize_agent_trade_thesis(
         "source_event_id": str(latest_event.get("event_id") or "") if latest_event else "",
         "generated_at": _now_iso(),
     }
+    thesis["safety"] = _normalize_safety(thesis.get("safety"), error_prefix="agent_trade_thesis_synthesis_failed")
+    return thesis
+
+
+def _normalize_agent_trade_thesis(agent_trade_thesis: dict[str, Any] | None) -> dict[str, Any]:
+    raw_thesis = agent_trade_thesis if isinstance(agent_trade_thesis, dict) else {}
+    if not raw_thesis:
+        return {}
+    forbidden_hits = forbidden_private_or_real_trade_hits(raw_thesis)
+    if forbidden_hits:
+        raise ValueError(
+            "agent_trade_thesis_synthesis_failed: forbidden private/real-trade fields: " + ", ".join(forbidden_hits)
+        )
+    candidate = (
+        raw_thesis.get("agent_trade_thesis") if isinstance(raw_thesis.get("agent_trade_thesis"), dict) else raw_thesis
+    )
+    if candidate is not raw_thesis and "safety" in raw_thesis:
+        _normalize_safety(raw_thesis.get("safety"), error_prefix="agent_trade_thesis_synthesis_failed")
+    thesis = dict(candidate)
+    if not thesis:
+        return {}
+    schema = thesis.get("schema")
+    if schema not in (None, "", AGENT_TRADE_THESIS_SCHEMA):
+        raise ValueError(f"agent_trade_thesis_synthesis_failed: schema must be {AGENT_TRADE_THESIS_SCHEMA}")
+    schema_version = thesis.get("schema_version")
+    if schema_version not in (None, "", SCHEMA_VERSION):
+        raise ValueError(f"agent_trade_thesis_synthesis_failed: schema_version must be {SCHEMA_VERSION}")
+    provenance = thesis.get("provenance") if isinstance(thesis.get("provenance"), dict) else {}
+    thesis["provenance"] = {**provenance, "source": provenance.get("source") or "agent_supplied_trade_thesis"}
+    thesis["safety"] = _normalize_safety(thesis.get("safety"), error_prefix="agent_trade_thesis_synthesis_failed")
     return thesis
 
 
@@ -274,28 +296,6 @@ def _exit_plan_from_profile(
     }
 
 
-def _forbidden_hits(value: Any, *, prefix: str = "") -> list[str]:
-    hits: list[str] = []
-    if isinstance(value, dict):
-        for key, child in value.items():
-            key_text = str(key)
-            path = f"{prefix}.{key_text}" if prefix else key_text
-            normalized = key_text.lower().replace("-", "_")
-            compact = normalized.replace("_", "")
-            if child is True and normalized in FORBIDDEN_TRUE_KEYS:
-                hits.append(path)
-            elif not (path == "safety.reads_api_keys" and child is False) and (
-                any(marker in normalized for marker in CREDENTIAL_KEY_MARKERS)
-                or any(marker in compact for marker in CREDENTIAL_KEY_MARKERS)
-            ):
-                hits.append(path)
-            hits.extend(_forbidden_hits(child, prefix=path))
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            hits.extend(_forbidden_hits(child, prefix=f"{prefix}[{index}]" if prefix else f"[{index}]"))
-    return hits
-
-
 def _confidence(signal: dict[str, Any]) -> float:
     try:
         score = float(signal.get("score") or 0)
@@ -322,14 +322,11 @@ def _positive_float(value: Any) -> float | None:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()
+
+
+def _normalize_safety(value: Any, *, error_prefix: str) -> dict[str, bool]:
+    return normalize_paper_watch_safety(value, error_prefix=error_prefix)
 
 
 def _now_iso() -> str:

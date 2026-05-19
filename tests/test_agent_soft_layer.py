@@ -4,6 +4,7 @@ import argparse
 
 from tradecat_auto.agent_soft_layer import build_agent_soft_layer_bundle
 from tradecat_auto.cli import soft_layer_report
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
 
 
 def test_soft_layer_bundle_is_self_contained_and_prompt_oriented() -> None:
@@ -30,9 +31,8 @@ def test_soft_layer_bundle_is_self_contained_and_prompt_oriented() -> None:
     assert "real_order_lifecycle" in forbidden_categories
     assert "real_account_state" in forbidden_categories
     assert bundle["hard_boundaries"]["account_state_source"] == "local TradeCat paper ledger only"
-    assert bundle["hard_boundaries"]["real_orders"] is False
-    assert bundle["hard_boundaries"]["signed_requests"] is False
-    assert bundle["hard_boundaries"]["reads_api_keys"] is False
+    for key, expected in paper_watch_safety_boundary().items():
+        assert bundle["hard_boundaries"][key] is expected
 
 
 def test_soft_layer_bundle_exposes_configurable_trader_role_profile() -> None:
@@ -55,8 +55,8 @@ def test_soft_layer_bundle_exposes_configurable_trader_role_profile() -> None:
     assert trader["exit_contract"]["default_stop_loss"] is False
     assert trader["exit_contract"]["default_take_profit"] is False
     assert trader["exit_contract"]["default_max_holding_minutes"] is None
-    assert trader["safety_boundary"]["real_orders"] is False
-    assert trader["safety_boundary"]["signed_requests"] is False
+    for key, expected in paper_watch_safety_boundary().items():
+        assert trader["safety_boundary"][key] is expected
 
 
 def test_soft_layer_cli_can_list_prompt_paths_without_template_text() -> None:

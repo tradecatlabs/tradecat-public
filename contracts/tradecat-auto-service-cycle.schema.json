@@ -66,6 +66,18 @@
       "type": "object",
       "additionalProperties": true
     },
+    "signal_flow_events": {
+      "$ref": "#/$defs/source_summary"
+    },
+    "anomaly_symbols": {
+      "$ref": "#/$defs/source_summary"
+    },
+    "source_snapshot": {
+      "$ref": "#/$defs/internal_payload"
+    },
+    "input_change": {
+      "$ref": "#/$defs/internal_payload"
+    },
     "paper_ledger": {
       "type": "object",
       "additionalProperties": true
@@ -95,8 +107,87 @@
   },
   "additionalProperties": true,
   "$defs": {
+    "internal_payload": {
+      "type": "object",
+      "required": [
+        "schema",
+        "schema_version",
+        "error_code",
+        "provenance",
+        "safety"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "safety": {
+          "$ref": "#/$defs/safety"
+        }
+      },
+      "additionalProperties": true
+    },
+    "source_summary": {
+      "type": "object",
+      "required": [
+        "ok",
+        "error_code",
+        "provenance",
+        "safety"
+      ],
+      "properties": {
+        "ok": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "source_dataset_key": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "safety": {
+          "$ref": "#/$defs/safety"
+        }
+      },
+      "additionalProperties": true
+    },
     "safety": {
       "type": "object",
+      "required": [
+        "public_readonly_market_data",
+        "public_readonly",
+        "paper_or_watch_only",
+        "real_orders",
+        "signed_requests",
+        "reads_api_keys",
+        "binance_account_state"
+      ],
       "properties": {
         "public_readonly_market_data": {
           "const": true

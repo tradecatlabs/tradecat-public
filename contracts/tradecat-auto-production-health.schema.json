@@ -65,6 +65,15 @@
     },
     "safety": {
       "type": "object",
+      "required": [
+        "public_readonly_market_data",
+        "public_readonly",
+        "paper_or_watch_only",
+        "real_orders",
+        "signed_requests",
+        "reads_api_keys",
+        "binance_account_state"
+      ],
       "properties": {
         "public_readonly_market_data": {
           "const": true

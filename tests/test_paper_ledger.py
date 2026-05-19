@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -15,9 +17,13 @@ from tradecat_auto.paper_ledger import (
     load_paper_ledger,
     mark_to_market,
     paper_account_state,
+    paper_ledger_lock,
     paper_ledger_summary,
+    runtime_temp_path,
     save_paper_ledger,
+    write_runtime_json_atomic,
 )
+from tradecat_auto.safety_boundary import paper_watch_hard_boundaries
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -249,6 +255,90 @@ class PaperLedgerTests(unittest.TestCase):
             self.assertFalse(loaded["safety"]["real_orders"])
             self.assertIn("IRYSUSDT", loaded["open_positions"])
 
+    def test_save_paper_ledger_rejects_unsafe_runtime_payload(self) -> None:
+        ledger = default_paper_ledger()
+        ledger["fills"] = [{"fill_id": "bad", "real_order": True}]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "paper_ledger.json"
+
+            with self.assertRaisesRegex(ValueError, "paper_ledger_save_failed.*safety boundary violation"):
+                save_paper_ledger(path, ledger)
+
+            self.assertFalse(path.exists())
+
+    def test_runtime_temp_path_is_unique_for_same_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "paper_ledger.json"
+
+            generated = {runtime_temp_path(path).name for _ in range(32)}
+
+            self.assertEqual(len(generated), 32)
+            self.assertTrue(all(name.startswith("paper_ledger.json.") for name in generated))
+            self.assertTrue(all(name.endswith(".tmp") for name in generated))
+
+    def test_write_runtime_json_atomic_removes_temp_file_when_replace_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "paper_ledger.json"
+            target.mkdir()
+
+            with self.assertRaises(OSError):
+                write_runtime_json_atomic(target, {"schema": "test"})
+
+            self.assertEqual(list(Path(tmp).glob("paper_ledger.json.*.tmp")), [])
+
+    def test_apply_paper_execution_rejects_unsafe_execution_without_persisting_raw_payload(self) -> None:
+        unsafe_execution = {
+            **OPEN_LONG,
+            "paper_execution_id": "unsafe-exec",
+            "real_order": True,
+            "api_key": "should-never-enter-ledger",
+        }
+
+        updated = apply_paper_execution(default_paper_ledger(), unsafe_execution, now_iso="2026-05-14T00:00:00Z")
+
+        self.assertEqual(updated["open_positions"], {})
+        self.assertEqual(updated["last_rejected_execution"]["reason"], "paper_execution_safety_violation")
+        self.assertIn("unsafe-exec", updated["ignored_execution_ids"])
+        self.assertNotIn("api_key", json.dumps(updated["last_rejected_execution"]))
+
+    def test_paper_ledger_lock_uses_adjacent_runtime_lock_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "paper_ledger.json"
+
+            with paper_ledger_lock(path):
+                save_paper_ledger(path, default_paper_ledger())
+
+            self.assertTrue(path.exists())
+            self.assertTrue(Path(tmp, "paper_ledger.json.lock").exists())
+
+    def test_paper_ledger_lock_serializes_concurrent_read_modify_write_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "paper_ledger.json"
+            save_paper_ledger(path, default_paper_ledger())
+            barrier = threading.Barrier(4)
+            errors: list[BaseException] = []
+
+            def worker(index: int) -> None:
+                try:
+                    barrier.wait()
+                    with paper_ledger_lock(path):
+                        ledger = load_paper_ledger(path)
+                        ledger.setdefault("ignored_execution_ids", []).append(f"worker-{index}")
+                        time.sleep(0.01)
+                        save_paper_ledger(path, ledger)
+                except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=worker, args=(index,)) for index in range(4)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=2.0)
+
+            self.assertEqual(errors, [])
+            loaded = load_paper_ledger(path)
+            self.assertEqual(set(loaded["ignored_execution_ids"]), {f"worker-{index}" for index in range(4)})
+
     def test_load_existing_corrupt_ledger_raises_without_resetting(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "paper_ledger.json"
@@ -264,6 +354,23 @@ class PaperLedgerTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "paper_ledger_load_failed"):
                 load_paper_ledger(path)
+
+    def test_load_existing_ledger_rejects_real_order_safety_flags(self) -> None:
+        unsafe_ledgers = [
+            {"paper_orders": [{"order_id": "bad", "real_order": True}]},
+            {"fills": [{"fill_id": "bad", "signed_requests": "true"}]},
+            {"open_positions": {"IRYSUSDT": {"symbol": "IRYSUSDT", "reads_api_keys": 1}}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            for index, unsafe in enumerate(unsafe_ledgers):
+                with self.subTest(unsafe=unsafe):
+                    path = Path(tmp) / f"paper_ledger_{index}.json"
+                    ledger = default_paper_ledger()
+                    ledger.update(unsafe)
+                    path.write_text(json.dumps(ledger), encoding="utf-8")
+
+                    with self.assertRaisesRegex(ValueError, "paper_ledger_load_failed.*safety boundary violation"):
+                        load_paper_ledger(path)
 
     def test_apply_open_execution_rejects_second_open_for_same_symbol(self) -> None:
         ledger = apply_paper_execution(
@@ -372,6 +479,40 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(len(changed), 1)
         self.assertEqual(changed[0]["position_id"], target["position_id"])
 
+    def test_position_management_rejects_symbol_only_ref_when_same_symbol_positions_are_ambiguous(self) -> None:
+        first = {
+            **copy.deepcopy(OPEN_LONG),
+            "paper_execution_id": "exec-1",
+            "allow_multiple_open_positions_per_symbol": True,
+            "max_concurrent_positions_per_symbol": 2,
+        }
+        second = {
+            **copy.deepcopy(OPEN_LONG),
+            "paper_execution_id": "exec-2",
+            "entry_price": 101.0,
+            "allow_multiple_open_positions_per_symbol": True,
+            "max_concurrent_positions_per_symbol": 2,
+        }
+        ledger = apply_paper_execution(default_paper_ledger(), first, fee_bps=0.0, now_iso="2026-05-14T00:00:00Z")
+        ledger = apply_paper_execution(ledger, second, fee_bps=0.0, now_iso="2026-05-14T00:00:01Z")
+
+        report = apply_position_management_thesis(
+            ledger,
+            {
+                **copy.deepcopy(POSITION_THESIS_BASE),
+                "action": "close",
+                "reason": "symbol-only close must not choose among multiple paper positions",
+                "position_ref": {"symbol": "IRYSUSDT"},
+                "close_intent": {"close_fraction": 1, "mark_price": 103.0},
+            },
+            now_iso="2026-05-14T00:00:02Z",
+        )
+
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error_code"], "position_ref_ambiguous")
+        self.assertFalse(report["ledger_mutated"])
+        self.assertEqual(len(report["_ledger"]["open_positions"]), 2)
+
     def test_paper_account_state_is_derived_from_local_ledger_only(self) -> None:
         ledger = apply_paper_execution(default_paper_ledger(), OPEN_LONG, now_iso="2026-05-14T00:00:00Z")
 
@@ -380,14 +521,12 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertEqual(state["schema"], "tradecat_auto.paper_account_state.v1")
         self.assertEqual(state["source"], "local_tradecat_paper_ledger")
         self.assertEqual(state["provenance"]["source"], "local_tradecat_paper_ledger")
+        self.assertTrue(state["safety"]["public_readonly"])
         self.assertFalse(state["safety"]["real_orders"])
         self.assertFalse(state["safety"]["signed_requests"])
         self.assertFalse(state["safety"]["reads_api_keys"])
         self.assertFalse(state["safety"]["binance_account_state"])
-        self.assertFalse(state["hard_boundaries"]["real_orders"])
-        self.assertFalse(state["hard_boundaries"]["signed_requests"])
-        self.assertFalse(state["hard_boundaries"]["reads_api_keys"])
-        self.assertFalse(state["hard_boundaries"]["binance_account_state"])
+        self.assertEqual(state["hard_boundaries"], paper_watch_hard_boundaries())
         self.assertEqual(state["recent_paper_orders"][0]["schema"], "tradecat_auto.paper_order.v1")
         self.assertFalse(state["recent_paper_orders"][0]["real_order"])
         self.assertIn("not Binance account", state["limitations"][1])
@@ -479,6 +618,19 @@ class PaperLedgerTests(unittest.TestCase):
         self.assertFalse(rejected["ok"])
         self.assertEqual(rejected["error_code"], "position_management_safety_violation")
         self.assertFalse(rejected["ledger_mutated"])
+
+        for unsafe_value in ("true", 1, "yes"):
+            with self.subTest(unsafe_value=unsafe_value):
+                stringy_unsafe = {
+                    **copy.deepcopy(POSITION_THESIS_BASE),
+                    "action": "close",
+                    "safety": {**POSITION_THESIS_BASE["safety"], "real_orders": unsafe_value},
+                }
+                stringy_rejected = apply_position_management_thesis(
+                    ledger, stringy_unsafe, now_iso="2026-05-14T00:10:00Z"
+                )
+                self.assertFalse(stringy_rejected["ok"])
+                self.assertEqual(stringy_rejected["error_code"], "position_management_safety_violation")
 
         add = {
             **copy.deepcopy(POSITION_THESIS_BASE),

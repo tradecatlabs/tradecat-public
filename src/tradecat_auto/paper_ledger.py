@@ -3,9 +3,24 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
+import threading
+import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from tradecat_auto.safety_boundary import (
+    forbidden_private_or_real_trade_hits,
+    paper_watch_hard_boundaries,
+    paper_watch_safety_boundary,
+)
+
+try:  # pragma: no cover - non-POSIX fallback
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 LEDGER_SCHEMA = "tradecat_auto.paper_ledger.v1"
 PAPER_ACCOUNT_STATE_SCHEMA = "tradecat_auto.paper_account_state.v1"
@@ -58,18 +73,24 @@ def load_paper_ledger(
     _validate_loaded_payload(data, p)
     ledger = default_paper_ledger(initial_balance_usdt=initial_balance_usdt)
     ledger.update(data)
-    ledger["schema"] = LEDGER_SCHEMA
-    ledger["schema_version"] = SCHEMA_VERSION
-    ledger["safety"] = _safety_boundary()
-    ledger["provenance"] = _provenance(ledger.get("provenance"))
-    ledger["open_positions"] = dict(ledger.get("open_positions") or {})
-    ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
-    ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
-    ledger["fills"] = list(ledger.get("fills") or [])
-    ledger["applied_execution_ids"] = _dedupe(ledger.get("applied_execution_ids") or [])
-    ledger["ignored_execution_ids"] = _dedupe(ledger.get("ignored_execution_ids") or [])
-    ledger["equity_curve"] = list(ledger.get("equity_curve") or [])
-    return _recalculate_equity(ledger)
+    return _recalculate_equity(_normalize_ledger_shape(ledger))
+
+
+@contextmanager
+def paper_ledger_lock(path: Path | str):
+    """Serialize local read-modify-write updates for one paper ledger file."""
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = p.with_suffix(f"{p.suffix}.lock") if p.suffix else p.with_name(f"{p.name}.lock")
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def save_paper_ledger(path: Path | str, ledger: dict[str, Any]) -> None:
@@ -80,9 +101,30 @@ def save_paper_ledger(path: Path | str, ledger: dict[str, Any]) -> None:
     payload["schema_version"] = SCHEMA_VERSION
     payload["safety"] = _safety_boundary()
     payload["provenance"] = _provenance(payload.get("provenance"))
-    tmp = p.with_suffix(f"{p.suffix}.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(p)
+    if forbidden_private_or_real_trade_hits(payload):
+        raise PaperLedgerError(f"paper_ledger_save_failed: {p}: safety boundary violation")
+    write_runtime_json_atomic(p, payload)
+
+
+def runtime_temp_path(path: Path | str) -> Path:
+    p = Path(path)
+    nonce = f"{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}"
+    return p.with_suffix(f"{p.suffix}.{nonce}.tmp") if p.suffix else p.with_name(f"{p.name}.{nonce}.tmp")
+
+
+def write_runtime_json_atomic(path: Path | str, payload: dict[str, Any]) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = runtime_temp_path(p)
+    try:
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        tmp.replace(p)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def apply_paper_execution(
@@ -97,6 +139,17 @@ def apply_paper_execution(
     slippage_bps = _non_negative(slippage_bps, "slippage_bps")
     updated = load_paper_ledger_from_object(ledger)
     now_text = now_iso or _now_iso()
+    if forbidden_private_or_real_trade_hits(execution):
+        execution_id = str(execution.get("paper_execution_id") or _execution_id(execution)).strip()
+        updated["last_rejected_execution"] = {
+            "reason": "paper_execution_safety_violation",
+            "symbol": str(execution.get("symbol") or "").upper().strip(),
+            "status": str(execution.get("status") or ""),
+        }
+        if execution_id:
+            updated["ignored_execution_ids"] = _dedupe([*(updated.get("ignored_execution_ids") or []), execution_id])
+        updated["last_updated_at"] = now_text
+        return _recalculate_equity(updated, now_iso=now_text)
     if execution.get("status") != "OPENED" or not execution.get("ok"):
         updated["last_rejected_execution"] = copy.deepcopy(execution)
         updated["last_updated_at"] = now_text
@@ -282,22 +335,13 @@ def apply_paper_execution(
 
 
 def load_paper_ledger_from_object(value: dict[str, Any]) -> dict[str, Any]:
+    if forbidden_private_or_real_trade_hits(value):
+        raise PaperLedgerError("paper_ledger_load_failed: in-memory safety boundary violation")
     ledger = default_paper_ledger(
         initial_balance_usdt=float(value.get("initial_balance_usdt") or DEFAULT_INITIAL_BALANCE_USDT)
     )
     ledger.update(copy.deepcopy(value))
-    ledger["schema"] = LEDGER_SCHEMA
-    ledger["schema_version"] = SCHEMA_VERSION
-    ledger["safety"] = _safety_boundary()
-    ledger["provenance"] = _provenance(ledger.get("provenance"))
-    ledger["open_positions"] = dict(ledger.get("open_positions") or {})
-    ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
-    ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
-    ledger["fills"] = list(ledger.get("fills") or [])
-    ledger["applied_execution_ids"] = _dedupe(ledger.get("applied_execution_ids") or [])
-    ledger["ignored_execution_ids"] = _dedupe(ledger.get("ignored_execution_ids") or [])
-    ledger["equity_curve"] = list(ledger.get("equity_curve") or [])
-    return ledger
+    return _normalize_ledger_shape(ledger)
 
 
 def mark_to_market(
@@ -509,10 +553,13 @@ def paper_ledger_summary(ledger: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def paper_account_state(ledger: dict[str, Any]) -> dict[str, Any]:
+def paper_account_state(ledger: dict[str, Any], *, open_positions_limit: int | None = None) -> dict[str, Any]:
     """Return prompt-safe paper account state derived only from the local ledger."""
 
     normalized = _recalculate_equity(load_paper_ledger_from_object(ledger))
+    open_positions = list((normalized.get("open_positions") or {}).values())
+    if open_positions_limit is not None and open_positions_limit > 0:
+        open_positions = open_positions[-open_positions_limit:]
     return {
         "schema": PAPER_ACCOUNT_STATE_SCHEMA,
         "schema_version": "1.0.0",
@@ -528,17 +575,12 @@ def paper_account_state(ledger: dict[str, Any]) -> dict[str, Any]:
         "initial_balance_usdt": normalized.get("initial_balance_usdt"),
         "realized_pnl_usdt": normalized.get("realized_pnl_usdt"),
         "unrealized_pnl_usdt": normalized.get("unrealized_pnl_usdt"),
-        "open_positions": list((normalized.get("open_positions") or {}).values()),
+        "open_positions": open_positions,
         "recent_paper_orders": list(normalized.get("paper_orders") or [])[-20:],
         "recent_fills": list(normalized.get("fills") or [])[-20:],
         "closed_positions_count": len(normalized.get("closed_positions") or []),
         "last_updated_at": normalized.get("last_updated_at"),
-        "hard_boundaries": {
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-            "binance_account_state": False,
-        },
+        "hard_boundaries": paper_watch_hard_boundaries(),
         "limitations": [
             "derived from local paper ledger only",
             "not Binance account, balance, position, order, or fill state",
@@ -888,23 +930,9 @@ def _position_management_safety_error(value: Any) -> str | None:
         return "position_management_schema_rejected"
     if value.get("schema_version") not in (None, "", SCHEMA_VERSION):
         return "position_management_schema_version_rejected"
-    if _nested_truthy_key(
-        value, {"real_order", "real_orders", "signed_requests", "reads_api_keys", "binance_account_state", "signed"}
-    ):
+    if forbidden_private_or_real_trade_hits(value):
         return "position_management_safety_violation"
     return None
-
-
-def _nested_truthy_key(value: Any, keys: set[str]) -> bool:
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if str(key) in keys and child is True:
-                return True
-            if _nested_truthy_key(child, keys):
-                return True
-    if isinstance(value, list):
-        return any(_nested_truthy_key(item, keys) for item in value)
-    return False
 
 
 def _position_management_symbol(value: dict[str, Any]) -> str:
@@ -943,9 +971,26 @@ def _dedupe(values: Any) -> list[str]:
     return list(dict.fromkeys(str(item) for item in values if str(item)))
 
 
+def _normalize_ledger_shape(ledger: dict[str, Any]) -> dict[str, Any]:
+    ledger["schema"] = LEDGER_SCHEMA
+    ledger["schema_version"] = SCHEMA_VERSION
+    ledger["safety"] = _safety_boundary()
+    ledger["provenance"] = _provenance(ledger.get("provenance"))
+    ledger["open_positions"] = dict(ledger.get("open_positions") or {})
+    ledger["closed_positions"] = list(ledger.get("closed_positions") or [])
+    ledger["paper_orders"] = list(ledger.get("paper_orders") or [])
+    ledger["fills"] = list(ledger.get("fills") or [])
+    ledger["applied_execution_ids"] = _dedupe(ledger.get("applied_execution_ids") or [])
+    ledger["ignored_execution_ids"] = _dedupe(ledger.get("ignored_execution_ids") or [])
+    ledger["equity_curve"] = list(ledger.get("equity_curve") or [])
+    return ledger
+
+
 def _validate_loaded_payload(data: dict[str, Any], path: Path) -> None:
     if data.get("schema") != LEDGER_SCHEMA:
         raise PaperLedgerError(f"paper_ledger_load_failed: {path}: schema is not {LEDGER_SCHEMA}")
+    if forbidden_private_or_real_trade_hits(data):
+        raise PaperLedgerError(f"paper_ledger_load_failed: {path}: safety boundary violation")
     numeric_fields = (
         "cash_balance_usdt",
         "equity_usdt",
@@ -998,14 +1043,7 @@ def _now_iso() -> str:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()
 
 
 def _provenance(value: Any) -> dict[str, Any]:

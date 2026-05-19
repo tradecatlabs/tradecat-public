@@ -4,7 +4,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import tradecat_auto.replay as replay_module
 from tradecat_auto.replay import (
     build_decision_quality_report,
     build_decision_trace_report,
@@ -104,6 +106,56 @@ class ReplayReportingTests(unittest.TestCase):
         self.assertFalse(report["safety"]["real_orders"])
         self.assertFalse(report["safety"]["signed_requests"])
 
+    def test_replay_report_reuses_loaded_archive_for_decision_trace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "cycles.jsonl"
+            ledger = Path(tmp) / "paper_ledger.json"
+            archive.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "action": "PROCESSED",
+                        "ok": True,
+                        "pipeline_report": {
+                            "selected_symbol": "IRYSUSDT",
+                            "risk_decision": {"decision": "ALLOW"},
+                            "paper_execution": {"status": "OPENED", "paper_execution_id": "exec-1"},
+                        },
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            ledger.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.paper_ledger.v1",
+                        "cash_balance_usdt": 1000.0,
+                        "equity_usdt": 1000.0,
+                        "initial_balance_usdt": 1000.0,
+                        "realized_pnl_usdt": 0.0,
+                        "unrealized_pnl_usdt": 0.0,
+                        "open_positions": {},
+                        "closed_positions": [],
+                        "fills": [],
+                        "applied_execution_ids": [],
+                        "ignored_execution_ids": [],
+                        "equity_curve": [],
+                        "last_updated_at": "2026-05-15T10:00:00Z",
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("tradecat_auto.replay._load_jsonl", wraps=replay_module._load_jsonl) as load_jsonl:
+                report = build_replay_report(archive_path=archive, ledger_path=ledger)
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(load_jsonl.call_count, 1)
+        self.assertEqual(report["decision_trace"]["source_paths"]["archive_sha256"], report["archive"]["sha256"])
+
     def test_paper_backtest_metrics_are_deterministic_from_closed_positions_and_equity_curve(self) -> None:
         ledger = {
             "schema": "tradecat_auto.paper_ledger.v1",
@@ -165,6 +217,56 @@ class ReplayReportingTests(unittest.TestCase):
         self.assertEqual(report["error_code_counts"]["agent_exit_plan_required"], 1)
         self.assertEqual(report["error_code_counts"]["risk_decision_not_allow"], 1)
         self.assertFalse(report["safety"]["real_orders"])
+
+    def test_decision_trace_report_preserves_jsonl_load_errors_while_streaming(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "cycles.jsonl"
+            archive.write_text(
+                '{"schema":"tradecat_auto.service_cycle.v1","action":"PROCESSED","ok":true}\n{not-json}\n[]\n',
+                encoding="utf-8",
+            )
+
+            report = build_decision_trace_report(archive_path=archive)
+
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["trace_count"], 1)
+        self.assertEqual(report["load_errors"][0]["code"], "invalid_jsonl")
+        self.assertEqual(report["load_errors"][0]["line"], 2)
+        self.assertEqual(report["load_errors"][1]["code"], "invalid_cycle_payload")
+        self.assertEqual(report["load_errors"][1]["line"], 3)
+        self.assertFalse(report["safety"]["real_orders"])
+
+    def test_decision_trace_does_not_count_failed_ledger_write_as_opened(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "cycles.jsonl"
+            archive.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "action": "PROCESSED",
+                        "ok": False,
+                        "error_code": "paper_ledger_write_failed",
+                        "latest_event": {"event_id": "evt-ledger-write-failed"},
+                        "pipeline_report": {
+                            "selected_symbol": "IRYSUSDT",
+                            "ok": False,
+                            "error_code": "paper_ledger_write_failed",
+                            "risk_decision": {"decision": "ALLOW", "reasons": []},
+                            "paper_execution": {"status": "OPENED", "paper_execution_id": "exec-not-durable"},
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            report = build_decision_trace_report(archive_path=archive)
+            replay = build_replay_report(archive_path=archive)
+
+        self.assertEqual(report["traces"][0]["decision"], "ERROR")
+        self.assertEqual(report["traces"][0]["paper_execution_status"], "OPENED")
+        self.assertEqual(report["decision_counts"]["ERROR"], 1)
+        self.assertEqual(replay["archive"]["opened_count"], 0)
 
     def test_decision_quality_report_summarizes_missing_agent_inputs_and_paper_outcomes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

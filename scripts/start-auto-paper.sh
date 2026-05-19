@@ -264,7 +264,18 @@ def optional_float(value: str):
     except ValueError:
         return value
 
+action = os.environ["AUTO_JSON_ACTION"]
+state = os.environ["AUTO_JSON_STATE"]
+event = os.environ["AUTO_JSON_EVENT"]
+running = truthy(os.environ["AUTO_JSON_RUNNING"])
+pid = optional_int(os.environ["AUTO_JSON_PID"])
 ok = truthy(os.environ["AUTO_JSON_OK"])
+if not running:
+    process_health = "not_running"
+elif event in {"running", "already_running", "service_enabled"} and pid is not None:
+    process_health = "running_pid_verified"
+else:
+    process_health = "spawned_unverified"
 paper_margin_budget_usdt = optional_float(os.environ["AUTO_JSON_PAPER_MARGIN_BUDGET_USDT"])
 agent_margin_usdt = optional_float(os.environ["AUTO_JSON_AGENT_MARGIN_USDT"])
 explicit_effective_notional_usdt = optional_float(os.environ["AUTO_JSON_EFFECTIVE_NOTIONAL_USDT"])
@@ -307,11 +318,11 @@ payload = {
     "signed_requests": False,
     "reads_api_keys": False,
     "command": "auto-paper-service",
-    "action": os.environ["AUTO_JSON_ACTION"],
-    "state": os.environ["AUTO_JSON_STATE"],
-    "event": os.environ["AUTO_JSON_EVENT"],
-    "running": truthy(os.environ["AUTO_JSON_RUNNING"]),
-    "pid": optional_int(os.environ["AUTO_JSON_PID"]),
+    "action": action,
+    "state": state,
+    "event": event,
+    "running": running,
+    "pid": pid,
     "runtime_dir": os.environ["AUTO_JSON_RUNTIME_DIR"],
     "state_path": os.environ["AUTO_JSON_STATE_PATH"],
     "ledger_path": os.environ["AUTO_JSON_LEDGER_PATH"],
@@ -366,9 +377,12 @@ payload = {
     "strategy_state_configured": bool(os.environ["AUTO_JSON_STRATEGY_STATE_PATH"]),
     "strategy_review_report_path": os.environ["AUTO_JSON_STRATEGY_REVIEW_REPORT_PATH"],
     "python": os.environ["AUTO_JSON_PYTHON"],
-    "health": "spawned_unverified" if truthy(os.environ["AUTO_JSON_RUNNING"]) else "not_running",
+    "health": process_health,
+    "process_health": process_health,
+    "health_report_command": "bash scripts/start-auto-paper.sh health --json",
     "safety": {
         "public_readonly_market_data": True,
+        "public_readonly": True,
         "paper_or_watch_only": True,
         "real_orders": False,
         "signed_requests": False,
@@ -485,6 +499,7 @@ profile = {
     },
     "safety": {
         "public_readonly_market_data": True,
+        "public_readonly": True,
         "paper_or_watch_only": True,
         "real_orders": False,
         "signed_requests": False,
@@ -906,6 +921,7 @@ payload = {
     },
     "safety": {
         "public_readonly_market_data": True,
+        "public_readonly": True,
         "paper_or_watch_only": True,
         "real_orders": False,
         "signed_requests": False,

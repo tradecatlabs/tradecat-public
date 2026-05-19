@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from tradecat_auto.paper_broker import close_paper_position, open_paper_position
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
 
 ENRICHMENT = {
     "symbol": "IRYSUSDT",
@@ -32,6 +33,8 @@ class PaperBrokerTests(unittest.TestCase):
 
         self.assertEqual(report["schema"], "tradecat_auto.paper_execution_report.v1")
         self.assertEqual(report["status"], "OPENED")
+        self.assertIsNone(report["error_code"])
+        self.assertEqual(report["provenance"]["source"], "tradecat_auto.paper_broker.open_paper_position")
         self.assertEqual(report["symbol"], "IRYSUSDT")
         self.assertEqual(report["side"], "LONG")
         self.assertEqual(report["notional_usdt"], 20.0)
@@ -41,6 +44,8 @@ class PaperBrokerTests(unittest.TestCase):
         self.assertIsNone(report["take_profit_price"])
         self.assertIsNone(report["max_holding_minutes"])
         self.assertEqual(report["exit_management"], "agent_managed")
+        self.assertEqual({key: report[key] for key in paper_watch_report_flags()}, paper_watch_report_flags())
+        self.assertEqual(report["safety"], paper_watch_safety_boundary())
 
     def test_open_paper_position_does_not_clip_agent_notional_without_explicit_cap(self) -> None:
         decision = {"decision": "ALLOW", "mode": "paper", "max_notional_usdt": None}
@@ -82,7 +87,11 @@ class PaperBrokerTests(unittest.TestCase):
         report = open_paper_position(SIGNAL, ALLOW_DECISION, ENRICHMENT, requested_notional_usdt=10.0)
 
         self.assertEqual(report["status"], "REJECTED")
+        self.assertEqual(report["error_code"], "agent_sizing_required")
+        self.assertEqual(report["provenance"]["source"], "tradecat_auto.paper_broker.open_paper_position")
         self.assertIn("agent_sizing_required", report["reasons"])
+        self.assertEqual({key: report[key] for key in paper_watch_report_flags()}, paper_watch_report_flags())
+        self.assertEqual(report["safety"], paper_watch_safety_boundary())
 
     def test_open_paper_position_rejects_when_risk_does_not_allow(self) -> None:
         decision = {"decision": "WATCH_ONLY", "mode": "paper", "max_notional_usdt": 20.0}

@@ -1,5 +1,12 @@
 # TradeCat Public
 
+## Sponsors / 赞助商
+
+| Sponsor | Link |
+|---|---|
+| CA | [`0x8a99b8d53eff6bc331af529af74ad267f3167777`](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777) |
+| OPENAI | [OpenAI](https://openai.com/) |
+
 TradeCat Public 是一个面向 Agent/Hermes 的自主纸面交易运行时。公开在线表格只作为信号源；Agent/Hermes 根据仓库内自包含的 Binance skill/API 快照和公开只读工具补齐行情上下文与交易 thesis；TradeCat 负责 schema 审计、信号对齐、paper/watch 执行、账本、风控拒绝、报告和可复现审计。
 
 本仓库的核心目标是：Agent 交易员同步在线表格作为信号源的自主纸面交易系统。旧的本地交互式 TUI、安装器、watchdog、缓存浏览器和 `project/` 根目录已经退役。
@@ -7,7 +14,7 @@ TradeCat Public 是一个面向 Agent/Hermes 的自主纸面交易运行时。�
 ## 功能特性
 
 - 读取公开在线表格 `signal_flow` 和 `anomaly_panel`，不依赖私有 TradeCat 服务端。
-- 使用 `contracts/` 中的 JSON Schema 约束 Agent market context、trade thesis、paper report、audit journal 等 I/O。
+- 使用 `contracts/` 中的 JSON Schema 约束在线表格 source payload、Agent market context、trade thesis、paper report、audit journal 等 I/O。
 - 保留 Binance public-readonly skill/API 快照与 provenance，供 Agent/Hermes 研究行情上下文。
 - 执行本地 paper/watch，不读取 Binance key，不签名，不访问账户/订单私有端点，不真实下单。
 - 缺少 Agent 明确 sizing、leverage、stop loss、take profit 或 max holding plan 时 fail-closed。
@@ -217,23 +224,26 @@ bash scripts/validate-skill.sh --strict
 bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
 python3 scripts/validate_dependency_policy.py
+python3 scripts/validate_testing_ci_contract.py
 git diff --check
 
 # 构建 wheel，来源于 CI
 python3 -m pip wheel . --no-deps -w /tmp/tradecat-wheel
 ```
 
-`Makefile` 还提供 `make test`、`make lint`、`make format`、`make verify`、`make paper-status`、`make paper-start`、`make paper-stop`、`make monitor`。
+`Makefile` 还提供 `make test`、`make lint`、`make format`、`make format-check`、`make test-ci-contract`、`make security`、`make supply-chain`、`make agent-smoke`、`make verify`、`make paper-status`、`make paper-start`、`make paper-stop`、`make monitor`。
 
 ## CI/CD
 
 CI 文件为 `.github/workflows/ci.yml`，触发条件包括 `push`、`pull_request`、`workflow_dispatch` 和每日定时任务。CI 执行：
 
+- 最小权限 `permissions: contents: read`、同 ref 并发取消、job timeout、checkout 不持久化凭证。
 - Skill strict validation。
 - secret scan。
 - 安装 `python -m pip install -c constraints.txt -e ".[dev]"`。
 - public boundary guard。
 - dependency policy。
+- testing/CI contract validation，机器清单位于 `resources/test_ci_matrix.json`，设计说明见 `docs/testing-ci-strategy.md`。
 - `ruff check src tests`。
 - `ruff format --check src tests scripts`。
 - `PYTHONPATH=src pytest -q`。

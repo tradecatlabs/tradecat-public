@@ -49,6 +49,7 @@ class MarketEnrichmentTests(unittest.TestCase):
 
         self.assertEqual(payload["schema"], "tradecat_auto.market_enrichment.v1")
         self.assertTrue(payload["ok"])
+        self.assertIsNone(payload["error_code"])
         self.assertEqual(payload["symbol"], "IRYSUSDT")
         metrics = payload["metrics"]
         self.assertEqual(metrics["sheet_5m_volume_change_pct"], -1.84)
@@ -62,16 +63,34 @@ class MarketEnrichmentTests(unittest.TestCase):
         self.assertGreater(metrics["mark_index_basis_bps"], 0)
         self.assertEqual(metrics["top_long_short_position_ratio"], 1.1564)
         self.assertIn("binance_public_market", payload["source_layers"])
+        self.assertEqual(payload["provenance"]["source"], "tradecat_auto.market_enrichment.build_market_enrichment")
+        self.assertEqual(payload["provenance"]["market_bundle_schema"], "tradecat_auto.public_market_bundle.v1")
+        self.assertFalse(payload["safety"]["real_orders"])
+        self.assertFalse(payload["safety"]["signed_requests"])
+        self.assertFalse(payload["safety"]["reads_api_keys"])
 
     def test_build_market_enrichment_preserves_endpoint_errors(self) -> None:
         broken = dict(MARKET_BUNDLE)
         broken["ok"] = False
         broken["errors"] = {"depth": "timeout"}
+        broken["provenance"] = {"source": "unit_public_bundle"}
 
         payload = build_market_enrichment(ANOMALY, broken)
 
         self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "market_bundle_not_ok")
         self.assertEqual(payload["errors"], {"depth": "timeout"})
+        self.assertEqual(payload["provenance"]["market_bundle_source"], "unit_public_bundle")
+
+    def test_build_market_enrichment_reports_missing_required_metrics(self) -> None:
+        missing = dict(MARKET_BUNDLE)
+        missing["depth_summary"] = {}
+
+        payload = build_market_enrichment(ANOMALY, missing)
+
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error_code"], "missing_required_metrics")
+        self.assertEqual(payload["errors"]["missing_required_metrics"], "spread_bps")
 
 
 if __name__ == "__main__":

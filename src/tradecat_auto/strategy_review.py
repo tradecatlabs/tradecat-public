@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from tradecat_auto.paper_ledger import PaperLedgerError, load_paper_ledger
+from tradecat_auto.safety_boundary import normalize_paper_watch_safety, paper_watch_safety_boundary
 
 SCHEMA_VERSION = "1.0.0"
 STRATEGY_REVIEW_SCHEMA = "tradecat_auto.strategy_review_report.v1"
@@ -266,16 +267,20 @@ def _load_cycles(path: Path | str | None) -> tuple[list[dict[str, Any]], list[di
         return [], []
     cycles: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    for line_number, line in enumerate(archive.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
-            errors.append({"line": line_number, "error": str(exc)})
-            continue
-        if isinstance(payload, dict):
-            cycles.append(payload)
+    try:
+        with archive.open("r", encoding="utf-8", errors="replace") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    errors.append({"line": line_number, "error": str(exc)})
+                    continue
+                if isinstance(payload, dict):
+                    cycles.append(payload)
+    except OSError as exc:
+        errors.append({"line": 0, "error": str(exc)})
     return cycles, errors
 
 
@@ -390,16 +395,7 @@ def _strategy_state_snapshot(strategy_state: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_safety(value: Any) -> None:
-    safety = value if isinstance(value, dict) else {}
-    expected = {
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
-    for key, expected_value in expected.items():
-        if safety.get(key) is not expected_value:
-            raise ValueError(f"strategy_state_load_failed: safety.{key} must be {expected_value!r}")
+    normalize_paper_watch_safety(value, error_prefix="strategy_state_load_failed", allow_extra=True)
 
 
 def _num(value: Any) -> float | None:
@@ -437,12 +433,4 @@ def _now_iso() -> str:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "public_readonly": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

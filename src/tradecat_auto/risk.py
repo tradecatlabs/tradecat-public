@@ -4,6 +4,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from tradecat_auto.safety_boundary import (
+    normalize_paper_watch_safety,
+    paper_watch_report_flags,
+    paper_watch_safety_boundary,
+)
+
 
 def default_risk_policy(*, mode: str = "paper") -> dict[str, Any]:
     return {
@@ -54,6 +60,7 @@ def load_portfolio_risk_policy(path: Path | str | None) -> dict[str, Any] | None
         raise ValueError("portfolio_risk_policy_load_failed: invalid schema")
     if payload.get("schema_version") not in (None, "", "1.0.0"):
         raise ValueError("portfolio_risk_policy_load_failed: invalid schema_version")
+    _validate_portfolio_policy_safety(payload)
     for forbidden in (
         "requested_margin_usdt",
         "requested_notional_usdt",
@@ -65,6 +72,19 @@ def load_portfolio_risk_policy(path: Path | str | None) -> dict[str, Any] | None
         if forbidden in payload:
             raise ValueError(f"portfolio_risk_policy_load_failed: forbidden trade parameter {forbidden}")
     return payload
+
+
+def _validate_portfolio_policy_safety(payload: dict[str, Any]) -> None:
+    normalize_paper_watch_safety(
+        payload.get("safety"), error_prefix="portfolio_risk_policy_load_failed", allow_extra=True
+    )
+    hard_boundaries = payload.get("hard_boundaries") if isinstance(payload.get("hard_boundaries"), dict) else {}
+    for key in ("real_orders", "signed_requests", "reads_api_keys"):
+        if key in hard_boundaries and hard_boundaries.get(key) is not False:
+            raise ValueError(f"portfolio_risk_policy_load_failed: hard_boundaries.{key} must be False")
+    for key in ("does_not_set_order_size", "does_not_set_leverage", "does_not_set_exit_plan"):
+        if key in hard_boundaries and hard_boundaries.get(key) is not True:
+            raise ValueError(f"portfolio_risk_policy_load_failed: hard_boundaries.{key} must be True")
 
 
 def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -240,9 +260,7 @@ def evaluate_risk(signal: dict[str, Any], policy: dict[str, Any] | None = None) 
         "schema": "tradecat_auto.risk_decision.v1",
         "schema_version": "1.0.0",
         "ok": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "decision": decision,
         "mode": mode,
         "symbol": str(signal.get("symbol") or ""),
@@ -400,11 +418,4 @@ def _dedupe(values: list[str]) -> list[str]:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

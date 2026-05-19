@@ -56,10 +56,14 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["schema_version"] == "1.0.0"
     assert payload["ok"] is False
     assert payload["reads_api_keys"] is False
+    assert payload["safety"]["public_readonly"] is True
     assert payload["safety"]["real_orders"] is False
     assert payload["safety"]["signed_requests"] is False
     assert payload["safety"]["reads_api_keys"] is False
     assert payload["running"] is False
+    assert payload["health"] == "not_running"
+    assert payload["process_health"] == "not_running"
+    assert payload["health_report_command"] == "bash scripts/start-auto-paper.sh health --json"
     assert payload["error"]["code"] == "paper_service_not_running"
     assert payload["mode"] == "paper"
     assert payload["state_path"].endswith("service_state.json")
@@ -154,6 +158,7 @@ def test_auto_paper_ops_check_reports_long_running_dependency_chain(tmp_path: Pa
     assert checks["no_binance_credential_env_names"]["ok"] is True
     assert checks["identity_detected"]["run_as_root"] in {True, False}
     assert payload["operations"]["health"].startswith("health-report detects")
+    assert payload["safety"]["public_readonly"] is True
     assert payload["safety"]["real_orders"] is False
     assert payload["safety"]["signed_requests"] is False
     assert payload["safety"]["reads_api_keys"] is False
@@ -182,12 +187,57 @@ def test_auto_paper_web_monitor_is_local_readonly_entrypoint() -> None:
     assert "latest_cycle" in source
     assert "source_http_status" in source
     assert "thesis_path" in source
+    assert "process_health" in source
+    assert "进程健康" in source
+    assert "monitor_command_elapsed_ms" in source
+    assert "监控命令耗时" in source
     assert "依赖链健康" in source
     assert "回撤/告警" in source
     assert "AI 文本决策" in source
+    assert "def _monitor_report_flags" in source
+    assert '"public_readonly": True' in source
     assert '"real_orders": False' in source
     assert '"signed_requests": False' in source
     assert '"reads_api_keys": False' in source
+
+
+def test_auto_paper_web_monitor_report_flags_derive_from_safety_boundary() -> None:
+    monitor = load_web_monitor_module()
+    safety = monitor._monitor_safety_boundary()
+
+    assert monitor._monitor_report_flags() == {
+        "real_orders": safety["real_orders"],
+        "signed_requests": safety["signed_requests"],
+        "reads_api_keys": safety["reads_api_keys"],
+    }
+
+
+def test_auto_paper_web_monitor_run_json_records_command_elapsed_ms(tmp_path: Path) -> None:
+    monitor = load_web_monitor_module()
+
+    payload = monitor.run_json(
+        [sys.executable, "-c", "import json; print(json.dumps({'ok': True}))"],
+        runtime_dir=tmp_path,
+    )
+
+    assert payload["ok"] is True
+    assert payload["_monitor_returncode"] == 0
+    assert isinstance(payload["_monitor_elapsed_ms"], float | int)
+    assert payload["_monitor_elapsed_ms"] >= 0
+
+
+def test_auto_paper_web_monitor_summarizes_command_elapsed_ms() -> None:
+    monitor = load_web_monitor_module()
+
+    elapsed = monitor.monitor_command_elapsed_ms(
+        {
+            "status": {"_monitor_elapsed_ms": "1.5"},
+            "health": {"_monitor_elapsed_ms": 2},
+            "missing": {},
+        }
+    )
+
+    assert elapsed == {"status": 1.5, "health": 2.0}
 
 
 def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constraints() -> None:
@@ -209,6 +259,7 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
     nodes = monitor.build_dependency_health(
         status={
             "running": True,
+            "process_health": "running_pid_verified",
             "agent_sizing_required": True,
             "agent_trade_thesis_path": "",
             "paper_autonomy_profile_path": "",
@@ -238,6 +289,7 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
     )
     by_id = {item["id"]: item for item in nodes}
 
+    assert "process_health=running_pid_verified" in by_id["operator_supervisor"]["detail"]
     assert by_id["context_audit"]["status"] == "ok"
     assert by_id["risk_controls"]["status"] == "ok"
     assert "默认不启用本地组合约束" in by_id["risk_controls"]["detail"]
@@ -245,6 +297,256 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
     assert by_id["trade_thesis"]["status"] == "warn"
     assert "默认 runtime paper autonomy profile" in by_id["trade_thesis"]["detail"]
     assert by_id["strategy_iteration"]["status"] == "warn"
+
+
+def test_auto_paper_web_monitor_snapshot_commands_are_bounded_and_complete(tmp_path: Path, monkeypatch) -> None:
+    monitor = load_web_monitor_module()
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_json(command: list[str], *, runtime_dir: Path, timeout_seconds: float = 10.0) -> dict[str, object]:
+        del runtime_dir, timeout_seconds
+        calls.append(tuple(command))
+        return {"ok": True, "command": command}
+
+    monkeypatch.setattr(monitor, "run_json", fake_run_json)
+
+    results = monitor.run_snapshot_commands(
+        tmp_path,
+        ledger_path=tmp_path / "paper_ledger.json",
+        journal_path=tmp_path / "paper_audit.sqlite3",
+    )
+
+    assert set(results) == {"status", "health", "ops", "paper", "audit"}
+    assert ("bash", "scripts/start-auto-paper.sh", "status", "--json") in calls
+    assert ("bash", "scripts/start-auto-paper.sh", "health", "--json") in calls
+    assert ("bash", "scripts/start-auto-paper.sh", "ops-check", "--json") in calls
+    assert any(command[:4] == ("bash", "scripts/run-tradecat.sh", "auto", "paper-report") for command in calls)
+    paper_command = next(
+        command for command in calls if command[:4] == ("bash", "scripts/run-tradecat.sh", "auto", "paper-report")
+    )
+    assert "--detail-limit" in paper_command
+    assert paper_command[paper_command.index("--detail-limit") + 1] == "5"
+    assert any(command[:4] == ("bash", "scripts/run-tradecat.sh", "auto", "audit-journal") for command in calls)
+
+
+def test_auto_paper_web_monitor_compacts_heavy_cycle_payloads() -> None:
+    monitor = load_web_monitor_module()
+
+    compact = monitor.compact_cycle_for_monitor(
+        {
+            "schema": "tradecat_auto.service_cycle.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "action": "PROCESSED",
+            "events": {
+                "ok": True,
+                "events": [
+                    {"event_id": f"event-{index}", "symbol": "IRYSUSDT", "content": "signal"} for index in range(12)
+                ],
+            },
+            "pipeline_report": {
+                "schema": "tradecat_auto.run_once_report.v1",
+                "schema_version": "1.0.0",
+                "selected_symbol": "IRYSUSDT",
+                "paper_ledger": {
+                    "ok": True,
+                    "open_positions": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}},
+                    "closed_positions": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+                },
+                "universe": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+                "raw_errors": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+                "risk_decision": {"decision": "ALLOW", "reasons": []},
+                "paper_execution": {"status": "OPENED", "paper_execution_id": "paper-1"},
+                "safety": {
+                    "public_readonly": True,
+                    "real_orders": False,
+                    "signed_requests": False,
+                    "reads_api_keys": False,
+                },
+            },
+            "safety": {
+                "public_readonly": True,
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+            },
+        }
+    )
+
+    encoded = json.dumps(compact, ensure_ascii=False)
+    assert compact["payload_compacted"] is True
+    assert compact["events"]["events_count"] == 12
+    assert compact["events"]["events_truncated"] is True
+    assert len(compact["events"]["sample_events"]) == 10
+    assert compact["pipeline_report"]["payload_compacted"] is True
+    assert compact["pipeline_report"]["selected_symbol"] == "IRYSUSDT"
+    assert compact["pipeline_report"]["raw_error_count"] == 1
+    assert "THIS_SHOULD_NOT_LEAK" not in encoded
+    assert "universe" not in compact["pipeline_report"]
+
+
+def test_auto_paper_web_monitor_compacts_heavy_paper_report_payloads() -> None:
+    monitor = load_web_monitor_module()
+
+    compact = monitor.compact_paper_report_for_monitor(
+        {
+            "schema": "tradecat_auto.paper_report.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "summary": {"equity_usdt": 1000.0, "open_positions_count": 1},
+            "paper_account_state": {
+                "summary": {"equity_usdt": 1000.0},
+                "open_positions": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}},
+            },
+            "open_positions": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}},
+            "closed_positions": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+            "recent_paper_orders": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+            "recent_fills": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+            "equity_curve_tail": [{"marker": "THIS_SHOULD_NOT_LEAK"}],
+            "safety": {
+                "public_readonly": True,
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+            },
+        }
+    )
+
+    encoded = json.dumps(compact, ensure_ascii=False)
+    assert compact["payload_compacted"] is True
+    assert compact["summary"]["equity_usdt"] == 1000.0
+    assert compact["open_positions_count"] == 1
+    assert compact["closed_positions_sample_count"] == 1
+    assert compact["recent_paper_orders_count"] == 1
+    assert compact["recent_fills_count"] == 1
+    assert compact["paper_account_state"]["payload_compacted"] is True
+    assert "THIS_SHOULD_NOT_LEAK" not in encoded
+
+
+def test_auto_paper_web_monitor_snapshot_returns_compacted_runtime_payloads(tmp_path: Path, monkeypatch) -> None:
+    monitor = load_web_monitor_module()
+    raw_cycle = {
+        "schema": "tradecat_auto.service_cycle.v1",
+        "schema_version": "1.0.0",
+        "ok": True,
+        "action": "PROCESSED",
+        "events": {"ok": True, "events": [{"event_id": "event-1", "symbol": "IRYSUSDT"}]},
+        "latest_event": {
+            "event_id": "event-1",
+            "source_dataset_key": "signal_flow",
+            "source_time_bj": "2026-05-18 08:00:00",
+            "symbol": "IRYSUSDT",
+            "content": "IRYSUSDT 信号流: 成交额暴增",
+        },
+        "pipeline_report": {
+            "schema": "tradecat_auto.run_once_report.v1",
+            "schema_version": "1.0.0",
+            "selected_symbol": "IRYSUSDT",
+            "agent_trade_thesis": {
+                "schema": "tradecat_auto.agent_trade_thesis.v1",
+                "schema_version": "1.0.0",
+                "symbol": "IRYSUSDT",
+                "direction": "LONG",
+                "confidence": 0.7,
+                "rationale": "Agent full raw rationale remains available to decision_text.",
+            },
+            "signal": {"symbol": "IRYSUSDT", "direction": "LONG", "score": 70, "tradable_candidate": True},
+            "strategy_intent": {"action": "ENTER", "direction": "LONG"},
+            "risk_decision": {"decision": "ALLOW", "reasons": [], "paper_leverage": 1},
+            "paper_execution": {"status": "OPENED", "paper_execution_id": "paper-1"},
+            "paper_ledger": {
+                "ok": True,
+                "open_positions": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}},
+            },
+            "safety": {
+                "public_readonly": True,
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+            },
+        },
+        "safety": {
+            "public_readonly": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+        },
+    }
+
+    def fake_read_json_file(path: Path) -> dict[str, object]:
+        if path.name == "strategy_state.json":
+            return {"enabled": True, "policy": {}, "status": "active"}
+        return {
+            "schema": "tradecat_auto.strategy_review.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "metrics": {
+                "overall": {"trades": 1, "net_pnl_usdt": 0.1},
+                "by_symbol": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}},
+            },
+            "recommendations": [{"symbol": "IRYSUSDT"}],
+            "strategy_state": {"enabled": True},
+            "safety": {
+                "public_readonly": True,
+                "real_orders": False,
+                "signed_requests": False,
+                "reads_api_keys": False,
+            },
+        }
+
+    monkeypatch.setattr(monitor, "read_latest_cycle_pair", lambda path: (raw_cycle, raw_cycle))
+    monkeypatch.setattr(monitor, "read_json_file", fake_read_json_file)
+    monkeypatch.setattr(monitor, "read_tail", lambda path: [])
+    monkeypatch.setattr(monitor, "credential_env_names", lambda: [])
+    monkeypatch.setattr(
+        monitor,
+        "run_snapshot_commands",
+        lambda runtime_dir, *, ledger_path, journal_path: {
+            "status": {
+                "ok": True,
+                "running": True,
+                "process_health": "running_pid_verified",
+                "strategy_review_enabled": True,
+                "safety": {
+                    "real_orders": False,
+                    "signed_requests": False,
+                    "reads_api_keys": False,
+                    "binance_account_state": False,
+                },
+            },
+            "health": {
+                "ok": True,
+                "heartbeat": {"ok": True, "stale": False},
+                "service_state": {"cycles_attempted": 1},
+                "archive": {"ok": True, "cycle_count": 1},
+                "ledger": {"ok": True, "summary": {"equity_usdt": 1000.0, "initial_balance_usdt": 1000.0}},
+                "audit_journal": {"ok": True, "chain_valid": True},
+                "alerts": [],
+            },
+            "ops": {"ok": True, "checks": []},
+            "paper": {
+                "schema": "tradecat_auto.paper_report.v1",
+                "schema_version": "1.0.0",
+                "ok": True,
+                "summary": {"equity_usdt": 1000.0, "open_positions_count": 1},
+                "paper_account_state": {"open_positions": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}}},
+                "open_positions": {"IRYSUSDT": {"marker": "THIS_SHOULD_NOT_LEAK"}},
+            },
+            "audit": {"ok": True, "chain_valid": True},
+        },
+    )
+
+    snapshot = monitor.build_snapshot(tmp_path)
+    encoded = json.dumps(snapshot, ensure_ascii=False)
+
+    assert snapshot["decision_text"]["ok"] is True
+    assert "Agent full raw rationale remains available" in snapshot["decision_text"]["text"]
+    assert snapshot["latest_cycle"]["payload_compacted"] is True
+    assert snapshot["latest_decision_cycle"]["pipeline_report"]["payload_compacted"] is True
+    assert snapshot["paper"]["payload_compacted"] is True
+    assert snapshot["strategy_review"]["payload_compacted"] is True
+    assert snapshot["strategy_review"]["metrics"]["by_symbol_count"] == 1
+    assert "THIS_SHOULD_NOT_LEAK" not in encoded
 
 
 def test_auto_paper_web_monitor_extracts_auditable_decision_text() -> None:
@@ -462,6 +764,63 @@ def test_auto_paper_web_monitor_shows_full_signal_flow_input_fields() -> None:
     assert decision["safety"]["real_orders"] is False
     assert decision["safety"]["signed_requests"] is False
     assert decision["safety"]["reads_api_keys"] is False
+    assert decision["safety"]["public_readonly"] is True
+
+
+def test_auto_paper_web_monitor_does_not_trust_archived_safety_flags() -> None:
+    monitor = load_web_monitor_module()
+    unsafe_safety = {
+        "public_readonly_market_data": False,
+        "public_readonly": False,
+        "paper_or_watch_only": False,
+        "real_orders": True,
+        "signed_requests": True,
+        "reads_api_keys": True,
+        "binance_account_state": True,
+    }
+    cycle = {
+        "schema": "tradecat_auto.service_cycle.v1",
+        "schema_version": "1.0.0",
+        "ok": True,
+        "action": "PROCESSED",
+        "real_orders": True,
+        "signed_requests": True,
+        "reads_api_keys": True,
+        "safety": unsafe_safety,
+        "latest_event": {"event_id": "unsafe-safety", "symbol": "IRYSUSDT"},
+        "pipeline_report": {
+            "schema": "tradecat_auto.run_once_report.v1",
+            "schema_version": "1.0.0",
+            "ok": True,
+            "selected_symbol": "IRYSUSDT",
+            "real_orders": True,
+            "signed_requests": True,
+            "reads_api_keys": True,
+            "safety": unsafe_safety,
+            "risk_decision": {"decision": "ALLOW", "reasons": []},
+            "paper_execution": {"status": "OPENED", "side": "LONG"},
+        },
+    }
+
+    compact_cycle = monitor.compact_cycle_for_monitor(cycle)
+    compact_pipeline = compact_cycle["pipeline_report"]
+    decision = monitor.build_decision_text(cycle)
+    strategy_review = monitor.compact_strategy_review_for_monitor({"ok": True, "safety": unsafe_safety})
+    paper_report = monitor.compact_paper_report_for_monitor({"ok": True, "safety": unsafe_safety})
+
+    for payload in (compact_cycle, compact_pipeline, decision, strategy_review, paper_report):
+        assert payload["safety"]["public_readonly"] is True
+        assert payload["safety"]["paper_or_watch_only"] is True
+        assert payload["safety"]["real_orders"] is False
+        assert payload["safety"]["signed_requests"] is False
+        assert payload["safety"]["reads_api_keys"] is False
+        assert payload["safety"]["binance_account_state"] is False
+    assert compact_cycle["real_orders"] is False
+    assert compact_cycle["signed_requests"] is False
+    assert compact_cycle["reads_api_keys"] is False
+    assert compact_pipeline["real_orders"] is False
+    assert compact_pipeline["signed_requests"] is False
+    assert compact_pipeline["reads_api_keys"] is False
 
 
 def test_auto_paper_web_monitor_uses_latest_cycle_with_pipeline_for_decision_text(tmp_path: Path) -> None:
@@ -501,10 +860,48 @@ def test_auto_paper_web_monitor_uses_latest_cycle_with_pipeline_for_decision_tex
 
     latest = monitor.read_latest_jsonl(archive_path)
     latest_decision = monitor.read_latest_decision_jsonl(archive_path)
+    latest_pair, latest_decision_pair = monitor.read_latest_cycle_pair(archive_path)
 
     assert latest["action"] == "SKIPPED_DUPLICATE_EVENT"
     assert latest_decision["action"] == "PROCESSED"
     assert latest_decision["pipeline_report"]["selected_symbol"] == "IRYSUSDT"
+    assert latest_pair["action"] == latest["action"]
+    assert latest_decision_pair["pipeline_report"]["selected_symbol"] == "IRYSUSDT"
+
+
+def test_auto_paper_web_monitor_reads_latest_jsonl_when_last_line_exceeds_initial_tail_window(tmp_path: Path) -> None:
+    monitor = load_web_monitor_module()
+    archive_path = tmp_path / "cycles.jsonl"
+    archive_path.write_text(
+        "\n".join(
+            [
+                json.dumps({"schema": "tradecat_auto.service_cycle.v1", "action": "OLD"}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.service_cycle.v1",
+                        "action": "PROCESSED",
+                        "pipeline_report": {
+                            "schema": "tradecat_auto.run_once_report.v1",
+                            "selected_symbol": "BIGUSDT",
+                            "large_text": "x" * 2048,
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    latest = monitor.read_latest_jsonl(archive_path, max_bytes=64)
+    latest_decision = monitor.read_latest_decision_jsonl(archive_path, max_bytes=64)
+    latest_pair, latest_decision_pair = monitor.read_latest_cycle_pair(archive_path, max_bytes=64)
+
+    assert latest["action"] == "PROCESSED"
+    assert latest_decision["pipeline_report"]["selected_symbol"] == "BIGUSDT"
+    assert latest_pair["action"] == "PROCESSED"
+    assert latest_decision_pair["pipeline_report"]["selected_symbol"] == "BIGUSDT"
 
 
 def test_auto_paper_ops_check_rejects_binance_credential_env_names(tmp_path: Path) -> None:
@@ -556,6 +953,9 @@ def test_auto_paper_running_status_reads_effective_sizing_from_process_env(tmp_p
         assert status_proc.returncode == 0, status_proc.stderr
         payload = json.loads(status_proc.stdout)
         assert payload["running"] is True
+        assert payload["health"] == "running_pid_verified"
+        assert payload["process_health"] == "running_pid_verified"
+        assert payload["health_report_command"] == "bash scripts/start-auto-paper.sh health --json"
         if hasattr(os, "getsid"):
             assert os.getsid(payload["pid"]) != os.getsid(0)
         assert payload["agent_margin_usdt"] == 7.5
@@ -598,6 +998,8 @@ def test_auto_paper_heal_starts_when_process_is_missing(tmp_path: Path) -> None:
         assert payload["schema"] == "tradecat_auto.paper_service_status.v1"
         assert payload["action"] == "heal"
         assert payload["running"] is True
+        assert payload["health"] == "spawned_unverified"
+        assert payload["process_health"] == "spawned_unverified"
         assert payload["safety"]["real_orders"] is False
     finally:
         run_service_script(["stop", "--json"], env={"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir)})
@@ -775,6 +1177,7 @@ def test_auto_paper_cycle_refreshes_default_runtime_autonomy_profile(tmp_path: P
     assert proc.returncode == 0, proc.stderr
     refreshed = json.loads(profile_path.read_text(encoding="utf-8"))
     assert refreshed["provenance"]["source"] == "scripts/start-auto-paper.sh"
+    assert refreshed["safety"]["public_readonly"] is True
     assert refreshed["paper_intent"]["direction_policy"] == "sheet_signal_or_taker_flow"
     assert refreshed["paper_intent"]["allow_signal_reject_override"] is True
     argv = json.loads(argv_path.read_text(encoding="utf-8"))

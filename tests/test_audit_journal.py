@@ -124,13 +124,31 @@ class AuditJournalTests(unittest.TestCase):
             self.assertEqual(summary["event_type_counts"]["paper_order"], 1)
             self.assertEqual(summary["event_type_counts"]["paper_fill"], 1)
 
-            bad_cycle = dict(cycle)
-            bad_cycle["paper_ledger"] = {"recent_paper_orders": [{"order_id": "bad", "real_order": True}]}
-            bad = record_service_cycle(
-                path, bad_cycle, run_id="run-prod-2", config_snapshot={}, created_at="2026-05-15T00:00:01Z"
+            duplicate = record_service_cycle(
+                path,
+                cycle,
+                run_id="run-prod-1",
+                config_snapshot={"interval_seconds": 60, "source": "test"},
+                created_at="2026-05-15T00:00:00Z",
             )
-            self.assertFalse(bad["ok"])
-            self.assertEqual(bad["error"]["code"], "real_order_payload_rejected")
+
+            self.assertEqual(duplicate["records_inserted"], 0)
+            self.assertEqual(duplicate["records_total"], 5)
+            duplicate_summary = journal_summary(path)
+            self.assertEqual(duplicate_summary["record_count"], 5)
+            self.assertTrue(duplicate_summary["chain_valid"])
+
+            bad_cycle = dict(cycle)
+            for unsafe_value in (True, "true", 1):
+                with self.subTest(unsafe_value=unsafe_value):
+                    bad_cycle["paper_ledger"] = {
+                        "recent_paper_orders": [{"order_id": "bad", "real_order": unsafe_value}]
+                    }
+                    bad = record_service_cycle(
+                        path, bad_cycle, run_id="run-prod-2", config_snapshot={}, created_at="2026-05-15T00:00:01Z"
+                    )
+                    self.assertFalse(bad["ok"])
+                    self.assertEqual(bad["error"]["code"], "real_order_payload_rejected")
 
     def test_journal_summary_is_read_only_when_journal_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -152,6 +170,9 @@ class AuditJournalTests(unittest.TestCase):
             {"account": {"balance": "1000"}},
             {"position": {"symbol": "BTCUSDT", "positionAmt": "1"}},
             {"request": {"apiKey": "placeholder", "signature": "abc", "timestamp": 1234567890}},
+            {"request": {"signed_requests": "true"}},
+            {"request": {"requires_signature": "yes"}},
+            {"request": {"reads_api_keys": 1}},
             {"order_response": {"fills": [{"price": "1", "qty": "2"}], "executedQty": "2"}},
             {"order_response": {"newClientOrderId": "cli-456", "origQty": "10", "transactTime": 1234567890}},
             {"order_response": {"avgPrice": "1.23", "reduceOnly": True, "positionSide": "LONG"}},

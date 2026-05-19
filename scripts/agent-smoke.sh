@@ -145,7 +145,15 @@ context = {
         "risk_notes": ["synthetic fixture; not investment advice"],
         "limitations": ["paper/watch only; no Binance key; no real order"],
         "provenance": {"source": "agent-smoke synthetic fixture"},
-        "safety": {"real_orders": False, "signed_requests": False, "reads_api_keys": False},
+        "safety": {
+            "public_readonly_market_data": True,
+            "public_readonly": True,
+            "paper_or_watch_only": True,
+            "real_orders": False,
+            "signed_requests": False,
+            "reads_api_keys": False,
+            "binance_account_state": False,
+        },
     },
     "market_data": [
         {"family": "24h_ticker", "endpoint": "/fapi/v1/ticker/24hr", "method": "GET", "ok": True, "provenance": {"source": "binance_public_rest"}, "data": {"symbol": "IRYSUSDT", "lastPrice": "0.062", "priceChangePercent": "24", "quoteVolume": "50000000"}},

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
+
 MIN_TRADABLE_SCORE = 60
 MAX_SPREAD_BPS = 10.0
 MIN_QUOTE_VOLUME_USDT = 1_000_000.0
@@ -18,6 +20,7 @@ def build_signal_score(enrichment: dict[str, Any]) -> dict[str, Any]:
             negative_factors=[],
             do_not_trade_reasons=["enrichment_not_ok"],
             metrics=enrichment.get("metrics") if isinstance(enrichment.get("metrics"), dict) else {},
+            enrichment=enrichment,
         )
 
     metrics = enrichment.get("metrics") if isinstance(enrichment.get("metrics"), dict) else {}
@@ -114,6 +117,7 @@ def build_signal_score(enrichment: dict[str, Any]) -> dict[str, Any]:
         negative_factors=_dedupe(negative),
         do_not_trade_reasons=do_not_trade,
         metrics=metrics,
+        enrichment=enrichment,
     )
 
 
@@ -126,11 +130,14 @@ def _payload(
     negative_factors: list[str],
     do_not_trade_reasons: list[str],
     metrics: dict[str, Any],
+    enrichment: dict[str, Any],
 ) -> dict[str, Any]:
+    error_code = do_not_trade_reasons[0] if do_not_trade_reasons else None
     return {
         "schema": "tradecat_auto.signal_score.v1",
         "schema_version": "1.0.0",
         "ok": True,
+        "error_code": error_code,
         "symbol": symbol,
         "score": score,
         "direction": direction,
@@ -152,7 +159,18 @@ def _payload(
                 "global_long_short_account_ratio",
             )
         },
+        "provenance": _provenance(enrichment),
+        "safety": paper_watch_safety_boundary(),
         "limitations": ["signal only; not an order and not investment advice"],
+    }
+
+
+def _provenance(enrichment: dict[str, Any]) -> dict[str, Any]:
+    enrichment_provenance = enrichment.get("provenance") if isinstance(enrichment.get("provenance"), dict) else {}
+    return {
+        "source": "tradecat_auto.signals.build_signal_score",
+        "enrichment_schema": str(enrichment.get("schema") or ""),
+        "enrichment_source": str(enrichment_provenance.get("source") or ""),
     }
 
 

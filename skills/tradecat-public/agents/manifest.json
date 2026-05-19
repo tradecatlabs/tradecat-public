@@ -254,6 +254,60 @@
       "schema_file": "contracts/tradecat-dataset-consumption-contract.schema.json"
     },
     {
+      "schema": "tradecat_auto.sheet_events.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-source-payload.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public online-sheet signal source only; no Binance keys, no signed requests, no real orders"
+    },
+    {
+      "schema": "tradecat_auto.signal_flow_events.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-source-payload.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public online-sheet signal source only; no Binance keys, no signed requests, no real orders"
+    },
+    {
+      "schema": "tradecat_auto.anomaly_symbols.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-source-payload.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public online-sheet signal source only; no Binance keys, no signed requests, no real orders"
+    },
+    {
+      "schema": "tradecat_auto.signal_events.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-source-payload.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public online-sheet signal source only; no Binance keys, no signed requests, no real orders"
+    },
+    {
+      "schema": "tradecat_auto.anomaly_signal_events.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-source-payload.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public online-sheet signal source only; no Binance keys, no signed requests, no real orders"
+    },
+    {
+      "schema": "tradecat_auto.source_error.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-source-payload.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "safety_boundary": "public online-sheet signal source only; no Binance keys, no signed requests, no real orders"
+    },
+    {
       "schema": "tradecat_auto.agent_market_context_audit.v1",
       "schema_version": "1.0.0",
       "schema_file": "contracts/tradecat-auto-agent-market-context-audit.schema.json",
@@ -923,6 +977,28 @@
       "reads_api_keys": false,
       "agent_default": true,
       "contract_role": "runtime_status"
+    },
+    {
+      "command": "GET /api/snapshot from python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765",
+      "schema": "tradecat_auto.paper_web_monitor_snapshot.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-paper-web-monitor-snapshot.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "agent_default": false,
+      "contract_role": "local_web_monitor_snapshot"
+    },
+    {
+      "command": "GET /api/snapshot decision_text from python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765",
+      "schema": "tradecat_auto.paper_web_monitor_decision_text.v1",
+      "schema_version": "1.0.0",
+      "schema_file": "contracts/tradecat-auto-paper-web-monitor-decision-text.schema.json",
+      "real_orders": false,
+      "signed_requests": false,
+      "reads_api_keys": false,
+      "agent_default": false,
+      "contract_role": "local_web_monitor_decision_text"
     },
     {
       "command": "bash scripts/start-auto-paper.sh ops-check --json",

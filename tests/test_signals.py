@@ -26,10 +26,17 @@ class SignalScoreTests(unittest.TestCase):
         signal = build_signal_score(ENRICHMENT_LONG)
 
         self.assertEqual(signal["schema"], "tradecat_auto.signal_score.v1")
+        self.assertEqual(signal["schema_version"], "1.0.0")
+        self.assertIsNone(signal["error_code"])
         self.assertEqual(signal["symbol"], "IRYSUSDT")
         self.assertGreaterEqual(signal["score"], 60)
         self.assertEqual(signal["direction"], "LONG")
         self.assertTrue(signal["tradable_candidate"])
+        self.assertEqual(signal["provenance"]["source"], "tradecat_auto.signals.build_signal_score")
+        self.assertEqual(signal["provenance"]["enrichment_schema"], "tradecat_auto.market_enrichment.v1")
+        self.assertFalse(signal["safety"]["real_orders"])
+        self.assertFalse(signal["safety"]["signed_requests"])
+        self.assertFalse(signal["safety"]["reads_api_keys"])
         self.assertIn("sheet_anomaly_present", signal["positive_factors"])
         self.assertNotIn("low_score", signal["do_not_trade_reasons"])
 
@@ -51,14 +58,25 @@ class SignalScoreTests(unittest.TestCase):
 
         self.assertEqual(signal["direction"], "WATCH_ONLY")
         self.assertFalse(signal["tradable_candidate"])
+        self.assertIn(signal["error_code"], signal["do_not_trade_reasons"])
         self.assertIn("spread_too_wide", signal["do_not_trade_reasons"])
         self.assertIn("low_score", signal["do_not_trade_reasons"])
 
     def test_build_signal_score_marks_missing_enrichment_untradable(self) -> None:
-        signal = build_signal_score({"ok": False, "symbol": "ERRUSDT", "errors": {"depth": "timeout"}})
+        signal = build_signal_score(
+            {
+                "schema": "tradecat_auto.market_enrichment.v1",
+                "ok": False,
+                "symbol": "ERRUSDT",
+                "errors": {"depth": "timeout"},
+                "provenance": {"source": "unit_fixture"},
+            }
+        )
 
         self.assertEqual(signal["score"], 0)
         self.assertEqual(signal["direction"], "WATCH_ONLY")
+        self.assertEqual(signal["error_code"], "enrichment_not_ok")
+        self.assertEqual(signal["provenance"]["enrichment_source"], "unit_fixture")
         self.assertIn("enrichment_not_ok", signal["do_not_trade_reasons"])
 
 

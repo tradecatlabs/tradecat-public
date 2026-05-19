@@ -36,6 +36,7 @@ class StrategyIntentTests(unittest.TestCase):
 
         self.assertEqual(intent["schema"], "tradecat_auto.strategy_intent.v1")
         self.assertTrue(intent["ok"])
+        self.assertIsNone(intent["error_code"])
         self.assertEqual(intent["action"], "ENTER")
         self.assertEqual(intent["direction"], "LONG")
         self.assertEqual(intent["entry_type"], "MARKET_PAPER")
@@ -46,6 +47,12 @@ class StrategyIntentTests(unittest.TestCase):
         self.assertEqual(intent["exit_management"], "agent_managed")
         self.assertEqual(intent["exit_plan_source"], "agent_required_missing")
         self.assertIn("momentum_breakout", intent["strategy_tags"])
+        self.assertEqual(intent["provenance"]["source"], "tradecat_auto.strategies.build_strategy_intent")
+        self.assertEqual(intent["provenance"]["signal_schema"], "tradecat_auto.signal_score.v1")
+        self.assertEqual(intent["provenance"]["enrichment_schema"], "tradecat_auto.market_enrichment.v1")
+        self.assertFalse(intent["safety"]["real_orders"])
+        self.assertFalse(intent["safety"]["signed_requests"])
+        self.assertFalse(intent["safety"]["reads_api_keys"])
         self.assertIn("not an order", " ".join(intent["limitations"]))
 
     def test_agent_thesis_exit_plan_is_passed_through_without_fixed_defaults(self) -> None:
@@ -61,6 +68,7 @@ class StrategyIntentTests(unittest.TestCase):
             "do_not_trade_reasons": [],
         }
         thesis = {
+            "schema": "tradecat_auto.agent_trade_thesis.v1",
             "source": "agent_trade_thesis",
             "invalidation_price": 0.058,
             "take_profit_price": 0.071,
@@ -75,6 +83,8 @@ class StrategyIntentTests(unittest.TestCase):
         self.assertEqual(intent["max_holding_minutes"], 240.0)
         self.assertEqual(intent["exit_management"], "agent_supplied")
         self.assertEqual(intent["exit_plan_source"], "agent_trade_thesis")
+        self.assertEqual(intent["provenance"]["agent_trade_thesis_schema"], "tradecat_auto.agent_trade_thesis.v1")
+        self.assertEqual(intent["provenance"]["agent_trade_thesis_source"], "agent_trade_thesis")
 
     def test_watch_only_signal_creates_no_trade_intent_with_reasons(self) -> None:
         signal = {
@@ -93,6 +103,7 @@ class StrategyIntentTests(unittest.TestCase):
 
         self.assertEqual(intent["action"], "WATCH")
         self.assertEqual(intent["direction"], "WATCH_ONLY")
+        self.assertEqual(intent["error_code"], "spread_too_wide")
         self.assertEqual(intent["do_not_trade_reasons"], ["spread_too_wide"])
         self.assertIsNone(intent["entry_price"])
 

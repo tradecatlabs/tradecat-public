@@ -41,6 +41,7 @@ class PositionManagementThesisSchemaTests(unittest.TestCase):
                 payload = load_fixture(name)
                 self.assertValid(payload)
                 self.assertEqual(payload["schema"], "tradecat_auto.position_management_thesis.v1")
+                self.assertTrue(payload["safety"]["public_readonly"])
                 self.assertFalse(payload["safety"]["real_orders"])
                 self.assertFalse(payload["safety"]["signed_requests"])
                 self.assertFalse(payload["safety"]["reads_api_keys"])

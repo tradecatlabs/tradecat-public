@@ -30,6 +30,8 @@
     "generated_at": "2026-05-18T00:00:00Z"
   },
   "safety": {
+    "public_readonly_market_data": true,
+    "public_readonly": true,
     "paper_or_watch_only": true,
     "real_orders": false,
     "signed_requests": false,

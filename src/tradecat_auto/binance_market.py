@@ -9,6 +9,8 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
+
 Transport = Callable[[str], bytes]
 
 DEFAULT_BASE_URL = "https://fapi.binance.com"
@@ -18,6 +20,16 @@ DEFAULT_ENDPOINT_WEIGHT = 1
 ENDPOINT_WEIGHTS = {
     "/fapi/v1/depth": 2,
 }
+BATCHABLE_ENDPOINT_FAMILIES = ["ticker_price", "24h_ticker", "book_ticker", "premium_index"]
+PER_SYMBOL_ENDPOINT_FAMILIES = [
+    "order_book_depth",
+    "open_interest",
+    "open_interest_history",
+    "funding_rate_history",
+    "long_short_ratios",
+    "taker_buy_sell_volume",
+    "klines",
+]
 
 
 class BinanceApiError(RuntimeError):
@@ -204,9 +216,7 @@ class BinanceMarketClient:
             "schema_version": "1.0.0",
             "ok": bool(symbols),
             "error_code": None,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": self.base_url,
             "symbol_count": len(symbols),
             "symbols": symbols,
@@ -254,9 +264,7 @@ class BinanceMarketClient:
             "schema_version": "1.0.0",
             "ok": True,
             "error_code": None,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": self.base_url,
             "symbol": normalized_symbol,
             "period": period,
@@ -294,9 +302,7 @@ class BinanceMarketClient:
                 "schema_version": "1.0.0",
                 "ok": True,
                 "error_code": None,
-                "real_orders": False,
-                "signed_requests": False,
-                "reads_api_keys": False,
+                **paper_watch_report_flags(),
                 "base_url": self.base_url,
                 "symbol": symbol,
                 "period": period,
@@ -362,22 +368,12 @@ class BinanceMarketClient:
             "schema_version": "1.0.0",
             "ok": ok,
             "error_code": None if ok else "public_market_bundle_batch_partial_failure",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": self.base_url,
             "symbols": requested_symbols,
             "period": period,
             "batchable_endpoint_families": snapshot.get("batchable_endpoint_families") or [],
-            "per_symbol_endpoint_families": [
-                "klines",
-                "order_book_depth",
-                "open_interest",
-                "open_interest_history",
-                "funding_rate_history",
-                "long_short_ratios",
-                "taker_buy_sell_volume",
-            ],
+            "per_symbol_endpoint_families": list(PER_SYMBOL_ENDPOINT_FAMILIES),
             "bundles": bundles,
             "market_snapshot": snapshot,
             "api_usage": self.api_usage(),
@@ -399,9 +395,7 @@ class BinanceMarketClient:
                 "schema_version": "1.0.0",
                 "ok": False,
                 "error_code": "public_last_price_failed",
-                "real_orders": False,
-                "signed_requests": False,
-                "reads_api_keys": False,
+                **paper_watch_report_flags(),
                 "symbol": normalized_symbol,
                 "last_price": None,
                 "error": f"{type(exc).__name__}: {exc}",
@@ -414,9 +408,7 @@ class BinanceMarketClient:
             "schema_version": "1.0.0",
             "ok": price is not None,
             "error_code": None if price is not None else "public_last_price_missing",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "symbol": normalized_symbol,
             "last_price": price,
             "raw": payload if isinstance(payload, dict) else {},
@@ -445,9 +437,7 @@ class BinanceMarketClient:
                 "schema_version": "1.0.0",
                 "ok": False,
                 "error_code": "public_last_prices_failed",
-                "real_orders": False,
-                "signed_requests": False,
-                "reads_api_keys": False,
+                **paper_watch_report_flags(),
                 "symbols": requested_symbols,
                 "prices": {},
                 "missing_symbols": requested_symbols,
@@ -461,9 +451,7 @@ class BinanceMarketClient:
             "schema_version": "1.0.0",
             "ok": not missing,
             "error_code": None if not missing else "public_last_prices_partial_missing",
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "symbols": target_symbols,
             "prices": prices,
             "missing_symbols": missing,
@@ -485,21 +473,11 @@ class BinanceMarketClient:
             "schema_version": "1.0.0",
             "ok": True,
             "error_code": None,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "base_url": self.base_url,
             "symbols": requested_symbols,
-            "batchable_endpoint_families": ["ticker_price", "24h_ticker", "book_ticker", "premium_index"],
-            "per_symbol_endpoint_families": [
-                "order_book_depth",
-                "open_interest",
-                "open_interest_history",
-                "funding_rate_history",
-                "long_short_ratios",
-                "taker_buy_sell_volume",
-                "klines",
-            ],
+            "batchable_endpoint_families": list(BATCHABLE_ENDPOINT_FAMILIES),
+            "per_symbol_endpoint_families": list(PER_SYMBOL_ENDPOINT_FAMILIES),
             "errors": {},
             "provenance": {
                 "source": "binance_usdm_public_market_snapshot",
@@ -539,11 +517,12 @@ class BinanceMarketClient:
         return f"{self.base_url}{clean_path}"
 
     def _record_attempt(self, path: str) -> None:
+        weight = _endpoint_weight(path)
         endpoint = _endpoint_usage(self._usage, path)
         endpoint["requests_attempted"] += 1
-        endpoint["request_weight"] += _endpoint_weight(path)
+        endpoint["request_weight"] += weight
         self._usage["requests_attempted"] += 1
-        self._usage["request_weight"] += _endpoint_weight(path)
+        self._usage["request_weight"] += weight
 
     def _record_success(self, path: str) -> None:
         endpoint = _endpoint_usage(self._usage, path)
@@ -646,11 +625,4 @@ def _copy_batch_row(bundle: dict[str, Any], snapshot: dict[str, Any], name: str,
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

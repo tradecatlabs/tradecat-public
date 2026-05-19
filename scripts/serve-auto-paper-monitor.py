@@ -6,6 +6,9 @@ import json
 import os
 import re
 import subprocess
+import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,6 +19,7 @@ from urllib.parse import urlparse
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_RUNTIME_DIR = ROOT_DIR / ".runtime" / "auto-paper"
 CREDENTIAL_NAME_RE = re.compile(r"BINANCE_.*(?:KEY|SECRET|SIGNATURE|LISTEN)", re.IGNORECASE)
+MONITOR_PAPER_REPORT_DETAIL_LIMIT = 5
 
 
 def utc_now() -> str:
@@ -34,6 +38,7 @@ def command_env(runtime_dir: Path) -> dict[str, str]:
 
 
 def run_json(command: list[str], *, runtime_dir: Path, timeout_seconds: float = 10.0) -> dict[str, Any]:
+    started_at = time.perf_counter()
     try:
         proc = subprocess.run(
             command,
@@ -48,33 +53,94 @@ def run_json(command: list[str], *, runtime_dir: Path, timeout_seconds: float = 
         return {
             "ok": False,
             "error_code": "monitor_command_timeout",
+            "_monitor_elapsed_ms": round((time.perf_counter() - started_at) * 1000, 3),
             "error": {"code": "monitor_command_timeout", "message": str(exc), "command": command},
         }
     except OSError as exc:
         return {
             "ok": False,
             "error_code": "monitor_command_failed",
+            "_monitor_elapsed_ms": round((time.perf_counter() - started_at) * 1000, 3),
             "error": {"code": "monitor_command_failed", "message": str(exc), "command": command},
         }
     try:
         payload = json.loads(proc.stdout)
         if isinstance(payload, dict):
             payload.setdefault("_monitor_returncode", proc.returncode)
+            payload.setdefault("_monitor_elapsed_ms", round((time.perf_counter() - started_at) * 1000, 3))
             return payload
     except json.JSONDecodeError:
         pass
     return {
         "ok": False,
         "error_code": "monitor_json_parse_failed",
+        "_monitor_elapsed_ms": round((time.perf_counter() - started_at) * 1000, 3),
         "error": {
             "code": "monitor_json_parse_failed",
             "message": "本地监控命令未返回 JSON object",
             "command": command,
             "returncode": proc.returncode,
+            "_monitor_elapsed_ms": round((time.perf_counter() - started_at) * 1000, 3),
             "stderr_tail": proc.stderr[-1000:],
             "stdout_tail": proc.stdout[-1000:],
         },
     }
+
+
+def run_snapshot_commands(runtime_dir: Path, *, ledger_path: Path, journal_path: Path) -> dict[str, dict[str, Any]]:
+    commands = {
+        "status": ["bash", "scripts/start-auto-paper.sh", "status", "--json"],
+        "health": ["bash", "scripts/start-auto-paper.sh", "health", "--json"],
+        "ops": ["bash", "scripts/start-auto-paper.sh", "ops-check", "--json"],
+        "paper": [
+            "bash",
+            "scripts/run-tradecat.sh",
+            "auto",
+            "paper-report",
+            "--ledger-path",
+            str(ledger_path),
+            "--detail-limit",
+            str(MONITOR_PAPER_REPORT_DETAIL_LIMIT),
+            "--json",
+        ],
+        "audit": [
+            "bash",
+            "scripts/run-tradecat.sh",
+            "auto",
+            "audit-journal",
+            "--journal-path",
+            str(journal_path),
+            "--json",
+        ],
+    }
+    results: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=len(commands)) as executor:
+        futures = {
+            executor.submit(run_json, command, runtime_dir=runtime_dir): (name, command)
+            for name, command in commands.items()
+        }
+        for future in as_completed(futures):
+            name, command = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception as exc:  # pragma: no cover - run_json normally converts failures to JSON.
+                results[name] = {
+                    "ok": False,
+                    "error_code": "monitor_command_failed",
+                    "error": {"code": "monitor_command_failed", "message": str(exc), "command": command},
+                }
+    return results
+
+
+def monitor_command_elapsed_ms(command_payloads: dict[str, dict[str, Any]]) -> dict[str, float]:
+    elapsed: dict[str, float] = {}
+    for name, payload in command_payloads.items():
+        value = payload.get("_monitor_elapsed_ms") if isinstance(payload, dict) else None
+        try:
+            elapsed[name] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return elapsed
 
 
 def read_tail(path: Path, *, lines: int = 40, max_bytes: int = 65536) -> list[str]:
@@ -89,26 +155,86 @@ def read_tail(path: Path, *, lines: int = 40, max_bytes: int = 65536) -> list[st
     return text.splitlines()[-lines:]
 
 
-def read_latest_jsonl(path: Path, *, max_bytes: int = 262144) -> dict[str, Any]:
+def _read_latest_jsonl_matching(
+    path: Path,
+    *,
+    max_bytes: int,
+    predicate: Callable[[dict[str, Any]], bool],
+    max_scan_bytes: int = 4194304,
+) -> dict[str, Any]:
     try:
         with path.open("rb") as handle:
             handle.seek(0, os.SEEK_END)
             size = handle.tell()
-            handle.seek(max(0, size - max_bytes), os.SEEK_SET)
-            text = handle.read().decode("utf-8", errors="replace")
+            window = max(1, min(size, max_bytes))
+            scan_limit = max(window, max_scan_bytes)
+            while True:
+                start = max(0, size - window)
+                handle.seek(start, os.SEEK_SET)
+                text = handle.read().decode("utf-8", errors="replace")
+                lines = text.splitlines()
+                if start > 0 and lines:
+                    lines = lines[1:]
+                for line in reversed(lines):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(payload, dict) and predicate(payload):
+                        return payload
+                if start == 0 or window >= scan_limit:
+                    return {}
+                window = min(size, scan_limit, max(window * 2, window + 1))
     except OSError:
         return {}
-    for line in reversed(text.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            return payload
-    return {}
+
+
+def read_latest_jsonl(path: Path, *, max_bytes: int = 262144) -> dict[str, Any]:
+    return _read_latest_jsonl_matching(path, max_bytes=max_bytes, predicate=lambda payload: True)
+
+
+def read_latest_cycle_pair(
+    path: Path, *, max_bytes: int = 1048576, max_scan_bytes: int = 4194304
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    latest_cycle: dict[str, Any] = {}
+    latest_decision_cycle: dict[str, Any] = {}
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            window = max(1, min(size, max_bytes))
+            scan_limit = max(window, max_scan_bytes)
+            while True:
+                start = max(0, size - window)
+                handle.seek(start, os.SEEK_SET)
+                text = handle.read().decode("utf-8", errors="replace")
+                lines = text.splitlines()
+                if start > 0 and lines:
+                    lines = lines[1:]
+                for line in reversed(lines):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(payload, dict):
+                        continue
+                    if not latest_cycle:
+                        latest_cycle = payload
+                    if not latest_decision_cycle and isinstance(payload.get("pipeline_report"), dict):
+                        latest_decision_cycle = payload
+                    if latest_cycle and latest_decision_cycle:
+                        return latest_cycle, latest_decision_cycle
+                if start == 0 or window >= scan_limit:
+                    return latest_cycle, latest_decision_cycle
+                window = min(size, scan_limit, max(window * 2, window + 1))
+    except OSError:
+        return {}, {}
 
 
 def read_json_file(path: Path) -> dict[str, Any]:
@@ -120,25 +246,11 @@ def read_json_file(path: Path) -> dict[str, Any]:
 
 
 def read_latest_decision_jsonl(path: Path, *, max_bytes: int = 1048576) -> dict[str, Any]:
-    try:
-        with path.open("rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            size = handle.tell()
-            handle.seek(max(0, size - max_bytes), os.SEEK_SET)
-            text = handle.read().decode("utf-8", errors="replace")
-    except OSError:
-        return {}
-    for line in reversed(text.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict) and isinstance(payload.get("pipeline_report"), dict):
-            return payload
-    return {}
+    return _read_latest_jsonl_matching(
+        path,
+        max_bytes=max_bytes,
+        predicate=lambda payload: isinstance(payload.get("pipeline_report"), dict),
+    )
 
 
 def _ops_check_ok(ops: dict[str, Any], check_id: str) -> bool:
@@ -168,6 +280,7 @@ def build_dependency_health(
     ledger = health.get("ledger") if isinstance(health.get("ledger"), dict) else {}
     audit_journal = health.get("audit_journal") if isinstance(health.get("audit_journal"), dict) else audit
     safety = status.get("safety") if isinstance(status.get("safety"), dict) else {}
+    process_health = str(status.get("process_health") or status.get("health") or "-")
     runtime_ok = bool(status.get("running")) and bool(heartbeat.get("ok")) and not bool(heartbeat.get("stale"))
     no_new_signal = (
         service_state.get("last_error") == "no_events_available" or archive.get("last_action") == "SKIPPED_NO_EVENT"
@@ -229,7 +342,7 @@ def build_dependency_health(
             "operator_supervisor",
             "Hermes/operator 运行看护",
             "ok" if runtime_ok else "error",
-            f"auto-paper running={bool(status.get('running'))}; heartbeat_stale={bool(heartbeat.get('stale'))}",
+            f"auto-paper running={bool(status.get('running'))}; process_health={process_health}; heartbeat_stale={bool(heartbeat.get('stale'))}",
         ),
         _node(
             "skill_package",
@@ -363,6 +476,366 @@ def build_risk_state(health: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _compact_event_for_monitor(event: Any) -> dict[str, Any]:
+    item = _as_dict(event)
+    if not item:
+        return {}
+    keys = (
+        "schema",
+        "schema_version",
+        "event_id",
+        "source_dataset_key",
+        "source_dataset_keys",
+        "source_time_bj",
+        "row_index",
+        "symbol",
+        "raw_symbol",
+        "period",
+        "signal_type",
+        "content",
+        "source_values",
+        "related_anomaly_panel",
+        "provenance",
+    )
+    return {key: item.get(key) for key in keys if item.get(key) not in (None, "", [], {})}
+
+
+def _compact_events_for_monitor(events: Any) -> dict[str, Any]:
+    payload = _as_dict(events)
+    rows = payload.get("events") if isinstance(payload.get("events"), list) else []
+    summary_keys = (
+        "schema",
+        "schema_version",
+        "ok",
+        "error_code",
+        "source_dataset_key",
+        "count",
+        "duplicate_count",
+        "rejected_count",
+    )
+    compact = {key: payload.get(key) for key in summary_keys if payload.get(key) not in (None, "", [], {})}
+    compact["events_count"] = len(rows)
+    if rows:
+        compact["sample_events"] = [_compact_event_for_monitor(item) for item in rows[:10]]
+        compact["events_truncated"] = len(rows) > 10
+    error = payload.get("error")
+    if isinstance(error, dict):
+        compact["error"] = {key: error.get(key) for key in ("code", "status", "message") if error.get(key)}
+    return compact
+
+
+def _select_nonempty(payload: Any, keys: tuple[str, ...]) -> dict[str, Any]:
+    item = _as_dict(payload)
+    return {key: item.get(key) for key in keys if item.get(key) not in (None, "", [], {})}
+
+
+def _compact_pipeline_for_monitor(pipeline: Any) -> dict[str, Any]:
+    report = _as_dict(pipeline)
+    if not report:
+        return {}
+    compact = _select_nonempty(
+        report,
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "error_code",
+            "generated_at",
+            "mode",
+            "selected_symbol",
+            "research_cycle_run_id",
+            "events_count",
+            "effective_notional_usdt",
+            "requested_margin_usdt",
+            "paper_leverage",
+            "paper_margin_budget_usdt",
+            "real_orders",
+            "signed_requests",
+            "reads_api_keys",
+        ),
+    )
+    compact["payload_compacted"] = True
+    compact.update(_monitor_report_flags())
+    compact["latest_event"] = _compact_event_for_monitor(report.get("latest_event"))
+    compact["signal_flow_events"] = _compact_signal_flow_for_monitor(report.get("signal_flow_events"))
+    compact["anomaly_symbols"] = _compact_anomaly_symbols_for_monitor(report.get("anomaly_symbols"))
+    compact["agent_trade_thesis"] = _select_nonempty(
+        report.get("agent_trade_thesis"),
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "symbol",
+            "direction",
+            "confidence",
+            "rationale",
+            "risk_notes",
+            "limitations",
+            "paper_intent_present",
+            "exit_plan_present",
+            "mode",
+        ),
+    )
+    compact["signal"] = _select_nonempty(
+        report.get("signal"),
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "symbol",
+            "direction",
+            "score",
+            "tradable_candidate",
+            "positive_factors",
+            "negative_factors",
+            "do_not_trade_reasons",
+            "limitations",
+        ),
+    )
+    compact["strategy_intent"] = _select_nonempty(
+        report.get("strategy_intent"),
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "symbol",
+            "direction",
+            "action",
+            "entry_type",
+            "entry_price",
+            "invalidation_price",
+            "take_profit_price",
+            "max_holding_minutes",
+            "exit_plan_source",
+            "exit_rationale",
+            "strategy_tags",
+            "limitations",
+        ),
+    )
+    compact["risk_decision"] = _select_nonempty(
+        report.get("risk_decision"),
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "symbol",
+            "direction",
+            "decision",
+            "reasons",
+            "score",
+            "paper_leverage",
+            "constraints",
+            "limitations",
+        ),
+    )
+    compact["paper_sizing"] = _select_nonempty(
+        report.get("paper_sizing"),
+        ("source", "requested_margin_usdt", "requested_notional_usdt", "paper_leverage", "notional_usdt"),
+    )
+    compact["paper_execution"] = _select_nonempty(
+        report.get("paper_execution"),
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "symbol",
+            "side",
+            "status",
+            "notional_usdt",
+            "margin_usdt",
+            "quantity",
+            "paper_execution_id",
+            "reasons",
+            "limitations",
+        ),
+    )
+    compact["paper_execution_cost"] = _select_nonempty(
+        report.get("paper_execution_cost"),
+        ("fee_bps", "slippage_bps", "fee_model", "slippage_model", "estimated_fee_usdt"),
+    )
+    compact["paper_ledger"] = _select_nonempty(
+        report.get("paper_ledger"),
+        ("ok", "path", "open_positions_count", "closed_positions_count", "fills_count", "orders_count"),
+    )
+    compact["provenance"] = _select_nonempty(report.get("provenance"), ("source", "generated_at", "runtime_dir"))
+    compact["safety"] = _monitor_safety_boundary()
+    compact["raw_error_count"] = len(report.get("raw_errors")) if isinstance(report.get("raw_errors"), list) else 0
+    return {key: value for key, value in compact.items() if value not in (None, "", [], {})}
+
+
+def _compact_signal_flow_for_monitor(value: Any) -> dict[str, Any]:
+    payload = _as_dict(value)
+    if not payload:
+        return {}
+    compact = _select_nonempty(
+        payload,
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "error_code",
+            "source_dataset_key",
+            "count",
+            "duplicate_count",
+            "rejected_count",
+        ),
+    )
+    first_10 = payload.get("first_10") if isinstance(payload.get("first_10"), list) else []
+    if first_10:
+        compact["first_10"] = [_compact_event_for_monitor(item) for item in first_10[:10]]
+    error = payload.get("error")
+    if isinstance(error, dict):
+        compact["error"] = {key: error.get(key) for key in ("code", "status", "message") if error.get(key)}
+    return compact
+
+
+def _compact_anomaly_symbols_for_monitor(value: Any) -> dict[str, Any]:
+    payload = _as_dict(value)
+    if not payload:
+        return {}
+    compact = _select_nonempty(
+        payload,
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "error_code",
+            "source_dataset_key",
+            "count",
+            "row_count",
+            "duplicate_count",
+            "rejected_count",
+            "sections",
+        ),
+    )
+    for key in ("first_10", "first_10_rows"):
+        rows = payload.get(key) if isinstance(payload.get(key), list) else []
+        if rows:
+            compact[key] = [_compact_event_for_monitor(item) for item in rows[:10]]
+    error = payload.get("error")
+    if isinstance(error, dict):
+        compact["error"] = {key: error.get(key) for key in ("code", "status", "message") if error.get(key)}
+    return compact
+
+
+def compact_cycle_for_monitor(cycle: dict[str, Any]) -> dict[str, Any]:
+    if not cycle:
+        return {}
+    compact = _select_nonempty(
+        cycle,
+        (
+            "schema",
+            "schema_version",
+            "ok",
+            "error_code",
+            "generated_at",
+            "action",
+            "reason",
+            "event_age_seconds",
+            "real_orders",
+            "signed_requests",
+            "reads_api_keys",
+        ),
+    )
+    compact["payload_compacted"] = True
+    compact["latest_event"] = _compact_event_for_monitor(cycle.get("latest_event"))
+    compact["events"] = _compact_events_for_monitor(cycle.get("events"))
+    compact["input_change"] = _as_dict(cycle.get("input_change"))
+    compact["pipeline_report"] = _compact_pipeline_for_monitor(cycle.get("pipeline_report"))
+    compact["paper_ledger"] = _select_nonempty(
+        cycle.get("paper_ledger"),
+        ("ok", "path", "open_positions_count", "closed_positions_count", "fills_count", "orders_count"),
+    )
+    compact["audit_journal"] = _select_nonempty(
+        cycle.get("audit_journal"), ("ok", "path", "chain_valid", "record_count")
+    )
+    compact["state"] = _select_nonempty(cycle.get("state"), ("ok", "path", "cycles_attempted", "last_attempt_at"))
+    compact["source_snapshot"] = _select_nonempty(
+        cycle.get("source_snapshot"),
+        ("hash", "row_count", "event_count", "signal_flow_count", "anomaly_panel_count"),
+    )
+    compact["provenance"] = _select_nonempty(cycle.get("provenance"), ("source", "generated_at", "runtime_dir"))
+    compact.update(_monitor_report_flags())
+    compact["safety"] = _monitor_safety_boundary()
+    compact["raw_error_count"] = len(cycle.get("raw_errors")) if isinstance(cycle.get("raw_errors"), list) else 0
+    return {key: value for key, value in compact.items() if value not in (None, "", [], {})}
+
+
+def compact_strategy_review_for_monitor(review: dict[str, Any]) -> dict[str, Any]:
+    if not review:
+        return {}
+    metrics = _as_dict(review.get("metrics"))
+    compact_metrics: dict[str, Any] = {}
+    if isinstance(metrics.get("overall"), dict):
+        compact_metrics["overall"] = metrics["overall"]
+    for key in ("by_symbol", "by_signal_type", "by_side"):
+        value = metrics.get(key)
+        if isinstance(value, dict):
+            compact_metrics[f"{key}_count"] = len(value)
+    return {
+        "schema": review.get("schema"),
+        "schema_version": review.get("schema_version"),
+        "ok": review.get("ok"),
+        "error_code": review.get("error_code"),
+        "generated_at": review.get("generated_at"),
+        "review_status": review.get("review_status"),
+        "payload_compacted": True,
+        "closed_positions_count": review.get("closed_positions_count"),
+        "open_positions_count": review.get("open_positions_count"),
+        "metrics": compact_metrics,
+        "thresholds": _as_dict(review.get("thresholds")),
+        "strategy_state": _as_dict(review.get("strategy_state")),
+        "recommendation_count": len(review.get("recommendations"))
+        if isinstance(review.get("recommendations"), list)
+        else 0,
+        "recommendations": review.get("recommendations")[:10]
+        if isinstance(review.get("recommendations"), list)
+        else [],
+        "archive_error_count": len(review.get("archive_errors"))
+        if isinstance(review.get("archive_errors"), list)
+        else 0,
+        "provenance": _select_nonempty(review.get("provenance"), ("source", "generated_at", "runtime_dir")),
+        "safety": _monitor_safety_boundary(),
+        "limitations": review.get("limitations") if isinstance(review.get("limitations"), list) else [],
+    }
+
+
+def compact_paper_report_for_monitor(paper: dict[str, Any]) -> dict[str, Any]:
+    if not paper:
+        return {}
+    account_state = _as_dict(paper.get("paper_account_state"))
+    open_positions = paper.get("open_positions") if isinstance(paper.get("open_positions"), dict) else {}
+    closed_positions = paper.get("closed_positions") if isinstance(paper.get("closed_positions"), list) else []
+    recent_orders = paper.get("recent_paper_orders") if isinstance(paper.get("recent_paper_orders"), list) else []
+    recent_fills = paper.get("recent_fills") if isinstance(paper.get("recent_fills"), list) else []
+    equity_curve_tail = paper.get("equity_curve_tail") if isinstance(paper.get("equity_curve_tail"), list) else []
+    summary = _as_dict(paper.get("summary"))
+    return {
+        "schema": paper.get("schema"),
+        "schema_version": paper.get("schema_version"),
+        "ok": paper.get("ok"),
+        "error_code": paper.get("error_code"),
+        "ledger_path": paper.get("ledger_path"),
+        "payload_compacted": True,
+        "detail_limit": paper.get("detail_limit"),
+        "detail_truncated": paper.get("detail_truncated"),
+        "summary": summary,
+        "paper_account_state": {
+            "payload_compacted": True,
+            "summary": _as_dict(account_state.get("summary")) or summary,
+        },
+        "open_positions_count": len(open_positions),
+        "closed_positions_sample_count": len(closed_positions),
+        "recent_paper_orders_count": len(recent_orders),
+        "recent_fills_count": len(recent_fills),
+        "equity_curve_tail_count": len(equity_curve_tail),
+        "provenance": _select_nonempty(paper.get("provenance"), ("source", "generated_at", "ledger_path")),
+        "safety": _monitor_safety_boundary(),
+        "_monitor_returncode": paper.get("_monitor_returncode"),
+        "_monitor_elapsed_ms": paper.get("_monitor_elapsed_ms"),
+    }
+
+
 def build_decision_text(latest_cycle: dict[str, Any]) -> dict[str, Any]:
     pipeline = latest_cycle.get("pipeline_report") if isinstance(latest_cycle.get("pipeline_report"), dict) else {}
     if not pipeline:
@@ -389,7 +862,6 @@ def build_decision_text(latest_cycle: dict[str, Any]) -> dict[str, Any]:
     sizing = _as_dict(pipeline.get("paper_sizing"))
     explanation = _as_dict(strategy.get("explanation"))
     metrics = _as_dict(signal.get("metrics_used") or explanation.get("metrics_used"))
-    safety = _as_dict(pipeline.get("safety")) or _monitor_safety_boundary()
     sections = [
         _decision_section(
             "输入信号",
@@ -514,14 +986,7 @@ def build_decision_text(latest_cycle: dict[str, Any]) -> dict[str, Any]:
             "paper_execution_id": str(execution.get("paper_execution_id") or ""),
             "event_id": str(event.get("event_id") or ""),
         },
-        "safety": {
-            **_monitor_safety_boundary(),
-            **safety,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
-            "binance_account_state": False,
-        },
+        "safety": _monitor_safety_boundary(),
         "limitations": ["dashboard shows auditable decision artifacts, not hidden model chain-of-thought"],
     }
 
@@ -533,37 +998,16 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
     archive_path = runtime_dir / "cycles.jsonl"
     strategy_state_path = runtime_dir / "strategy_state.json"
     strategy_review_report_path = runtime_dir / "strategy-review-latest.json"
-    latest_cycle = read_latest_jsonl(archive_path)
-    latest_decision_cycle = read_latest_decision_jsonl(archive_path)
+    latest_cycle, latest_decision_cycle = read_latest_cycle_pair(archive_path)
     strategy_state = read_json_file(strategy_state_path)
     strategy_review = read_json_file(strategy_review_report_path)
-    status = run_json(["bash", "scripts/start-auto-paper.sh", "status", "--json"], runtime_dir=runtime_dir)
-    health = run_json(["bash", "scripts/start-auto-paper.sh", "health", "--json"], runtime_dir=runtime_dir)
-    ops = run_json(["bash", "scripts/start-auto-paper.sh", "ops-check", "--json"], runtime_dir=runtime_dir)
-    paper = run_json(
-        [
-            "bash",
-            "scripts/run-tradecat.sh",
-            "auto",
-            "paper-report",
-            "--ledger-path",
-            str(ledger_path),
-            "--json",
-        ],
-        runtime_dir=runtime_dir,
-    )
-    audit = run_json(
-        [
-            "bash",
-            "scripts/run-tradecat.sh",
-            "auto",
-            "audit-journal",
-            "--journal-path",
-            str(journal_path),
-            "--json",
-        ],
-        runtime_dir=runtime_dir,
-    )
+    command_payloads = run_snapshot_commands(runtime_dir, ledger_path=ledger_path, journal_path=journal_path)
+    status = command_payloads.get("status") or {}
+    health = command_payloads.get("health") or {}
+    ops = command_payloads.get("ops") or {}
+    paper = command_payloads.get("paper") or {}
+    audit = command_payloads.get("audit") or {}
+    decision_source = latest_decision_cycle or latest_cycle
     return {
         "schema": "tradecat_auto.paper_web_monitor_snapshot.v1",
         "schema_version": "1.0.0",
@@ -581,14 +1025,15 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
         "status": status,
         "health": health,
         "ops": ops,
-        "paper": paper,
+        "paper": compact_paper_report_for_monitor(paper),
         "audit": audit,
-        "latest_cycle": latest_cycle,
-        "latest_decision_cycle": latest_decision_cycle,
+        "latest_cycle": compact_cycle_for_monitor(latest_cycle),
+        "latest_decision_cycle": compact_cycle_for_monitor(latest_decision_cycle),
         "strategy_state": strategy_state,
-        "strategy_review": strategy_review,
+        "strategy_review": compact_strategy_review_for_monitor(strategy_review),
+        "monitor_command_elapsed_ms": monitor_command_elapsed_ms(command_payloads),
         "risk_state": build_risk_state(health),
-        "decision_text": build_decision_text(latest_decision_cycle or latest_cycle),
+        "decision_text": build_decision_text(decision_source),
         "dependency_health": build_dependency_health(
             status=status,
             health=health,
@@ -611,11 +1056,21 @@ def build_snapshot(runtime_dir: Path) -> dict[str, Any]:
 def _monitor_safety_boundary() -> dict[str, bool]:
     return {
         "public_readonly_market_data": True,
+        "public_readonly": True,
         "paper_or_watch_only": True,
         "real_orders": False,
         "signed_requests": False,
         "reads_api_keys": False,
         "binance_account_state": False,
+    }
+
+
+def _monitor_report_flags() -> dict[str, bool]:
+    safety = _monitor_safety_boundary()
+    return {
+        "real_orders": safety["real_orders"],
+        "signed_requests": safety["signed_requests"],
+        "reads_api_keys": safety["reads_api_keys"],
     }
 
 
@@ -940,6 +1395,8 @@ const TEXT = {
   stopped: "未运行",
   healthy: "健康",
   degraded: "降级",
+  running_pid_verified: "进程已验证",
+  spawned_unverified: "已拉起待验证",
   failed: "失败",
   ok: "正常",
   warn: "警告",
@@ -972,7 +1429,13 @@ function statusClass(status) {
   if (status === "warn" || status === "unknown") return "pill warn";
   return "pill bad";
 }
-function fixed(v, digits=4) { return Number.isFinite(v) ? v.toFixed(digits) : "-"; }
+function fixed(v, digits=4) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(digits) : "-";
+}
+function elapsedSummary(values) {
+  return Object.entries(values || {}).map(([key, value]) => `${key}=${fixed(value, 1)}ms`).join(" ") || "-";
+}
 function row(label, value) { return `<div class="row"><span class="label">${escapeHtml(label)}</span><span class="value">${escapeHtml(value)}</span></div>`; }
 function dependencyNode(item) {
   const status = item && item.status || "unknown";
@@ -1001,7 +1464,7 @@ async function refresh() {
   const decision = data.decision_text || {};
   $("subtitle").textContent = `生成时间=${safe(data.generated_at)} 运行目录=${safe(data.runtime && data.runtime.runtime_dir)}`;
   $("service").innerHTML = `<span class="${cls(status.running)}">${status.running ? TEXT.running : TEXT.stopped}</span>`;
-  $("pid").textContent = `进程=${safe(status.pid)} 事件=${statusText(status.event)}`;
+  $("pid").textContent = `进程=${safe(status.pid)} 事件=${statusText(status.event)} 进程健康=${statusText(status.process_health || status.health)}`;
   $("health").innerHTML = `<span class="${cls(health.ok, heartbeat.stale)}">${statusText(health.status)}</span>`;
   $("heartbeat").textContent = `心跳=${statusText(heartbeat.status)} 年龄=${fixed(heartbeat.age_seconds, 1)}秒 上限=${fixed(heartbeat.max_age_seconds, 1)}秒`;
   $("open").textContent = safe(ledger.open_positions_count);
@@ -1049,6 +1512,7 @@ async function refresh() {
   if (status.paper_autonomy_profile_configured) {
     opsRows.push(row("paper autonomy profile", status.paper_autonomy_profile_defaulted ? "默认 runtime profile" : "显式配置"));
   }
+  opsRows.push(row("监控命令耗时", elapsedSummary(data.monitor_command_elapsed_ms)));
   $("ops").innerHTML = opsRows.join("");
   $("dependencyHealth").innerHTML = (data.dependency_health || []).map(dependencyNode).join("") || row("状态", "无依赖链数据");
   $("decisionSummary").innerHTML = [

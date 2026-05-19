@@ -37,11 +37,14 @@
   },
   "safety": {
     "sanitized": true,
+    "public_readonly_market_data": true,
+    "public_readonly": true,
     "paper_or_watch_only": true,
     "real_orders": false,
     "signed_requests": false,
     "reads_api_keys": false,
-    "contains_credentials": false
+    "contains_credentials": false,
+    "binance_account_state": false
   },
   "hard_boundaries": {
     "not_a_real_order": true,

@@ -9,6 +9,7 @@ from tradecat_auto.paper_autonomy import synthesize_agent_trade_thesis
 from tradecat_auto.paper_broker import open_paper_position
 from tradecat_auto.paper_costs import build_public_taker_cost_model
 from tradecat_auto.risk import default_risk_policy, evaluate_risk
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
 from tradecat_auto.signals import build_signal_score
 from tradecat_auto.strategies import build_strategy_intent
 
@@ -42,9 +43,7 @@ def build_paper_pipeline_report(
             "schema": "tradecat_auto.run_once_report.v1",
             "schema_version": "1.0.0",
             "ok": False,
-            "real_orders": False,
-            "signed_requests": False,
-            "reads_api_keys": False,
+            **paper_watch_report_flags(),
             "mode": mode,
             "selected_symbol": selected,
             "error_code": "selected_symbol_not_found_in_anomaly_symbols",
@@ -166,9 +165,7 @@ def build_paper_pipeline_report(
         "schema": "tradecat_auto.run_once_report.v1",
         "schema_version": "1.0.0",
         "ok": report_ok,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "mode": mode,
         "generated_at": _now_iso(),
         "selected_symbol": selected,
@@ -252,6 +249,11 @@ def resolve_paper_sizing(
         "budget_exceeded": budget_exceeded,
         "notional_semantics": "effective_notional_usdt; margin_budget_usdt is not an order amount",
         "error_code": None if complete or not sizing_required else "agent_sizing_required",
+        "provenance": {
+            "source": "tradecat_auto.pipeline.paper_sizing_decision",
+            "sizing_source": str(sizing_source or "agent_supplied_or_explicit"),
+        },
+        "safety": _safety_boundary(),
     }
 
 
@@ -383,9 +385,7 @@ def _apply_agent_signal_override(signal: dict[str, Any], agent_trade_thesis: dic
         "ok": True,
         "source": "agent_trade_thesis.paper_intent",
         "reason": "direction_conflict overridden by explicit Agent paper-only authorization",
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
+        **paper_watch_report_flags(),
         "safety": _safety_boundary(),
     }
     return updated
@@ -437,6 +437,7 @@ def _research_cycle_run_id(agent_trade_thesis: dict[str, Any] | None) -> str:
 def _agent_trade_thesis_summary(agent_trade_thesis: dict[str, Any] | None) -> dict[str, Any]:
     thesis = agent_trade_thesis if isinstance(agent_trade_thesis, dict) else {}
     provenance = thesis.get("provenance") if isinstance(thesis.get("provenance"), dict) else {}
+    safety = thesis.get("safety") if isinstance(thesis.get("safety"), dict) else _safety_boundary()
     return {
         "schema": str(thesis.get("schema") or ""),
         "schema_version": str(thesis.get("schema_version") or ""),
@@ -457,6 +458,7 @@ def _agent_trade_thesis_summary(agent_trade_thesis: dict[str, Any] | None) -> di
         ),
         "paper_autonomy_profile": bool(provenance.get("paper_autonomy_profile")),
         "provenance": provenance,
+        "safety": safety,
     }
 
 
@@ -509,11 +511,4 @@ def _report_provenance(selected_symbol: str, market_bundle: dict[str, Any]) -> d
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

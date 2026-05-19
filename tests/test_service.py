@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from tradecat_auto import service as service_module
 from tradecat_auto.audit_journal import journal_summary
 from tradecat_auto.paper_ledger import default_paper_ledger, save_paper_ledger
 from tradecat_auto.production_control import build_daily_report, build_health_report
-from tradecat_auto.service import run_service_cycle
+from tradecat_auto.safety_boundary import paper_watch_report_flags, paper_watch_safety_boundary
+from tradecat_auto.service import run_service_cycle, save_service_state
+
+
+def assert_public_readonly_cycle_flags(testcase: unittest.TestCase, payload: dict) -> None:
+    for key, expected in paper_watch_report_flags().items():
+        testcase.assertIs(payload[key], expected)
 
 
 class FakeClient:
@@ -207,6 +216,7 @@ def write_paper_autonomy_profile(root: str | Path) -> Path:
                 "provenance": {"source": "test_service"},
                 "safety": {
                     "public_readonly_market_data": True,
+                    "public_readonly": True,
                     "paper_or_watch_only": True,
                     "real_orders": False,
                     "signed_requests": False,
@@ -241,6 +251,7 @@ def write_strategy_state(root: str | Path, *, blocked_symbols: list[str] | None 
                 "provenance": {"source": "test_service"},
                 "safety": {
                     "public_readonly_market_data": True,
+                    "public_readonly": True,
                     "paper_or_watch_only": True,
                     "real_orders": False,
                     "signed_requests": False,
@@ -255,6 +266,68 @@ def write_strategy_state(root: str | Path, *, blocked_symbols: list[str] | None 
 
 
 class ServiceTests(unittest.TestCase):
+    def test_save_service_state_uses_adjacent_lock_and_pid_temp_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "service_state.json"
+
+            save_service_state(state_path, {"cycles_attempted": 1})
+
+            self.assertTrue(state_path.exists())
+            self.assertTrue(Path(tmp, "service_state.json.lock").exists())
+            self.assertEqual(list(Path(tmp).glob("service_state.json.*.tmp")), [])
+
+    def test_save_service_state_concurrent_writes_do_not_leave_tmp_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "service_state.json"
+            barrier = threading.Barrier(8)
+            errors: list[BaseException] = []
+
+            def worker(index: int) -> None:
+                try:
+                    barrier.wait()
+                    save_service_state(state_path, {"cycles_attempted": index})
+                except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=worker, args=(index,)) for index in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=2.0)
+
+            self.assertEqual(errors, [])
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["schema"], "tradecat_auto.service_state.v1")
+            self.assertIn(state["cycles_attempted"], list(range(8)))
+            self.assertEqual(list(Path(tmp).glob("service_state.json.*.tmp")), [])
+
+    def test_archive_cycle_serializes_concurrent_appends(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "cycles.jsonl"
+            barrier = threading.Barrier(8)
+            errors: list[BaseException] = []
+
+            def worker(index: int) -> None:
+                try:
+                    barrier.wait()
+                    service_module._archive_cycle(
+                        SimpleNamespace(archive_path=str(archive_path)),
+                        {"schema": "tradecat_auto.service_cycle.v1", "index": index},
+                    )
+                except BaseException as exc:  # pragma: no cover - surfaced by assertion below
+                    errors.append(exc)
+
+            threads = [threading.Thread(target=worker, args=(index,)) for index in range(8)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=2.0)
+
+            self.assertEqual(errors, [])
+            rows = [json.loads(line) for line in archive_path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual({row["index"] for row in rows}, set(range(8)))
+            self.assertTrue(Path(tmp, "cycles.jsonl.lock").exists())
+
     def test_run_service_cycle_processes_new_event_and_persists_seen_id(self) -> None:
         event = {
             "event_id": "evt-1",
@@ -273,21 +346,50 @@ class ServiceTests(unittest.TestCase):
 
             self.assertEqual(report["schema"], "tradecat_auto.service_cycle.v1")
             self.assertEqual(report["schema_version"], "1.0.0")
-            self.assertFalse(report["real_orders"])
-            self.assertFalse(report["signed_requests"])
-            self.assertFalse(report["reads_api_keys"])
+            assert_public_readonly_cycle_flags(self, report)
             self.assertEqual(report["error_code"], "agent_sizing_required")
             self.assertEqual(report["provenance"]["source"], "tradecat_auto.service.run_service_cycle")
-            self.assertFalse(report["safety"]["binance_account_state"])
+            self.assertEqual(report["safety"], paper_watch_safety_boundary())
             self.assertEqual(report["action"], "PROCESSED")
             self.assertEqual(report["pipeline_report"]["selected_symbol"], "IRYSUSDT")
             self.assertEqual(report["pipeline_report"]["risk_decision"]["decision"], "REJECT")
             self.assertIn("agent_sizing_required", report["pipeline_report"]["risk_decision"]["reasons"])
             self.assertEqual(report["pipeline_report"]["paper_execution"]["status"], "REJECTED")
             self.assertTrue(state_path.exists())
+            self.assertTrue(Path(tmp, "service_state.json.run.lock").exists())
             self.assertEqual(report["latest_event"]["source_dataset_key"], "anomaly_panel")
             self.assertEqual(report["latest_event"]["symbol"], "IRYSUSDT")
             self.assertIn(report["latest_event"]["event_id"], state_path.read_text(encoding="utf-8"))
+
+    def test_run_service_cycle_fails_closed_when_service_state_is_corrupt(self) -> None:
+        event = {
+            "event_id": "evt-corrupt-state",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "IRYS 异动",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "service_state.json"
+            state_path.write_text("{not-json", encoding="utf-8")
+            client = FakeClient()
+            source = FakeSource(event)
+
+            report = run_service_cycle(
+                make_args(),
+                state_path=state_path,
+                client=client,
+                source=source,
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "ERROR")
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["error_code"], "service_state_load_failed")
+            self.assertEqual(report["error"]["kind"], "local_runtime_state")
+            self.assertEqual(client.universe_calls, 0)
+            self.assertEqual(source.event_calls, 0)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["state_trust_level"], "recovered_untrusted")
+            self.assertEqual(state["last_error"]["code"], "service_state_load_failed")
 
     def test_run_service_cycle_prefers_signal_flow_as_input_event(self) -> None:
         event = {
@@ -310,6 +412,19 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(report["latest_event"]["period"], "5分钟")
             self.assertEqual(report["pipeline_report"]["latest_event"]["source_dataset_key"], "signal_flow")
             self.assertEqual(report["pipeline_report"]["enrichment"]["source_layers"][0], "tradecat_signal_flow")
+            self.assertIsNone(report["source_snapshot"]["error_code"])
+            self.assertEqual(report["source_snapshot"]["provenance"]["source"], "tradecat_auto.service.source_snapshot")
+            self.assertFalse(report["source_snapshot"]["safety"]["real_orders"])
+            self.assertIsNone(report["input_change"]["error_code"])
+            self.assertEqual(
+                report["input_change"]["provenance"]["source"], "tradecat_auto.service.source_snapshot_delta"
+            )
+            self.assertFalse(report["input_change"]["safety"]["signed_requests"])
+            self.assertFalse(report["pipeline_report"]["signal_flow_events"]["safety"]["real_orders"])
+            self.assertFalse(report["pipeline_report"]["signal_flow_events"]["safety"]["signed_requests"])
+            self.assertIn("provenance", report["pipeline_report"]["signal_flow_events"])
+            self.assertFalse(report["pipeline_report"]["anomaly_symbols"]["safety"]["reads_api_keys"])
+            self.assertIn("provenance", report["pipeline_report"]["anomaly_symbols"])
             self.assertIn("现持仓额", report["latest_event"]["related_anomaly_panel"]["source_values"])
 
     def test_run_service_cycle_skips_duplicate_event_before_binance_market_calls(self) -> None:
@@ -716,9 +831,66 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(report["error_code"], "remote_http_status")
             self.assertEqual(report["reason"], "remote_http_status")
             self.assertEqual(report["events"]["error"]["status"], 404)
+            self.assertFalse(report["signal_flow_events"]["safety"]["real_orders"])
+            self.assertFalse(report["anomaly_symbols"]["safety"]["signed_requests"])
             self.assertEqual(client.bundle_calls, 0)
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(state["last_error"], "remote_http_status")
+
+    def test_run_service_cycle_does_not_trust_source_payload_safety_flags(self) -> None:
+        class UnsafeSource:
+            def fetch_signal_flow_events(self, *, tradable_symbols, limit):
+                return {
+                    "schema": "tradecat_auto.signal_flow_events.v1",
+                    "schema_version": "1.0.0",
+                    "ok": False,
+                    "error_code": "no_signal_flow_available",
+                    "events": [],
+                    "rejected": [],
+                    "safety": {
+                        "public_readonly_market_data": False,
+                        "public_readonly": False,
+                        "paper_or_watch_only": False,
+                        "real_orders": True,
+                        "signed_requests": True,
+                        "reads_api_keys": True,
+                        "binance_account_state": True,
+                    },
+                }
+
+            def fetch_anomaly_symbols(self, *, tradable_symbols, limit):
+                return {
+                    "schema": "tradecat_auto.anomaly_symbols.v1",
+                    "schema_version": "1.0.0",
+                    "ok": True,
+                    "symbols": [],
+                    "rejected": [],
+                    "safety": {
+                        "public_readonly_market_data": False,
+                        "public_readonly": False,
+                        "paper_or_watch_only": False,
+                        "real_orders": True,
+                        "signed_requests": True,
+                        "reads_api_keys": True,
+                        "binance_account_state": True,
+                    },
+                }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_service_cycle(
+                make_args(),
+                state_path=Path(tmp) / "service_state.json",
+                client=FakeClient(),
+                source=UnsafeSource(),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertFalse(report["signal_flow_events"]["safety"]["real_orders"])
+            self.assertFalse(report["signal_flow_events"]["safety"]["signed_requests"])
+            self.assertFalse(report["signal_flow_events"]["safety"]["reads_api_keys"])
+            self.assertTrue(report["signal_flow_events"]["safety"]["public_readonly"])
+            self.assertFalse(report["anomaly_symbols"]["safety"]["binance_account_state"])
+            self.assertTrue(report["anomaly_symbols"]["safety"]["paper_or_watch_only"])
 
     def test_run_service_cycle_archives_and_audits_no_symbol_selected(self) -> None:
         class EmptyUniverseClient(FakeClient):
@@ -827,6 +999,49 @@ class ServiceTests(unittest.TestCase):
                 "paper_cost_depth_fallback_used",
             )
             self.assertEqual(position["execution_cost_model"]["fallback_slippage_bps"], 0.0)
+
+    def test_run_service_cycle_reports_paper_ledger_save_failure_without_crashing(self) -> None:
+        event = {
+            "event_id": "evt-ledger-save-failed",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "IRYS 异动",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "paper_ledger.json"
+            thesis_path = write_exit_plan_thesis(tmp)
+            with patch("tradecat_auto.service.save_paper_ledger", side_effect=OSError("disk full")):
+                report = run_service_cycle(
+                    make_args(
+                        ledger_path=str(ledger_path),
+                        agent_margin_usdt=7.5,
+                        paper_leverage=1.0,
+                        agent_trade_thesis_path=str(thesis_path),
+                    ),
+                    state_path=Path(tmp) / "service_state.json",
+                    client=FakeClient(),
+                    source=FakeSource(event),
+                    now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+                )
+
+            self.assertEqual(report["action"], "PROCESSED")
+            self.assertFalse(report["ok"])
+            self.assertEqual(report["error_code"], "paper_ledger_write_failed")
+            self.assertEqual(report["pipeline_report"]["error"]["kind"], "local_runtime_write")
+            self.assertFalse(report["paper_ledger"]["ok"])
+            self.assertEqual(report["paper_ledger"]["error_code"], "paper_ledger_write_failed")
+            self.assertIn("disk full", report["paper_ledger"]["error"])
+            self.assertEqual(
+                report["paper_ledger"]["provenance"]["source"],
+                "tradecat_auto.service.paper_ledger_runtime_update",
+            )
+            self.assertFalse(report["paper_ledger"]["safety"]["real_orders"])
+            state = json.loads((Path(tmp) / "service_state.json").read_text(encoding="utf-8"))
+            event_id = report["latest_event"]["event_id"]
+            self.assertEqual(state["last_full_cycle_at"], "2026-05-13T12:00:00Z")
+            self.assertEqual(state["last_error"]["code"], "paper_ledger_write_failed")
+            self.assertEqual(state["last_failed_event_id"], event_id)
+            self.assertNotIn(event_id, state["seen_event_ids"])
+            self.assertNotEqual(state.get("last_processed_event_id"), event_id)
 
     def test_run_service_cycle_uses_agent_trade_thesis_sizing_and_exit_plan(self) -> None:
         event = {
@@ -965,6 +1180,40 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(client.bundle_calls, 0)
             self.assertEqual(client.universe_calls, 0)
 
+    def test_run_service_cycle_fails_closed_when_agent_trade_thesis_contains_real_trade_flags(self) -> None:
+        event = {
+            "event_id": "evt-unsafe-thesis",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "IRYS 异动",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            client = FakeClient()
+            thesis_path = Path(tmp) / "unsafe_agent_trade_thesis.json"
+            thesis_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "tradecat_auto.agent_trade_thesis.v1",
+                        "schema_version": "1.0.0",
+                        "paper_intent": {"requested_margin_usdt": 7.5, "paper_leverage": 2, "real_order": "true"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = run_service_cycle(
+                make_args(agent_trade_thesis_path=str(thesis_path)),
+                state_path=Path(tmp) / "service_state.json",
+                client=client,
+                source=FakeSource(event),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "ERROR")
+            self.assertEqual(report["error_code"], "agent_trade_thesis_load_failed")
+            self.assertIn("forbidden private/real-trade fields", report["error"]["message"])
+            self.assertEqual(client.bundle_calls, 0)
+            self.assertEqual(client.universe_calls, 0)
+
     def test_run_service_cycle_fails_closed_when_paper_autonomy_profile_path_is_invalid(self) -> None:
         event = {
             "event_id": "evt-profile-missing",
@@ -985,6 +1234,33 @@ class ServiceTests(unittest.TestCase):
             self.assertFalse(report["ok"])
             self.assertEqual(report["error_code"], "paper_autonomy_profile_load_failed")
             self.assertEqual(report["error"]["code"], "paper_autonomy_profile_load_failed")
+            self.assertEqual(client.bundle_calls, 0)
+            self.assertEqual(client.universe_calls, 0)
+
+    def test_run_service_cycle_fails_closed_when_paper_autonomy_profile_contains_real_trade_flags(self) -> None:
+        event = {
+            "event_id": "evt-unsafe-profile",
+            "source_time_bj": "2026-05-13 19:57:42",
+            "content": "IRYS 异动",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            client = FakeClient()
+            profile_path = write_paper_autonomy_profile(tmp)
+            profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile["paper_intent"]["real_order"] = "true"
+            profile_path.write_text(json.dumps(profile), encoding="utf-8")
+
+            report = run_service_cycle(
+                make_args(paper_autonomy_profile_path=str(profile_path)),
+                state_path=Path(tmp) / "service_state.json",
+                client=client,
+                source=FakeSource(event),
+                now=datetime(2026, 5, 13, 12, 0, tzinfo=UTC),
+            )
+
+            self.assertEqual(report["action"], "ERROR")
+            self.assertEqual(report["error_code"], "paper_autonomy_profile_load_failed")
+            self.assertIn("forbidden private/real-trade fields", report["error"]["message"])
             self.assertEqual(client.bundle_calls, 0)
             self.assertEqual(client.universe_calls, 0)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
+
 SCHEMA_VERSION = "1.0.0"
 PAPER_COST_MODEL_SCHEMA = "tradecat_auto.paper_execution_cost_model.v1"
 BINANCE_USDM_PUBLIC_TAKER_FEE_BPS = 4.0
@@ -198,11 +200,4 @@ def _non_negative_float(value: Any, default: float) -> float:
 
 
 def _safety_boundary() -> dict[str, bool]:
-    return {
-        "public_readonly_market_data": True,
-        "paper_or_watch_only": True,
-        "real_orders": False,
-        "signed_requests": False,
-        "reads_api_keys": False,
-        "binance_account_state": False,
-    }
+    return paper_watch_safety_boundary()

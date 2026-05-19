@@ -40,6 +40,7 @@ class AuditedIntentHandoffSchemaTests(unittest.TestCase):
         self.assertValid(payload)
         self.assertEqual(payload["schema"], "tradecat_auto.audited_intent_handoff.v1")
         self.assertTrue(payload["executor_requirements"]["private_executor_must_recheck_account_state"])
+        self.assertTrue(payload["safety"]["public_readonly"])
         self.assertFalse(payload["safety"]["real_orders"])
         self.assertFalse(payload["safety"]["contains_credentials"])
         self.assertTrue(payload["hard_boundaries"]["not_a_real_order"])

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tradecat_auto.safety_boundary import paper_watch_safety_boundary
+
 
 def parse_float(value: Any) -> float | None:
     text = str(value if value is not None else "").strip().replace(",", "")
@@ -28,20 +30,57 @@ def build_market_enrichment(anomaly_symbol: dict[str, Any], market_bundle: dict[
     missing_required = [name for name in ("last_price", "spread_bps", "open_interest") if metrics.get(name) is None]
     if missing_required:
         errors.setdefault("missing_required_metrics", ",".join(missing_required))
+    ok = bool(market_bundle.get("ok") and symbol and not missing_required)
     return {
         "schema": "tradecat_auto.market_enrichment.v1",
         "schema_version": "1.0.0",
-        "ok": bool(market_bundle.get("ok") and symbol and not missing_required),
+        "ok": ok,
+        "error_code": _error_code(
+            ok=ok,
+            symbol=symbol,
+            market_bundle_ok=bool(market_bundle.get("ok")),
+            missing_required=missing_required,
+        ),
         "symbol": symbol,
         "raw_symbol": anomaly_symbol.get("raw_symbol"),
         "source_layers": [_sheet_source_layer(anomaly_symbol), "binance_public_market"],
         "source_values": source_values,
         "metrics": metrics,
         "errors": errors,
+        "provenance": _provenance(anomaly_symbol, market_bundle),
+        "safety": paper_watch_safety_boundary(),
         "limitations": [
             "public market enrichment only; no account, no position, no orders",
             "not investment advice and not an execution instruction",
         ],
+    }
+
+
+def _error_code(
+    *,
+    ok: bool,
+    symbol: str,
+    market_bundle_ok: bool,
+    missing_required: list[str],
+) -> str | None:
+    if ok:
+        return None
+    if not symbol:
+        return "missing_symbol"
+    if missing_required:
+        return "missing_required_metrics"
+    if not market_bundle_ok:
+        return "market_bundle_not_ok"
+    return "market_enrichment_not_ok"
+
+
+def _provenance(anomaly_symbol: dict[str, Any], market_bundle: dict[str, Any]) -> dict[str, Any]:
+    market_provenance = market_bundle.get("provenance") if isinstance(market_bundle.get("provenance"), dict) else {}
+    return {
+        "source": "tradecat_auto.market_enrichment.build_market_enrichment",
+        "signal_source_dataset_key": str(anomaly_symbol.get("source_dataset_key") or ""),
+        "market_bundle_schema": str(market_bundle.get("schema") or ""),
+        "market_bundle_source": str(market_provenance.get("source") or ""),
     }
 
 

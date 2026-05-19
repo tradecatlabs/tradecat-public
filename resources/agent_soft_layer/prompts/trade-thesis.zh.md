@@ -43,8 +43,18 @@
   },
   "rationale": "short auditable rationale without hidden chain-of-thought",
   "provenance": {
+    "source": "agent_supplied_trade_thesis",
     "market_context_schema": "tradecat_auto.agent_market_context.v1",
     "paper_account_state_schema": "tradecat_auto.paper_account_state.v1"
+  },
+  "safety": {
+    "public_readonly_market_data": true,
+    "public_readonly": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
   },
   "limitations": [
     "paper/watch research only",
@@ -70,6 +80,16 @@
   "confidence": 0.0,
   "error_code": "unsafe_or_unaudited_input",
   "rationale": "拒绝原因",
+  "provenance": {"source": "agent_supplied_trade_thesis"},
+  "safety": {
+    "public_readonly_market_data": true,
+    "public_readonly": true,
+    "paper_or_watch_only": true,
+    "real_orders": false,
+    "signed_requests": false,
+    "reads_api_keys": false,
+    "binance_account_state": false
+  },
   "limitations": ["paper/watch research only"]
 }
 ```
