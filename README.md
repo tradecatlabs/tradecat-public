@@ -4,7 +4,7 @@
 
 | Sponsor | Link |
 |---|---|
-| CA | [`0x8a99b8d53eff6bc331af529af74ad267f3167777`](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777) |
+| CA（交易猫 tradecat 社区） | [`0x8a99b8d53eff6bc331af529af74ad267f3167777`](https://dexscreener.com/bsc/0x8a99b8d53eff6bc331af529af74ad267f3167777) |
 | OPENAI | [OpenAI](https://openai.com/) |
 
 TradeCat Public 是一个面向 Agent/Hermes 的自主纸面交易运行时。公开在线表格只作为信号源；Agent/Hermes 根据仓库内自包含的 Binance skill/API 快照和公开只读工具补齐行情上下文与交易 thesis；TradeCat 负责 schema 审计、信号对齐、paper/watch 执行、账本、风控拒绝、报告和可复现审计。
