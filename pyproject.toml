@@ -26,7 +26,7 @@ dev = [
 ]
 report = [
     "Jinja2>=3.1.4,<4",
-    "pandas>=2.2.3,<3",
+    "pandas>=2.2.3,<4",
     "plotly>=6.0.0,<7",
 ]
 research = [
