@@ -32,7 +32,7 @@ report = [
 research = [
     "optuna>=4.3.0,<5",
     "quantstats>=0.0.81,<0.1",
-    "vectorbt>=0.28.5,<0.29",
+    "vectorbt>=0.28.5,<1.1",
 ]
 
 [project.scripts]
