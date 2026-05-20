@@ -6,7 +6,7 @@
 
 TradeCat Public 的使命是：Agent 交易员同步公开在线表格作为信号源，自主补齐 Binance public/read-only market context，生成 thesis，再由 TradeCat 执行 schema 审计、paper/watch、账本、风控拒绝、报告和可复现审计。
 
-仓库身份以 `tradecat-public` 为准；当前 GitHub remote 可能显示为 `tukuaiai/tradecat`，但 Agent 不得把它当成旧私有 TradeCat 运行态或实盘 executor。
+仓库身份以 `tradecat-public` 为准；GitHub remote 为 `tukuaiai/tradecat-public`。Agent 不得把它当成旧私有 TradeCat 运行态或实盘 executor。
 
 允许做：
 

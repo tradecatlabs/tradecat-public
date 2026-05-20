@@ -18,7 +18,7 @@ CONTRACT_VERSION = "1.0.0"
 REQUEST_SCHEMA = "tradecat.request_result.v1"
 REQUEST_DATASET_LIST_SCHEMA = "tradecat.request_dataset_list.v1"
 DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/tukuaiai/tradecat/develop/src/tradecat_sources/dataset_registry.json"
+    "https://raw.githubusercontent.com/tukuaiai/tradecat-public/develop/src/tradecat_sources/dataset_registry.json"
 )
 REGISTRY_URL_ENV = "TRADECAT_REQUEST_REGISTRY_URL"
 

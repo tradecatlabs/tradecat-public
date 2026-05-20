@@ -11,7 +11,7 @@ TradeCat Public 是一个面向 Agent/Hermes 的自主纸面交易运行时。�
 
 本仓库的核心目标是：Agent 交易员同步在线表格作为信号源的自主纸面交易系统。旧的本地交互式 TUI、安装器、watchdog、缓存浏览器和 `project/` 根目录已经退役。
 
-仓库身份以 `tradecat-public` 为准；当前 GitHub remote 为 `tukuaiai/tradecat`，但本仓库不代表旧私有 TradeCat 运行态，也不包含实盘 executor。
+仓库身份以 `tradecat-public` 为准；GitHub remote 为 `tukuaiai/tradecat-public`。本仓库不代表旧私有 TradeCat 运行态，也不包含实盘 executor。
 
 ## 功能特性
 

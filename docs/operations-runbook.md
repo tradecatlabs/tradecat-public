@@ -95,5 +95,5 @@ python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765
 ## 6. CI 与运行态边界
 
 CI 验证代码、契约、测试和安全门禁；本地运行态必须用 `ops-audit.py` 或 status 命令确认。
-`tradecat-public` 是公开 Skill/Agent + paper/watch 仓库；当前 remote 名称 `tukuaiai/tradecat`
-不代表旧私有 TradeCat 运行态，也不代表实盘 executor。
+`tradecat-public` 是公开 Skill/Agent + paper/watch 仓库；当前 remote 名称是
+`tukuaiai/tradecat-public`，不代表旧私有 TradeCat 运行态，也不代表实盘 executor。
