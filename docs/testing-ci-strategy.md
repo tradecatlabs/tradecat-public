@@ -37,6 +37,7 @@ GitHub Actions 在 `.github/workflows/ci.yml` 中执行：
 - Secret scan。
 - Dependency policy。
 - Testing/CI contract validation。
+- Ops audit script syntax and matrix coverage; CI does not assert local runtime is running.
 - Ruff lint 和 format check。
 - Pytest 全量回归。
 - Data contract validators。
@@ -46,3 +47,5 @@ GitHub Actions 在 `.github/workflows/ci.yml` 中执行：
 - Agent readiness smoke。
 
 本地 `bash scripts/verify.sh` 会通过 `scripts/verify-project.sh` 执行同一组核心门禁。任何新增测试层、CI step、脚本入口或关键命令变化，都必须同步更新 `resources/test_ci_matrix.json`，否则 `scripts/validate_testing_ci_contract.py` 会失败。
+
+运行态事实必须通过 `python3 scripts/ops-audit.py --json` 或本机 status 命令确认；GitHub Actions 绿色只代表代码和契约通过，不代表 auto-paper loop 正在运行。

@@ -75,8 +75,10 @@
       "description": "常驻 paper/watch、监控、启动脚本和运维健康检查测试",
       "evidence_globs": [
         "tests/test_auto_service_script.py",
+        "tests/test_ops_audit.py",
         "tests/test_production_control.py",
         "scripts/agent-smoke.sh",
+        "scripts/ops-audit.py",
         "scripts/start-auto-paper.sh",
         "scripts/monitor-auto-paper.sh"
       ]
@@ -138,6 +140,7 @@
       "bash scripts/security-scan.sh",
       "python scripts/validate_dependency_policy.py",
       "python scripts/validate_testing_ci_contract.py",
+      "scripts/ops-audit.py",
       "ruff check src tests",
       "ruff format --check src tests scripts",
       "PYTHONPATH=src pytest -q",
@@ -168,6 +171,7 @@
     "script_path": "scripts/verify-project.sh",
     "required_command_snippets": [
       "scripts/validate_testing_ci_contract.py",
+      "scripts/ops-audit.py",
       "scripts/guard_public_local_files.sh",
       "scripts/validate_dependency_policy.py",
       "tests",
@@ -193,6 +197,7 @@
       "paper-status",
       "paper-health",
       "paper-ops",
+      "ops-audit",
       "paper-start",
       "paper-stop",
       "monitor",
@@ -208,6 +213,7 @@
       "bash scripts/security-scan.sh",
       "bash scripts/supply-chain-audit.sh",
       "bash scripts/agent-smoke.sh",
+      "$(PYTHON) scripts/ops-audit.py --json",
       "bash scripts/verify.sh"
     ]
   }

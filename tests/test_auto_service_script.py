@@ -77,15 +77,13 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert payload["paper_leverage"] is None
     assert payload["agent_trade_thesis_path"] == ""
     assert payload["agent_trade_thesis_configured"] is False
-    assert payload["paper_autonomy_profile_path"] == str(tmp_path / "run" / "paper_autonomy_profile.json")
-    assert payload["paper_autonomy_profile_configured"] is True
-    assert payload["paper_autonomy_enabled"] is True
-    assert payload["paper_autonomy_profile_defaulted"] is True
-    assert payload["effective_notional_usdt"] == 10.0
-    assert payload["agent_sizing_required"] is False
-    assert payload["paper_sizing"]["source"] == "paper_autonomy_profile"
-    assert payload["paper_sizing"]["requested_margin_usdt"] == 10.0
-    assert payload["paper_sizing"]["paper_leverage"] == 1.0
+    assert payload["paper_autonomy_profile_path"] == ""
+    assert payload["paper_autonomy_profile_configured"] is False
+    assert payload["paper_autonomy_enabled"] is False
+    assert payload["paper_autonomy_profile_defaulted"] is False
+    assert payload["effective_notional_usdt"] is None
+    assert payload["agent_sizing_required"] is True
+    assert payload["paper_sizing"]["source"] == "agent_required_missing"
     assert payload["paper_fee_bps"] == 4.0
     assert payload["paper_fee_model"] == "binance_usdm_public_docs_vip0_taker_fallback"
     assert payload["paper_slippage_bps"] == 0.0
@@ -99,22 +97,21 @@ def test_auto_paper_service_status_reports_not_running_with_stable_json(tmp_path
     assert str(tmp_path / "run") in payload["runtime_dir"]
 
 
-def test_auto_paper_service_status_can_disable_default_runtime_autonomy_profile(tmp_path: Path) -> None:
+def test_auto_paper_service_status_can_enable_default_runtime_autonomy_profile(tmp_path: Path) -> None:
     runtime_dir = tmp_path / "run"
     runtime_dir.mkdir()
-    profile_path = runtime_dir / "paper_autonomy_profile.json"
-    profile_path.write_text("{}", encoding="utf-8")
-    env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir), "TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED": "0"}
+    env = {"TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir), "TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED": "1"}
 
     proc = run_service_script(["status", "--json"], env=env)
 
     assert proc.returncode == 1
     payload = json.loads(proc.stdout)
-    assert payload["paper_autonomy_profile_path"] == ""
-    assert payload["paper_autonomy_profile_configured"] is False
-    assert payload["agent_sizing_required"] is True
-    assert payload["paper_autonomy_enabled"] is False
-    assert payload["paper_autonomy_profile_defaulted"] is False
+    assert payload["paper_autonomy_profile_path"] == str(runtime_dir / "paper_autonomy_profile.json")
+    assert payload["paper_autonomy_profile_configured"] is True
+    assert payload["agent_sizing_required"] is False
+    assert payload["paper_autonomy_enabled"] is True
+    assert payload["paper_autonomy_profile_defaulted"] is True
+    assert payload["paper_sizing"]["source"] == "paper_autonomy_profile"
 
 
 def test_auto_paper_service_status_treats_agent_thesis_path_as_autonomous_sizing_source(tmp_path: Path) -> None:
@@ -295,7 +292,7 @@ def test_auto_paper_web_monitor_does_not_warn_on_absent_optional_local_constrain
     assert "默认不启用本地组合约束" in by_id["risk_controls"]["detail"]
     assert "not_configured" not in by_id["risk_controls"]["detail"]
     assert by_id["trade_thesis"]["status"] == "warn"
-    assert "默认 runtime paper autonomy profile" in by_id["trade_thesis"]["detail"]
+    assert "显式启用 runtime paper autonomy profile" in by_id["trade_thesis"]["detail"]
     assert by_id["strategy_iteration"]["status"] == "warn"
 
 
@@ -1051,11 +1048,8 @@ def test_auto_paper_systemd_install_writes_long_running_user_service_and_disable
     assert "Environment=TRADECAT_AUTO_PAPER_EFFECTIVE_NOTIONAL_USDT=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_LEVERAGE=" not in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH=" not in service_text
-    assert (
-        f"Environment=TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH={runtime_dir / 'paper_autonomy_profile.json'}"
-        in service_text
-    )
-    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1" in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH=" not in service_text
+    assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT=10" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE=1" in service_text
     assert "Environment=TRADECAT_AUTO_PAPER_AUTONOMY_DIRECTION_POLICY=sheet_signal_or_taker_flow" in service_text
@@ -1170,6 +1164,7 @@ def test_auto_paper_cycle_refreshes_default_runtime_autonomy_profile(tmp_path: P
         "PYTHON_BIN": str(fake_python),
         "ARGV_PATH": str(argv_path),
         "TRADECAT_AUTO_PAPER_RUNTIME_DIR": str(runtime_dir),
+        "TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED": "1",
     }
 
     proc = run_service_script(["_cycle"], env=env)

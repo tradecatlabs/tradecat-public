@@ -366,15 +366,15 @@ def build_dependency_health(
             "agent_market_context",
             "Agent-supplied Binance public market context",
             "warn" if agent_sizing_required else "ok",
-            "等待外部 Agent/Hermes thesis；若启用默认 runtime profile 会自动补齐 paper-only sizing/exits"
+            "等待外部 Agent/Hermes thesis；只有显式启用 runtime profile 才会补齐 paper-only sizing/exits"
             if agent_sizing_required
-            else "Agent thesis 或默认 runtime profile 已进入 paper/watch 链路",
+            else "Agent thesis 或显式 runtime profile 已进入 paper/watch 链路",
         ),
         _node(
             "context_audit",
             "context-audit 契约审计",
             "ok",
-            "契约审计可用；关闭默认 runtime profile 时缺 Agent thesis 会结构化等待/拒绝"
+            "契约审计可用；默认手动模式缺 Agent thesis 会结构化等待/拒绝"
             if agent_sizing_required
             else "Agent context 已通过链路进入 paper",
         ),
@@ -382,7 +382,7 @@ def build_dependency_health(
             "trade_thesis",
             "Agent 自主 thesis / sizing / exits",
             "warn" if agent_sizing_required else "ok",
-            "等待外部 Agent thesis，或重新启用默认 runtime paper autonomy profile"
+            "等待外部 Agent thesis，或显式启用 runtime paper autonomy profile"
             if agent_sizing_required
             else f"paper_sizing_source={(status.get('paper_sizing') or {}).get('source') if isinstance(status.get('paper_sizing'), dict) else '-'}; thesis_path={'configured' if thesis_path else 'inline_or_runtime'}",
         ),
@@ -1510,7 +1510,7 @@ async function refresh() {
     opsRows.push(row("纸面 sizing 来源", statusText(status.paper_sizing && status.paper_sizing.source)));
   }
   if (status.paper_autonomy_profile_configured) {
-    opsRows.push(row("paper autonomy profile", status.paper_autonomy_profile_defaulted ? "默认 runtime profile" : "显式配置"));
+    opsRows.push(row("paper autonomy profile", status.paper_autonomy_profile_defaulted ? "显式启用的 runtime profile" : "显式配置"));
   }
   opsRows.push(row("监控命令耗时", elapsedSummary(data.monitor_command_elapsed_ms)));
   $("ops").innerHTML = opsRows.join("");

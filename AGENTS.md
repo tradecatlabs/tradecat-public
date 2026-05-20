@@ -6,6 +6,8 @@
 
 TradeCat Public 的使命是：Agent 交易员同步公开在线表格作为信号源，自主补齐 Binance public/read-only market context，生成 thesis，再由 TradeCat 执行 schema 审计、paper/watch、账本、风控拒绝、报告和可复现审计。
 
+仓库身份以 `tradecat-public` 为准；当前 GitHub remote 可能显示为 `tukuaiai/tradecat`，但 Agent 不得把它当成旧私有 TradeCat 运行态或实盘 executor。
+
 允许做：
 
 - 修改 `src/tradecat_sources/` 的公开在线表格信号源适配。
@@ -91,6 +93,7 @@ git diff --check
 
 ```bash
 bash scripts/start-auto-paper.sh ops-check --json
+python3 scripts/ops-audit.py --json
 bash scripts/start-auto-paper.sh start --json
 bash scripts/start-auto-paper.sh status --json
 bash scripts/start-auto-paper.sh stop --json
@@ -180,12 +183,14 @@ tradecat-public/
 - `pytest` / `ruff` 不存在：运行 `bash scripts/bootstrap-dev.sh` 或安装 `python3 -m pip install -c constraints.txt -e ".[dev]"`。
 - 在线表格请求失败：先跑 `python3 scripts/request.py --datasets --format json`；网络受限时设置 `HTTP_PROXY` / `HTTPS_PROXY`。
 - `paper_service_not_running`：运行 `bash scripts/start-auto-paper.sh status --json`；需要常驻时运行 `bash scripts/start-auto-paper.sh start --json`。
-- 长期常驻 owner 冲突：应使用 `bash scripts/start-auto-paper.sh systemd-install --json` 让 user systemd service 托管唯一 `_run`；不要让旧 timer `_cycle` 和手动 `_run` 同时写同一套 `.runtime/auto-paper/`。
+- 默认不要长期常驻运行；启动 loop 前必须确认网络/API/token 成本、代理和运行目的。
+- 长期常驻 owner 冲突：先运行 `python3 scripts/ops-audit.py --json`；确需常驻时，才使用 `bash scripts/start-auto-paper.sh systemd-install --json` 让 user systemd service 托管唯一 `_run`；不要让旧 timer `_cycle` 和手动 `_run` 同时写同一套 `.runtime/auto-paper/`。
 - `heartbeat_stale` 但 pid 仍在：单轮可能卡在 public 网络或盯市；默认 `TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000`，可运行 `bash scripts/start-auto-paper.sh heal --json`。
 - `paper-report` 和常驻交易不一致：默认事实源是 `.runtime/auto-paper/paper_ledger.json` 与 `.runtime/auto-paper/cycles.jsonl`；先跑 `bash scripts/run-tradecat.sh latest-decision --json`。
 - `strategy_symbol_blocked` / `strategy_signal_type_blocked` / `strategy_side_blocked`：`strategy-review` 根据本地 paper 亏损结果生成了 `.runtime/auto-paper/strategy_state.json`，这是 paper/watch 自我迭代过滤；先看 `bash scripts/run-tradecat.sh strategy-review --ledger-path .runtime/auto-paper/paper_ledger.json --archive-path .runtime/auto-paper/cycles.jsonl --json`。
-- `agent_sizing_required` 在重启后出现：先看 `bash scripts/start-auto-paper.sh status --json` 的 `paper_autonomy_profile_configured`。默认应为 true；若被 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0` 关闭，则需要 Agent/Hermes 显式写入 thesis。
-- `agent_sizing_required`：这是安全拒绝；Agent thesis 或默认 ignored runtime paper autonomy profile 必须提供 sizing/leverage/exits。用户需要额外约束时再显式传入 portfolio risk policy 或 kill switch。
+- `agent_sizing_required` 在重启后出现：这是默认 fail-closed 手动模式；需要 Agent/Hermes 显式写入 thesis，或显式设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1` / `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH`。
+- CI 成功只证明代码、契约和门禁通过，不代表本机 auto-paper loop 正在运行。
+- `agent_sizing_required`：这是安全拒绝；Agent thesis 或显式 ignored runtime paper autonomy profile 必须提供 sizing/leverage/exits。用户需要额外约束时再显式传入 portfolio risk policy 或 kill switch。
 - 监控端口 `8765` 冲突：换空闲端口运行 `python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port <free-port>`。
 
 ## PR / Commit Rules

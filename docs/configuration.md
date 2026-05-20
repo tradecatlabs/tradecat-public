@@ -9,9 +9,9 @@ TradeCat Public 的配置原则是少配置、强边界、默认本地隔离。�
 - `TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS`: 单轮 public-readonly/paper cycle 最大运行秒数，防止进程存活但心跳停滞。
 - `TRADECAT_AUTO_PAPER_FEE_BPS`: paper 成交手续费 fallback；默认 `4`，表示 Binance USD-M 文档示例 taker 费率，不查询签名账户费率。
 - `TRADECAT_AUTO_PAPER_SLIPPAGE_BPS`: 公开盘口不可用时的本地滑点 fallback；默认 `0`，开仓优先用 Binance public depth 估算。
-- `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH`: Agent/Hermes 显式生成的 paper thesis 路径；优先级高于默认 runtime profile。
-- `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED`: 默认 `1`，在 `.runtime/auto-paper/paper_autonomy_profile.json` 生成 paper-only 自治 profile；设置 `0` 时恢复严格等待外部 thesis。
-- `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH`: 可选用户约束 profile 路径；未设置且自治开启时使用 runtime 默认路径。
+- `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH`: Agent/Hermes 显式生成的 paper thesis 路径；优先级高于 runtime profile。
+- `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED`: 默认 `0`，严格等待外部 Agent thesis 或显式 profile；设置 `1` 时才在 `.runtime/auto-paper/paper_autonomy_profile.json` 生成 paper-only 自治 profile。
+- `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH`: 可选用户约束 profile 路径；显式设置时可在手动启动中提供 paper sizing/exits。
 - `TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT`: 默认 `10`，runtime profile 的 paper 保证金。
 - `TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE`: 默认 `1`，runtime profile 的 paper 杠杆。
 - `TRADECAT_AUTO_PAPER_AUTONOMY_STOP_LOSS_BPS`: 默认 `150`，runtime profile 的失效价距离。

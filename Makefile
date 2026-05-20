@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install install-dev test lint format format-check test-ci-contract security supply-chain agent-smoke paper-status paper-health paper-ops paper-start paper-stop monitor verify
+.PHONY: install install-dev test lint format format-check test-ci-contract security supply-chain agent-smoke ops-audit paper-status paper-health paper-ops paper-start paper-stop monitor verify
 
 install:
 	$(PYTHON) -m pip install -c constraints.txt -e .
@@ -31,6 +31,9 @@ supply-chain:
 
 agent-smoke:
 	bash scripts/agent-smoke.sh
+
+ops-audit:
+	$(PYTHON) scripts/ops-audit.py --json
 
 paper-status:
 	bash scripts/start-auto-paper.sh status --json

@@ -89,6 +89,7 @@ jobs:
         run: |
           python -m py_compile \
             scripts/request.py \
+            scripts/ops-audit.py \
             scripts/serve-auto-paper-monitor.py \
             scripts/validate_dependency_policy.py \
             scripts/validate_testing_ci_contract.py \

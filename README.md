@@ -11,6 +11,8 @@ TradeCat Public 是一个面向 Agent/Hermes 的自主纸面交易运行时。�
 
 本仓库的核心目标是：Agent 交易员同步在线表格作为信号源的自主纸面交易系统。旧的本地交互式 TUI、安装器、watchdog、缓存浏览器和 `project/` 根目录已经退役。
 
+仓库身份以 `tradecat-public` 为准；当前 GitHub remote 为 `tukuaiai/tradecat`，但本仓库不代表旧私有 TradeCat 运行态，也不包含实盘 executor。
+
 ## 功能特性
 
 - 读取公开在线表格 `signal_flow` 和 `anomaly_panel`，不依赖私有 TradeCat 服务端。
@@ -18,6 +20,7 @@ TradeCat Public 是一个面向 Agent/Hermes 的自主纸面交易运行时。�
 - 保留 Binance public-readonly skill/API 快照与 provenance，供 Agent/Hermes 研究行情上下文。
 - 执行本地 paper/watch，不读取 Binance key，不签名，不访问账户/订单私有端点，不真实下单。
 - 缺少 Agent 明确 sizing、leverage、stop loss、take profit 或 max holding plan 时 fail-closed。
+- 默认不常驻运行；paper loop 和 Web monitor 都必须由操作员显式启动。
 - 运行态隔离在 ignored `.runtime/`，可生成 paper ledger、cycle archive、SQLite audit journal、health/daily/replay/alert 报告。
 - 内嵌 `skills/tradecat-public/`，Agent/Hermes 可按 manifest 和 Skill references 使用本仓库。
 
@@ -109,7 +112,7 @@ TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000
 TRADECAT_AUTO_PAPER_FEE_BPS=4
 TRADECAT_AUTO_PAPER_SLIPPAGE_BPS=0
 TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH=
-TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1
+TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0
 TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH=
 TRADECAT_AUTO_PAPER_AUTONOMY_MARGIN_USDT=10
 TRADECAT_AUTO_PAPER_AUTONOMY_LEVERAGE=1
@@ -123,10 +126,10 @@ TRADECAT_AUTO_PAPER_MONITOR_PORT=8765
 
 默认本地 Web 监控地址来自 `scripts/serve-auto-paper-monitor.py`：`http://127.0.0.1:8765/`。
 
-`start-auto-paper.sh` 默认会在 ignored `.runtime/auto-paper/paper_autonomy_profile.json`
-生成 paper-only 自治 profile，并把它注入常驻 run-loop，让 Agent/AI 纸面交易不再卡在
-`agent_sizing_required`。显式 `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH` 仍优先；要恢复
-严格等待外部 thesis 的模式，设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0`。
+`start-auto-paper.sh` 默认是手动运行 + 外部 Agent thesis 模式，不会自动生成
+`.runtime/auto-paper/paper_autonomy_profile.json`，缺少明确 sizing/exits 时继续
+`agent_sizing_required` fail-closed。只有显式设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1`
+或传入 `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH` 时，才会使用 paper-only runtime profile。
 
 `start-auto-paper.sh` 也会默认维护 ignored `.runtime/auto-paper/strategy_state.json`。
 该状态由 `strategy-review` 基于本地 paper ledger / cycle archive 生成，用于把亏损
@@ -173,6 +176,9 @@ bash scripts/run-tradecat.sh daily-report --json
 
 ## 常驻 paper/watch
 
+默认不要常驻运行。启动 loop 会持续读取在线表格、public Binance 数据和本地 Agent/thesis
+上下文，可能带来网络/API/token 成本；启动前先确认预算、代理和运行目的。
+
 ```bash
 bash scripts/start-auto-paper.sh ops-check --json
 bash scripts/start-auto-paper.sh start --json
@@ -197,7 +203,8 @@ systemctl --user status tradecat-auto-paper.service
 python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port 8765
 ```
 
-页面只展示本地 paper/watch、审计日志、账本、输入信号、Agent decision text 和依赖链健康，不接触真实账户。
+页面只读展示本地 paper/watch、审计日志、账本、输入信号、Agent decision text 和依赖链健康，
+不会启动 auto-paper loop，不接触真实账户。
 
 ## 常用命令
 
@@ -225,13 +232,14 @@ bash scripts/security-scan.sh
 bash scripts/supply-chain-audit.sh
 python3 scripts/validate_dependency_policy.py
 python3 scripts/validate_testing_ci_contract.py
+python3 scripts/ops-audit.py --json
 git diff --check
 
 # 构建 wheel，来源于 CI
 python3 -m pip wheel . --no-deps -w /tmp/tradecat-wheel
 ```
 
-`Makefile` 还提供 `make test`、`make lint`、`make format`、`make format-check`、`make test-ci-contract`、`make security`、`make supply-chain`、`make agent-smoke`、`make verify`、`make paper-status`、`make paper-start`、`make paper-stop`、`make monitor`。
+`Makefile` 还提供 `make test`、`make lint`、`make format`、`make format-check`、`make test-ci-contract`、`make security`、`make supply-chain`、`make agent-smoke`、`make verify`、`make ops-audit`、`make paper-status`、`make paper-start`、`make paper-stop`、`make monitor`。
 
 ## CI/CD
 
@@ -253,6 +261,8 @@ CI 文件为 `.github/workflows/ci.yml`，触发条件包括 `push`、`pull_requ
 - wheel package data check。
 - agent readiness smoke。
 
+CI 只证明代码、契约、测试和安全门禁通过；它不证明本机 auto-paper loop 正在运行。
+
 本仓库没有 Dockerfile、docker-compose、K8s manifest 或 Helm chart；当前部署形态只有本地 public-readonly + paper/watch。TODO: 如未来新增容器或平台部署，需要同步更新 `docs/deployment.md`、README 和 AGENTS。
 
 ## Troubleshooting / FAQ
@@ -263,8 +273,9 @@ CI 文件为 `.github/workflows/ci.yml`，触发条件包括 `push`、`pull_requ
 - `paper_service_not_running`：运行 `bash scripts/start-auto-paper.sh status --json` 查看状态，需要常驻时运行 `bash scripts/start-auto-paper.sh start --json`。
 - `heartbeat_stale` 但 pid 仍在：说明单轮 public-readonly/paper cycle 可能卡住；`TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS` 会限制单轮最长时间，必要时运行 `bash scripts/start-auto-paper.sh heal --json`。
 - `paper-report` 显示 0 仓但服务在交易：默认账本应为 `.runtime/auto-paper/paper_ledger.json`；用 `bash scripts/run-tradecat.sh latest-decision --json` 和 `bash scripts/run-tradecat.sh health-report --json` 核对常驻服务事实源。
-- `agent_sizing_required` 在重启后出现：先看 `bash scripts/start-auto-paper.sh status --json` 的 `paper_autonomy_profile_configured`。默认应为 true；若被 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=0` 关闭，则需要 Agent/Hermes 显式写入 thesis。
-- 想完全改 paper 自治参数：设置 `TRADECAT_AUTO_PAPER_AUTONOMY_*`，或显式传入 `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH` / `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH`。
+- `agent_sizing_required` 在重启后出现：这是默认 fail-closed 手动模式；需要 Agent/Hermes 显式写入 thesis，或明确设置 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1` / `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH`。
+- 想审计是否有旧服务、进程、端口或 cron 残留：运行 `python3 scripts/ops-audit.py --json`。
+- 想完全改 paper 自治参数：设置 `TRADECAT_AUTO_PAPER_AUTONOMY_*`，并显式打开 `TRADECAT_AUTO_PAPER_AUTONOMY_ENABLED=1`，或显式传入 `TRADECAT_AUTO_PAPER_AGENT_TRADE_THESIS_PATH` / `TRADECAT_AUTO_PAPER_AUTONOMY_PROFILE_PATH`。
 - 监控端口冲突：使用 `python3 scripts/serve-auto-paper-monitor.py --host 127.0.0.1 --port <free-port>`。
 
 ## 贡献指南
