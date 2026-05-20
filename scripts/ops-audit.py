@@ -44,6 +44,7 @@ def build_report(root: Path) -> dict[str, Any]:
     processes = _process_matches()
     ports = _port_matches()
     cron = _cron_matches()
+    tmux = _tmux_matches()
     runtime = _runtime_status(root, status)
     issues: list[str] = []
     warnings: list[str] = []
@@ -63,12 +64,14 @@ def build_report(root: Path) -> dict[str, Any]:
         warnings.append("monitor_or_tradecat_port_listening")
     if cron:
         warnings.append("cron_residue")
+    if tmux:
+        warnings.append("tmux_runtime_pane_residue")
     if runtime["paper_autonomy_profile_exists"] and not runtime["paper_autonomy_profile_configured"]:
         warnings.append("ignored_runtime_paper_autonomy_profile_present_but_not_configured")
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
-        "ok": not issues and not systemd["residue_paths"] and not processes and not cron,
+        "ok": not issues and not systemd["residue_paths"] and not processes and not cron and not tmux,
         "manual_mode": status.get("running") is not True,
         "ci_runtime_note": "CI validates code and contracts only; it does not prove local auto-paper is running.",
         "root": str(root),
@@ -77,6 +80,7 @@ def build_report(root: Path) -> dict[str, Any]:
         "processes": processes,
         "ports": ports,
         "cron": cron,
+        "tmux": tmux,
         "runtime": runtime,
         "issues": issues,
         "warnings": warnings,
@@ -176,6 +180,29 @@ def _cron_matches() -> list[str]:
     return [line.strip() for line in text.splitlines() if re.search(r"tradecat|auto-paper|start-auto-paper", line)]
 
 
+def _tmux_matches() -> list[str]:
+    fixture = os.environ.get("TRADECAT_OPS_AUDIT_TMUX_FIXTURE")
+    if fixture:
+        text = Path(fixture).read_text(encoding="utf-8")
+    else:
+        tmux = os.environ.get("TRADECAT_OPS_AUDIT_TMUX_BIN") or "tmux"
+        proc = _run(
+            [
+                tmux,
+                "list-panes",
+                "-a",
+                "-F",
+                "#{session_name}:#{window_index}.#{pane_index} #{pane_current_command} #{pane_current_path}",
+            ]
+        )
+        text = proc.stdout
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if re.search(r"start-auto-paper|tradecat_auto.*run-loop|serve-auto-paper-monitor|auto-paper", line)
+    ]
+
+
 def _runtime_status(root: Path, status: dict[str, Any]) -> dict[str, Any]:
     runtime_dir = Path(str(status.get("runtime_dir") or root / ".runtime/auto-paper"))
     profile_path = Path(str(status.get("paper_autonomy_profile_path") or runtime_dir / "paper_autonomy_profile.json"))
@@ -189,6 +216,12 @@ def _runtime_status(root: Path, status: dict[str, Any]) -> dict[str, Any]:
         "paper_sizing_source": (status.get("paper_sizing") or {}).get("source")
         if isinstance(status.get("paper_sizing"), dict)
         else None,
+        "runtime_owner": (status.get("systemd_lifecycle_owner") or "manual")
+        if status.get("running") is True
+        else "none",
+        "configured_lifecycle_owner": status.get("systemd_lifecycle_owner") or "manual",
+        "running": bool(status.get("running")),
+        "state": status.get("state") or "unknown",
     }
 
 
@@ -203,7 +236,8 @@ def _print_text(report: dict[str, Any]) -> None:
     print(f"ops-audit ok={str(report['ok']).lower()} manual_mode={str(report['manual_mode']).lower()}")
     print(f"auto-paper state={report['status'].get('state')} running={report['status'].get('running')}")
     print(
-        f"systemd residue={len(report['systemd']['residue_paths'])} processes={len(report['processes'])} cron={len(report['cron'])}"
+        f"systemd residue={len(report['systemd']['residue_paths'])} processes={len(report['processes'])} "
+        f"cron={len(report['cron'])} tmux={len(report['tmux'])}"
     )
     if report["issues"]:
         print("issues:")

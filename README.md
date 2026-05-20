@@ -285,6 +285,7 @@ CI 只证明代码、契约、测试和安全门禁通过；它不证明本机 a
 - 架构说明：`docs/ARCHITECTURE.md`
 - 配置说明：`docs/configuration.md`
 - 部署与运维：`docs/deployment.md`
+- 运维 runbook：`docs/operations-runbook.md`
 - 发布流程：`docs/release.md`
 
 `.github/pull_request_template.md`、`.github/CODEOWNERS` 和 `.github/dependabot.yml` 提供 PR、review owner 与依赖更新入口。平台级分支保护需要在 GitHub 仓库设置中启用。

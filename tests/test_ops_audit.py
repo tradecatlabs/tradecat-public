@@ -29,6 +29,7 @@ def test_ops_audit_reports_clean_manual_mode(tmp_path: Path, monkeypatch) -> Non
     ps_fixture = tmp_path / "ps.txt"
     ss_fixture = tmp_path / "ss.txt"
     cron_fixture = tmp_path / "cron.txt"
+    tmux_fixture = tmp_path / "tmux.txt"
     systemd_dir = tmp_path / "systemd-user"
     systemd_dir.mkdir()
     runtime_dir = tmp_path / "runtime"
@@ -55,12 +56,14 @@ def test_ops_audit_reports_clean_manual_mode(tmp_path: Path, monkeypatch) -> Non
     ps_fixture.write_text("1 0 S init\n", encoding="utf-8")
     ss_fixture.write_text("", encoding="utf-8")
     cron_fixture.write_text("", encoding="utf-8")
+    tmux_fixture.write_text("0:2.1 bash /home/lenovo/.projects/cat/tradecat-public\n", encoding="utf-8")
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_START_SCRIPT", str(start_script))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_SYSTEMCTL_BIN", str(systemctl))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_SYSTEMD_USER_DIR", str(systemd_dir))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_PS_FIXTURE", str(ps_fixture))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_SS_FIXTURE", str(ss_fixture))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_CRON_FIXTURE", str(cron_fixture))
+    monkeypatch.setenv("TRADECAT_OPS_AUDIT_TMUX_FIXTURE", str(tmux_fixture))
 
     report = module.build_report(tmp_path)
 
@@ -71,6 +74,9 @@ def test_ops_audit_reports_clean_manual_mode(tmp_path: Path, monkeypatch) -> Non
     assert report["systemd"]["residue_paths"] == []
     assert report["runtime"]["paper_autonomy_profile_configured"] is False
     assert report["runtime"]["paper_sizing_source"] == "missing"
+    assert report["runtime"]["runtime_owner"] == "none"
+    assert report["runtime"]["configured_lifecycle_owner"] == "manual"
+    assert report["tmux"] == []
     assert report["safety"]["real_orders"] is False
     assert "does not prove local auto-paper is running" in report["ci_runtime_note"]
 
@@ -82,6 +88,7 @@ def test_ops_audit_flags_service_residue_and_runtime_process(tmp_path: Path, mon
     ps_fixture = tmp_path / "ps.txt"
     ss_fixture = tmp_path / "ss.txt"
     cron_fixture = tmp_path / "cron.txt"
+    tmux_fixture = tmp_path / "tmux.txt"
     systemd_dir = tmp_path / "systemd-user"
     systemd_dir.mkdir()
     (systemd_dir / "tradecat-daemon.service").write_text("[Service]\n", encoding="utf-8")
@@ -111,17 +118,23 @@ def test_ops_audit_flags_service_residue_and_runtime_process(tmp_path: Path, mon
     )
     ss_fixture.write_text("LISTEN 0 1 127.0.0.1:8765 0.0.0.0:* users:(('python',pid=7,fd=3))\n", encoding="utf-8")
     cron_fixture.write_text("* * * * * bash scripts/start-auto-paper.sh _cycle\n", encoding="utf-8")
+    tmux_fixture.write_text(
+        "0:3.1 bash /home/lenovo/.projects/cat/tradecat-public/scripts/start-auto-paper.sh\n", encoding="utf-8"
+    )
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_START_SCRIPT", str(start_script))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_SYSTEMCTL_BIN", str(systemctl))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_SYSTEMD_USER_DIR", str(systemd_dir))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_PS_FIXTURE", str(ps_fixture))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_SS_FIXTURE", str(ss_fixture))
     monkeypatch.setenv("TRADECAT_OPS_AUDIT_CRON_FIXTURE", str(cron_fixture))
+    monkeypatch.setenv("TRADECAT_OPS_AUDIT_TMUX_FIXTURE", str(tmux_fixture))
 
     report = module.build_report(tmp_path)
 
     assert report["ok"] is False
     assert "runtime_process_residue" in report["issues"]
     assert "cron_residue" in report["warnings"]
+    assert "tmux_runtime_pane_residue" in report["warnings"]
+    assert report["tmux"]
     assert any(path.endswith("tradecat-daemon.service") for path in report["systemd"]["residue_paths"])
     assert "monitor_or_tradecat_port_listening" in report["warnings"]

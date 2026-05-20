@@ -80,7 +80,8 @@
         "scripts/agent-smoke.sh",
         "scripts/ops-audit.py",
         "scripts/start-auto-paper.sh",
-        "scripts/monitor-auto-paper.sh"
+        "scripts/monitor-auto-paper.sh",
+        "docs/operations-runbook.md"
       ]
     },
     {

@@ -184,6 +184,7 @@ tradecat-public/
 - 在线表格请求失败：先跑 `python3 scripts/request.py --datasets --format json`；网络受限时设置 `HTTP_PROXY` / `HTTPS_PROXY`。
 - `paper_service_not_running`：运行 `bash scripts/start-auto-paper.sh status --json`；需要常驻时运行 `bash scripts/start-auto-paper.sh start --json`。
 - 默认不要长期常驻运行；启动 loop 前必须确认网络/API/token 成本、代理和运行目的。
+- 运维 runbook 在 `docs/operations-runbook.md`；任何启动、停止、禁用、恢复、残留清理或账本检查流程变化必须同步更新。
 - 长期常驻 owner 冲突：先运行 `python3 scripts/ops-audit.py --json`；确需常驻时，才使用 `bash scripts/start-auto-paper.sh systemd-install --json` 让 user systemd service 托管唯一 `_run`；不要让旧 timer `_cycle` 和手动 `_run` 同时写同一套 `.runtime/auto-paper/`。
 - `heartbeat_stale` 但 pid 仍在：单轮可能卡在 public 网络或盯市；默认 `TRADECAT_AUTO_PAPER_CYCLE_TIMEOUT_SECONDS=6000`，可运行 `bash scripts/start-auto-paper.sh heal --json`。
 - `paper-report` 和常驻交易不一致：默认事实源是 `.runtime/auto-paper/paper_ledger.json` 与 `.runtime/auto-paper/cycles.jsonl`；先跑 `bash scripts/run-tradecat.sh latest-decision --json`。

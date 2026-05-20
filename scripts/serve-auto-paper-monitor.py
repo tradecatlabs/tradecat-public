@@ -1505,10 +1505,8 @@ async function refresh() {
     row("预检通过", boolText(ops.ok)),
     row("阻塞检查", (ops.blocking_checks || []).join(", ") || "-")
   ];
-  if (status.agent_trade_thesis_configured || (status.paper_sizing && status.paper_sizing.source && status.paper_sizing.source !== "agent_required_missing")) {
-    opsRows.push(row("Agent thesis", status.agent_trade_thesis_configured ? "已配置" : "运行内联"));
-    opsRows.push(row("纸面 sizing 来源", statusText(status.paper_sizing && status.paper_sizing.source)));
-  }
+  opsRows.push(row("Agent thesis", status.agent_trade_thesis_configured ? "已配置" : "未配置"));
+  opsRows.push(row("纸面 sizing 来源", statusText(status.paper_sizing && status.paper_sizing.source)));
   if (status.paper_autonomy_profile_configured) {
     opsRows.push(row("paper autonomy profile", status.paper_autonomy_profile_defaulted ? "显式启用的 runtime profile" : "显式配置"));
   }

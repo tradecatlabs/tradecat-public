@@ -1,6 +1,7 @@
 # Deployment and Operations
 
 TradeCat Public 不部署真实交易服务。可运行形态只有本地 public-readonly + paper/watch。
+逐步操作清单见 `docs/operations-runbook.md`。
 
 ## 安装
 
@@ -67,8 +68,8 @@ bash scripts/run-tradecat.sh audit-journal --json
 python3 scripts/ops-audit.py --json
 ```
 
-`ops-audit.py` 只读检查 auto-paper 状态、旧 systemd unit/drop-in、残留进程、
-监控端口、crontab 和 ignored runtime autonomy profile。CI 只证明代码和门禁通过，
+`ops-audit.py` 只读检查 auto-paper 状态、旧 systemd unit/drop-in、tmux pane、残留进程、
+监控端口、crontab、runtime owner 和 ignored runtime autonomy profile。CI 只证明代码和门禁通过，
 不代表本机 loop 正在运行。
 
 ## 发布前门禁

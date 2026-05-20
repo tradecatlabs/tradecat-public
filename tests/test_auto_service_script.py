@@ -188,6 +188,8 @@ def test_auto_paper_web_monitor_is_local_readonly_entrypoint() -> None:
     assert "进程健康" in source
     assert "monitor_command_elapsed_ms" in source
     assert "监控命令耗时" in source
+    assert "纸面 sizing 来源" in source
+    assert "status.paper_sizing && status.paper_sizing.source" in source
     assert "依赖链健康" in source
     assert "回撤/告警" in source
     assert "AI 文本决策" in source
