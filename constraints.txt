@@ -32,7 +32,7 @@ referencing==0.37.0
     #   jsonschema-specifications
 rich==15.0.0
     # via tradecat-terminal (pyproject.toml)
-rpds-py==0.30.0
+rpds-py==2026.5.1
     # via
     #   jsonschema
     #   referencing
