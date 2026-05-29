@@ -36,7 +36,7 @@ rpds-py==0.30.0
     # via
     #   jsonschema
     #   referencing
-ruff==0.15.12
+ruff==0.15.15
     # via tradecat-terminal (pyproject.toml)
 typing-extensions==4.15.0
     # via referencing
