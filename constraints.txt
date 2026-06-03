@@ -4,7 +4,7 @@ attrs==26.1.0
     # via
     #   jsonschema
     #   referencing
-filelock==3.29.0
+filelock==3.29.1
     # via tradecat-terminal (pyproject.toml)
 iniconfig==2.3.0
     # via pytest
