@@ -24,7 +24,7 @@ pygments==2.20.0
     # via
     #   pytest
     #   rich
-pytest==9.0.3
+pytest==9.1.1
     # via tradecat-terminal (pyproject.toml)
 referencing==0.37.0
     # via
