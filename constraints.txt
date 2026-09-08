@@ -16,7 +16,7 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-packaging==26.2
+packaging==26.3
     # via pytest
 pluggy==1.6.0
     # via pytest
